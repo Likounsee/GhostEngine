@@ -7,6 +7,7 @@ pub mod color;
 pub mod composition;
 pub mod framebuffer;
 pub mod geometry;
+pub mod layout;
 pub mod path;
 pub mod rasterizer;
 pub mod stroke;
@@ -22,6 +23,7 @@ pub use color::Color;
 pub use composition::{compose_layers, Layer};
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use layout::{Insets, LayoutDirection, LayoutItem, StackLayout};
 pub use path::{
     fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path,
     PathError,
