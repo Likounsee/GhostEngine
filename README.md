@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
-> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, textures, the interactive application frontend and the complete 2D/3D pipelines remain future work.
+> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, validated multi-stop linear/radial gradients with alpha compositing, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, image decoding, paths/strokes, transforms, layers and the complete 2D/3D pipelines remain future work.
 
 ## Vision
 

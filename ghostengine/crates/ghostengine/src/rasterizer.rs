@@ -176,6 +176,154 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
+/// A color stop in a linear or radial gradient. Positions are normalized to 0..=1.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GradientStop {
+    pub position: f32,
+    pub color: Color,
+}
+
+/// A validated gradient with stops sorted by position.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gradient {
+    stops: Vec<GradientStop>,
+}
+
+/// Errors produced while constructing a gradient.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradientError {
+    TooFewStops,
+    InvalidPosition,
+}
+
+impl Gradient {
+    /// Creates a gradient from at least two finite stops in the inclusive 0..=1 range.
+    /// Stops are sorted automatically; duplicate positions are allowed and form a hard edge.
+    pub fn new(mut stops: Vec<GradientStop>) -> Result<Self, GradientError> {
+        if stops.len() < 2 {
+            return Err(GradientError::TooFewStops);
+        }
+        if stops.iter().any(|stop| {
+            !stop.position.is_finite() || !(0.0..=1.0).contains(&stop.position)
+        }) {
+            return Err(GradientError::InvalidPosition);
+        }
+        stops.sort_by(|a, b| a.position.total_cmp(&b.position));
+        Ok(Self { stops })
+    }
+
+    /// Samples the gradient, clamping positions outside its stop range.
+    #[must_use]
+    pub fn sample(&self, position: f32) -> Color {
+        let position = if position.is_finite() {
+            position.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if position <= self.stops[0].position {
+            return self.stops[0].color;
+        }
+        let last = self.stops.len() - 1;
+        if position >= self.stops[last].position {
+            return self.stops[last].color;
+        }
+        let upper = self.stops.partition_point(|stop| stop.position <= position);
+        let left = self.stops[upper - 1];
+        let right = self.stops[upper];
+        let span = right.position - left.position;
+        if span <= f32::EPSILON {
+            return right.color;
+        }
+        interpolate_color(left.color, right.color, (position - left.position) / span)
+    }
+}
+
+fn interpolate_color(left: Color, right: Color, amount: f32) -> Color {
+    let amount = amount.clamp(0.0, 1.0);
+    let channel = |a: u8, b: u8| {
+        (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8
+    };
+    Color::rgba(
+        channel(left.r, right.r),
+        channel(left.g, right.g),
+        channel(left.b, right.b),
+        channel(left.a, right.a),
+    )
+}
+
+fn paint_gradient_pixel(target: &mut Framebuffer, x: u32, y: u32, color: Color) {
+    if color.a == 255 {
+        target.set_pixel(x, y, color);
+    } else {
+        blend_pixel(target, Point::new(x as i32, y as i32), color);
+    }
+}
+
+/// Fills a clipped rectangle with a linear gradient between two floating-point points.
+/// Sampling occurs at pixel centers. A zero-length axis samples the first color throughout.
+pub fn fill_rect_linear_gradient(
+    target: &mut Framebuffer,
+    rect: Rect,
+    start: crate::Vector,
+    end: crate::Vector,
+    gradient: &Gradient,
+) {
+    if !start.x.is_finite() || !start.y.is_finite() || !end.x.is_finite() || !end.y.is_finite() {
+        return;
+    }
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_squared = dx * dx + dy * dy;
+    let left = rect.x.min(target.width());
+    let top = rect.y.min(target.height());
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
+    let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+    for y in top..bottom {
+        for x in left..right {
+            let position = if length_squared <= f32::EPSILON {
+                0.0
+            } else {
+                (((x as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
+                    / length_squared)
+                    .clamp(0.0, 1.0)
+            };
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
+        }
+    }
+}
+
+/// Fills a clipped rectangle with a radial gradient sampled by distance from its center.
+/// Radius must be finite and positive; samples beyond it use the final stop.
+pub fn fill_rect_radial_gradient(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    radius: f32,
+    gradient: &Gradient,
+) {
+    if !center.x.is_finite() || !center.y.is_finite() || !radius.is_finite() || radius <= 0.0 {
+        return;
+    }
+    let left = rect.x.min(target.width());
+    let top = rect.y.min(target.height());
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
+    let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+    for y in top..bottom {
+        for x in left..right {
+            let dx = x as f32 + 0.5 - center.x;
+            let dy = y as f32 + 0.5 - center.y;
+            let position = (dx.hypot(dy) / radius).clamp(0.0, 1.0);
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
+        }
+    }
+}
+
 /// Draws a one-pixel rectangle outline. The rectangle uses half-open bounds.
 pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     if rect.width == 0 || rect.height == 0 {
@@ -558,6 +706,111 @@ mod tests {
 
     fn target(width: u32, height: u32) -> Framebuffer {
         Framebuffer::new(width, height, Color::BLACK).unwrap()
+    }
+
+    fn test_gradient() -> super::Gradient {
+        super::Gradient::new(vec![
+            super::GradientStop { position: 1.0, color: Color::BLUE },
+            super::GradientStop { position: 0.0, color: Color::RED },
+        ]).unwrap()
+    }
+
+    #[test]
+    fn gradient_sorts_stops_and_interpolates_midpoint() {
+        let gradient = test_gradient();
+        assert_eq!(gradient.sample(0.0), Color::RED);
+        assert_eq!(gradient.sample(0.5), Color::rgb(128, 0, 128));
+        assert_eq!(gradient.sample(1.0), Color::BLUE);
+        assert_eq!(gradient.sample(-2.0), Color::RED);
+        assert_eq!(gradient.sample(2.0), Color::BLUE);
+    }
+
+    #[test]
+    fn gradient_rejects_invalid_stop_definitions() {
+        use super::{Gradient, GradientError, GradientStop};
+        assert_eq!(Gradient::new(vec![]), Err(GradientError::TooFewStops));
+        assert_eq!(
+            Gradient::new(vec![
+                GradientStop { position: 0.0, color: Color::BLACK },
+                GradientStop { position: f32::NAN, color: Color::WHITE },
+            ]),
+            Err(GradientError::InvalidPosition)
+        );
+    }
+
+    #[test]
+    fn linear_gradient_fills_clipped_rectangle_at_pixel_centers() {
+        use super::fill_rect_linear_gradient;
+        use crate::Vector;
+        let mut image = target(4, 1);
+        fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 4, 1),
+            Vector::new(0.0, 0.5),
+            Vector::new(4.0, 0.5),
+            &test_gradient(),
+        );
+        assert_eq!(image.get_pixel(0, 0), Some(Color::rgb(223, 0, 32)));
+        assert_eq!(image.get_pixel(3, 0), Some(Color::rgb(32, 0, 223)));
+    }
+
+    #[test]
+    fn linear_gradient_blends_transparent_stops_over_existing_pixels() {
+        use super::{fill_rect_linear_gradient, Gradient, GradientStop};
+        use crate::Vector;
+        let gradient = Gradient::new(vec![
+            GradientStop { position: 0.0, color: Color::rgba(255, 0, 0, 0) },
+            GradientStop { position: 1.0, color: Color::rgba(255, 0, 0, 255) },
+        ]).unwrap();
+        let mut image = target(2, 1);
+        fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 2, 1),
+            Vector::new(0.0, 0.0),
+            Vector::new(2.0, 0.0),
+            &gradient,
+        );
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert!(image.get_pixel(1, 0).unwrap().r > 0);
+    }
+
+    #[test]
+    fn radial_gradient_uses_distance_and_clips_to_rectangle() {
+        use super::fill_rect_radial_gradient;
+        use crate::Vector;
+        let mut image = target(5, 5);
+        fill_rect_radial_gradient(
+            &mut image,
+            Rect::new(1, 1, 3, 3),
+            Vector::new(2.5, 2.5),
+            2.0,
+            &test_gradient(),
+        );
+        assert_eq!(image.get_pixel(2, 2), Some(Color::rgb(255, 0, 0)));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::rgb(30, 0, 225)));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn invalid_gradient_geometry_draws_nothing() {
+        use super::fill_rect_radial_gradient;
+        use crate::Vector;
+        let mut image = target(3, 3);
+        fill_rect_radial_gradient(
+            &mut image,
+            Rect::new(0, 0, 3, 3),
+            Vector::new(1.0, 1.0),
+            0.0,
+            &test_gradient(),
+        );
+        super::fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 3, 3),
+            Vector::new(f32::NAN, 0.0),
+            Vector::new(2.0, 2.0),
+            &test_gradient(),
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]

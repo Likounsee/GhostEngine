@@ -15,4 +15,5 @@ pub mod window;
 pub use color::Color;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use rasterizer::{Gradient, GradientError, GradientStop};
 pub use text::{draw_text, FontFace, TextMetrics};
