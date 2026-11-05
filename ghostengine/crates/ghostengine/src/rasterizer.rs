@@ -203,10 +203,17 @@ pub fn draw_ellipse(
     radius_y: u32,
     color: Color,
 ) {
-    for_each_ellipse_span(target.width(), target.height(), center, radius_x, radius_y, |y, left, right| {
-        target.set_pixel(left as u32, y, color);
-        target.set_pixel(right as u32, y, color);
-    });
+    for_each_ellipse_span(
+        target.width(),
+        target.height(),
+        center,
+        radius_x,
+        radius_y,
+        |y, left, right| {
+            target.set_pixel(left as u32, y, color);
+            target.set_pixel(right as u32, y, color);
+        },
+    );
 }
 
 /// Fills an ellipse using integer scanline spans, clipped to the framebuffer.
