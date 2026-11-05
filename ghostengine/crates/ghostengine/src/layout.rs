@@ -1,0 +1,187 @@
+//! Deterministic stack layout for application UI.
+//!
+//! Layout is independent of the window system. Applications describe a vertical
+//! or horizontal stack and receive pixel rectangles for each child.
+
+use crate::Rect;
+
+/// Direction in which stack children are arranged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutDirection {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+
+/// Insets applied inside a layout's outer bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Insets {
+    pub left: u32,
+    pub top: u32,
+    pub right: u32,
+    pub bottom: u32,
+}
+
+impl Insets {
+    #[must_use]
+    pub const fn all(value: u32) -> Self {
+        Self { left: value, top: value, right: value, bottom: value }
+    }
+
+    #[must_use]
+    pub const fn symmetric(horizontal: u32, vertical: u32) -> Self {
+        Self { left: horizontal, top: vertical, right: horizontal, bottom: vertical }
+    }
+}
+
+/// Requested size for one child along the stack's main axis.
+/// A missing size distributes remaining space equally between flexible children.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LayoutItem {
+    pub main_size: Option<u32>,
+}
+
+impl LayoutItem {
+    #[must_use]
+    pub const fn fixed(main_size: u32) -> Self { Self { main_size: Some(main_size) } }
+
+    #[must_use]
+    pub const fn flexible() -> Self { Self { main_size: None } }
+}
+
+/// Configuration for a simple vertical or horizontal stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StackLayout {
+    pub direction: LayoutDirection,
+    pub padding: Insets,
+    pub gap: u32,
+}
+
+impl StackLayout {
+    #[must_use]
+    pub const fn new(direction: LayoutDirection) -> Self {
+        Self { direction, padding: Insets { left: 0, top: 0, right: 0, bottom: 0 }, gap: 0 }
+    }
+
+    #[must_use]
+    pub const fn with_padding(mut self, padding: Insets) -> Self {
+        self.padding = padding;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_gap(mut self, gap: u32) -> Self {
+        self.gap = gap;
+        self
+    }
+
+    /// Computes child rectangles in input order.
+    ///
+    /// Fixed children keep their requested main-axis size (clipped to available
+    /// space); flexible children share remaining space. Division remainder is
+    /// assigned one pixel at a time to earlier flexible children.
+    #[must_use]
+    pub fn layout(self, bounds: Rect, items: &[LayoutItem]) -> Vec<Rect> {
+        if items.is_empty() { return Vec::new(); }
+
+        let (origin_x, origin_y, main_available, cross_available) = match self.direction {
+            LayoutDirection::Vertical => (
+                bounds.x.saturating_add(self.padding.left),
+                bounds.y.saturating_add(self.padding.top),
+                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+            ),
+            LayoutDirection::Horizontal => (
+                bounds.x.saturating_add(self.padding.left),
+                bounds.y.saturating_add(self.padding.top),
+                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+            ),
+        };
+
+        let gaps = self.gap.saturating_mul(items.len().saturating_sub(1) as u32);
+        let available = main_available.saturating_sub(gaps);
+        let fixed_total = items.iter().fold(0_u32, |sum, item| {
+            sum.saturating_add(item.main_size.unwrap_or(0))
+        });
+        let flexible_count = items.iter().filter(|item| item.main_size.is_none()).count() as u32;
+        let remaining = available.saturating_sub(fixed_total);
+        let flexible_base = if flexible_count == 0 { 0 } else { remaining / flexible_count };
+        let mut remainder = if flexible_count == 0 { 0 } else { remaining % flexible_count };
+        let mut consumed = 0_u32;
+        let mut result = Vec::with_capacity(items.len());
+
+        for item in items {
+            let requested = match item.main_size {
+                Some(size) => size,
+                None => {
+                    let extra = u32::from(remainder > 0);
+                    remainder = remainder.saturating_sub(extra);
+                    flexible_base.saturating_add(extra)
+                }
+            };
+            let main_size = requested.min(available.saturating_sub(consumed));
+            let (x, y, width, height) = match self.direction {
+                LayoutDirection::Vertical => (origin_x, origin_y.saturating_add(consumed), cross_available, main_size),
+                LayoutDirection::Horizontal => (origin_x.saturating_add(consumed), origin_y, main_size, cross_available),
+            };
+            result.push(Rect::new(x, y, width, height));
+            consumed = consumed.saturating_add(main_size).saturating_add(self.gap);
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Insets, LayoutDirection, LayoutItem, StackLayout};
+    use crate::Rect;
+
+    #[test]
+    fn vertical_stack_applies_padding_and_gaps() {
+        let layout = StackLayout::new(LayoutDirection::Vertical)
+            .with_padding(Insets::symmetric(4, 6)).with_gap(3);
+        let result = layout.layout(Rect::new(10, 20, 100, 80),
+            &[LayoutItem::fixed(10), LayoutItem::fixed(20)]);
+        assert_eq!(result[0], Rect::new(14, 26, 92, 10));
+        assert_eq!(result[1], Rect::new(14, 39, 92, 20));
+    }
+
+    #[test]
+    fn flexible_children_share_remaining_space() {
+        let layout = StackLayout::new(LayoutDirection::Vertical).with_gap(2);
+        let result = layout.layout(Rect::new(0, 0, 20, 17),
+            &[LayoutItem::fixed(3), LayoutItem::flexible(), LayoutItem::flexible()]);
+        assert_eq!(result[0], Rect::new(0, 0, 20, 3));
+        assert_eq!(result[1], Rect::new(0, 5, 20, 5));
+        assert_eq!(result[2], Rect::new(0, 12, 20, 5));
+    }
+
+    #[test]
+    fn horizontal_stack_uses_width_as_main_axis() {
+        let layout = StackLayout::new(LayoutDirection::Horizontal)
+            .with_padding(Insets::all(2)).with_gap(1);
+        let result = layout.layout(Rect::new(5, 7, 30, 12),
+            &[LayoutItem::fixed(8), LayoutItem::flexible()]);
+        assert_eq!(result[0], Rect::new(7, 9, 8, 8));
+        assert_eq!(result[1], Rect::new(16, 9, 17, 8));
+    }
+
+    #[test]
+    fn fixed_children_are_clipped_when_the_stack_overflows() {
+        let layout = StackLayout::new(LayoutDirection::Vertical).with_gap(1);
+        let result = layout.layout(Rect::new(0, 0, 10, 5),
+            &[LayoutItem::fixed(4), LayoutItem::fixed(4)]);
+        assert_eq!(result[0].height, 4);
+        assert_eq!(result[1].height, 0);
+    }
+
+    #[test]
+    fn empty_stack_and_zero_bounds_are_safe() {
+        let layout = StackLayout::new(LayoutDirection::Vertical);
+        assert!(layout.layout(Rect::new(0, 0, 0, 0), &[]).is_empty());
+        let result = layout.layout(Rect::new(0, 0, 0, 0),
+            &[LayoutItem::flexible(), LayoutItem::flexible()]);
+        assert_eq!(result, vec![Rect::new(0, 0, 0, 0); 2]);
+    }
+}
