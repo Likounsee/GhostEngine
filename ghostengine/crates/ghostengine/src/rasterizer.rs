@@ -28,7 +28,7 @@ pub fn blend_pixel(target: &mut Framebuffer, point: Point, color: Color) -> bool
 /// Draws a one-pixel-wide line using Bresenham's integer algorithm.
 /// The segment is clipped first, so distant off-screen endpoints are inexpensive.
 pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Color) {
-    let Some((mut x0, mut y0, x1, y1)) = clip_line(target.width(), target.height(), start, end)
+    let Some((mut x0, mut y0, mut x1, mut y1)) = clip_line(target.width(), target.height(), start, end)
     else {
         return;
     };
