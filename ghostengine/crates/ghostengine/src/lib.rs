@@ -11,6 +11,7 @@ pub mod rasterizer;
 pub mod stroke;
 pub mod text;
 pub mod transform;
+pub mod texture;
 
 #[cfg(feature = "window")]
 pub mod window;
@@ -26,3 +27,4 @@ pub use rasterizer::{Gradient, GradientError, GradientStop};
 pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, FontFace, TextMetrics};
 pub use transform::Transform2D;
+pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
