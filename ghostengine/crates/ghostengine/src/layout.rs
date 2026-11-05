@@ -125,12 +125,18 @@ impl StackLayout {
             LayoutDirection::Horizontal => (
                 bounds.x.saturating_add(self.padding.left),
                 bounds.y.saturating_add(self.padding.top),
-                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
-                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds
+                    .width
+                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds
+                    .height
+                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
             ),
         };
 
-        let gaps = self.gap.saturating_mul(items.len().saturating_sub(1) as u32);
+        let gaps = self
+            .gap
+            .saturating_mul(items.len().saturating_sub(1) as u32);
         let available = main_available.saturating_sub(gaps);
         let fixed_total = items.iter().fold(0_u32, |sum, item| {
             sum.saturating_add(item.main_size.unwrap_or(0))
