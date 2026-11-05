@@ -194,7 +194,15 @@ mod tests {
     #[test]
     fn strokes_horizontal_path_with_requested_width() {
         let mut fb = Framebuffer::new(14, 12, Color::BLACK).unwrap();
-        stroke_path(&mut fb, &line(), Transform2D::IDENTITY, StrokeStyle::new(4.0), Color::WHITE, 0.2).unwrap();
+        stroke_path(
+            &mut fb,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(4.0),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         assert_eq!(fb.get_pixel(6, 4), Some(Color::WHITE));
         assert_eq!(fb.get_pixel(6, 5), Some(Color::WHITE));
         assert_eq!(fb.get_pixel(6, 6), Some(Color::WHITE));
@@ -205,8 +213,24 @@ mod tests {
     fn round_cap_reaches_beyond_endpoint() {
         let mut butt = Framebuffer::new(14, 12, Color::BLACK).unwrap();
         let mut round = Framebuffer::new(14, 12, Color::BLACK).unwrap();
-        stroke_path(&mut butt, &line(), Transform2D::IDENTITY, StrokeStyle::new(4.0), Color::WHITE, 0.2).unwrap();
-        stroke_path(&mut round, &line(), Transform2D::IDENTITY, StrokeStyle::new(4.0).with_cap(StrokeCap::Round), Color::WHITE, 0.2).unwrap();
+        stroke_path(
+            &mut butt,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(4.0),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
+        stroke_path(
+            &mut round,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(4.0).with_cap(StrokeCap::Round),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         assert_eq!(butt.get_pixel(2, 5), Some(Color::BLACK));
         assert_eq!(round.get_pixel(2, 5), Some(Color::WHITE));
     }
@@ -215,7 +239,15 @@ mod tests {
     fn transformed_stroke_is_clipped_to_target() {
         let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         let transform = Transform2D::translation(2.0, 1.0);
-        stroke_path(&mut fb, &line(), transform, StrokeStyle::new(2.0), Color::RED, 0.2).unwrap();
+        stroke_path(
+            &mut fb,
+            &line(),
+            transform,
+            StrokeStyle::new(2.0),
+            Color::RED,
+            0.2,
+        )
+        .unwrap();
         assert!(fb.pixels().iter().any(|p| *p == Color::RED));
     }
 
@@ -223,7 +255,14 @@ mod tests {
     fn invalid_width_is_rejected() {
         let mut fb = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         assert_eq!(
-            stroke_path(&mut fb, &line(), Transform2D::IDENTITY, StrokeStyle::new(f32::NAN), Color::WHITE, 0.2),
+            stroke_path(
+                &mut fb,
+                &line(),
+                Transform2D::IDENTITY,
+                StrokeStyle::new(f32::NAN),
+                Color::WHITE,
+                0.2,
+            ),
             Err(StrokeError::InvalidWidth)
         );
     }
