@@ -7,7 +7,9 @@ pub mod color;
 pub mod framebuffer;
 pub mod geometry;
 pub mod rasterizer;
+pub mod text;
 
 pub use color::Color;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use text::{draw_text, FontFace, TextMetrics};

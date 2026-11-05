@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target.
 
-> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, and a headless image example are implemented. Text rendering, textures, window presentation and the complete 2D/3D pipelines remain future work.
+> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, textures, window presentation and the complete 2D/3D pipelines remain future work.
 
 ## Vision
 

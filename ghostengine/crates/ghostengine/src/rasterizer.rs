@@ -104,6 +104,53 @@ fn clip_line(width: u32, height: u32, start: Point, end: Point) -> Option<(i64, 
     ))
 }
 
+/// Draws an anti-aliased line using Xiaolin Wu coverage sampling.
+///
+/// Coverage is composited over the target, so edge pixels retain smooth alpha.
+/// Endpoints are clipped to the framebuffer before rasterization.
+pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: Color) {
+    let Some((mut x0, mut y0, mut x1, mut y1)) =
+        clip_line(target.width(), target.height(), start, end)
+    else {
+        return;
+    };
+
+    let steep = (y1 - y0).abs() > (x1 - x0).abs();
+    if steep {
+        core::mem::swap(&mut x0, &mut y0);
+        core::mem::swap(&mut x1, &mut y1);
+    }
+    if x0 > x1 {
+        core::mem::swap(&mut x0, &mut x1);
+        core::mem::swap(&mut y0, &mut y1);
+    }
+    if x0 == x1 {
+        draw_line(target, start, end, color);
+        return;
+    }
+
+    let gradient = (y1 - y0) as f64 / (x1 - x0) as f64;
+    let mut y = y0 as f64;
+    for x in x0..=x1 {
+        let lower = y.floor();
+        let upper_coverage = y - lower;
+        let lower_coverage = 1.0 - upper_coverage;
+        let plot = |target: &mut Framebuffer, px: i64, py: i64, coverage: f64| {
+            let (px, py) = if steep { (py, px) } else { (px, py) };
+            if px < 0 || py < 0 || px >= i64::from(target.width()) || py >= i64::from(target.height()) {
+                return;
+            }
+            let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
+            if alpha > 0 {
+                blend_pixel(target, Point::new(px as i32, py as i32), Color::rgba(color.r, color.g, color.b, alpha));
+            }
+        };
+        plot(target, x, lower as i64, lower_coverage);
+        plot(target, x, lower as i64 + 1, upper_coverage);
+        y += gradient;
+    }
+}
+
 /// Fills a rectangle clipped to the framebuffer. Bounds are half-open.
 /// Zero-sized rectangles draw nothing.
 pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
@@ -495,7 +542,7 @@ fn integer_sqrt(value: u128) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, draw_polygon, draw_rect,
+        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon, draw_rect,
         fill_circle, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};

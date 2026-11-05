@@ -8,3 +8,4 @@ license = "UNLICENSED"
 
 [lib]
 path = "src/lib.rs"
+\n[dependencies]\nfontdue = \"0.9\"\n
