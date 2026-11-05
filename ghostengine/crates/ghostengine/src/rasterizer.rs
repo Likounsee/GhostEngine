@@ -203,7 +203,7 @@ pub fn draw_ellipse(
     radius_y: u32,
     color: Color,
 ) {
-    for_each_ellipse_span(target, center, radius_x, radius_y, |y, left, right| {
+    for_each_ellipse_span(target.width(), target.height(), center, radius_x, radius_y, |y, left, right| {
         target.set_pixel(left as u32, y, color);
         target.set_pixel(right as u32, y, color);
     });
@@ -218,7 +218,7 @@ pub fn fill_ellipse(
     radius_y: u32,
     color: Color,
 ) {
-    for_each_ellipse_span(target, center, radius_x, radius_y, |y, left, right| {
+    for_each_ellipse_span(target.width(), target.height(), center, radius_x, radius_y, |y, left, right| {
         for x in left..=right {
             target.set_pixel(x as u32, y, color);
         }
@@ -226,13 +226,14 @@ pub fn fill_ellipse(
 }
 
 fn for_each_ellipse_span(
-    target: &mut Framebuffer,
+    width: u32,
+    height: u32,
     center: Point,
     radius_x: u32,
     radius_y: u32,
     mut draw_span: impl FnMut(u32, i64, i64),
 ) {
-    if target.width() == 0 || target.height() == 0 {
+    if width == 0 || height == 0 {
         return;
     }
 
@@ -240,8 +241,8 @@ fn for_each_ellipse_span(
     let cy = i64::from(center.y);
     let rx = u128::from(radius_x);
     let ry = u128::from(radius_y);
-    let x_limit = i64::from(target.width() - 1);
-    let y_limit = i64::from(target.height() - 1);
+    let x_limit = i64::from(width - 1);
+    let y_limit = i64::from(height - 1);
 
     if radius_y == 0 {
         if cy < 0 || cy > y_limit {
