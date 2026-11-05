@@ -222,8 +222,7 @@ fn fill_circle_clipped(
     let cy = i64::from(center.y);
     let left = i64::from(clip.x).max(0);
     let top = i64::from(clip.y).max(0);
-    let right = (i64::from(clip.x) + i64::from(clip.width) - 1)
-        .min(i64::from(target.width()) - 1);
+    let right = (i64::from(clip.x) + i64::from(clip.width) - 1).min(i64::from(target.width()) - 1);
     let bottom =
         (i64::from(clip.y) + i64::from(clip.height) - 1).min(i64::from(target.height()) - 1);
     let first_y = (cy - radius).max(top);
