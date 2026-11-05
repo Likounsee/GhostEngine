@@ -31,8 +31,7 @@ impl Color {
         let source_alpha = u32::from(self.a);
         let destination_alpha = u32::from(background.a);
         let inverse_source_alpha = 255 - source_alpha;
-        let alpha_numerator = source_alpha * 255
-            + destination_alpha * inverse_source_alpha;
+        let alpha_numerator = source_alpha * 255 + destination_alpha * inverse_source_alpha;
 
         if alpha_numerator == 0 {
             return Self::TRANSPARENT;
