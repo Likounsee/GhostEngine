@@ -111,7 +111,7 @@ impl StackLayout {
         let mut consumed = 0_u32;
         let mut result = Vec::with_capacity(items.len());
 
-        for item in items {
+        for (index, item) in items.iter().enumerate() {
             let requested = match item.main_size {
                 Some(size) => size,
                 None => {
@@ -120,13 +120,18 @@ impl StackLayout {
                     flexible_base.saturating_add(extra)
                 }
             };
-            let main_size = requested.min(available.saturating_sub(consumed));
+            let gaps_after = self.gap.saturating_mul(items.len().saturating_sub(index + 1) as u32);
+            let maximum = main_available.saturating_sub(consumed.saturating_add(gaps_after));
+            let main_size = requested.min(maximum);
             let (x, y, width, height) = match self.direction {
                 LayoutDirection::Vertical => (origin_x, origin_y.saturating_add(consumed), cross_available, main_size),
                 LayoutDirection::Horizontal => (origin_x.saturating_add(consumed), origin_y, main_size, cross_available),
             };
             result.push(Rect::new(x, y, width, height));
-            consumed = consumed.saturating_add(main_size).saturating_add(self.gap);
+            consumed = consumed.saturating_add(main_size);
+            if index + 1 < items.len() {
+                consumed = consumed.saturating_add(self.gap);
+            }
         }
         result
     }
