@@ -32,12 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Point::new(208, 112),
         Color::rgb(245, 190, 55),
     );
-    draw_circle(
-        &mut framebuffer,
-        Point::new(260, 52),
-        25,
-        Color::WHITE,
-    );
+    draw_circle(&mut framebuffer, Point::new(260, 52), 25, Color::WHITE);
     fill_ellipse(
         &mut framebuffer,
         Point::new(260, 132),
