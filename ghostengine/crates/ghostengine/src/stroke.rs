@@ -248,7 +248,7 @@ mod tests {
             0.2,
         )
         .unwrap();
-        assert!(fb.pixels().iter().any(|p| *p == Color::RED));
+        assert!(fb.pixels().contains(&Color::RED));
     }
 
     #[test]
