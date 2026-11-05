@@ -767,8 +767,18 @@ mod tests {
     fn antialiased_line_is_clipped_and_reversible() {
         let mut forward = target(6, 4);
         let mut reverse = target(6, 4);
-        draw_line_aa(&mut forward, Point::new(-20, 0), Point::new(20, 3), Color::RED);
-        draw_line_aa(&mut reverse, Point::new(20, 3), Point::new(-20, 0), Color::RED);
+        draw_line_aa(
+            &mut forward,
+            Point::new(-20, 0),
+            Point::new(20, 3),
+            Color::RED,
+        );
+        draw_line_aa(
+            &mut reverse,
+            Point::new(20, 3),
+            Point::new(-20, 0),
+            Color::RED,
+        );
         assert_eq!(forward, reverse);
         assert!(forward.pixels().iter().any(|pixel| pixel.r > 0));
     }
