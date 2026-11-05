@@ -121,6 +121,88 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
+/// Draws a one-pixel rectangle outline. The rectangle uses half-open bounds.
+pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width) - 1;
+    let bottom = top + i64::from(rect.height) - 1;
+    let point = |x: i64, y: i64| Point::new(
+        i32::try_from(x).unwrap_or(if x < 0 { i32::MIN } else { i32::MAX }),
+        i32::try_from(y).unwrap_or(if y < 0 { i32::MIN } else { i32::MAX }),
+    );
+    draw_line(target, point(left, top), point(right, top), color);
+    if rect.height > 1 { draw_line(target, point(left, bottom), point(right, bottom), color); }
+    if rect.width > 1 {
+        draw_line(target, point(left, top), point(left, bottom), color);
+        draw_line(target, point(right, top), point(right, bottom), color);
+    }
+}
+
+/// Fills a rounded rectangle; radius is clamped to half its smaller dimension.
+pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 { fill_rect(target, rect, color); return; }
+    fill_rect(target, Rect::new(rect.x.saturating_add(radius), rect.y,
+        rect.width - radius * 2, rect.height), color);
+    fill_rect(target, Rect::new(rect.x, rect.y.saturating_add(radius),
+        rect.width, rect.height - radius * 2), color);
+
+    let Some(lx) = rect.x.checked_add(radius) else { return };
+    let Some(rx) = rect.x.checked_add(rect.width - radius - 1) else { return };
+    let Some(ty) = rect.y.checked_add(radius) else { return };
+    let Some(by) = rect.y.checked_add(rect.height - radius - 1) else { return };
+    let (Ok(lx), Ok(rx), Ok(ty), Ok(by)) =
+        (i32::try_from(lx), i32::try_from(rx), i32::try_from(ty), i32::try_from(by))
+    else { return };
+    for center in [Point::new(lx, ty), Point::new(rx, ty), Point::new(lx, by), Point::new(rx, by)] {
+        fill_circle(target, center, radius, color);
+    }
+}
+
+/// Draws a closed polygon outline. Fewer than two vertices draw nothing.
+pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 2 { return; }
+    for index in 0..vertices.len() {
+        draw_line(target, vertices[index], vertices[(index + 1) % vertices.len()], color);
+    }
+}
+
+/// Fills a polygon using the even-odd scanline rule at pixel centers.
+pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 3 || target.width() == 0 || target.height() == 0 { return; }
+    let min_y = vertices.iter().map(|p| p.y).min().unwrap().max(0) as u32;
+    let max_y = vertices.iter().map(|p| p.y).max().unwrap();
+    if max_y < 0 || min_y >= target.height() { return; }
+    let max_y = (max_y as u32).min(target.height() - 1);
+    let mut intersections = Vec::with_capacity(vertices.len());
+
+    for y in min_y..=max_y {
+        intersections.clear();
+        let scan_y = f64::from(y) + 0.5;
+        for index in 0..vertices.len() {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let ay = f64::from(a.y);
+            let by = f64::from(b.y);
+            if (ay <= scan_y && scan_y < by) || (by <= scan_y && scan_y < ay) {
+                let t = (scan_y - ay) / (by - ay);
+                intersections.push(f64::from(a.x) + t * (f64::from(b.x) - f64::from(a.x)));
+            }
+        }
+        intersections.sort_by(f64::total_cmp);
+        for pair in intersections.chunks_exact(2) {
+            let first = (pair[0] - 0.5).ceil().max(0.0) as u32;
+            let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
+            for x in first.min(target.width())..end {
+                target.set_pixel(x, y, color);
+            }
+        }
+    }
+}
+
 /// Fills a triangle using integer edge functions, pixel-center sampling and
 /// the top-left rule. Degenerate triangles draw nothing; vertex order is free.
 pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
@@ -322,7 +404,7 @@ fn integer_sqrt(value: u128) -> u128 {
 mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, fill_circle, fill_ellipse,
-        fill_rect, fill_triangle,
+        draw_polygon, draw_rect, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
@@ -403,6 +485,58 @@ mod tests {
             Color::WHITE,
         );
         assert!(image.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn rectangle_outline_respects_half_open_bounds() {
+        let mut image = target(5, 5);
+        draw_rect(&mut image, Rect::new(1, 1, 3, 2), Color::RED);
+        assert_eq!(image.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(3, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_stays_inside_its_bounds() {
+        let mut image = target(8, 8);
+        fill_rounded_rect(&mut image, Rect::new(1, 1, 6, 6), 2, Color::GREEN);
+        assert_eq!(image.get_pixel(3, 1), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(6, 6), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(7, 6), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_radius_is_clamped_and_zero_is_plain_rect() {
+        let mut rounded = target(4, 4);
+        fill_rounded_rect(&mut rounded, Rect::new(0, 0, 4, 2), u32::MAX, Color::BLUE);
+        assert_eq!(rounded.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(rounded.get_pixel(1, 0), Some(Color::BLUE));
+        let mut plain = target(3, 3);
+        fill_rounded_rect(&mut plain, Rect::new(0, 0, 2, 2), 0, Color::RED);
+        assert_eq!(plain.get_pixel(0, 0), Some(Color::RED));
+    }
+
+    #[test]
+    fn polygon_fill_uses_even_odd_scanlines() {
+        let mut image = target(6, 6);
+        fill_polygon(&mut image,
+            &[Point::new(1, 1), Point::new(5, 1), Point::new(3, 5)], Color::RED);
+        assert_eq!(image.get_pixel(3, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(3, 3), Some(Color::RED));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(3, 5), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn polygon_outline_closes_and_fill_ignores_too_few_vertices() {
+        let mut image = target(4, 4);
+        draw_polygon(&mut image,
+            &[Point::new(1, 1), Point::new(2, 1), Point::new(2, 2)], Color::WHITE);
+        assert_eq!(image.get_pixel(1, 1), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(1, 2), Some(Color::WHITE));
+        fill_polygon(&mut image, &[Point::new(0, 0), Point::new(3, 3)], Color::RED);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::WHITE));
     }
 
     #[test]
