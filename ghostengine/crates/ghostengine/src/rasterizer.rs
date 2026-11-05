@@ -403,8 +403,8 @@ fn integer_sqrt(value: u128) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, fill_circle, fill_ellipse,
-        draw_polygon, draw_rect, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle,
+        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, draw_polygon, draw_rect,
+        fill_circle, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
