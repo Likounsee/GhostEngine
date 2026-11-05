@@ -6,10 +6,10 @@
 pub mod color;
 pub mod framebuffer;
 pub mod geometry;
-pub mod rasterizer;
 pub mod path;
-pub mod transform;
+pub mod rasterizer;
 pub mod text;
+pub mod transform;
 
 #[cfg(feature = "window")]
 pub mod window;
@@ -17,7 +17,7 @@ pub mod window;
 pub use color::Color;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
-pub use rasterizer::{Gradient, GradientError, GradientStop};
 pub use path::{fill_path_even_odd, FlattenedPath, FlattenedSubpath, Path, PathError};
-pub use transform::Transform2D;
+pub use rasterizer::{Gradient, GradientError, GradientStop};
 pub use text::{draw_text, FontFace, TextMetrics};
+pub use transform::Transform2D;
