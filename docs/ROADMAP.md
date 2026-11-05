@@ -85,19 +85,19 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 - Buffer bounds and pixel format conversion are tested.
 - UEFI/real-hardware validation is tracked separately from host-side unit tests.
 
-## 6. Optional GPU acceleration
+## 6. Hardware acceleration research (deferred)
 
-**Deliverables**
-- Backend capability negotiation and feature reporting.
-- GPU resource lifecycle and synchronization contract.
-- First optional GPU backend (Vulkan is the current candidate).
-- Software fallback for unsupported features where practical.
+This is not part of the initial implementation plan. The CPU renderer remains the complete reference implementation and must not depend on an external graphics API.
+
+**Possible future deliverables**
+- A feasibility study for a GhostEngine-owned hardware path.
+- A platform and driver compatibility analysis.
+- A separate architecture proposal, reviewed before any implementation.
 
 **Acceptance criteria**
-- Core and software builds work with GPU features disabled.
-- GPU backend is an optional dependency/feature.
-- Shared scenes have backend parity tests and documented tolerances.
-- No DirectX or Windows dependency is introduced.
+- No Vulkan, DirectX, OpenGL or WebGPU dependency is introduced.
+- CPU rendering remains fully usable without hardware acceleration.
+- No hardware support is claimed until it is implemented and tested on real devices.
 
 ## 7. Production readiness
 
