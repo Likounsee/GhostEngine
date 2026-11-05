@@ -43,7 +43,12 @@ pub struct Rect {
 impl Rect {
     #[must_use]
     pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     #[must_use]
