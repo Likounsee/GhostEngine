@@ -178,7 +178,7 @@ cargo test --workspace --all-targets
 cargo run -p ghostengine --example first_image -- first-image.ppm
 ```
 
-The example creates a 320×180 PPM image using GhostEngine's framebuffer, line, rectangle, rounded-rectangle, triangle, circle, ellipse and polygon rasterizers. It does not open a window or use an external graphics API. The current CI checks formatting and Clippy, then runs 32 unit tests.
+The example creates a 320×180 PPM image using GhostEngine's framebuffer, line, rectangle, rounded-rectangle, triangle, circle, ellipse and polygon rasterizers. It does not open a window or use an external graphics API. The current CI checks formatting and Clippy, then runs 33 unit tests.
 
 ## License
 
