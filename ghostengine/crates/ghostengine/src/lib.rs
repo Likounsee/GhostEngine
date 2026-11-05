@@ -17,7 +17,10 @@ pub mod window;
 pub use color::Color;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
-pub use path::{fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path, PathError};
+pub use path::{
+    fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path,
+    PathError,
+};
 pub use rasterizer::{Gradient, GradientError, GradientStop};
 pub use text::{draw_text, FontFace, TextMetrics};
 pub use transform::Transform2D;
