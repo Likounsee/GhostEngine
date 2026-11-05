@@ -183,13 +183,208 @@ fn is_top_left(a: Point, b: Point) -> bool {
     dy > 0 || (dy == 0 && dx < 0)
 }
 
+
+/// Draws the outline of a circle using an integer ellipse-span algorithm.
+/// The radius is measured in pixels; a zero radius draws the center pixel.
+pub fn draw_circle(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    draw_ellipse(target, center, radius, radius, color);
+}
+
+/// Fills a circle, clipping its scanlines to the framebuffer.
+pub fn fill_circle(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    fill_ellipse(target, center, radius, radius, color);
+}
+
+/// Draws an ellipse outline from its center and horizontal/vertical radii.
+/// The result is symmetric and clipped, including when the center is off-screen.
+pub fn draw_ellipse(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    for_each_ellipse_span(target, center, radius_x, radius_y, |y, left, right| {
+        target.set_pixel(left as u32, y, color);
+        target.set_pixel(right as u32, y, color);
+    });
+}
+
+/// Fills an ellipse using integer scanline spans, clipped to the framebuffer.
+/// A zero horizontal or vertical radius produces a line.
+pub fn fill_ellipse(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    for_each_ellipse_span(target, center, radius_x, radius_y, |y, left, right| {
+        for x in left..=right {
+            target.set_pixel(x as u32, y, color);
+        }
+    });
+}
+
+fn for_each_ellipse_span(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    mut draw_span: impl FnMut(u32, i64, i64),
+) {
+    if target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    let cx = i64::from(center.x);
+    let cy = i64::from(center.y);
+    let rx = u128::from(radius_x);
+    let ry = u128::from(radius_y);
+    let x_limit = i64::from(target.width() - 1);
+    let y_limit = i64::from(target.height() - 1);
+
+    if radius_y == 0 {
+        if cy < 0 || cy > y_limit {
+            return;
+        }
+        let left = (cx - i64::from(radius_x)).max(0);
+        let right = (cx + i64::from(radius_x)).min(x_limit);
+        if left <= right {
+            draw_span(cy as u32, left, right);
+        }
+        return;
+    }
+
+    let first_y = (cy - i64::from(radius_y)).max(0);
+    let last_y = (cy + i64::from(radius_y)).min(y_limit);
+    if first_y > last_y {
+        return;
+    }
+
+    if radius_x == 0 {
+        if cx >= 0 && cx <= x_limit {
+            for y in first_y..=last_y {
+                draw_span(y as u32, cx, cx);
+            }
+        }
+        return;
+    }
+
+    let rx_squared = rx * rx;
+    let ry_squared = ry * ry;
+    for y in first_y..=last_y {
+        let dy = (i128::from(y) - i128::from(center.y)).unsigned_abs();
+        let dy = dy.min(ry);
+        let remaining = ry_squared - dy * dy;
+        let x_squared = rx_squared * remaining / ry_squared;
+        let extent = integer_sqrt(x_squared) as i64;
+        let left = (cx - extent).max(0);
+        let right = (cx + extent).min(x_limit);
+        if left <= right {
+            draw_span(y as u32, left, right);
+        }
+    }
+}
+
+fn integer_sqrt(value: u128) -> u128 {
+    if value < 2 {
+        return value;
+    }
+    let mut low = 1_u128;
+    let mut high = u64::MAX as u128 + 1;
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if middle * middle <= value {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    low
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{blend_pixel, draw_line, draw_pixel, fill_rect, fill_triangle};
+    use super::{blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, fill_circle, fill_ellipse, fill_rect, fill_triangle};
     use crate::{Color, Framebuffer, Point, Rect};
 
     fn target(width: u32, height: u32) -> Framebuffer {
         Framebuffer::new(width, height, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn circle_outline_is_symmetric_and_radius_zero_is_one_pixel() {
+        let mut image = target(9, 9);
+        draw_circle(&mut image, Point::new(4, 4), 3, Color::RED);
+        assert_eq!(image.get_pixel(4, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(4, 7), Some(Color::RED));
+        assert_eq!(image.get_pixel(1, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(7, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(4, 4), Some(Color::BLACK));
+
+        draw_circle(&mut image, Point::new(0, 0), 0, Color::GREEN);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn filled_circle_has_center_and_clipped_edges() {
+        let mut image = target(5, 5);
+        fill_circle(&mut image, Point::new(0, 0), 2, Color::BLUE);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(2, 0), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(0, 2), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(3, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(4, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn ellipse_respects_independent_radii() {
+        let mut image = target(11, 9);
+        draw_ellipse(&mut image, Point::new(5, 4), 4, 2, Color::RED);
+        assert_eq!(image.get_pixel(1, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(9, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 6), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn filled_ellipse_covers_interior_and_is_clipped() {
+        let mut image = target(6, 5);
+        fill_ellipse(&mut image, Point::new(1, 2), 4, 2, Color::GREEN);
+        assert_eq!(image.get_pixel(1, 2), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(5, 2), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn zero_radius_ellipse_axes_are_lines() {
+        let mut horizontal = target(5, 3);
+        fill_ellipse(&mut horizontal, Point::new(2, 1), 2, 0, Color::RED);
+        for x in 0..5 {
+            assert_eq!(horizontal.get_pixel(x, 1), Some(Color::RED));
+        }
+
+        let mut vertical = target(3, 5);
+        fill_ellipse(&mut vertical, Point::new(1, 2), 0, 2, Color::BLUE);
+        for y in 0..5 {
+            assert_eq!(vertical.get_pixel(1, y), Some(Color::BLUE));
+        }
+    }
+
+    #[test]
+    fn huge_ellipse_radii_are_clipped_without_coordinate_overflow() {
+        let mut image = target(3, 3);
+        fill_ellipse(
+            &mut image,
+            Point::new(1, 1),
+            u32::MAX,
+            u32::MAX,
+            Color::WHITE,
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::WHITE));
     }
 
     #[test]
