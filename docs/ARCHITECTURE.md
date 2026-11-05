@@ -54,8 +54,7 @@ Create crates only when their API is justified. The following is the intended ev
 - **text:** text runs, layout integration, glyph atlas/cache and text drawing. Font parsing/shaping dependencies must be license-reviewed.
 - **image:** image format adapters, decoded pixel storage and texture descriptors. Decoders should be replaceable.
 - **platform:** framebuffer descriptors, host surfaces and presentation adapters. Keep platform-specific code isolated.
-- **gpu:** optional GPU capability model and backend contract.
-- **backend-vulkan:** optional Vulkan implementation. It must remain an optional feature/dependency.
+- No graphics-API backend crate is part of the current design. Any future hardware-acceleration work requires a separate architecture decision and must not introduce Vulkan, DirectX, OpenGL or WebGPU as a rendering dependency.
 
 Do not create empty crates just to match this list. Start with a compact workspace and split once code ownership is clear.
 
@@ -118,16 +117,11 @@ Bare-metal support is a design constraint, not an already completed feature.
 - Validate framebuffer size and arithmetic to prevent out-of-bounds access.
 - Initially support a linear framebuffer. Display mode setting, GPU initialization, input and hardware acceleration belong to the host OS/driver stack.
 
-## 8. GPU backend strategy
+## 8. Hardware acceleration is out of initial scope
 
-GPU acceleration is optional. Implement the backend contract only after the software API is stable enough to express useful work.
+The initial engine is a CPU software renderer. It must not depend on Vulkan, DirectX, OpenGL, WebGPU or an existing rendering engine.
 
-- Query capabilities explicitly.
-- Define which features are supported and which require software fallback.
-- Keep GPU-specific handles private to backend modules.
-- Do not require DirectX or Windows.
-- Vulkan is a candidate backend, not a dependency of the core or software renderer.
-- Compare GPU output to software reference scenes within documented tolerances.
+If hardware acceleration is reconsidered later, it requires a separate feasibility study and an independently designed GhostEngine-owned architecture. It must not compromise the portability, testability or independence of the CPU renderer. No hardware backend or driver compatibility is claimed by the current project.
 
 ## 9. Testing strategy
 
