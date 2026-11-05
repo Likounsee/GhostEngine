@@ -203,7 +203,44 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         Point::new(lx, by),
         Point::new(rx, by),
     ] {
-        fill_circle(target, center, radius, color);
+        fill_circle_clipped(target, center, radius, rect, color);
+    }
+}
+
+fn fill_circle_clipped(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    clip: Rect,
+    color: Color,
+) {
+    if target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let radius = i64::from(radius);
+    let cx = i64::from(center.x);
+    let cy = i64::from(center.y);
+    let left = i64::from(clip.x).max(0);
+    let top = i64::from(clip.y).max(0);
+    let right = (i64::from(clip.x) + i64::from(clip.width) - 1)
+        .min(i64::from(target.width()) - 1);
+    let bottom = (i64::from(clip.y) + i64::from(clip.height) - 1)
+        .min(i64::from(target.height()) - 1);
+    let first_y = (cy - radius).max(top);
+    let last_y = (cy + radius).min(bottom);
+    if left > right || first_y > last_y {
+        return;
+    }
+
+    let radius_squared = (radius as u128) * (radius as u128);
+    for y in first_y..=last_y {
+        let dy = (y - cy).unsigned_abs() as u128;
+        let extent = integer_sqrt(radius_squared - dy * dy) as i64;
+        let first_x = (cx - extent).max(left);
+        let last_x = (cx + extent).min(right);
+        for x in first_x..=last_x {
+            target.set_pixel(x as u32, y as u32, color);
+        }
     }
 }
 
@@ -563,6 +600,17 @@ mod tests {
     }
 
     #[test]
+    fn rounded_rectangle_corner_circles_are_clipped_to_the_rectangle() {
+        let mut image = target(8, 8);
+        fill_rounded_rect(&mut image, Rect::new(1, 2, 6, 2), 1, Color::BLUE);
+        assert_eq!(image.get_pixel(0, 2), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(1, 2), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(6, 3), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(6, 4), Some(Color::BLACK));
+    }
+
+    #[test]
     fn rounded_rectangle_radius_is_clamped_and_zero_is_plain_rect() {
         let mut rounded = target(4, 4);
         fill_rounded_rect(&mut rounded, Rect::new(0, 0, 4, 2), u32::MAX, Color::BLUE);
@@ -602,7 +650,7 @@ mod tests {
             &[Point::new(0, 0), Point::new(3, 3)],
             Color::RED,
         );
-        assert_eq!(image.get_pixel(0, 0), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
     }
 
     #[test]
