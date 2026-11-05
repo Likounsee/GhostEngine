@@ -792,8 +792,8 @@ mod tests {
             Vector::new(2.0, 0.0),
             &gradient,
         );
-        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
-        assert!(image.get_pixel(1, 0).unwrap().r > 0);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::rgb(64, 0, 0)));
+        assert_eq!(image.get_pixel(1, 0), Some(Color::rgb(191, 0, 0)));
     }
 
     #[test]
