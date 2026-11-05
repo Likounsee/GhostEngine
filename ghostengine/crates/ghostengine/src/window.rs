@@ -1,7 +1,7 @@
 //! Optional native window presentation and input adapter.
 //!
-//! This module does not render. GhostEngine produces the CPU framebuffer;
-//! minifb only creates a host window, forwards input and presents packed pixels.
+//! GhostEngine renders the frame. minifb only creates a host window, forwards
+//! input and presents the completed CPU pixel buffer.
 
 use crate::{Color, Framebuffer, Point};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
@@ -20,11 +20,19 @@ pub enum WindowError {
 impl fmt::Display for WindowError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroDimensions => formatter.write_str("window dimensions must be non-zero"),
-            Self::SizeOverflow => formatter.write_str("window dimensions do not fit this platform"),
-            Self::AllocationFailed => formatter.write_str("could not allocate presentation buffer"),
+            Self::ZeroDimensions => {
+                formatter.write_str("window dimensions must be non-zero")
+            }
+            Self::SizeOverflow => {
+                formatter.write_str("window dimensions do not fit this platform")
+            }
+            Self::AllocationFailed => {
+                formatter.write_str("could not allocate presentation buffer")
+            }
             Self::Backend(message) => write!(formatter, "window backend error: {message}"),
-            Self::FramebufferSizeMismatch => formatter.write_str("framebuffer dimensions do not match the window"),
+            Self::FramebufferSizeMismatch => {
+                formatter.write_str("framebuffer dimensions do not match the window")
+            }
         }
     }
 }
@@ -58,13 +66,23 @@ impl WindowSurface {
         }
         let width_usize = usize::try_from(width).map_err(|_| WindowError::SizeOverflow)?;
         let height_usize = usize::try_from(height).map_err(|_| WindowError::SizeOverflow)?;
-        let pixel_count = width_usize.checked_mul(height_usize).ok_or(WindowError::SizeOverflow)?;
+        let pixel_count = width_usize
+            .checked_mul(height_usize)
+            .ok_or(WindowError::SizeOverflow)?;
         let mut presentation_buffer = Vec::new();
-        presentation_buffer.try_reserve_exact(pixel_count).map_err(|_| WindowError::AllocationFailed)?;
+        presentation_buffer
+            .try_reserve_exact(pixel_count)
+            .map_err(|_| WindowError::AllocationFailed)?;
         presentation_buffer.resize(pixel_count, 0);
+
         let window = Window::new(title, width_usize, height_usize, WindowOptions::default())
             .map_err(|error| WindowError::Backend(error.to_string()))?;
-        Ok(Self { window, width, height, presentation_buffer })
+        Ok(Self {
+            window,
+            width,
+            height,
+            presentation_buffer,
+        })
     }
 
     #[must_use]
@@ -74,9 +92,10 @@ impl WindowSurface {
 
     /// Samples pointer and keyboard input for the current frame.
     pub fn poll_input(&mut self) -> InputState {
-        let mouse_position = self.window.get_mouse_pos(MouseMode::Clamp).map(|(x, y)| {
-            Point::new(x.floor() as i32, y.floor() as i32)
-        });
+        let mouse_position = self
+            .window
+            .get_mouse_pos(MouseMode::Clamp)
+            .map(|(x, y)| Point::new(x.floor() as i32, y.floor() as i32));
         let pressed = self.window.get_keys_pressed(KeyRepeat::Yes);
         let mut input = InputState {
             mouse_position,
@@ -84,13 +103,16 @@ impl WindowSurface {
             escape_down: self.window.is_key_down(Key::Escape),
             ..InputState::default()
         };
+
         for key in pressed {
             match key {
                 Key::Backspace => input.backspace_pressed = true,
                 Key::Enter => input.enter_pressed = true,
-                _ => if let Some(character) = key_to_character(key) {
-                    input.pressed_characters.push(character);
-                },
+                _ => {
+                    if let Some(character) = key_to_character(key) {
+                        input.pressed_characters.push(character);
+                    }
+                }
             }
         }
         input
@@ -101,11 +123,19 @@ impl WindowSurface {
         if framebuffer.width() != self.width || framebuffer.height() != self.height {
             return Err(WindowError::FramebufferSizeMismatch);
         }
-        for (destination, source) in self.presentation_buffer.iter_mut().zip(framebuffer.pixels()) {
+        for (destination, source) in self
+            .presentation_buffer
+            .iter_mut()
+            .zip(framebuffer.pixels())
+        {
             *destination = pack_rgb(*source);
         }
         self.window
-            .update_with_buffer(&self.presentation_buffer, self.width as usize, self.height as usize)
+            .update_with_buffer(
+                &self.presentation_buffer,
+                self.width as usize,
+                self.height as usize,
+            )
             .map_err(|error| WindowError::Backend(error.to_string()))
     }
 }
@@ -116,15 +146,47 @@ fn pack_rgb(color: Color) -> u32 {
 
 fn key_to_character(key: Key) -> Option<char> {
     Some(match key {
-        Key::A => 'a', Key::B => 'b', Key::C => 'c', Key::D => 'd', Key::E => 'e',
-        Key::F => 'f', Key::G => 'g', Key::H => 'h', Key::I => 'i', Key::J => 'j',
-        Key::K => 'k', Key::L => 'l', Key::M => 'm', Key::N => 'n', Key::O => 'o',
-        Key::P => 'p', Key::Q => 'q', Key::R => 'r', Key::S => 's', Key::T => 't',
-        Key::U => 'u', Key::V => 'v', Key::W => 'w', Key::X => 'x', Key::Y => 'y',
-        Key::Z => 'z', Key::Key0 => '0', Key::Key1 => '1', Key::Key2 => '2',
-        Key::Key3 => '3', Key::Key4 => '4', Key::Key5 => '5', Key::Key6 => '6',
-        Key::Key7 => '7', Key::Key8 => '8', Key::Key9 => '9', Key::Period => '.',
-        Key::Slash => '/', Key::Minus => '-', Key::Space => ' ', _ => return None,
+        Key::A => 'a',
+        Key::B => 'b',
+        Key::C => 'c',
+        Key::D => 'd',
+        Key::E => 'e',
+        Key::F => 'f',
+        Key::G => 'g',
+        Key::H => 'h',
+        Key::I => 'i',
+        Key::J => 'j',
+        Key::K => 'k',
+        Key::L => 'l',
+        Key::M => 'm',
+        Key::N => 'n',
+        Key::O => 'o',
+        Key::P => 'p',
+        Key::Q => 'q',
+        Key::R => 'r',
+        Key::S => 's',
+        Key::T => 't',
+        Key::U => 'u',
+        Key::V => 'v',
+        Key::W => 'w',
+        Key::X => 'x',
+        Key::Y => 'y',
+        Key::Z => 'z',
+        Key::Key0 => '0',
+        Key::Key1 => '1',
+        Key::Key2 => '2',
+        Key::Key3 => '3',
+        Key::Key4 => '4',
+        Key::Key5 => '5',
+        Key::Key6 => '6',
+        Key::Key7 => '7',
+        Key::Key8 => '8',
+        Key::Key9 => '9',
+        Key::Period => '.',
+        Key::Slash => '/',
+        Key::Minus => '-',
+        Key::Space => ' ',
+        _ => return None,
     })
 }
 
