@@ -1,6 +1,6 @@
 //! Backend-independent vector paths and deterministic curve flattening.
 
-use crate::{Color, Framebuffer, Vector};
+use crate::{Color, Framebuffer, Transform2D, Vector};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Command {
@@ -35,6 +35,7 @@ pub enum PathError {
     MissingCurrentPoint,
     InvalidTolerance,
     NonFiniteCoordinate,
+    InvalidTransform,
 }
 
 impl Path {
@@ -182,6 +183,23 @@ fn flatten_cubic(
     flatten_cubic(m, b1, b2, b, tol, depth + 1, out);
 }
 
+/// Transforms flattened geometry without changing the source path.
+impl FlattenedPath {
+    pub fn transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
+        if !transform.is_finite() {
+            return Err(PathError::InvalidTransform);
+        }
+        let mut result = self.clone();
+        for subpath in &mut result.subpaths {
+            for point in &mut subpath.points {
+                *point = transform.transform_point(*point);
+                validate(*point)?;
+            }
+        }
+        Ok(result)
+    }
+}
+
 /// Fills all closed contours using the even-odd rule. Curves are flattened first.
 pub fn fill_path_even_odd(
     target: &mut Framebuffer,
@@ -189,31 +207,33 @@ pub fn fill_path_even_odd(
     color: Color,
     tolerance: f32,
 ) -> Result<(), PathError> {
-    let flattened = path.flatten(tolerance)?;
+    fill_transformed_path_even_odd(target, path, Transform2D::IDENTITY, color, tolerance)
+}
+
+/// Flattens, transforms and fills a path in one operation.
+/// The transform is applied before pixel-center scan conversion, so rotation,
+/// scaling, skew and translation affect the actual rasterized geometry.
+pub fn fill_transformed_path_even_odd(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    let flattened = path.flatten(tolerance)?.transformed(transform)?;
     if target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
-    let contours: Vec<&[Vector]> = flattened
-        .subpaths
-        .iter()
+    let contours: Vec<&[Vector]> = flattened.subpaths.iter()
         .filter(|s| s.closed && s.points.len() >= 3)
-        .map(|s| s.points.as_slice())
-        .collect();
-    if contours.is_empty() {
-        return Ok(());
-    }
-    let min_y = contours
-        .iter()
-        .flat_map(|c| c.iter().map(|p| p.y))
-        .fold(f32::INFINITY, f32::min)
-        .floor()
-        .max(0.0) as u32;
-    let max_y = contours
-        .iter()
-        .flat_map(|c| c.iter().map(|p| p.y))
-        .fold(f32::NEG_INFINITY, f32::max)
-        .ceil()
-        .max(0.0)
+        .map(|s| s.points.as_slice()).collect();
+    if contours.is_empty() { return Ok(()); }
+
+    let min_y = contours.iter().flat_map(|c| c.iter().map(|p| p.y))
+        .fold(f32::INFINITY, f32::min).floor().max(0.0)
+        .min(target.height() as f32) as u32;
+    let max_y = contours.iter().flat_map(|c| c.iter().map(|p| p.y))
+        .fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0)
         .min(target.height() as f32) as u32;
     let mut intersections = Vec::new();
     for y in min_y..max_y {
@@ -233,9 +253,7 @@ pub fn fill_path_even_odd(
         for pair in intersections.chunks_exact(2) {
             let left = ((pair[0] - 0.5).ceil().max(0.0) as u32).min(target.width());
             let right = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
-            for x in left..right {
-                target.set_pixel(x, y, color);
-            }
+            for x in left..right { target.set_pixel(x, y, color); }
         }
     }
     Ok(())
@@ -243,8 +261,8 @@ pub fn fill_path_even_odd(
 
 #[cfg(test)]
 mod tests {
-    use super::{fill_path_even_odd, Path, PathError};
-    use crate::{Color, Framebuffer, Vector};
+    use super::{fill_path_even_odd, fill_transformed_path_even_odd, Path, PathError};
+    use crate::{Color, Framebuffer, Transform2D, Vector};
 
     #[test]
     fn quadratic_and_cubic_curves_flatten_to_multiple_segments() {
@@ -295,6 +313,37 @@ mod tests {
         fill_path_even_odd(&mut fb, &p, Color::GREEN, 0.25).unwrap();
         assert_eq!(fb.get_pixel(1, 1), Some(Color::GREEN));
         assert_eq!(fb.get_pixel(3, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn transformed_path_is_rasterized_at_transformed_coordinates() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(3.0, 0.0))
+            .line_to(Vector::new(3.0, 3.0))
+            .line_to(Vector::new(0.0, 3.0))
+            .close();
+        let mut fb = Framebuffer::new(12, 10, Color::BLACK).unwrap();
+        let transform = Transform2D::translation(5.0, 4.0)
+            .then(Transform2D::scale(2.0, 1.0));
+        fill_transformed_path_even_odd(&mut fb, &path, transform, Color::BLUE, 0.2).unwrap();
+        assert_eq!(fb.get_pixel(6, 5), Some(Color::BLUE));
+        assert_eq!(fb.get_pixel(1, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn transformed_path_rejects_non_finite_output() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.0, 1.0))
+            .line_to(Vector::new(2.0, 1.0))
+            .line_to(Vector::new(2.0, 2.0))
+            .close();
+        let mut fb = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        let invalid = Transform2D::new(f32::INFINITY, 0.0, 0.0, 1.0, 0.0, 0.0);
+        assert_eq!(
+            fill_transformed_path_even_odd(&mut fb, &path, invalid, Color::RED, 0.2),
+            Err(PathError::InvalidTransform)
+        );
     }
 
     #[test]
