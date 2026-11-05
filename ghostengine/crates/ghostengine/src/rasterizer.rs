@@ -28,7 +28,9 @@ pub fn blend_pixel(target: &mut Framebuffer, point: Point, color: Color) -> bool
 /// Draws a one-pixel-wide line using Bresenham's integer algorithm.
 /// The segment is clipped first, so distant off-screen endpoints are inexpensive.
 pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Color) {
-    let Some((mut x0, mut y0, x1, y1)) = clip_line(target.width(), target.height(), start, end) else {
+    let Some((mut x0, mut y0, x1, y1)) =
+        clip_line(target.width(), target.height(), start, end)
+    else {
         return;
     };
 
@@ -195,7 +197,11 @@ mod tests {
     #[test]
     fn blended_pixel_uses_source_over_alpha() {
         let mut image = target(1, 1);
-        assert!(blend_pixel(&mut image, Point::new(0, 0), Color::rgba(255, 0, 0, 128)));
+        assert!(blend_pixel(
+            &mut image,
+            Point::new(0, 0),
+            Color::rgba(255, 0, 0, 128)
+        ));
         assert_eq!(image.get_pixel(0, 0), Some(Color::rgba(128, 0, 0, 255)));
         assert!(!blend_pixel(&mut image, Point::new(1, 0), Color::WHITE));
     }
@@ -206,7 +212,10 @@ mod tests {
         draw_line(&mut image, Point::new(0, 1), Point::new(3, 1), Color::RED);
         draw_line(&mut image, Point::new(2, 0), Point::new(2, 3), Color::GREEN);
         for x in 0..4 {
-            assert_eq!(image.get_pixel(x, 1), Some(if x == 2 { Color::GREEN } else { Color::RED }));
+            assert_eq!(
+                image.get_pixel(x, 1),
+                Some(if x == 2 { Color::GREEN } else { Color::RED })
+            );
         }
         for y in 0..4 {
             assert_eq!(image.get_pixel(2, y), Some(Color::GREEN));
@@ -217,15 +226,30 @@ mod tests {
     fn diagonal_line_is_symmetric_when_reversed() {
         let mut forward = target(5, 5);
         let mut reverse = target(5, 5);
-        draw_line(&mut forward, Point::new(0, 0), Point::new(4, 3), Color::WHITE);
-        draw_line(&mut reverse, Point::new(4, 3), Point::new(0, 0), Color::WHITE);
+        draw_line(
+            &mut forward,
+            Point::new(0, 0),
+            Point::new(4, 3),
+            Color::WHITE,
+        );
+        draw_line(
+            &mut reverse,
+            Point::new(4, 3),
+            Point::new(0, 0),
+            Color::WHITE,
+        );
         assert_eq!(forward, reverse);
     }
 
     #[test]
     fn line_is_clipped_to_framebuffer() {
         let mut image = target(5, 3);
-        draw_line(&mut image, Point::new(-100, 1), Point::new(100, 1), Color::BLUE);
+        draw_line(
+            &mut image,
+            Point::new(-100, 1),
+            Point::new(100, 1),
+            Color::BLUE,
+        );
         for x in 0..5 {
             assert_eq!(image.get_pixel(x, 1), Some(Color::BLUE));
         }
@@ -235,7 +259,12 @@ mod tests {
     #[test]
     fn line_outside_target_draws_nothing() {
         let mut image = target(4, 4);
-        draw_line(&mut image, Point::new(-5, -2), Point::new(-1, -8), Color::WHITE);
+        draw_line(
+            &mut image,
+            Point::new(-5, -2),
+            Point::new(-1, -8),
+            Color::WHITE,
+        );
         assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
@@ -252,7 +281,11 @@ mod tests {
     #[test]
     fn rectangle_is_clipped_and_zero_area_is_ignored() {
         let mut image = target(3, 3);
-        fill_rect(&mut image, Rect::new(2, 2, u32::MAX, u32::MAX), Color::GREEN);
+        fill_rect(
+            &mut image,
+            Rect::new(2, 2, u32::MAX, u32::MAX),
+            Color::GREEN,
+        );
         fill_rect(&mut image, Rect::new(0, 0, 0, 3), Color::RED);
         assert_eq!(image.get_pixel(2, 2), Some(Color::GREEN));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
@@ -262,8 +295,20 @@ mod tests {
     fn triangle_is_independent_of_vertex_order() {
         let mut forward = target(3, 3);
         let mut reverse = target(3, 3);
-        fill_triangle(&mut forward, Point::new(0, 0), Point::new(0, 2), Point::new(2, 0), Color::RED);
-        fill_triangle(&mut reverse, Point::new(0, 0), Point::new(2, 0), Point::new(0, 2), Color::RED);
+        fill_triangle(
+            &mut forward,
+            Point::new(0, 0),
+            Point::new(0, 2),
+            Point::new(2, 0),
+            Color::RED,
+        );
+        fill_triangle(
+            &mut reverse,
+            Point::new(0, 0),
+            Point::new(2, 0),
+            Point::new(0, 2),
+            Color::RED,
+        );
         assert_eq!(forward, reverse);
         assert_eq!(forward.get_pixel(0, 0), Some(Color::RED));
         assert_eq!(forward.get_pixel(2, 2), Some(Color::BLACK));
@@ -272,16 +317,40 @@ mod tests {
     #[test]
     fn adjacent_triangles_cover_square_without_cracks() {
         let mut image = target(2, 2);
-        fill_triangle(&mut image, Point::new(0, 0), Point::new(0, 2), Point::new(2, 0), Color::RED);
-        fill_triangle(&mut image, Point::new(2, 0), Point::new(0, 2), Point::new(2, 2), Color::GREEN);
+        fill_triangle(
+            &mut image,
+            Point::new(0, 0),
+            Point::new(0, 2),
+            Point::new(2, 0),
+            Color::RED,
+        );
+        fill_triangle(
+            &mut image,
+            Point::new(2, 0),
+            Point::new(0, 2),
+            Point::new(2, 2),
+            Color::GREEN,
+        );
         assert!(image.pixels().iter().all(|pixel| *pixel != Color::BLACK));
     }
 
     #[test]
     fn degenerate_and_offscreen_triangles_draw_nothing() {
         let mut image = target(3, 3);
-        fill_triangle(&mut image, Point::new(0, 0), Point::new(1, 1), Point::new(2, 2), Color::RED);
-        fill_triangle(&mut image, Point::new(-8, -8), Point::new(-4, -8), Point::new(-8, -4), Color::RED);
+        fill_triangle(
+            &mut image,
+            Point::new(0, 0),
+            Point::new(1, 1),
+            Point::new(2, 2),
+            Color::RED,
+        );
+        fill_triangle(
+            &mut image,
+            Point::new(-8, -8),
+            Point::new(-4, -8),
+            Point::new(-8, -4),
+            Color::RED,
+        );
         assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 }
