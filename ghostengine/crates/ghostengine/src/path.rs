@@ -224,16 +224,29 @@ pub fn fill_transformed_path_even_odd(
     if target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
-    let contours: Vec<&[Vector]> = flattened.subpaths.iter()
+    let contours: Vec<&[Vector]> = flattened
+        .subpaths
+        .iter()
         .filter(|s| s.closed && s.points.len() >= 3)
-        .map(|s| s.points.as_slice()).collect();
-    if contours.is_empty() { return Ok(()); }
+        .map(|s| s.points.as_slice())
+        .collect();
+    if contours.is_empty() {
+        return Ok(());
+    }
 
-    let min_y = contours.iter().flat_map(|c| c.iter().map(|p| p.y))
-        .fold(f32::INFINITY, f32::min).floor().max(0.0)
+    let min_y = contours
+        .iter()
+        .flat_map(|c| c.iter().map(|p| p.y))
+        .fold(f32::INFINITY, f32::min)
+        .floor()
+        .max(0.0)
         .min(target.height() as f32) as u32;
-    let max_y = contours.iter().flat_map(|c| c.iter().map(|p| p.y))
-        .fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0)
+    let max_y = contours
+        .iter()
+        .flat_map(|c| c.iter().map(|p| p.y))
+        .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
+        .max(0.0)
         .min(target.height() as f32) as u32;
     let mut intersections = Vec::new();
     for y in min_y..max_y {
@@ -253,7 +266,9 @@ pub fn fill_transformed_path_even_odd(
         for pair in intersections.chunks_exact(2) {
             let left = ((pair[0] - 0.5).ceil().max(0.0) as u32).min(target.width());
             let right = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
-            for x in left..right { target.set_pixel(x, y, color); }
+            for x in left..right {
+                target.set_pixel(x, y, color);
+            }
         }
     }
     Ok(())
@@ -324,8 +339,7 @@ mod tests {
             .line_to(Vector::new(0.0, 3.0))
             .close();
         let mut fb = Framebuffer::new(12, 10, Color::BLACK).unwrap();
-        let transform = Transform2D::translation(5.0, 4.0)
-            .then(Transform2D::scale(2.0, 1.0));
+        let transform = Transform2D::translation(5.0, 4.0).then(Transform2D::scale(2.0, 1.0));
         fill_transformed_path_even_odd(&mut fb, &path, transform, Color::BLUE, 0.2).unwrap();
         assert_eq!(fb.get_pixel(6, 5), Some(Color::BLUE));
         assert_eq!(fb.get_pixel(1, 1), Some(Color::BLACK));
