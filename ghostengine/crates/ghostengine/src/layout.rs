@@ -25,12 +25,22 @@ pub struct Insets {
 impl Insets {
     #[must_use]
     pub const fn all(value: u32) -> Self {
-        Self { left: value, top: value, right: value, bottom: value }
+        Self {
+            left: value,
+            top: value,
+            right: value,
+            bottom: value,
+        }
     }
 
     #[must_use]
     pub const fn symmetric(horizontal: u32, vertical: u32) -> Self {
-        Self { left: horizontal, top: vertical, right: horizontal, bottom: vertical }
+        Self {
+            left: horizontal,
+            top: vertical,
+            right: horizontal,
+            bottom: vertical,
+        }
     }
 }
 
@@ -43,10 +53,16 @@ pub struct LayoutItem {
 
 impl LayoutItem {
     #[must_use]
-    pub const fn fixed(main_size: u32) -> Self { Self { main_size: Some(main_size) } }
+    pub const fn fixed(main_size: u32) -> Self {
+        Self {
+            main_size: Some(main_size),
+        }
+    }
 
     #[must_use]
-    pub const fn flexible() -> Self { Self { main_size: None } }
+    pub const fn flexible() -> Self {
+        Self { main_size: None }
+    }
 }
 
 /// Configuration for a simple vertical or horizontal stack.
@@ -60,7 +76,16 @@ pub struct StackLayout {
 impl StackLayout {
     #[must_use]
     pub const fn new(direction: LayoutDirection) -> Self {
-        Self { direction, padding: Insets { left: 0, top: 0, right: 0, bottom: 0 }, gap: 0 }
+        Self {
+            direction,
+            padding: Insets {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            gap: 0,
+        }
     }
 
     #[must_use]
@@ -82,14 +107,20 @@ impl StackLayout {
     /// assigned one pixel at a time to earlier flexible children.
     #[must_use]
     pub fn layout(self, bounds: Rect, items: &[LayoutItem]) -> Vec<Rect> {
-        if items.is_empty() { return Vec::new(); }
+        if items.is_empty() {
+            return Vec::new();
+        }
 
         let (origin_x, origin_y, main_available, cross_available) = match self.direction {
             LayoutDirection::Vertical => (
                 bounds.x.saturating_add(self.padding.left),
                 bounds.y.saturating_add(self.padding.top),
-                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
-                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds
+                    .height
+                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds
+                    .width
+                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
             ),
             LayoutDirection::Horizontal => (
                 bounds.x.saturating_add(self.padding.left),
@@ -106,8 +137,16 @@ impl StackLayout {
         });
         let flexible_count = items.iter().filter(|item| item.main_size.is_none()).count() as u32;
         let remaining = available.saturating_sub(fixed_total);
-        let flexible_base = if flexible_count == 0 { 0 } else { remaining / flexible_count };
-        let mut remainder = if flexible_count == 0 { 0 } else { remaining % flexible_count };
+        let flexible_base = if flexible_count == 0 {
+            0
+        } else {
+            remaining / flexible_count
+        };
+        let mut remainder = if flexible_count == 0 {
+            0
+        } else {
+            remaining % flexible_count
+        };
         let mut consumed = 0_u32;
         let mut result = Vec::with_capacity(items.len());
 
@@ -120,12 +159,24 @@ impl StackLayout {
                     flexible_base.saturating_add(extra)
                 }
             };
-            let gaps_after = self.gap.saturating_mul(items.len().saturating_sub(index + 1) as u32);
+            let gaps_after = self
+                .gap
+                .saturating_mul(items.len().saturating_sub(index + 1) as u32);
             let maximum = main_available.saturating_sub(consumed.saturating_add(gaps_after));
             let main_size = requested.min(maximum);
             let (x, y, width, height) = match self.direction {
-                LayoutDirection::Vertical => (origin_x, origin_y.saturating_add(consumed), cross_available, main_size),
-                LayoutDirection::Horizontal => (origin_x.saturating_add(consumed), origin_y, main_size, cross_available),
+                LayoutDirection::Vertical => (
+                    origin_x,
+                    origin_y.saturating_add(consumed),
+                    cross_available,
+                    main_size,
+                ),
+                LayoutDirection::Horizontal => (
+                    origin_x.saturating_add(consumed),
+                    origin_y,
+                    main_size,
+                    cross_available,
+                ),
             };
             result.push(Rect::new(x, y, width, height));
             consumed = consumed.saturating_add(main_size);
@@ -145,9 +196,12 @@ mod tests {
     #[test]
     fn vertical_stack_applies_padding_and_gaps() {
         let layout = StackLayout::new(LayoutDirection::Vertical)
-            .with_padding(Insets::symmetric(4, 6)).with_gap(3);
-        let result = layout.layout(Rect::new(10, 20, 100, 80),
-            &[LayoutItem::fixed(10), LayoutItem::fixed(20)]);
+            .with_padding(Insets::symmetric(4, 6))
+            .with_gap(3);
+        let result = layout.layout(
+            Rect::new(10, 20, 100, 80),
+            &[LayoutItem::fixed(10), LayoutItem::fixed(20)],
+        );
         assert_eq!(result[0], Rect::new(14, 26, 92, 10));
         assert_eq!(result[1], Rect::new(14, 39, 92, 20));
     }
@@ -155,8 +209,14 @@ mod tests {
     #[test]
     fn flexible_children_share_remaining_space() {
         let layout = StackLayout::new(LayoutDirection::Vertical).with_gap(2);
-        let result = layout.layout(Rect::new(0, 0, 20, 17),
-            &[LayoutItem::fixed(3), LayoutItem::flexible(), LayoutItem::flexible()]);
+        let result = layout.layout(
+            Rect::new(0, 0, 20, 17),
+            &[
+                LayoutItem::fixed(3),
+                LayoutItem::flexible(),
+                LayoutItem::flexible(),
+            ],
+        );
         assert_eq!(result[0], Rect::new(0, 0, 20, 3));
         assert_eq!(result[1], Rect::new(0, 5, 20, 5));
         assert_eq!(result[2], Rect::new(0, 12, 20, 5));
@@ -165,9 +225,12 @@ mod tests {
     #[test]
     fn horizontal_stack_uses_width_as_main_axis() {
         let layout = StackLayout::new(LayoutDirection::Horizontal)
-            .with_padding(Insets::all(2)).with_gap(1);
-        let result = layout.layout(Rect::new(5, 7, 30, 12),
-            &[LayoutItem::fixed(8), LayoutItem::flexible()]);
+            .with_padding(Insets::all(2))
+            .with_gap(1);
+        let result = layout.layout(
+            Rect::new(5, 7, 30, 12),
+            &[LayoutItem::fixed(8), LayoutItem::flexible()],
+        );
         assert_eq!(result[0], Rect::new(7, 9, 8, 8));
         assert_eq!(result[1], Rect::new(16, 9, 17, 8));
     }
@@ -175,8 +238,10 @@ mod tests {
     #[test]
     fn fixed_children_are_clipped_when_the_stack_overflows() {
         let layout = StackLayout::new(LayoutDirection::Vertical).with_gap(1);
-        let result = layout.layout(Rect::new(0, 0, 10, 5),
-            &[LayoutItem::fixed(4), LayoutItem::fixed(4)]);
+        let result = layout.layout(
+            Rect::new(0, 0, 10, 5),
+            &[LayoutItem::fixed(4), LayoutItem::fixed(4)],
+        );
         assert_eq!(result[0].height, 4);
         assert_eq!(result[1].height, 0);
     }
@@ -185,8 +250,10 @@ mod tests {
     fn empty_stack_and_zero_bounds_are_safe() {
         let layout = StackLayout::new(LayoutDirection::Vertical);
         assert!(layout.layout(Rect::new(0, 0, 0, 0), &[]).is_empty());
-        let result = layout.layout(Rect::new(0, 0, 0, 0),
-            &[LayoutItem::flexible(), LayoutItem::flexible()]);
+        let result = layout.layout(
+            Rect::new(0, 0, 0, 0),
+            &[LayoutItem::flexible(), LayoutItem::flexible()],
+        );
         assert_eq!(result, vec![Rect::new(0, 0, 0, 0); 2]);
     }
 }
