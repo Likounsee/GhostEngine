@@ -203,9 +203,10 @@ impl Gradient {
         if stops.len() < 2 {
             return Err(GradientError::TooFewStops);
         }
-        if stops.iter().any(|stop| {
-            !stop.position.is_finite() || !(0.0..=1.0).contains(&stop.position)
-        }) {
+        if stops
+            .iter()
+            .any(|stop| !stop.position.is_finite() || !(0.0..=1.0).contains(&stop.position))
+        {
             return Err(GradientError::InvalidPosition);
         }
         stops.sort_by(|a, b| a.position.total_cmp(&b.position));
@@ -240,9 +241,8 @@ impl Gradient {
 
 fn interpolate_color(left: Color, right: Color, amount: f32) -> Color {
     let amount = amount.clamp(0.0, 1.0);
-    let channel = |a: u8, b: u8| {
-        (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8
-    };
+    let channel =
+        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
     Color::rgba(
         channel(left.r, right.r),
         channel(left.g, right.g),
@@ -277,7 +277,8 @@ pub fn fill_rect_linear_gradient(
     let left = rect.x.min(target.width());
     let top = rect.y.min(target.height());
     let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
-    let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+    let bottom =
+        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
     if left >= right || top >= bottom {
         return;
     }
@@ -710,9 +711,16 @@ mod tests {
 
     fn test_gradient() -> super::Gradient {
         super::Gradient::new(vec![
-            super::GradientStop { position: 1.0, color: Color::BLUE },
-            super::GradientStop { position: 0.0, color: Color::RED },
-        ]).unwrap()
+            super::GradientStop {
+                position: 1.0,
+                color: Color::BLUE,
+            },
+            super::GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+        ])
+        .unwrap()
     }
 
     #[test]
@@ -731,8 +739,14 @@ mod tests {
         assert_eq!(Gradient::new(vec![]), Err(GradientError::TooFewStops));
         assert_eq!(
             Gradient::new(vec![
-                GradientStop { position: 0.0, color: Color::BLACK },
-                GradientStop { position: f32::NAN, color: Color::WHITE },
+                GradientStop {
+                    position: 0.0,
+                    color: Color::BLACK,
+                },
+                GradientStop {
+                    position: f32::NAN,
+                    color: Color::WHITE,
+                },
             ]),
             Err(GradientError::InvalidPosition)
         );
@@ -759,9 +773,16 @@ mod tests {
         use super::{fill_rect_linear_gradient, Gradient, GradientStop};
         use crate::Vector;
         let gradient = Gradient::new(vec![
-            GradientStop { position: 0.0, color: Color::rgba(255, 0, 0, 0) },
-            GradientStop { position: 1.0, color: Color::rgba(255, 0, 0, 255) },
-        ]).unwrap();
+            GradientStop {
+                position: 0.0,
+                color: Color::rgba(255, 0, 0, 0),
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::rgba(255, 0, 0, 255),
+            },
+        ])
+        .unwrap();
         let mut image = target(2, 1);
         fill_rect_linear_gradient(
             &mut image,
