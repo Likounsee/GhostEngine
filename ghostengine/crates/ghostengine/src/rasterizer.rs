@@ -520,8 +520,11 @@ mod tests {
     #[test]
     fn polygon_fill_uses_even_odd_scanlines() {
         let mut image = target(6, 6);
-        fill_polygon(&mut image,
-            &[Point::new(1, 1), Point::new(5, 1), Point::new(3, 5)], Color::RED);
+        fill_polygon(
+            &mut image,
+            &[Point::new(1, 1), Point::new(5, 1), Point::new(3, 5)],
+            Color::RED,
+        );
         assert_eq!(image.get_pixel(3, 1), Some(Color::RED));
         assert_eq!(image.get_pixel(3, 3), Some(Color::RED));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
