@@ -183,7 +183,6 @@ fn is_top_left(a: Point, b: Point) -> bool {
     dy > 0 || (dy == 0 && dx < 0)
 }
 
-
 /// Draws the outline of a circle using an integer ellipse-span algorithm.
 /// The radius is measured in pixels; a zero radius draws the center pixel.
 pub fn draw_circle(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
@@ -306,7 +305,10 @@ fn integer_sqrt(value: u128) -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, fill_circle, fill_ellipse, fill_rect, fill_triangle};
+    use super::{
+        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_pixel, fill_circle, fill_ellipse,
+        fill_rect, fill_triangle,
+    };
     use crate::{Color, Framebuffer, Point, Rect};
 
     fn target(width: u32, height: u32) -> Framebuffer {
