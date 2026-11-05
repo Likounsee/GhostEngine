@@ -756,6 +756,24 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_line_blends_edge_coverage() {
+        let mut image = target(8, 8);
+        draw_line_aa(&mut image, Point::new(1, 1), Point::new(6, 4), Color::WHITE);
+        assert!(image.pixels().iter().any(|pixel| pixel.r == 255));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_line_is_clipped_and_reversible() {
+        let mut forward = target(6, 4);
+        let mut reverse = target(6, 4);
+        draw_line_aa(&mut forward, Point::new(-20, 0), Point::new(20, 3), Color::RED);
+        draw_line_aa(&mut reverse, Point::new(20, 3), Point::new(-20, 0), Color::RED);
+        assert_eq!(forward, reverse);
+        assert!(forward.pixels().iter().any(|pixel| pixel.r > 0));
+    }
+
+    #[test]
     fn line_is_clipped_to_framebuffer() {
         let mut image = target(5, 3);
         draw_line(

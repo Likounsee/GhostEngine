@@ -37,7 +37,7 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 - Paths, fill rules and strokes.
 - Gradients, image sampling and filtering.
 - Affine transforms, nested clips and off-screen surfaces.
-- Defined antialiasing behavior.
+- Defined antialiasing behavior, including coverage-based line rendering.
 
 **Acceptance criteria**
 - Geometry edge cases have tests.
@@ -48,7 +48,8 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 
 **Deliverables**
 - Image decoding adapters and explicit pixel conversion.
-- Font integration, glyph cache and text layout adapter.
+- TTF/OTF font loading, glyph rasterization, text measurement and baseline layout.
+- Glyph cache, shaping, fallback fonts and text layout adapter.
 - Layer/surface model, opacity, blend modes and transforms.
 - Damage-region tracking as an optimization after correct full-frame composition.
 

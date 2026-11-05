@@ -47,7 +47,7 @@ Create crates only when their API is justified. The following is the intended ev
 - **2d:** paths, tessellation or scan conversion, strokes, fills, gradients, image drawing and 2D state.
 - **3d:** mesh data, camera, transforms, clipping, triangle setup, depth, interpolation, materials and lighting.
 - **compositor:** ordered surfaces/layers, damage regions, transforms, opacity and composition.
-- **text:** text runs, layout integration, glyph atlas/cache and text drawing. Font parsing/shaping dependencies must be license-reviewed.
+- **text:** TTF/OTF loading through the optional fontdue parser, glyph coverage rasterization, baseline-based text drawing and basic measurement. Complex shaping, fallback and persistent glyph caching remain future work.
 - **image:** image format adapters, decoded pixel storage and texture descriptors. Decoders should be replaceable.
 - **platform:** host surfaces and presentation adapters. Keep platform-specific code isolated.
 - No graphics-API backend crate is part of the current design. Any future hardware-acceleration work requires a separate architecture decision and must not introduce Vulkan, DirectX, OpenGL or WebGPU as a rendering dependency.
@@ -132,7 +132,7 @@ Before adding a dependency, record its purpose, license, transitive-license cons
 Resolve these through small prototypes and documented decisions rather than speculative abstraction:
 - exact public API shape and stability policy;
 - math crate versus internal math types;
-- font shaping and rasterization integration;
+- advanced font shaping, fallback and glyph-cache policy;
 - image decoder selection;
 - threading and job scheduling model;
 - color management and HDR scope;
