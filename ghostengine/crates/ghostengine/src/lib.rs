@@ -8,6 +8,7 @@ pub mod framebuffer;
 pub mod geometry;
 pub mod path;
 pub mod rasterizer;
+pub mod stroke;
 pub mod text;
 pub mod transform;
 
@@ -22,5 +23,6 @@ pub use path::{
     PathError,
 };
 pub use rasterizer::{Gradient, GradientError, GradientStop};
+pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, FontFace, TextMetrics};
 pub use transform::Transform2D;
