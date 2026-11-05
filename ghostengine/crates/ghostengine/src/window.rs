@@ -20,15 +20,9 @@ pub enum WindowError {
 impl fmt::Display for WindowError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroDimensions => {
-                formatter.write_str("window dimensions must be non-zero")
-            }
-            Self::SizeOverflow => {
-                formatter.write_str("window dimensions do not fit this platform")
-            }
-            Self::AllocationFailed => {
-                formatter.write_str("could not allocate presentation buffer")
-            }
+            Self::ZeroDimensions => formatter.write_str("window dimensions must be non-zero"),
+            Self::SizeOverflow => formatter.write_str("window dimensions do not fit this platform"),
+            Self::AllocationFailed => formatter.write_str("could not allocate presentation buffer"),
             Self::Backend(message) => write!(formatter, "window backend error: {message}"),
             Self::FramebufferSizeMismatch => {
                 formatter.write_str("framebuffer dimensions do not match the window")

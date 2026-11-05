@@ -71,9 +71,24 @@ fn main() -> Result<(), Box<dyn Error>> {
             Rect::new(0, 0, WIDTH, 72),
             Color::rgb(25, 32, 46),
         );
-        rounded(&mut framebuffer, Rect::new(32, 16, 42, 40), 9, Color::rgb(49, 61, 82));
-        rounded(&mut framebuffer, Rect::new(82, 16, 42, 40), 9, Color::rgb(49, 61, 82));
-        rounded(&mut framebuffer, Rect::new(132, 16, 42, 40), 9, Color::rgb(49, 61, 82));
+        rounded(
+            &mut framebuffer,
+            Rect::new(32, 16, 42, 40),
+            9,
+            Color::rgb(49, 61, 82),
+        );
+        rounded(
+            &mut framebuffer,
+            Rect::new(82, 16, 42, 40),
+            9,
+            Color::rgb(49, 61, 82),
+        );
+        rounded(
+            &mut framebuffer,
+            Rect::new(132, 16, 42, 40),
+            9,
+            Color::rgb(49, 61, 82),
+        );
         label(&mut framebuffer, &font, "<", 47, 42, 19.0, Color::WHITE);
         label(&mut framebuffer, &font, ">", 97, 42, 19.0, Color::WHITE);
         label(&mut framebuffer, &font, "R", 146, 42, 17.0, Color::WHITE);
@@ -94,7 +109,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Color::rgb(76, 137, 232),
             );
         }
-        label(&mut framebuffer, &font, &address, 205, 42, 16.0, Color::rgb(35, 43, 57));
+        label(
+            &mut framebuffer,
+            &font,
+            &address,
+            205,
+            42,
+            16.0,
+            Color::rgb(35, 43, 57),
+        );
         rounded(
             &mut framebuffer,
             Rect::new(790, 16, 82, 40),
@@ -111,7 +134,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             15.0,
             Color::rgb(100, 112, 132),
         );
-        label(&mut framebuffer, &font, &page_title, 44, 184, 32.0, Color::rgb(28, 37, 54));
+        label(
+            &mut framebuffer,
+            &font,
+            &page_title,
+            44,
+            184,
+            32.0,
+            Color::rgb(28, 37, 54),
+        );
         label(
             &mut framebuffer,
             &font,
