@@ -109,8 +109,14 @@ mod tests {
 
     #[test]
     fn rejects_zero_dimensions() {
-        assert_eq!(Framebuffer::new(0, 10, Color::BLACK), Err(FramebufferError::ZeroDimension));
-        assert_eq!(Framebuffer::new(10, 0, Color::BLACK), Err(FramebufferError::ZeroDimension));
+        assert_eq!(
+            Framebuffer::new(0, 10, Color::BLACK),
+            Err(FramebufferError::ZeroDimension)
+        );
+        assert_eq!(
+            Framebuffer::new(10, 0, Color::BLACK),
+            Err(FramebufferError::ZeroDimension)
+        );
     }
 
     #[test]
