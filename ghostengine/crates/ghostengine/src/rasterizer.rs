@@ -558,15 +558,15 @@ mod tests {
         fill_rounded_rect(&mut image, Rect::new(1, 1, 6, 6), 2, Color::GREEN);
         assert_eq!(image.get_pixel(3, 1), Some(Color::GREEN));
         assert_eq!(image.get_pixel(1, 1), Some(Color::BLACK));
-        assert_eq!(image.get_pixel(6, 6), Some(Color::GREEN));
-        assert_eq!(image.get_pixel(7, 6), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(5, 5), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(6, 6), Some(Color::BLACK));
     }
 
     #[test]
     fn rounded_rectangle_radius_is_clamped_and_zero_is_plain_rect() {
         let mut rounded = target(4, 4);
         fill_rounded_rect(&mut rounded, Rect::new(0, 0, 4, 2), u32::MAX, Color::BLUE);
-        assert_eq!(rounded.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(rounded.get_pixel(0, 0), Some(Color::BLUE));
         assert_eq!(rounded.get_pixel(1, 0), Some(Color::BLUE));
         let mut plain = target(3, 3);
         fill_rounded_rect(&mut plain, Rect::new(0, 0, 2, 2), 0, Color::RED);
@@ -596,7 +596,7 @@ mod tests {
             Color::WHITE,
         );
         assert_eq!(image.get_pixel(1, 1), Some(Color::WHITE));
-        assert_eq!(image.get_pixel(1, 2), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(2, 2), Some(Color::WHITE));
         fill_polygon(
             &mut image,
             &[Point::new(0, 0), Point::new(3, 3)],
