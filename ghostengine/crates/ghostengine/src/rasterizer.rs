@@ -356,7 +356,8 @@ mod tests {
         assert_eq!(image.get_pixel(1, 2), Some(Color::GREEN));
         assert_eq!(image.get_pixel(5, 2), Some(Color::GREEN));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
-        assert_eq!(image.get_pixel(5, 4), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(1, 4), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
     }
 
     #[test]
