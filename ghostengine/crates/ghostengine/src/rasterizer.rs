@@ -531,11 +531,18 @@ mod tests {
     #[test]
     fn polygon_outline_closes_and_fill_ignores_too_few_vertices() {
         let mut image = target(4, 4);
-        draw_polygon(&mut image,
-            &[Point::new(1, 1), Point::new(2, 1), Point::new(2, 2)], Color::WHITE);
+        draw_polygon(
+            &mut image,
+            &[Point::new(1, 1), Point::new(2, 1), Point::new(2, 2)],
+            Color::WHITE,
+        );
         assert_eq!(image.get_pixel(1, 1), Some(Color::WHITE));
         assert_eq!(image.get_pixel(1, 2), Some(Color::WHITE));
-        fill_polygon(&mut image, &[Point::new(0, 0), Point::new(3, 3)], Color::RED);
+        fill_polygon(
+            &mut image,
+            &[Point::new(0, 0), Point::new(3, 3)],
+            Color::RED,
+        );
         assert_eq!(image.get_pixel(0, 0), Some(Color::WHITE));
     }
 
