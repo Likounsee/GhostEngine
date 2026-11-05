@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/ghostengine-logo.png" alt="GhostEngine logo" width="420">
+</p>
+
 # GhostEngine
 
 **GhostEngine is an independent, lightweight 2D and 3D graphics engine written in Rust.**
