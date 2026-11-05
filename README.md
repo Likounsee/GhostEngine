@@ -1,112 +1,170 @@
 # GhostEngine
 
-**GhostEngine is an independent, reusable 2D and 3D graphics engine written in Rust.**
+**GhostEngine is an independent, lightweight 2D and 3D graphics engine written in Rust.**
 
-Its purpose is to provide a common graphics foundation for:
+Its goal is to implement its own rendering technology: geometry processing, rasterization, compositing, resource management and rendering algorithms. GhostEngine is not a wrapper around an existing graphics engine or graphics API.
 
-- **ArchiaOS** — desktop composition, applications and, eventually, direct framebuffer rendering.
-- **PeaceEmu** — fast and accurate rendering for emulated systems.
-- **Archia Browser** — rendering surfaces and graphics primitives for browser content.
-- **The Office suite** — documents, spreadsheets, presentations, text and vector graphics.
-- **Third-party applications** — through a stable, documented public API.
+The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target.
 
-GhostEngine is designed to work without requiring a proprietary operating system, a licensed graphics product or a GPU. Its own CPU software renderer is a first-class rendering backend. GPU acceleration is an optional way to improve performance, not a prerequisite for the engine's core functionality.
+> **Project status:** planning and architecture stage. The features in this README describe the intended design; they are not claims that those features are already implemented.
 
-> **Project status:** early planning stage. The repository is being structured; the capabilities described below are goals, not claims that they are already implemented.
+## Vision
 
-## Design principles
+Build a graphics engine that is:
 
-1. **Independent rendering core.** The engine owns its rendering model, resource model, command representation and software rendering implementation.
-2. **CPU first, GPU optional.** Essential rendering must work on a CPU-only machine. Hardware backends may accelerate supported workloads.
-3. **Portable.** No dependency on Windows, DirectX or a proprietary graphics stack. Platform-specific integration stays behind explicit interfaces.
-4. **Reusable.** Applications consume public APIs; they do not need to know which backend executes a frame.
-5. **2D and 3D.** A coherent foundation for vector/raster 2D, compositing, and progressively more advanced 3D rendering.
-6. **Testable and deterministic where practical.** Rendering algorithms should be testable without a physical GPU or window system.
-7. **Careful dependencies.** Prefer well-maintained permissive-licensed dependencies (MIT, Apache-2.0, BSD); review each dependency and its transitive licensing before adoption.
+- **Fully self-developed:** rendering algorithms and execution pipeline belong to GhostEngine.
+- **Lightweight:** small core, modular features, controlled memory use and minimal mandatory dependencies.
+- **Fast:** multithreaded CPU rendering, SIMD optimizations, efficient data layouts and minimal memory traffic.
+- **Portable:** Windows and Linux first, with platform-specific presentation isolated behind small adapters.
+- **Reusable:** one engine for PeaceEmu, Archia Browser, the Office suite, ArchiaOS in the future, and third-party applications.
+- **Testable:** deterministic software rendering and automated image-based tests without requiring a GPU.
 
-## Target capabilities
+## No existing graphics API
 
-### 2D rendering
-- Lines, paths, fills, strokes, gradients and clipping.
-- Rectangles, rounded rectangles, circles and other primitives.
-- Images, textures, transforms, opacity and blend modes.
-- Layers, off-screen targets and compositing.
-- Text layout, glyph rasterization and font fallback.
+GhostEngine will **not use Vulkan, DirectX, OpenGL, WebGPU, or an existing graphics engine** as its rendering foundation.
+
+We will implement our own:
+
+- 2D and 3D rendering pipelines.
+- Rasterizers and pixel processing.
+- Geometry transformations, clipping and interpolation.
+- Depth testing, blending and compositing.
+- Resource and memory management.
+- Render command representation and execution.
+- Optimization and scheduling systems.
+
+The operating system still has to display the final image. On Windows and Linux, a thin platform adapter will use the native system facilities needed to create or present a window/surface and transfer the finished image. Those facilities are presentation plumbing, not rendering engines: the image itself is produced by GhostEngine.
+
+GPU acceleration is **not required** for the initial engine. Any future GPU work must follow a separately designed GhostEngine-owned architecture; it must not make an external graphics API a mandatory dependency. Hardware access and driver compatibility are difficult platform-specific problems and will be approached only after the software renderer is mature.
+
+## Performance and efficiency
+
+Performance is a core requirement, not a later polish step.
+
+### CPU rendering
+
+The first renderer will be a first-class software renderer, designed to use modern CPUs efficiently:
+
+- Multithreaded rendering with independent work units.
+- Tile-based rasterization to improve parallelism and cache locality.
+- SIMD paths where supported (for example SSE/AVX on x86 and NEON on ARM).
+- Efficient pixel formats and memory layouts.
+- Reuse of buffers and temporary storage.
+- Minimal allocations and avoidable memory copies.
+- Early rejection of invisible or unnecessary work.
+- Benchmarks for throughput, latency and memory consumption.
+
+Optimizations will be selected from measurements and profiling. Architecture-specific optimizations must retain a correct portable fallback.
+
+### Lightweight by design
+
+- A small core with optional modules.
+- No mandatory GPU runtime or graphics API.
+- No unnecessary background services.
+- Explicit resource lifetimes and predictable memory ownership.
+- Dependencies added only when they provide clear value.
+- Applications should be able to include only the capabilities they need.
+
+The engine will not promise performance figures before reproducible benchmarks exist.
+
+## Planned capabilities
+
+### 2D
+
+- Pixels, lines, rectangles, rounded rectangles, circles and paths.
+- Fills, strokes, gradients, clipping and transforms.
+- Images, textures, opacity and blend modes.
 - Anti-aliasing and high-DPI coordinate handling.
+- Layers, off-screen targets and compositing.
+- Text layout, glyph rasterization and font integration.
 
-### 3D rendering
-- Meshes, vertex/index buffers and materials.
-- Camera and transform systems.
-- Triangle clipping, rasterization, depth buffering and perspective-correct interpolation.
-- Lighting and shading, introduced incrementally.
-- Textures, render targets and a documented shader/material model.
-- CPU rendering as a baseline; optional GPU execution for performance.
+### 3D
 
-### Integration and platform support
-- Abstract render targets and presentation surfaces.
-- Image and font resource loading through explicit interfaces.
-- A compositor for combining application surfaces and layers.
-- Host-provided windowing and input integration where appropriate.
-- Framebuffer output for constrained environments, including a future ArchiaOS bare-metal path.
-- Optional GPU backends, isolated from the core API.
+- Vertices, indices, meshes and materials.
+- Model, view and projection transformations.
+- Triangle clipping and rasterization.
+- Perspective-correct interpolation.
+- Depth buffering and visibility handling.
+- Textures, lighting and shading.
+- Render targets and a documented material/shader model.
 
-GhostEngine is a graphics engine, not a complete window manager or operating-system driver stack. A host application or operating system may provide windows, input, display discovery and hardware drivers. GhostEngine consumes those services through adapters.
+The 3D pipeline will be implemented incrementally, with a software reference path and tests for each stage.
 
-## Planned architecture
+## Target architecture
 
-The intended Rust workspace is split by responsibility:
+The intended architecture separates the rendering core from platform integration:
 
-| Crate | Responsibility |
+```text
+Applications
+  |  PeaceEmu / Archia Browser / Office / other software
+  v
+GhostEngine public API
+  |
+  +-- 2D and 3D rendering
+  +-- Render commands and resource management
+  +-- CPU software rasterizer
+  +-- Compositor
+  |
+  v
+GhostEngine platform adapter
+  |
+  +-- Windows presentation
+  +-- Linux presentation
+  |
+  v
+Native window / display facilities
+```
+
+The platform adapter is deliberately small. It handles the operating-system boundary; it does not decide how primitives, triangles, text or effects are rendered.
+
+### Proposed Rust modules
+
+The final crate boundaries will be chosen as implementation solidifies. The initial workspace should stay compact rather than creating many empty crates prematurely.
+
+| Module | Responsibility |
 |---|---|
-| `ghostengine-core` | Public types, math, handles, formats, errors and backend-independent contracts |
-| `ghostengine-render` | Render commands, passes, resource descriptions and frame execution interfaces |
-| `ghostengine-software` | Independent CPU rasterizer and software render targets |
-| `ghostengine-2d` | 2D primitives, paths, fills, strokes and transforms |
-| `ghostengine-3d` | 3D scene data, geometry, clipping, depth and rasterization |
-| `ghostengine-compositor` | Surfaces, layers, blending and composition |
-| `ghostengine-text` | Text layout, glyph cache and font integration |
-| `ghostengine-image` | Image decoding/encoding adapters and texture upload descriptions |
-| `ghostengine-platform` | Framebuffer and host-platform adapters |
-| `ghostengine-gpu` | Optional GPU backend contracts and shared GPU resource mapping |
-| `ghostengine-backend-vulkan` | Optional Vulkan implementation, only when justified by the roadmap |
+| `core` | Public types, math, errors, formats and backend-independent contracts |
+| `render` | Render commands, passes, frame execution and resource descriptions |
+| `software` | CPU rasterizer, pixel buffers and software render targets |
+| `2d` | 2D primitives, paths, fills, strokes and transforms |
+| `3d` | Geometry pipeline, clipping, depth and 3D rasterization |
+| `compositor` | Layers, surfaces, blending and composition |
+| `text` | Text layout, glyph cache and font integration |
+| `image` | Image resources and decoding/encoding adapters |
+| `platform` | Minimal Windows and Linux presentation adapters |
+| `gpu` | Reserved for a possible future, independently designed hardware path |
 
-This is a target decomposition, not a requirement to create every crate immediately. Modules should begin in the smallest practical workspace and be split when their interfaces and responsibilities are proven.
+## Development priorities
 
-## Rendering model
-
-Applications submit backend-independent work to GhostEngine. The engine validates and organizes that work, then executes it through a selected backend:
-
-- **Software backend:** the reference implementation and compatibility baseline.
-- **GPU backends:** optional acceleration paths. Unsupported features can fall back to software where practical.
-- **Framebuffer adapter:** presents software-rendered output to a host-provided framebuffer; it does not replace the operating system's display driver.
-
-The public API should describe what to render, not expose backend-specific handles as the normal application interface.
-
-## Development roadmap
-
-1. **Foundation:** workspace, crate boundaries, errors, math, resource handles, formats and CI.
-2. **Software 2D MVP:** pixel buffers, clipping, blending, transforms, primitives, images and deterministic tests.
-3. **Text and composition:** fonts, glyph cache, layers, off-screen surfaces and compositor.
-4. **Software 3D:** geometry pipeline, clipping, depth buffer, perspective-correct interpolation, textures and basic lighting.
-5. **Platform integration:** host-provided surfaces and framebuffer presentation; document the constraints for UEFI/bare-metal use.
-6. **GPU acceleration:** backend interface first, then an optional Vulkan backend and parity tests against software output.
-7. **Production hardening:** performance, memory budgets, resource lifetime, API stability, examples, documentation and integration tests.
-8. **Application integrations:** dedicated examples and adapters for ArchiaOS, PeaceEmu, Archia Browser and the Office suite.
+1. **Project foundation:** Rust workspace, formatting, linting, CI, errors, math and basic public types.
+2. **CPU renderer foundation:** pixel buffers, formats, clipping, blending, deterministic output and tests.
+3. **Fast 2D renderer:** primitives, transforms, paths, tile-based execution and multithreading.
+4. **Images and composition:** image resources, layers, off-screen surfaces and compositor.
+5. **Text:** glyph rasterization, layout and caching.
+6. **Software 3D:** transformations, clipping, triangle rasterization, depth, textures and basic lighting.
+7. **Windows and Linux presentation:** minimal native adapters to display GhostEngine-produced frames.
+8. **Optimization and hardening:** profiling, SIMD, memory budgets, benchmarks, stress tests and API stability.
+9. **Application integration:** PeaceEmu, Archia Browser and the Office suite.
+10. **Future hardware research:** investigate whether a GhostEngine-owned GPU/driver architecture is viable without relying on existing graphics APIs.
+11. **Future ArchiaOS port:** only when ArchiaOS is ready to integrate an independent graphics engine.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and acceptance criteria, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical design.
 
 ## Quality requirements
 
-- Every milestone adds automated tests and a runnable example where possible.
-- The software backend must run in CI without a GPU or display server.
-- Rendering tests should use small deterministic scenes and pixel comparisons with documented tolerances.
-- Backend-specific code must not leak into the public core API.
-- Dependencies must have reviewed licenses and documented reasons for inclusion.
-- Performance claims must be backed by reproducible benchmarks.
+- The CPU renderer must work without a GPU.
+- Core rendering tests must run in CI without a display server.
+- Small deterministic scenes should have pixel-output tests.
+- Multithreaded and single-threaded output should be consistent.
+- Portable fallback implementations must exist for optional SIMD paths.
+- Benchmarks must measure rendering time and memory use on documented hardware.
+- Performance changes must be validated against representative workloads.
+- Platform-specific code must not leak into the rendering core.
+- Dependencies and their licenses must be reviewed before adoption.
 
 ## Building
 
-The Cargo workspace and build instructions will be added with the first implementation milestone. Until then, this repository is in its planning stage.
+The Cargo workspace and build instructions will be added with the first implementation milestone. Until then, this repository remains in its planning stage.
 
 ## License
 
