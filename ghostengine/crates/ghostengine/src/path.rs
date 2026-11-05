@@ -339,7 +339,7 @@ mod tests {
             .line_to(Vector::new(0.0, 3.0))
             .close();
         let mut fb = Framebuffer::new(12, 10, Color::BLACK).unwrap();
-        let transform = Transform2D::translation(5.0, 4.0).then(Transform2D::scale(2.0, 1.0));
+        let transform = Transform2D::scale(2.0, 1.0).then(Transform2D::translation(5.0, 4.0));
         fill_transformed_path_even_odd(&mut fb, &path, transform, Color::BLUE, 0.2).unwrap();
         assert_eq!(fb.get_pixel(6, 5), Some(Color::BLUE));
         assert_eq!(fb.get_pixel(1, 1), Some(Color::BLACK));
