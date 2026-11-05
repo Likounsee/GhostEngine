@@ -159,5 +159,4 @@ mod tests {
         assert_eq!(metrics.height, 0.0);
         assert_eq!(metrics.line_count, 0);
     }
-
 }
