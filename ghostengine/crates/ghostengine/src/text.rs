@@ -142,8 +142,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_text, FontFace};
-    use crate::{Color, Framebuffer, Point};
+    use super::FontFace;
 
     // A compact embedded test font is deliberately avoided; loading behavior is
     // exercised by callers with their own licensed TTF/OTF asset.
