@@ -4,6 +4,7 @@
 //! The crate intentionally has no graphics API or platform dependencies.
 
 pub mod color;
+pub mod composition;
 pub mod framebuffer;
 pub mod geometry;
 pub mod path;
@@ -17,6 +18,7 @@ pub mod transform;
 pub mod window;
 
 pub use color::Color;
+pub use composition::{compose_layers, Layer};
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
 pub use path::{
