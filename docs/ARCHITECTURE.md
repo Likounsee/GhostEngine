@@ -13,7 +13,7 @@ It does not initially aim to:
 - expose backend-specific objects as the primary public API;
 - implement every advanced 3D feature before a useful 2D renderer exists.
 
-The host supplies platform services (for example, a window surface, framebuffer memory, input events or a GPU device). Adapters translate those services into GhostEngine interfaces.
+The host supplies platform services (for example, a window surface, framebuffer memory or input events). Adapters translate those services into GhostEngine interfaces.
 
 ## 2. Layered design
 
@@ -25,13 +25,9 @@ Applications
                          |
        Core types / resources / frame descriptions
                          |
-           Render graph and command validation
+              CPU software renderer
+        Rasterization / sampling / blending
                          |
-          Backend selection and feature checks
-                /                    \
-       Software backend          Optional GPU backend
-       CPU rasterization         Vulkan (planned)
-                \                    /
                  Render targets / output
                          |
            Platform and presentation adapters
@@ -39,7 +35,7 @@ Applications
         Host window / framebuffer / display system
 ```
 
-The diagram describes logical boundaries, not a mandatory runtime dependency on every layer. A small bare-metal application should be able to use core + software rendering + a framebuffer adapter without pulling in desktop windowing or GPU crates.
+The diagram describes logical boundaries, not a mandatory runtime dependency on every layer. Headless applications can use core + software rendering without pulling in windowing or platform crates.
 
 ## 3. Workspace and crate boundaries
 
@@ -53,7 +49,7 @@ Create crates only when their API is justified. The following is the intended ev
 - **compositor:** ordered surfaces/layers, damage regions, transforms, opacity and composition.
 - **text:** text runs, layout integration, glyph atlas/cache and text drawing. Font parsing/shaping dependencies must be license-reviewed.
 - **image:** image format adapters, decoded pixel storage and texture descriptors. Decoders should be replaceable.
-- **platform:** framebuffer descriptors, host surfaces and presentation adapters. Keep platform-specific code isolated.
+- **platform:** host surfaces and presentation adapters. Keep platform-specific code isolated.
 - No graphics-API backend crate is part of the current design. Any future hardware-acceleration work requires a separate architecture decision and must not introduce Vulkan, DirectX, OpenGL or WebGPU as a rendering dependency.
 
 Do not create empty crates just to match this list. Start with a compact workspace and split once code ownership is clear.
@@ -106,16 +102,11 @@ A programmable shader language is a later design decision. Begin with a small, e
 - Add budgets and eviction policies only when texture/font caches exist.
 - Treat device loss and backend reset as GPU-backend concerns; core resources should be recreatable where feasible.
 
-## 7. Bare-metal and no_std strategy
+## 7. Windows and Linux first; ArchiaOS later
 
-Bare-metal support is a design constraint, not an already completed feature.
+The first platform adapters target Windows and Linux. Keep operating-system APIs isolated from the rendering core and avoid pulling windowing dependencies into headless builds.
 
-- Keep core data structures free of operating-system assumptions.
-- Evaluate a `no_std`-compatible core and software subset; isolate allocation behind an allocator strategy where practical.
-- Do not let desktop windowing, filesystem access, threads or GPU loaders become mandatory dependencies of core.
-- Accept a framebuffer descriptor supplied by the boot environment or OS: address, dimensions, stride, pixel format and memory lifetime.
-- Validate framebuffer size and arithmetic to prevent out-of-bounds access.
-- Initially support a linear framebuffer. Display mode setting, GPU initialization, input and hardware acceleration belong to the host OS/driver stack.
+ArchiaOS integration is deferred until that operating system is ready. A future port may reuse the CPU renderer through a host-supplied framebuffer or surface descriptor. A no_std-compatible subset and bare-metal-specific integration are future investigations, not current implementation requirements.
 
 ## 8. Hardware acceleration is out of initial scope
 
