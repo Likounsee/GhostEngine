@@ -26,7 +26,10 @@ pub struct StrokeStyle {
 impl StrokeStyle {
     #[must_use]
     pub const fn new(width: f32) -> Self {
-        Self {\n            width,\n            cap: StrokeCap::Butt,\n        }
+        Self {
+            width,
+            cap: StrokeCap::Butt,
+        }
     }
 
     #[must_use]
@@ -45,7 +48,9 @@ pub enum StrokeError {
 }
 
 impl From<PathError> for StrokeError {
-    fn from(value: PathError) -> Self {\n        Self::Path(value)\n    }
+    fn from(value: PathError) -> Self {
+        Self::Path(value)
+    }
 }
 
 /// Flattens and strokes a path using a transform and pixel-space stroke width.
@@ -93,12 +98,21 @@ pub fn stroke_path(
         }
         let expand = radius + 1.0;
         let left = (min_x - expand).floor().max(0.0).min(target.width() as f32) as u32;
-        let top = (min_y - expand)\n            .floor()\n            .max(0.0)\n            .min(target.height() as f32) as u32;
+        let top = (min_y - expand)
+            .floor()
+            .max(0.0)
+            .min(target.height() as f32) as u32;
         let right = (max_x + expand).ceil().max(0.0).min(target.width() as f32) as u32;
         let bottom = (max_y + expand).ceil().max(0.0).min(target.height() as f32) as u32;
-        if left >= right || top >= bottom {\n            continue;\n        }
+        if left >= right || top >= bottom {
+            continue;
+        }
 
-        let segment_count = if contour.closed {\n            contour.points.len()\n        } else {\n            contour.points.len() - 1\n        };
+        let segment_count = if contour.closed {
+            contour.points.len()
+        } else {
+            contour.points.len() - 1
+        };
         for y in top..bottom {
             for x in left..right {
                 let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
@@ -108,12 +122,16 @@ pub fn stroke_path(
                     let b = contour.points[(i + 1) % contour.points.len()];
                     let first = !contour.closed && i == 0;
                     let last = !contour.closed && i + 1 == segment_count;
-                    distance = distance.min(segment_distance(\n                        sample, a, b, first, last, style.cap, radius,\n                    ));
+                    distance = distance.min(segment_distance(
+                        sample, a, b, first, last, style.cap, radius,
+                    ));
                 }
                 // Round joins are the union of the round segment ends.
                 let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
                 let alpha = (f32::from(color.a) * coverage).round() as u8;
-                if alpha == 0 {\n                    continue;\n                }
+                if alpha == 0 {
+                    continue;
+                }
                 let src = Color::rgba(color.r, color.g, color.b, alpha);
                 if let Some(dst) = target.get_pixel(x, y) {
                     target.set_pixel(x, y, src.blend_over(dst));
@@ -141,7 +159,11 @@ fn segment_distance(
     }
     let length = length_squared.sqrt();
     let mut t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared;
-    let extension = if cap == StrokeCap::Square {\n        radius / length\n    } else {\n        0.0\n    };
+    let extension = if cap == StrokeCap::Square {
+        radius / length
+    } else {
+        0.0
+    };
     let low = if first { -extension } else { 0.0 };
     let high = if last { 1.0 + extension } else { 1.0 };
     if cap == StrokeCap::Butt && ((first && t < 0.0) || (last && t > 1.0)) {
@@ -164,7 +186,8 @@ mod tests {
 
     fn line() -> Path {
         let mut path = Path::new();
-        path.move_to(Vector::new(3.0, 5.0))\n            .line_to(Vector::new(9.0, 5.0));
+        path.move_to(Vector::new(3.0, 5.0))
+            .line_to(Vector::new(9.0, 5.0));
         path
     }
 
