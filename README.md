@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target.
 
-> **Project status:** planning and architecture stage. The features in this README describe the intended design; they are not claims that those features are already implemented.
+> **Project status:** initial implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel access, alpha compositing and first headless image example exist. Primitive rasterization and the full 2D/3D pipelines are not implemented yet.
 
 ## Vision
 
@@ -168,7 +168,17 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and acceptance criteria, a
 
 ## Building
 
-The Cargo workspace and build instructions will be added with the first implementation milestone. Until then, this repository remains in its planning stage.
+The initial workspace lives in the `ghostengine/` directory. From the repository root:
+
+```bash
+cd ghostengine
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
+cargo run -p ghostengine --example first_image -- first-image.ppm
+```
+
+The example creates a 320×180 PPM image using only GhostEngine's CPU framebuffer. It does not open a window or use an external graphics API.
 
 ## License
 
