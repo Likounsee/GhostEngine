@@ -150,6 +150,8 @@ mod tests {
 
     #[test]
     fn window_errors_have_readable_messages() {
-        assert!(WindowError::FramebufferSizeMismatch.to_string().contains("dimensions"));
+        assert!(WindowError::FramebufferSizeMismatch
+            .to_string()
+            .contains("dimensions"));
     }
 }
