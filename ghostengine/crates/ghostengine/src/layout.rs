@@ -143,16 +143,8 @@ impl StackLayout {
         });
         let flexible_count = items.iter().filter(|item| item.main_size.is_none()).count() as u32;
         let remaining = available.saturating_sub(fixed_total);
-        let flexible_base = if flexible_count == 0 {
-            0
-        } else {
-            remaining / flexible_count
-        };
-        let mut remainder = if flexible_count == 0 {
-            0
-        } else {
-            remaining % flexible_count
-        };
+        let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
+        let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
         let mut consumed = 0_u32;
         let mut result = Vec::with_capacity(items.len());
 
