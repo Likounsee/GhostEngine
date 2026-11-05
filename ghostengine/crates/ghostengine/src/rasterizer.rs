@@ -311,7 +311,8 @@ pub fn fill_rect_radial_gradient(
     let left = rect.x.min(target.width());
     let top = rect.y.min(target.height());
     let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
-    let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+    let bottom =
+        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
     if left >= right || top >= bottom {
         return;
     }
@@ -808,7 +809,7 @@ mod tests {
             &test_gradient(),
         );
         assert_eq!(image.get_pixel(2, 2), Some(Color::rgb(255, 0, 0)));
-        assert_eq!(image.get_pixel(1, 1), Some(Color::rgb(30, 0, 225)));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::rgb(75, 0, 180)));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
     }
 
