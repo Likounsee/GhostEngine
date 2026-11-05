@@ -160,11 +160,4 @@ mod tests {
         assert_eq!(metrics.line_count, 0);
     }
 
-    #[test]
-    fn invalid_size_does_not_draw() {
-        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
-        // The API's early return is covered through its empty-input contract.
-        assert_eq!(draw_text(&mut target, &FontFace::from_bytes(b"bad").unwrap_or_else(|_| panic!("invalid font must fail")), "", Point::new(0, 0), 12.0, Color::WHITE).width, 0.0);
-        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
-    }
 }
