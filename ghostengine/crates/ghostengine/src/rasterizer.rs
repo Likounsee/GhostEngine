@@ -137,12 +137,20 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         let lower_coverage = 1.0 - upper_coverage;
         let plot = |target: &mut Framebuffer, px: i64, py: i64, coverage: f64| {
             let (px, py) = if steep { (py, px) } else { (px, py) };
-            if px < 0 || py < 0 || px >= i64::from(target.width()) || py >= i64::from(target.height()) {
+            if px < 0
+                || py < 0
+                || px >= i64::from(target.width())
+                || py >= i64::from(target.height())
+            {
                 return;
             }
             let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
             if alpha > 0 {
-                blend_pixel(target, Point::new(px as i32, py as i32), Color::rgba(color.r, color.g, color.b, alpha));
+                blend_pixel(
+                    target,
+                    Point::new(px as i32, py as i32),
+                    Color::rgba(color.r, color.g, color.b, alpha),
+                );
             }
         };
         plot(target, x, lower as i64, lower_coverage);
@@ -542,8 +550,9 @@ fn integer_sqrt(value: u128) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon, draw_rect,
-        fill_circle, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle,
+        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon,
+        draw_rect, fill_circle, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect,
+        fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
@@ -760,7 +769,10 @@ mod tests {
         let mut image = target(8, 8);
         draw_line_aa(&mut image, Point::new(1, 1), Point::new(6, 4), Color::WHITE);
         assert!(image.pixels().iter().any(|pixel| pixel.r == 255));
-        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
     }
 
     #[test]
