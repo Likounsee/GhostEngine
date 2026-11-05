@@ -34,6 +34,13 @@ pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Colo
         return;
     };
 
+    // Canonical endpoint order makes Bresenham's tie-breaking independent
+    // of the order in which the caller supplied the segment.
+    if (x0, y0) > (x1, y1) {
+        core::mem::swap(&mut x0, &mut x1);
+        core::mem::swap(&mut y0, &mut y1);
+    }
+
     let dx = (x1 - x0).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
     let dy = -(y1 - y0).abs();
