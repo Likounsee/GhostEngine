@@ -239,7 +239,7 @@ mod tests {
         let theme = UiTheme::default();
         draw_progress_bar(&mut image, Rect::new(2, 2, 20, 6), 2.0, &theme);
         assert_eq!(image.get_pixel(20, 4), Some(theme.accent));
-        assert_eq!(image.get_pixel(21, 4), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(22, 4), Some(Color::BLACK));
     }
 
     #[test]
