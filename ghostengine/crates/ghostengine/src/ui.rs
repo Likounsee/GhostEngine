@@ -93,7 +93,14 @@ pub fn draw_button(
         + (i64::from(rect.height) - line_height.round() as i64) / 2
         + (line_height * 0.78).round() as i64;
     if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(y)) {
-        draw_text(target, font, label, Point::new(x, y), pixel_size, foreground);
+        draw_text(
+            target,
+            font,
+            label,
+            Point::new(x, y),
+            pixel_size,
+            foreground,
+        );
     }
 }
 
@@ -122,7 +129,11 @@ pub fn draw_checkbox(
     draw_rect(
         target,
         box_rect,
-        if checked { theme.accent } else { theme.control_border },
+        if checked {
+            theme.accent
+        } else {
+            theme.control_border
+        },
     );
     if checked && side >= 7 {
         let x = rect.x as i64;
@@ -151,12 +162,7 @@ pub fn draw_checkbox(
 
 /// Draws a progress bar. Non-finite progress is treated as zero and all other
 /// values are clamped to 0..=1.
-pub fn draw_progress_bar(
-    target: &mut Framebuffer,
-    rect: Rect,
-    progress: f32,
-    theme: &UiTheme,
-) {
+pub fn draw_progress_bar(target: &mut Framebuffer, rect: Rect, progress: f32, theme: &UiTheme) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
@@ -197,9 +203,7 @@ pub fn draw_label(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, UiTheme, WidgetState,
-    };
+    use super::{draw_checkbox, draw_divider, draw_panel, draw_progress_bar, UiTheme, WidgetState};
     use crate::{Color, Framebuffer, Rect};
 
     fn target() -> Framebuffer {
@@ -242,9 +246,21 @@ mod tests {
     fn checkbox_renders_checked_and_unchecked_states() {
         let mut image = target();
         let theme = UiTheme::default();
-        draw_checkbox(&mut image, Rect::new(2, 2, 16, 16), false, WidgetState::Normal, &theme);
+        draw_checkbox(
+            &mut image,
+            Rect::new(2, 2, 16, 16),
+            false,
+            WidgetState::Normal,
+            &theme,
+        );
         assert_eq!(image.get_pixel(8, 8), Some(theme.control));
-        draw_checkbox(&mut image, Rect::new(2, 2, 16, 16), true, WidgetState::Normal, &theme);
+        draw_checkbox(
+            &mut image,
+            Rect::new(2, 2, 16, 16),
+            true,
+            WidgetState::Normal,
+            &theme,
+        );
         assert_eq!(image.get_pixel(8, 8), Some(theme.accent));
     }
 
@@ -261,7 +277,13 @@ mod tests {
     fn disabled_checkbox_uses_disabled_fill_when_checked() {
         let mut image = target();
         let theme = UiTheme::default();
-        draw_checkbox(&mut image, Rect::new(2, 2, 16, 16), true, WidgetState::Disabled, &theme);
+        draw_checkbox(
+            &mut image,
+            Rect::new(2, 2, 16, 16),
+            true,
+            WidgetState::Disabled,
+            &theme,
+        );
         assert_eq!(image.get_pixel(8, 8), Some(theme.disabled));
     }
 }
