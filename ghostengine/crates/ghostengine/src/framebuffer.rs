@@ -45,7 +45,11 @@ impl Framebuffer {
             .map_err(|_| FramebufferError::AllocationFailed)?;
         pixels.resize(pixel_count, clear_color);
 
-        Ok(Self { width, height, pixels })
+        Ok(Self {
+            width,
+            height,
+            pixels,
+        })
     }
 
     #[must_use]
@@ -104,7 +108,10 @@ mod tests {
         assert_eq!(framebuffer.width(), 3);
         assert_eq!(framebuffer.height(), 2);
         assert_eq!(framebuffer.pixels().len(), 6);
-        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color::BLUE));
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::BLUE));
     }
 
     #[test]
@@ -132,6 +139,9 @@ mod tests {
     fn clear_replaces_every_pixel() {
         let mut framebuffer = Framebuffer::new(2, 3, Color::RED).unwrap();
         framebuffer.clear(Color::WHITE);
-        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::WHITE));
     }
 }
