@@ -14,11 +14,7 @@ pub struct Layer {
 
 impl Layer {
     /// Creates a layer with its own framebuffer and an opaque initial visibility.
-    pub fn new(
-        width: u32,
-        height: u32,
-        clear_color: Color,
-    ) -> Result<Self, FramebufferError> {
+    pub fn new(width: u32, height: u32, clear_color: Color) -> Result<Self, FramebufferError> {
         Ok(Self {
             framebuffer: Framebuffer::new(width, height, clear_color)?,
             x: 0,
