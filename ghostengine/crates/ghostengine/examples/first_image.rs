@@ -1,4 +1,7 @@
-use ghostengine::rasterizer::{draw_circle, draw_line, draw_polygon, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect, fill_triangle};
+use ghostengine::rasterizer::{
+    draw_circle, draw_line, draw_polygon, fill_ellipse, fill_polygon, fill_rect, fill_rounded_rect,
+    fill_triangle,
+};
 use ghostengine::{Color, Framebuffer, Point, Rect};
 use std::{env, fs, path::PathBuf};
 
@@ -48,7 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     fill_polygon(
         &mut framebuffer,
-        &[Point::new(220, 145), Point::new(245, 112), Point::new(286, 145)],
+        &[
+            Point::new(220, 145),
+            Point::new(245, 112),
+            Point::new(286, 145),
+        ],
         Color::rgb(190, 90, 180),
     );
     draw_polygon(
