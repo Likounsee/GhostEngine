@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target.
 
-> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization and a headless image example are implemented. Text rendering, textures, window presentation and the complete 2D/3D pipelines remain future work.
+> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, and a headless image example are implemented. Text rendering, textures, window presentation and the complete 2D/3D pipelines remain future work.
 
 ## Vision
 
@@ -178,7 +178,7 @@ cargo test --workspace --all-targets
 cargo run -p ghostengine --example first_image -- first-image.ppm
 ```
 
-The example creates a 320×180 PPM image using GhostEngine's framebuffer, line, rectangle and triangle rasterizers. It does not open a window or use an external graphics API. The current CI checks formatting and Clippy, then runs 21 unit tests.
+The example creates a 320×180 PPM image using GhostEngine's framebuffer, line, rectangle, triangle, circle and ellipse rasterizers. It does not open a window or use an external graphics API. The current CI checks formatting and Clippy, then runs 27 unit tests.
 
 ## License
 
