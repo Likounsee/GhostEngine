@@ -8,9 +8,9 @@
 
 Its goal is to implement its own rendering technology: geometry processing, rasterization, compositing, resource management and rendering algorithms. GhostEngine is not a wrapper around an existing graphics engine or graphics API.
 
-The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target.
+The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
-> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, textures, window presentation and the complete 2D/3D pipelines remain future work.
+> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, textures, the interactive application frontend and the complete 2D/3D pipelines remain future work.
 
 ## Vision
 
@@ -176,9 +176,10 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 cargo run -p ghostengine --example first_image -- first-image.ppm
+cargo run -p ghostengine --features window --example browser_frontend
 ```
 
-The example creates a 320×180 PPM image using GhostEngine's framebuffer, line, rectangle, rounded-rectangle, triangle, circle, ellipse and polygon rasterizers. It does not open a window or use an external graphics API. The current CI checks formatting and Clippy, then runs 37 unit tests (count to be confirmed by CI).
+The `first_image` example creates a 320×180 PPM image headlessly. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The current CI checks formatting and Clippy, then runs the unit tests.
 
 ## License
 

@@ -9,5 +9,14 @@ license = "UNLICENSED"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+window = ["dep:minifb"]
+
 [dependencies]
 fontdue = "0.9"
+minifb = { version = "0.27", optional = true }
+
+[[example]]
+name = "browser_frontend"
+required-features = ["window"]

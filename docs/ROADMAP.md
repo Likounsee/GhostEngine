@@ -72,17 +72,20 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 - Deterministic test scenes cover a rotating or static 3D object.
 - CPU-only CI executes the 3D tests.
 
-## 5. Host surfaces and framebuffer output
+## 5. Interactive application frontend and host surfaces
 
 **Deliverables**
 - Stable render-target/presentation interfaces.
-- Host-supplied surface adapter.
-- Linear framebuffer adapter with explicit stride and pixel format.
-- Integration example using a memory-backed framebuffer.
+- Optional Windows/Linux window adapter for presenting GhostEngine-owned CPU frames and collecting input.
+- Framebuffer conversion with explicit pixel format and dimensions.
+- Interactive browser-style frontend example with toolbar, address field, buttons, text and pointer/keyboard interaction.
+- Host-supplied surface adapter and memory-backed framebuffer path.
 - Bare-metal integration notes for ArchiaOS.
 
 **Acceptance criteria**
-- No desktop window system is required by the framebuffer path.
+- No desktop window system is required by the headless framebuffer path.
+- The browser-style frontend opens on Windows/Linux and displays frames produced by GhostEngine's CPU renderer.
+- Mouse and keyboard input reach the application layer.
 - Buffer bounds and pixel format conversion are tested.
 - UEFI/real-hardware validation is tracked separately from host-side unit tests.
 
@@ -133,9 +136,9 @@ Integrate incrementally, with a small demonstrator for each consumer:
 2. Core + software 2D MVP.
 3. Foundational 2D.
 4. Text/images/compositor.
-5. Software 3D.
-6. Framebuffer/platform adapters.
-7. Optional GPU backend.
+5. Interactive application frontend and host presentation adapters.
+6. Software 3D.
+7. Optional GPU backend research.
 8. Hardening and consumer integrations.
 
 Do not start GPU acceleration before the software renderer and public resource model are usable. Do not mark a milestone complete based on scaffolding alone.

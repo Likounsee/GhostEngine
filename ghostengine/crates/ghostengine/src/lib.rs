@@ -9,6 +9,9 @@ pub mod geometry;
 pub mod rasterizer;
 pub mod text;
 
+#[cfg(feature = "window")]
+pub mod window;
+
 pub use color::Color;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
