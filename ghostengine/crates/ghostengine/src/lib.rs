@@ -13,6 +13,7 @@ pub mod stroke;
 pub mod text;
 pub mod texture;
 pub mod transform;
+pub mod ui;
 
 #[cfg(feature = "window")]
 pub mod window;
@@ -30,3 +31,7 @@ pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, FontFace, TextMetrics};
 pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
+pub use ui::{
+    draw_button, draw_checkbox, draw_divider, draw_label, draw_panel, draw_progress_bar, UiTheme,
+    WidgetState,
+};
