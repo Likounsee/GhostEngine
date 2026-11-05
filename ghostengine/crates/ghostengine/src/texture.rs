@@ -157,14 +157,12 @@ pub fn draw_texture(
 
     for y in top..bottom {
         let local_y = y - destination.y;
-        let source_y = (local_y as f32 + 0.5) * texture.height as f32
-            / destination.height as f32
-            - 0.5;
+        let source_y =
+            (local_y as f32 + 0.5) * texture.height as f32 / destination.height as f32 - 0.5;
         for x in left..right {
             let local_x = x - destination.x;
-            let source_x = (local_x as f32 + 0.5) * texture.width as f32
-                / destination.width as f32
-                - 0.5;
+            let source_x =
+                (local_x as f32 + 0.5) * texture.width as f32 / destination.width as f32 - 0.5;
             let color = match filter {
                 TextureFilter::Nearest => texture.sample_nearest(
                     (local_x as f32 + 0.5) * texture.width as f32 / destination.width as f32,
@@ -193,10 +191,7 @@ mod tests {
 
     #[test]
     fn texture_validates_dimensions_and_pixel_count() {
-        assert_eq!(
-            Texture::new(0, 1, vec![]),
-            Err(TextureError::ZeroDimension)
-        );
+        assert_eq!(Texture::new(0, 1, vec![]), Err(TextureError::ZeroDimension));
         assert_eq!(
             Texture::new(2, 2, vec![Color::BLACK]),
             Err(TextureError::PixelCountMismatch)
