@@ -17,6 +17,31 @@ pub enum WidgetState {
     Disabled,
 }
 
+/// Resolves a widget's visual state from pointer position and button state.
+///
+/// Disabled widgets never become hovered or pressed. Pointer coordinates use
+/// the same pixel space as the target framebuffer.
+#[must_use]
+pub fn state_for_pointer(
+    rect: Rect,
+    pointer: Option<Point>,
+    pressed: bool,
+    disabled: bool,
+) -> WidgetState {
+    if disabled {
+        return WidgetState::Disabled;
+    }
+    if pointer.is_some_and(|point| rect.contains(point)) {
+        if pressed {
+            WidgetState::Pressed
+        } else {
+            WidgetState::Hovered
+        }
+    } else {
+        WidgetState::Normal
+    }
+}
+
 /// Reusable colors for the built-in application widgets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UiTheme {
@@ -203,11 +228,39 @@ pub fn draw_label(
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_checkbox, draw_divider, draw_panel, draw_progress_bar, UiTheme, WidgetState};
-    use crate::{Color, Framebuffer, Rect};
+    use super::{
+        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, UiTheme,
+        WidgetState,
+    };
+    use crate::{Color, Framebuffer, Point, Rect};
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn pointer_state_resolves_hover_press_and_disabled() {
+        let rect = Rect::new(4, 5, 10, 8);
+        assert_eq!(
+            state_for_pointer(rect, Some(Point::new(4, 5)), false, false),
+            WidgetState::Hovered
+        );
+        assert_eq!(
+            state_for_pointer(rect, Some(Point::new(8, 8)), true, false),
+            WidgetState::Pressed
+        );
+        assert_eq!(
+            state_for_pointer(rect, Some(Point::new(8, 8)), true, true),
+            WidgetState::Disabled
+        );
+        assert_eq!(
+            state_for_pointer(rect, Some(Point::new(14, 8)), false, false),
+            WidgetState::Normal
+        );
+        assert_eq!(
+            state_for_pointer(rect, None, false, false),
+            WidgetState::Normal
+        );
     }
 
     #[test]
