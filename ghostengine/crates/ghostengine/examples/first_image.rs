@@ -20,7 +20,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    fill_rect(&mut framebuffer, Rect::new(24, 24, 72, 42), Color::rgb(30, 190, 130));
+    fill_rect(
+        &mut framebuffer,
+        Rect::new(24, 24, 72, 42),
+        Color::rgb(30, 190, 130),
+    );
     fill_triangle(
         &mut framebuffer,
         Point::new(160, 18),
@@ -28,7 +32,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Point::new(208, 112),
         Color::rgb(245, 190, 55),
     );
-    draw_line(&mut framebuffer, Point::new(20, 150), Point::new(300, 125), Color::WHITE);
+    draw_line(
+        &mut framebuffer,
+        Point::new(20, 150),
+        Point::new(300, 125),
+        Color::WHITE,
+    );
     draw_line(
         &mut framebuffer,
         Point::new(-40, 80),
