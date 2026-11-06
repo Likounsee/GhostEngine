@@ -430,7 +430,7 @@ pub fn draw_text_input(
     draw_rect(
         target,
         rect,
-        if focused {
+        if options.focused {
             options.theme.accent
         } else {
             options.theme.control_border
@@ -502,7 +502,7 @@ pub fn draw_text_input(
                     rect.height.saturating_sub(10),
                 ),
                 inner,
-                theme.accent,
+                options.theme.accent,
             );
         }
     } else if options.focused && state.text.is_empty() {
@@ -610,7 +610,7 @@ pub fn draw_list(
             fill_rect_clipped(target, row, clip, options.theme.accent_hover);
         }
         let baseline_y = row_top
-            + (i64::from(row_height) - line_height.round() as i64) / 2
+            + (i64::from(options.row_height) - line_height.round() as i64) / 2
             + (line_height * 0.78).round() as i64;
         let Ok(x) = i32::try_from(bounds.x.saturating_add(8)) else {
             continue;
