@@ -23,7 +23,7 @@ pub use color::Color;
 pub use composition::{compose_layers, Layer};
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
-pub use layout::{Insets, LayoutDirection, LayoutItem, StackLayout};
+pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
     fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path,
     PathError,
@@ -34,6 +34,6 @@ pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
 pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
 pub use ui::{
-    draw_button, draw_checkbox, draw_divider, draw_label, draw_panel, draw_progress_bar,
+    draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_panel, draw_progress_bar,
     state_for_pointer, UiTheme, WidgetState,
 };
