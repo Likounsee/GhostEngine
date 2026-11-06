@@ -588,7 +588,7 @@ mod tests {
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
-        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(90, 90, 90)));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(180, 180, 180)));
         assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
     }
 
