@@ -40,6 +40,11 @@ pub struct InputState {
     pub left_mouse_down: bool,
     pub pressed_characters: Vec<char>,
     pub backspace_pressed: bool,
+    pub delete_pressed: bool,
+    pub left_pressed: bool,
+    pub right_pressed: bool,
+    pub home_pressed: bool,
+    pub end_pressed: bool,
     pub enter_pressed: bool,
     pub tab_pressed: bool,
     pub escape_down: bool,
@@ -102,6 +107,11 @@ impl WindowSurface {
         for key in pressed {
             match key {
                 Key::Backspace => input.backspace_pressed = true,
+                Key::Delete => input.delete_pressed = true,
+                Key::Left => input.left_pressed = true,
+                Key::Right => input.right_pressed = true,
+                Key::Home => input.home_pressed = true,
+                Key::End => input.end_pressed = true,
                 Key::Enter => input.enter_pressed = true,
                 Key::Tab => input.tab_pressed = true,
                 _ => {
