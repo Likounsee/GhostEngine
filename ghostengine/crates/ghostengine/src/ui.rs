@@ -6,8 +6,8 @@
 
 use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rect_clipped, fill_rounded_rect};
 use crate::{
-    draw_text, draw_text_box_clipped, draw_text_clipped, Color, FontFace, Framebuffer, Point, Rect,
-    TextLayoutOptions, TextMetrics,
+    draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
+    FontFace, FontFamily, Framebuffer, Point, Rect, TextLayoutOptions, TextMetrics,
 };
 
 /// Visual state supplied by an application's hit-testing/input layer.
@@ -261,6 +261,23 @@ pub fn draw_label_wrapped(
     draw_text_box_clipped(
         target, font, text, baseline, pixel_size, color, clip, options,
     )
+}
+
+/// Draws a label using a font family and clips it to the supplied viewport.
+///
+/// Each character selects the first face containing its glyph. Complex-script
+/// shaping and bidirectional layout are intentionally outside this API.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_label_with_fallback(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    draw_text_with_fallback_clipped(target, family, text, baseline, pixel_size, color, clip)
 }
 
 /// Rendering options for a single-line text input.
