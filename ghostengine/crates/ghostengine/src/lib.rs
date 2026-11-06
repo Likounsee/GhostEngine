@@ -5,8 +5,8 @@
 
 pub mod color;
 pub mod composition;
-pub mod framebuffer;
 pub mod focus;
+pub mod framebuffer;
 pub mod geometry;
 pub mod layout;
 pub mod path;
@@ -22,8 +22,8 @@ pub mod window;
 
 pub use color::Color;
 pub use composition::{compose_layers, Layer};
-pub use framebuffer::{Framebuffer, FramebufferError};
 pub use focus::FocusManager;
+pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
@@ -36,7 +36,7 @@ pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
 pub use texture::{draw_texture, draw_texture_clipped, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
 pub use ui::{
-    draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_panel,
-    draw_list, draw_progress_bar, draw_text_input, state_for_pointer, ListState, TextInputState,
+    draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_list,
+    draw_panel, draw_progress_bar, draw_text_input, state_for_pointer, ListState, TextInputState,
     UiTheme, WidgetState,
 };
