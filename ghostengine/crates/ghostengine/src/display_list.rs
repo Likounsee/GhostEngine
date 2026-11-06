@@ -76,6 +76,7 @@ pub struct RenderStats {
 pub struct DisplayList {
     commands: Vec<Command>,
     clips: Vec<Rect>,
+    transforms: Vec<Transform2D>,
 }
 
 impl DisplayList {
@@ -85,6 +86,7 @@ impl DisplayList {
         Self {
             commands: Vec::new(),
             clips: Vec::new(),
+            transforms: Vec::new(),
         }
     }
 
@@ -92,6 +94,7 @@ impl DisplayList {
     pub fn clear(&mut self) {
         self.commands.clear();
         self.clips.clear();
+        self.transforms.clear();
     }
 
     #[must_use]
@@ -117,6 +120,38 @@ impl DisplayList {
     /// Removes the most recently pushed clip. Returns false for an empty stack.
     pub fn pop_clip(&mut self) -> bool {
         self.clips.pop().is_some()
+    }
+
+    /// Pushes an affine transform. Nested transforms are composed in push order:
+    /// the existing transform is applied first, then the newly pushed transform.
+    /// Non-finite matrices are rejected and leave the stack unchanged.
+    pub fn push_transform(&mut self, transform: Transform2D) -> bool {
+        if !transform.is_finite() {
+            return false;
+        }
+        let combined = self
+            .transforms
+            .last()
+            .copied()
+            .unwrap_or(Transform2D::IDENTITY)
+            .then(transform);
+        if !combined.is_finite() {
+            return false;
+        }
+        self.transforms.push(combined);
+        true
+    }
+
+    /// Removes the most recently pushed transform. Returns false for an empty stack.
+    pub fn pop_transform(&mut self) -> bool {
+        self.transforms.pop().is_some()
+    }
+
+    fn active_transform(&self) -> Transform2D {
+        self.transforms
+            .last()
+            .copied()
+            .unwrap_or(Transform2D::IDENTITY)
     }
 
     /// Records a full-framebuffer clear. Clear deliberately ignores clip state.
@@ -160,6 +195,7 @@ impl DisplayList {
         color: Color,
         tolerance: f32,
     ) -> Result<(), PathError> {
+        let transform = transform.then(self.active_transform());
         path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
             self.commands.push(Command::FillPath {
@@ -547,6 +583,61 @@ mod tests {
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+
+    #[test]
+    fn nested_transforms_are_composed_and_captured_when_recording() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(0.0, 0.0))
+            .line_to(crate::Vector::new(2.0, 0.0))
+            .line_to(crate::Vector::new(2.0, 2.0))
+            .line_to(crate::Vector::new(0.0, 2.0))
+            .close();
+
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        assert!(list.push_transform(crate::Transform2D::translation(1.0, 2.0)));
+        list.fill_path(
+            path.clone(),
+            crate::Transform2D::IDENTITY,
+            Color::GREEN,
+            0.25,
+        )
+        .unwrap();
+        assert!(list.pop_transform());
+        assert!(list.pop_transform());
+        list.fill_path(
+            path,
+            crate::Transform2D::IDENTITY,
+            Color::RED,
+            0.25,
+        )
+        .unwrap();
+
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        list.replay(&mut target);
+        assert_eq!(target.get_pixel(3, 3), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn invalid_transform_is_rejected_without_changing_stack() {
+        let mut list = DisplayList::new();
+        let invalid = crate::Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0);
+        assert!(!list.push_transform(invalid));
+        assert!(!list.pop_transform());
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 0.0)));
+        assert!(list.pop_transform());
+    }
+
+    #[test]
+    fn clear_resets_transform_stack() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(4.0, 0.0)));
+        list.clear();
+        assert!(!list.pop_transform());
     }
 
     fn black_to_white_gradient() -> crate::Gradient {
