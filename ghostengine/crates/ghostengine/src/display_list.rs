@@ -60,6 +60,14 @@ enum Command {
         tolerance: f32,
         clip: Rect,
     },
+    DrawText {
+        font: SharedFont,
+        text: String,
+        baseline: Point,
+        pixel_size: f32,
+        color: Color,
+        clip: Rect,
+    },
     DrawTexture {
         texture: Texture,
         destination: Rect,
@@ -276,6 +284,46 @@ impl DisplayList {
         Ok(())
     }
 
+    /// Records a text run using a shared font face. The baseline origin is transformed
+    /// when recorded; glyphs remain screen-aligned until affine glyph rendering is added.
+    /// Empty strings and invalid pixel sizes are ignored. Multiple commands can share one
+    /// loaded font without copying its internal font data.
+    pub fn draw_text(
+        &mut self,
+        font: Arc<FontFace>,
+        text: impl Into<String>,
+        baseline: Point,
+        pixel_size: f32,
+        color: Color,
+    ) {
+        let text = text.into();
+        if text.is_empty() || !pixel_size.is_finite() || pixel_size <= 0.0 {
+            return;
+        }
+        if let Some(clip) = self.active_clip() {
+            let origin = self
+                .active_transform()
+                .transform_point(crate::Vector::new(baseline.x as f32, baseline.y as f32));
+            if !origin.x.is_finite()
+                || !origin.y.is_finite()
+                || origin.x < i32::MIN as f32
+                || origin.x > i32::MAX as f32
+                || origin.y < i32::MIN as f32
+                || origin.y > i32::MAX as f32
+            {
+                return;
+            }
+            self.commands.push(Command::DrawText {
+                font: SharedFont(font),
+                text,
+                baseline: Point::new(origin.x.round() as i32, origin.y.round() as i32),
+                pixel_size,
+                color,
+                clip,
+            });
+        }
+    }
+
     /// Records an image command with its sampling mode, active transform and clip.
     pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
         if let Some(clip) = self.active_clip() {
@@ -395,6 +443,26 @@ impl DisplayList {
                 } => {
                     stroke_path_clipped(target, path, *transform, *style, *color, *tolerance, *clip)
                         .is_ok()
+                }
+                Command::DrawText {
+                    font,
+                    text,
+                    baseline,
+                    pixel_size,
+                    color,
+                    clip,
+                } => {
+                    draw_text_clipped(
+                        target,
+                        &font.0,
+                        text,
+                        *baseline,
+                        *pixel_size,
+                        *color,
+                        *clip,
+                    )
+                    .line_count
+                        > 0
                 }
                 Command::DrawTexture {
                     texture,
