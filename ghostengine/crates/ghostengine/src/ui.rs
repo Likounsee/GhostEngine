@@ -5,7 +5,10 @@
 //! use the same CPU renderer as every other scene.
 
 use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rect_clipped, fill_rounded_rect};
-use crate::{draw_text, draw_text_clipped, Color, FontFace, Framebuffer, Point, Rect, TextMetrics};
+use crate::{
+    draw_text, draw_text_box_clipped, draw_text_clipped, Color, FontFace, Framebuffer, Point, Rect,
+    TextLayoutOptions, TextMetrics,
+};
 
 /// Visual state supplied by an application's hit-testing/input layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -238,6 +241,26 @@ pub fn draw_label_clipped(
     clip: Rect,
 ) -> TextMetrics {
     draw_text_clipped(target, font, text, baseline, pixel_size, color, clip)
+}
+
+/// Draws a wrapped and aligned label inside a clipped viewport.
+///
+/// The baseline marks the first line. Wrapping, horizontal alignment and line
+/// spacing are controlled by `options`; the returned metrics describe the full block.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_label_wrapped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    options: TextLayoutOptions,
+) -> TextMetrics {
+    draw_text_box_clipped(
+        target, font, text, baseline, pixel_size, color, clip, options,
+    )
 }
 
 /// Rendering options for a single-line text input.
