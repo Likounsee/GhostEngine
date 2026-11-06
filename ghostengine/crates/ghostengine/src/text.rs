@@ -621,9 +621,7 @@ mod tests {
 
     #[test]
     fn text_wrapping_preserves_empty_paragraphs() {
-        let lines = layout_lines_for_test("first
-
-last", 20.0);
+        let lines = layout_lines_for_test("first\n\nlast", 20.0);
         assert_eq!(lines, ["first", "", "last"]);
     }
 }
