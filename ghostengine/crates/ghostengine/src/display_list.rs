@@ -64,6 +64,7 @@ enum Command {
         font: SharedFont,
         text: String,
         baseline: Point,
+        transform: Transform2D,
         pixel_size: f32,
         color: Color,
         options: TextLayoutOptions,
