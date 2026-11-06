@@ -15,8 +15,19 @@ enum Command {
     FillRect { rect: Rect, color: Color, clip: Rect },
     StrokeRect { rect: Rect, color: Color, clip: Rect },
     Line { start: Point, end: Point, color: Color, clip: Rect },
-    FillPath { path: Path, transform: Transform2D, color: Color, tolerance: f32, clip: Rect },
-    DrawTexture { texture: Texture, destination: Rect, filter: TextureFilter, clip: Rect },
+    FillPath {
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+        clip: Rect,
+    },
+    DrawTexture {
+        texture: Texture,
+        destination: Rect,
+        filter: TextureFilter,
+        clip: Rect,
+    },
 }
 
 /// Summary of commands executed by one display-list replay.
@@ -113,15 +124,31 @@ impl DisplayList {
     ) -> Result<(), PathError> {
         path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::FillPath { path, transform, color, tolerance, clip });
+            self.commands.push(Command::FillPath {
+                path,
+                transform,
+                color,
+                tolerance,
+                clip,
+            });
         }
         Ok(())
     }
 
     /// Records a scaled image command with its sampling mode and active clip.
-    pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
+    pub fn draw_texture(
+        &mut self,
+        texture: Texture,
+        destination: Rect,
+        filter: TextureFilter,
+    ) {
         if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::DrawTexture { texture, destination, filter, clip });
+            self.commands.push(Command::DrawTexture {
+                texture,
+                destination,
+                filter,
+                clip,
+            });
         }
     }
 
@@ -158,13 +185,29 @@ impl DisplayList {
                         false
                     }
                 }
-                Command::FillPath { path, transform, color, tolerance, clip } => {
+                Command::FillPath {
+                    path,
+                    transform,
+                    color,
+                    tolerance,
+                    clip,
+                } => {
                     let result = fill_transformed_path_even_odd_clipped(
-                        target, path, *transform, *color, *tolerance, *clip,
+                        target,
+                        path,
+                        *transform,
+                        *color,
+                        *tolerance,
+                        *clip,
                     );
                     result.is_ok()
                 }
-                Command::DrawTexture { texture, destination, filter, clip } => {
+                Command::DrawTexture {
+                    texture,
+                    destination,
+                    filter,
+                    clip,
+                } => {
                     let visible = destination.width > 0
                         && destination.height > 0
                         && destination.intersection(*clip).is_some();
@@ -364,7 +407,8 @@ mod tests {
             crate::Transform2D::translation(2.0, 1.0),
             Color::GREEN,
             0.25,
-        ).unwrap();
+        )
+        .unwrap();
         let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
         assert_eq!(target.get_pixel(4, 3), Some(Color::GREEN));
@@ -379,7 +423,12 @@ mod tests {
         path.line_to(crate::Vector::new(1.0, 1.0));
         let mut list = DisplayList::new();
         assert_eq!(
-            list.fill_path(path, crate::Transform2D::IDENTITY, Color::RED, 0.25),
+            list.fill_path(
+                path,
+                crate::Transform2D::IDENTITY,
+                Color::RED,
+                0.25,
+            ),
             Err(crate::PathError::MissingCurrentPoint),
         );
         assert!(list.is_empty());
@@ -390,7 +439,11 @@ mod tests {
         let texture = crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
         let mut list = DisplayList::new();
         list.push_clip(Rect::new(2, 0, 2, 1));
-        list.draw_texture(texture, Rect::new(1, 0, 4, 1), crate::TextureFilter::Nearest);
+        list.draw_texture(
+            texture,
+            Rect::new(1, 0, 4, 1),
+            crate::TextureFilter::Nearest,
+        );
         let mut target = Framebuffer::new(6, 1, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
         assert_eq!(target.get_pixel(1, 0), Some(Color::BLACK));
