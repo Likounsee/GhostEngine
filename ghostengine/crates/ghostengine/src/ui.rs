@@ -256,11 +256,17 @@ impl TextInputState {
     pub fn new(text: impl Into<String>) -> Self {
         let text = text.into();
         let cursor = text.len();
-        Self { text, cursor, selection_anchor: None }
+        Self {
+            text,
+            cursor,
+            selection_anchor: None,
+        }
     }
 
     #[must_use]
-    pub fn text(&self) -> &str { &self.text }
+    pub fn text(&self) -> &str {
+        &self.text
+    }
 
     #[must_use]
     pub const fn cursor(&self) -> usize { self.cursor }
@@ -293,7 +299,9 @@ impl TextInputState {
         self.cursor = self.text.len();
     }
 
-    pub fn clear_selection(&mut self) { self.selection_anchor = None; }
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
 
     pub fn move_left(&mut self, extend_selection: bool) {
         if !extend_selection {
@@ -349,12 +357,16 @@ impl TextInputState {
             .chars()
             .next()
             .map(|ch| self.cursor + ch.len_utf8())
-        else { return; };
+        else {
+            return;
+        };
         self.text.replace_range(self.cursor..next, "");
     }
 
     fn delete_selection(&mut self) -> bool {
-        let Some((start, end)) = self.selection() else { return false; };
+        let Some((start, end)) = self.selection() else {
+            return false;
+        };
         self.text.replace_range(start..end, "");
         self.cursor = start;
         self.selection_anchor = None;
@@ -363,7 +375,9 @@ impl TextInputState {
 }
 
 fn previous_boundary(text: &str, mut index: usize) -> usize {
-    while index > 0 && !text.is_char_boundary(index) { index -= 1; }
+    while index > 0 && !text.is_char_boundary(index) {
+        index -= 1;
+    }
     index
 }
 
@@ -381,9 +395,19 @@ pub fn draw_text_input(
     focused: bool,
     theme: &UiTheme,
 ) {
-    if rect.width == 0 || rect.height == 0 { return; }
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
     fill_rounded_rect(target, rect, 5, theme.control);
-    draw_rect(target, rect, if focused { theme.accent } else { theme.control_border });
+    draw_rect(
+        target,
+        rect,
+        if focused {
+            theme.accent
+        } else {
+            theme.control_border
+        },
+    );
 
     let inset = 8_u32.min(rect.width / 2);
     let inner = Rect::new(
@@ -394,14 +418,26 @@ pub fn draw_text_input(
     );
     if inner.width == 0 { return; }
 
-    let display = if state.text.is_empty() { placeholder } else { &state.text };
-    let color = if state.text.is_empty() { theme.muted_text } else { theme.text };
+    let display = if state.text.is_empty() {
+        placeholder
+    } else {
+        &state.text
+    };
+    let color = if state.text.is_empty() {
+        theme.muted_text
+    } else {
+        theme.text
+    };
     let line_height = font.line_height(pixel_size);
     let baseline_y = i64::from(rect.y)
         + (i64::from(rect.height) - line_height.round() as i64) / 2
         + (line_height * 0.78).round() as i64;
-    let Ok(baseline_y) = i32::try_from(baseline_y) else { return; };
-    let Ok(inner_x) = i32::try_from(inner.x) else { return; };
+    let Ok(baseline_y) = i32::try_from(baseline_y) else {
+        return;
+    };
+    let Ok(inner_x) = i32::try_from(inner.x) else {
+        return;
+    };
     let baseline = Point::new(inner_x, baseline_y);
 
     if !state.text.is_empty() {
@@ -447,8 +483,8 @@ pub fn draw_text_input(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, TextInputState,
-        UiTheme, WidgetState,
+        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer,
+        TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
