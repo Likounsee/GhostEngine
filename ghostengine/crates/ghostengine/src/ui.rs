@@ -99,7 +99,7 @@ pub fn draw_button(
         return;
     }
     let background = match state {
-        WidgetState::Normal => options.theme.accent,
+        WidgetState::Normal => theme.accent,
         WidgetState::Hovered => theme.accent_hover,
         WidgetState::Pressed => theme.accent_pressed,
         WidgetState::Disabled => theme.disabled,
@@ -527,7 +527,7 @@ pub fn draw_text_input(
                 rect.height.saturating_sub(10),
             ),
             inner,
-            theme.accent,
+            options.theme.accent,
         );
     }
 }
