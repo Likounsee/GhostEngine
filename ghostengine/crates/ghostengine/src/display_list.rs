@@ -14,9 +14,22 @@ use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
-    FillRect { rect: Rect, color: Color, clip: Rect },
-    StrokeRect { rect: Rect, color: Color, clip: Rect },
-    Line { start: Point, end: Point, color: Color, clip: Rect },
+    FillRect {
+        rect: Rect,
+        color: Color,
+        clip: Rect,
+    },
+    StrokeRect {
+        rect: Rect,
+        color: Color,
+        clip: Rect,
+    },
+    Line {
+        start: Point,
+        end: Point,
+        color: Color,
+        clip: Rect,
+    },
     FillPath {
         path: Path,
         transform: Transform2D,
@@ -94,7 +107,10 @@ impl DisplayList {
     /// Adds a clip rectangle. Nested clips are intersected with their parent.
     /// An empty intersection remains empty until the matching pop.
     pub fn push_clip(&mut self, clip: Rect) {
-        let effective = self.clips.last().map_or(Some(clip), |parent| parent.intersection(clip));
+        let effective = self
+            .clips
+            .last()
+            .map_or(Some(clip), |parent| parent.intersection(clip));
         self.clips.push(effective.unwrap_or_default());
     }
 
@@ -118,14 +134,20 @@ impl DisplayList {
     /// Records a one-pixel rectangle outline.
     pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
         if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::StrokeRect { rect, color, clip });
+            self.commands
+                .push(Command::StrokeRect { rect, color, clip });
         }
     }
 
     /// Records a one-pixel line. Endpoints are clipped during replay.
     pub fn line(&mut self, start: Point, end: Point, color: Color) {
         if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::Line { start, end, color, clip });
+            self.commands.push(Command::Line {
+                start,
+                end,
+                color,
+                clip,
+            });
         }
     }
 
@@ -152,12 +174,7 @@ impl DisplayList {
     }
 
     /// Records a scaled image command with its sampling mode and active clip.
-    pub fn draw_texture(
-        &mut self,
-        texture: Texture,
-        destination: Rect,
-        filter: TextureFilter,
-    ) {
+    pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
         if let Some(clip) = self.active_clip() {
             self.commands.push(Command::DrawTexture {
                 texture,
@@ -233,7 +250,12 @@ impl DisplayList {
                     draw_stroke_rect(target, *rect, *clip, *color);
                     rect.width > 0 && rect.height > 0 && rect.intersection(*clip).is_some()
                 }
-                Command::Line { start, end, color, clip } => {
+                Command::Line {
+                    start,
+                    end,
+                    color,
+                    clip,
+                } => {
                     if let Some((start, end)) = clip_line(*start, *end, *clip) {
                         draw_line(target, start, end, *color);
                         true
@@ -249,12 +271,7 @@ impl DisplayList {
                     clip,
                 } => {
                     let result = fill_transformed_path_even_odd_clipped(
-                        target,
-                        path,
-                        *transform,
-                        *color,
-                        *tolerance,
-                        *clip,
+                        target, path, *transform, *color, *tolerance, *clip,
                     );
                     result.is_ok()
                 }
@@ -269,7 +286,7 @@ impl DisplayList {
                         && destination.intersection(*clip).is_some();
                     draw_texture_clipped(target, texture, *destination, *filter, *clip);
                     visible
-                },
+                }
                 Command::LinearGradient {
                     rect,
                     start,
@@ -507,12 +524,7 @@ mod tests {
         path.line_to(crate::Vector::new(1.0, 1.0));
         let mut list = DisplayList::new();
         assert_eq!(
-            list.fill_path(
-                path,
-                crate::Transform2D::IDENTITY,
-                Color::RED,
-                0.25,
-            ),
+            list.fill_path(path, crate::Transform2D::IDENTITY, Color::RED, 0.25),
             Err(crate::PathError::MissingCurrentPoint),
         );
         assert!(list.is_empty());
@@ -536,7 +548,6 @@ mod tests {
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
     }
-
 
     fn black_to_white_gradient() -> crate::Gradient {
         crate::Gradient::new(vec![
