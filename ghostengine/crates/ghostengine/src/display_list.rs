@@ -10,8 +10,8 @@ use crate::rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
-use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::text::{draw_text_clipped, FontFace};
+use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
 
