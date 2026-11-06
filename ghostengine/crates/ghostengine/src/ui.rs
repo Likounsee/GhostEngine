@@ -428,6 +428,18 @@ impl TextInputState {
     }
 }
 
+fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width: f32) -> f32 {
+    if !cursor_width.is_finite()
+        || !total_width.is_finite()
+        || !viewport_width.is_finite()
+        || viewport_width <= 0.0
+    {
+        return 0.0;
+    }
+    let desired = (cursor_width - viewport_width + 2.0).max(0.0);
+    desired.min((total_width - viewport_width).max(0.0))
+}
+
 fn previous_boundary(text: &str, mut index: usize) -> usize {
     while index > 0 && !text.is_char_boundary(index) {
         index -= 1;
@@ -494,12 +506,9 @@ pub fn draw_text_input(
     let cursor_width = font
         .measure(&state.text[..state.cursor], options.pixel_size)
         .width;
-    let mut horizontal_offset = 0.0_f32;
-    if cursor_width > inner.width as f32 {
-        horizontal_offset = cursor_width - inner.width as f32 + 2.0;
-    }
     let total_width = font.measure(&state.text, options.pixel_size).width;
-    horizontal_offset = horizontal_offset.min((total_width - inner.width as f32).max(0.0));
+    let horizontal_offset =
+        text_input_scroll_offset(cursor_width, total_width, inner.width as f32);
     let baseline_x = (i64::from(inner_x) - horizontal_offset.floor() as i64)
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let baseline = Point::new(baseline_x, baseline_y);
@@ -709,6 +718,19 @@ mod tests {
         assert_eq!(list.selected(), None);
         list.move_selection(1, 0);
         assert_eq!(list.selected(), None);
+    }
+
+    #[test]
+    fn text_input_scroll_offset_keeps_caret_inside_viewport() {
+        assert_eq!(super::text_input_scroll_offset(40.0, 180.0, 100.0), 0.0);
+        assert_eq!(super::text_input_scroll_offset(150.0, 300.0, 100.0), 52.0);
+        assert_eq!(super::text_input_scroll_offset(300.0, 350.0, 100.0), 202.0);
+    }
+
+    #[test]
+    fn text_input_scroll_offset_handles_invalid_geometry() {
+        assert_eq!(super::text_input_scroll_offset(f32::NAN, 200.0, 100.0), 0.0);
+        assert_eq!(super::text_input_scroll_offset(150.0, 200.0, 0.0), 0.0);
     }
 
     #[test]
