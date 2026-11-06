@@ -51,6 +51,21 @@ impl Rect {
         }
     }
 
+    /// Returns the half-open intersection with another rectangle, or None when empty.
+    #[must_use]
+    pub fn intersection(self, other: Self) -> Option<Self> {
+        let left = self.x.max(other.x);
+        let top = self.y.max(other.y);
+        let right = (u64::from(self.x) + u64::from(self.width))
+            .min(u64::from(other.x) + u64::from(other.width));
+        let bottom = (u64::from(self.y) + u64::from(self.height))
+            .min(u64::from(other.y) + u64::from(other.height));
+        if u64::from(left) >= right || u64::from(top) >= bottom {
+            return None;
+        }
+        Some(Self::new(left, top, (right - u64::from(left)) as u32, (bottom - u64::from(top)) as u32))
+    }
+
     #[must_use]
     pub fn contains(self, point: Point) -> bool {
         if point.x < 0 || point.y < 0 {
@@ -69,6 +84,13 @@ impl Rect {
 #[cfg(test)]
 mod tests {
     use super::{Point, Rect, Vector};
+
+    #[test]
+    fn rectangle_intersection_handles_overlap_touching_and_empty_rectangles() {
+        assert_eq!(Rect::new(2, 3, 8, 7).intersection(Rect::new(6, 1, 5, 5)), Some(Rect::new(6, 3, 4, 3)));
+        assert_eq!(Rect::new(0, 0, 4, 4).intersection(Rect::new(4, 0, 2, 2)), None);
+        assert_eq!(Rect::new(0, 0, 0, 4).intersection(Rect::new(0, 0, 2, 2)), None);
+    }
 
     #[test]
     fn vector_length_is_euclidean() {
