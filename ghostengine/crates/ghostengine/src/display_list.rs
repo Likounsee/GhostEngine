@@ -524,14 +524,15 @@ mod tests {
     #[test]
     fn filled_rectangle_uses_active_rotation_transform() {
         let mut list = DisplayList::new();
-        assert!(list.push_transform(crate::Transform2D::translation(5.0, 1.0)));
         assert!(list.push_transform(crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)));
+        assert!(list.push_transform(crate::Transform2D::translation(5.0, 1.0)));
         list.fill_rect(Rect::new(0, 0, 3, 2), Color::GREEN);
         let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
         list.replay(&mut target);
         assert_eq!(target.get_pixel(3, 2), Some(Color::GREEN));
         assert_eq!(target.get_pixel(6, 2), Some(Color::BLACK));
-        assert_eq!(target.get_pixel(4, 4), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(4, 4), Some(Color::BLACK));
     }
 
     #[test]
