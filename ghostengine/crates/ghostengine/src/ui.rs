@@ -473,7 +473,9 @@ pub fn draw_text_input(
     if !state.text.is_empty() {
         if let Some((start, end)) = state.selection() {
             let before = font.measure(&state.text[..start], options.pixel_size).width;
-            let selected = font.measure(&state.text[start..end], options.pixel_size).width;
+            let selected = font
+                .measure(&state.text[start..end], options.pixel_size)
+                .width;
             let selection_x = i64::from(inner.x) + before.floor() as i64;
             if let Ok(selection_x) = u32::try_from(selection_x) {
                 let selection_rect = Rect::new(
@@ -487,10 +489,20 @@ pub fn draw_text_input(
         }
     }
 
-    draw_text_clipped(target, font, display, baseline, options.pixel_size, color, inner);
+    draw_text_clipped(
+        target,
+        font,
+        display,
+        baseline,
+        options.pixel_size,
+        color,
+        inner,
+    );
 
     if options.focused && !state.text.is_empty() {
-        let prefix = font.measure(&state.text[..state.cursor], options.pixel_size).width;
+        let prefix = font
+            .measure(&state.text[..state.cursor], options.pixel_size)
+            .width;
         let caret_x = i64::from(inner.x) + prefix.round() as i64;
         if let Ok(caret_x) = u32::try_from(caret_x) {
             fill_rect_clipped(
@@ -604,7 +616,9 @@ pub fn draw_list(
             bounds.x,
             row_top as u32,
             bounds.width,
-            options.row_height.min(u32::MAX.saturating_sub(row_top as u32)),
+            options
+                .row_height
+                .min(u32::MAX.saturating_sub(row_top as u32)),
         );
         if state.selected == Some(index) {
             fill_rect_clipped(target, row, clip, options.theme.accent_hover);
