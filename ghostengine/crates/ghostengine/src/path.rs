@@ -316,7 +316,7 @@ pub fn fill_transformed_path_even_odd_clipped(
 #[cfg(test)]
 mod tests {
     use super::{fill_path_even_odd, fill_transformed_path_even_odd, Path, PathError};
-    use crate::{Color, Framebuffer, Transform2D, Vector};
+    use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
 
     #[test]
     fn quadratic_and_cubic_curves_flatten_to_multiple_segments() {
