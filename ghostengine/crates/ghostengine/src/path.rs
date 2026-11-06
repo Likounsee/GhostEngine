@@ -1,6 +1,6 @@
 //! Backend-independent vector paths and deterministic curve flattening.
 
-use crate::{Color, Framebuffer, Transform2D, Vector};
+use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Command {
@@ -210,6 +210,24 @@ pub fn fill_path_even_odd(
     fill_transformed_path_even_odd(target, path, Transform2D::IDENTITY, color, tolerance)
 }
 
+/// Fills a path using the even-odd rule, restricted to a framebuffer viewport.
+pub fn fill_path_even_odd_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    fill_transformed_path_even_odd_clipped(
+        target,
+        path,
+        Transform2D::IDENTITY,
+        color,
+        tolerance,
+        clip,
+    )
+}
+
 /// Flattens, transforms and fills a path in one operation.
 /// The transform is applied before pixel-center scan conversion, so rotation,
 /// scaling, skew and translation affect the actual rasterized geometry.
@@ -220,10 +238,31 @@ pub fn fill_transformed_path_even_odd(
     color: Color,
     tolerance: f32,
 ) -> Result<(), PathError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    fill_transformed_path_even_odd_clipped(target, path, transform, color, tolerance, clip)
+}
+
+/// Flattens, transforms and fills a path while restricting writes to a viewport.
+///
+/// Geometry is still validated when the clip is empty. The viewport is expressed
+/// in framebuffer coordinates and intersected with the framebuffer before rasterization.
+pub fn fill_transformed_path_even_odd_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
     let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
     if target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
     let contours: Vec<&[Vector]> = flattened
         .subpaths
         .iter()
@@ -239,15 +278,15 @@ pub fn fill_transformed_path_even_odd(
         .flat_map(|c| c.iter().map(|p| p.y))
         .fold(f32::INFINITY, f32::min)
         .floor()
-        .max(0.0)
-        .min(target.height() as f32) as u32;
+        .max(clip.y as f32)
+        .min(clip_bottom as f32) as u32;
     let max_y = contours
         .iter()
         .flat_map(|c| c.iter().map(|p| p.y))
         .fold(f32::NEG_INFINITY, f32::max)
         .ceil()
-        .max(0.0)
-        .min(target.height() as f32) as u32;
+        .max(clip.y as f32)
+        .min(clip_bottom as f32) as u32;
     let mut intersections = Vec::new();
     for y in min_y..max_y {
         intersections.clear();
@@ -264,8 +303,8 @@ pub fn fill_transformed_path_even_odd(
         }
         intersections.sort_by(f32::total_cmp);
         for pair in intersections.chunks_exact(2) {
-            let left = ((pair[0] - 0.5).ceil().max(0.0) as u32).min(target.width());
-            let right = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
+            let left = ((pair[0] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
+            let right = ((pair[1] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
             for x in left..right {
                 target.set_pixel(x, y, color);
             }
@@ -309,6 +348,49 @@ mod tests {
         fill_path_even_odd(&mut fb, &p, Color::RED, 0.25).unwrap();
         assert_eq!(fb.get_pixel(2, 2), Some(Color::RED));
         assert_eq!(fb.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn clipped_path_fill_respects_viewport_and_framebuffer() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.0, 1.0))
+            .line_to(Vector::new(7.0, 1.0))
+            .line_to(Vector::new(7.0, 7.0))
+            .line_to(Vector::new(1.0, 7.0))
+            .close();
+        let mut fb = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        super::fill_path_even_odd_clipped(
+            &mut fb,
+            &path,
+            Color::BLUE,
+            0.25,
+            Rect::new(3, 2, 2, 3),
+        )
+        .unwrap();
+        assert_eq!(fb.get_pixel(3, 2), Some(Color::BLUE));
+        assert_eq!(fb.get_pixel(4, 4), Some(Color::BLUE));
+        assert_eq!(fb.get_pixel(2, 3), Some(Color::BLACK));
+        assert_eq!(fb.get_pixel(5, 3), Some(Color::BLACK));
+        assert_eq!(fb.get_pixel(3, 5), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn clipped_path_fill_with_empty_viewport_is_a_noop() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(4.0, 0.0))
+            .line_to(Vector::new(4.0, 4.0))
+            .close();
+        let mut fb = Framebuffer::new(5, 5, Color::BLACK).unwrap();
+        super::fill_path_even_odd_clipped(
+            &mut fb,
+            &path,
+            Color::RED,
+            0.25,
+            Rect::new(10, 10, 2, 2),
+        )
+        .unwrap();
+        assert!(fb.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
