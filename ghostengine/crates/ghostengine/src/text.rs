@@ -110,7 +110,7 @@ impl FontFamily {
     /// Creates a family with one primary font.
     #[must_use]
     pub fn new(primary: Arc<FontFace>) -> Self {
-        Self { faces: vec![primary] }
+        Self {\n            faces: vec![primary],\n        }
     }
 
     /// Appends a fallback face. Duplicate face pointers are ignored.
@@ -160,11 +160,7 @@ impl FontFamily {
 }
 
 /// Measures text while selecting fallback faces character by character.
-pub fn measure_with_fallback(
-    family: &FontFamily,
-    text: &str,
-    pixel_size: f32,
-) -> TextMetrics {
+pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
     }
@@ -175,7 +171,7 @@ pub fn measure_with_fallback(
     let mut max_width = 0.0_f32;
     let mut lines = 1_u32;
     let mut line_height = family.line_height(pixel_size);
-    let space = family.font_for(' ').unwrap_or(primary).glyph(' ', pixel_size);
+    let space = family\n        .font_for(' ')\n        .unwrap_or(primary)\n        .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
