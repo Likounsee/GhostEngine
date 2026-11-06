@@ -75,6 +75,7 @@ pub struct TextMetrics {
 /// `baseline` is the baseline of the first line. `max_width` controls word
 /// wrapping and the alignment box. Newlines are always respected; words wider than the
 /// box are split at character boundaries. The returned width is the widest rendered line.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_text_box_clipped(
     target: &mut Framebuffer,
     font: &FontFace,
@@ -371,7 +372,7 @@ mod tests {
 
     #[test]
     fn text_wrapping_preserves_empty_paragraphs() {
-        let lines = super::layout_lines_for_test("first\n\nlast", 20.0);
+        let lines = layout_lines_for_test("first\n\nlast", 20.0);
         assert_eq!(lines, ["first", "", "last"]);
     }
 }
