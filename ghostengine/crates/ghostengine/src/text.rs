@@ -51,10 +51,35 @@ pub fn draw_text(
     pixel_size: f32,
     color: Color,
 ) -> TextMetrics {
+    draw_text_clipped(
+        target,
+        font,
+        text,
+        baseline,
+        pixel_size,
+        color,
+        crate::Rect::new(0, 0, target.width(), target.height()),
+    )
+}
+
+/// Draws text while restricting glyph pixels to a framebuffer-coordinate clip rectangle.
+///
+/// Text measurement is independent of clipping, so the returned metrics describe the
+/// complete run even when only a small part of it is visible.
+pub fn draw_text_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: crate::Rect,
+) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
     }
 
+    let visible_clip = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()));
     let line_height = font.line_height(pixel_size);
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
@@ -91,13 +116,13 @@ pub fn draw_text(
                 if x < 0.0 || y < 0.0 || x >= target.width() as f32 || y >= target.height() as f32 {
                     continue;
                 }
+                let pixel = Point::new(x.floor() as i32, y.floor() as i32);
+                if !visible_clip.is_some_and(|bounds| bounds.contains(pixel)) {
+                    continue;
+                }
                 let alpha = ((u16::from(color.a) * u16::from(coverage) + 127) / 255) as u8;
                 if alpha > 0 {
-                    blend_pixel(
-                        target,
-                        Point::new(x.floor() as i32, y.floor() as i32),
-                        Color::rgba(color.r, color.g, color.b, alpha),
-                    );
+                    blend_pixel(target, pixel, Color::rgba(color.r, color.g, color.b, alpha));
                 }
             }
         }
