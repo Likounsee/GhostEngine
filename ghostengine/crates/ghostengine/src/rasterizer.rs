@@ -1210,7 +1210,8 @@ mod clipping_tests {
             Color::RED,
         );
         assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
-        assert_eq!(target.get_pixel(8, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(8, 3), Some(Color::RED));
+        assert_eq!(target.get_pixel(9, 3), Some(Color::BLACK));
         assert_eq!(target.get_pixel(5, 7), Some(Color::BLACK));
         assert_eq!(target.get_pixel(4, 4), Some(Color::BLACK));
     }
