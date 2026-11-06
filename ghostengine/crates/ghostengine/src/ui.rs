@@ -499,16 +499,138 @@ pub fn draw_text_input(
     }
 }
 
+/// Keyboard and pointer selection model for a vertically scrolling list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ListState {
+    selected: Option<usize>,
+}
+
+impl ListState {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { selected: None }
+    }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<usize> {
+        self.selected
+    }
+
+    pub fn select(&mut self, index: Option<usize>, item_count: usize) {
+        self.selected = index.filter(|index| *index < item_count);
+    }
+
+    pub fn move_selection(&mut self, delta: isize, item_count: usize) {
+        if item_count == 0 {
+            self.selected = None;
+            return;
+        }
+        let current = self.selected.unwrap_or(0).min(item_count - 1);
+        let next = (current as isize + delta).clamp(0, item_count as isize - 1);
+        self.selected = Some(next as usize);
+    }
+
+    pub fn select_first(&mut self, item_count: usize) {
+        self.selected = (item_count > 0).then_some(0);
+    }
+
+    pub fn select_last(&mut self, item_count: usize) {
+        self.selected = item_count.checked_sub(1);
+    }
+}
+
+/// Draws visible rows of a list. Scroll offset is measured in pixels.
+///
+/// Only rows intersecting the viewport are visited, and both row backgrounds
+/// and labels are clipped to the list bounds.
+pub fn draw_list(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    bounds: Rect,
+    items: &[&str],
+    state: ListState,
+    scroll_offset: u32,
+    row_height: u32,
+    pixel_size: f32,
+    theme: &UiTheme,
+) {
+    if bounds.width == 0 || bounds.height == 0 || row_height == 0 {
+        return;
+    }
+    let clip = bounds.intersection(Rect::new(0, 0, target.width(), target.height()));
+    let Some(clip) = clip else {
+        return;
+    };
+    let first = (scroll_offset / row_height) as usize;
+    let last_exclusive = ((u64::from(scroll_offset) + u64::from(bounds.height))
+        .div_ceil(u64::from(row_height)))
+        .min(items.len() as u64) as usize;
+    let line_height = font.line_height(pixel_size);
+    for index in first.min(items.len())..last_exclusive {
+        let row_top = i64::from(bounds.y) + index as i64 * i64::from(row_height)
+            - i64::from(scroll_offset);
+        if row_top < 0 || row_top > i64::from(u32::MAX) {
+            continue;
+        }
+        let row = Rect::new(
+            bounds.x,
+            row_top as u32,
+            bounds.width,
+            row_height.min(u32::MAX.saturating_sub(row_top as u32)),
+        );
+        if state.selected == Some(index) {
+            fill_rect_clipped(target, row, clip, theme.accent_hover);
+        }
+        let baseline_y = row_top + (i64::from(row_height) - line_height.round() as i64) / 2
+            + (line_height * 0.78).round() as i64;
+        let Ok(x) = i32::try_from(bounds.x.saturating_add(8)) else {
+            continue;
+        };
+        let Ok(y) = i32::try_from(baseline_y) else {
+            continue;
+        };
+        draw_text_clipped(
+            target,
+            font,
+            items[index],
+            Point::new(x, y),
+            pixel_size,
+            theme.text,
+            clip,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer,
-        TextInputState, UiTheme, WidgetState,
+        ListState, TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn list_selection_clamps_and_handles_empty_lists() {
+        let mut list = ListState::new();
+        assert_eq!(list.selected(), None);
+        list.select_first(0);
+        assert_eq!(list.selected(), None);
+        list.select_first(4);
+        assert_eq!(list.selected(), Some(0));
+        list.move_selection(-2, 4);
+        assert_eq!(list.selected(), Some(0));
+        list.move_selection(20, 4);
+        assert_eq!(list.selected(), Some(3));
+        list.select_last(4);
+        assert_eq!(list.selected(), Some(3));
+        list.select(Some(8), 4);
+        assert_eq!(list.selected(), None);
+        list.move_selection(1, 0);
+        assert_eq!(list.selected(), None);
     }
 
     #[test]
