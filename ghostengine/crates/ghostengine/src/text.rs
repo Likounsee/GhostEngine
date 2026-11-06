@@ -639,8 +639,8 @@ fn draw_affine_glyph(
     }
     let x0 = (min_x as i32).max(clip.x as i32);
     let y0 = (min_y as i32).max(clip.y as i32);
-    let x1 = (max_x as i32).min(clip.right().min(i32::MAX as u32) as i32);
-    let y1 = (max_y as i32).min(clip.bottom().min(i32::MAX as u32) as i32);
+    let x1 = (max_x as i32).min(clip.x.saturating_add(clip.width).min(i32::MAX as u32) as i32);
+    let y1 = (max_y as i32).min(clip.y.saturating_add(clip.height).min(i32::MAX as u32) as i32);
     for y in y0..y1 {
         for x in x0..x1 {
             let point = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
