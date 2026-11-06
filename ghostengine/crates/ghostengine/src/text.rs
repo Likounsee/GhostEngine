@@ -527,6 +527,7 @@ pub fn draw_text_clipped(
     let mut pen_y = baseline.y as f32;
     let origin_x = pen_x;
     let mut previous = None;
+    let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let mut max_width: f32 = 0.0;
     let mut line_count = 1_u32;
     let space_metrics = font.glyph(' ', pixel_size);
@@ -539,11 +540,13 @@ pub fn draw_text_clipped(
             pen_y += line_height;
             line_count += 1;
             previous = None;
+            base_anchor = None;
             continue;
         }
         if character == '\t' {
             pen_x += tab_width;
             previous = None;
+            base_anchor = None;
             continue;
         }
 
@@ -551,8 +554,17 @@ pub fn draw_text_clipped(
             pen_x += font.kerning(previous_character, character, pixel_size);
         }
         let glyph = font.glyph(character, pixel_size);
-        let glyph_left = pen_x + glyph.xmin as f32;
-        let glyph_top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+        let mut glyph_left = pen_x + glyph.xmin as f32;
+        let mut glyph_top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+        let combining = is_combining_mark(character);
+        if combining {
+            if let Some(anchor) = base_anchor {
+                (glyph_left, glyph_top) =
+                    positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+            }
+        } else {
+            base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
+        }
         for row in 0..glyph.height {
             for column in 0..glyph.width {
                 let coverage = glyph.bitmap[row * glyph.width + column];
@@ -574,8 +586,10 @@ pub fn draw_text_clipped(
                 }
             }
         }
-        pen_x += glyph.advance_width;
-        previous = Some(character);
+        if !combining {
+            pen_x += glyph.advance_width;
+            previous = Some(character);
+        }
     }
 
     max_width = max_width.max(pen_x - origin_x);
@@ -614,6 +628,7 @@ pub fn draw_text_transformed_clipped(
     let mut pen_y = baseline.y as f32;
     let origin_x = pen_x;
     let mut previous = None;
+    let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let tab_width = (font.glyph(' ', pixel_size).advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
@@ -621,18 +636,29 @@ pub fn draw_text_transformed_clipped(
                 pen_x = origin_x;
                 pen_y += line_height;
                 previous = None;
+                base_anchor = None;
             }
             '\t' => {
                 pen_x += tab_width;
                 previous = None;
+                base_anchor = None;
             }
             character => {
                 if let Some(previous_character) = previous {
                     pen_x += font.kerning(previous_character, character, pixel_size);
                 }
                 let glyph = font.glyph(character, pixel_size);
-                let left = pen_x + glyph.xmin as f32;
-                let top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+                let mut left = pen_x + glyph.xmin as f32;
+                let mut top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+                let combining = is_combining_mark(character);
+                if combining {
+                    if let Some(anchor) = base_anchor {
+                        (left, top) =
+                            positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+                    }
+                } else {
+                    base_anchor = Some((left, top, glyph.width, glyph.height));
+                }
                 draw_affine_glyph(
                     target,
                     &glyph,
@@ -643,8 +669,10 @@ pub fn draw_text_transformed_clipped(
                     transform,
                     inverse,
                 );
-                pen_x += glyph.advance_width;
-                previous = Some(character);
+                if !combining {
+                    pen_x += glyph.advance_width;
+                    previous = Some(character);
+                }
             }
         }
     }
@@ -814,6 +842,53 @@ pub fn draw_text_box_transformed_clipped(
     }
 }
 
+
+/// Returns whether a Unicode scalar is a combining mark in common scripts.
+/// This is a positioning aid, not a full Unicode grapheme or shaping algorithm.
+fn is_combining_mark(character: char) -> bool {
+    matches!(character as u32,
+        0x0300..=0x036F | 0x0483..=0x0489 | 0x0591..=0x05BD | 0x05BF
+        | 0x05C1..=0x05C2 | 0x05C4..=0x05C5 | 0x05C7
+        | 0x0610..=0x061A | 0x064B..=0x065F | 0x0670
+        | 0x06D6..=0x06ED | 0x0711 | 0x0730..=0x074A
+        | 0x07A6..=0x07B0 | 0x07EB..=0x07F3
+        | 0x0816..=0x082D | 0x0859..=0x085B | 0x08D3..=0x0903
+        | 0x093A..=0x094F | 0x0951..=0x0957 | 0x0962..=0x0963
+        | 0x0981..=0x0983 | 0x09BC..=0x09CD | 0x09D7
+        | 0x0A01..=0x0A03 | 0x0A3C..=0x0A4D | 0x0A70..=0x0A71
+        | 0x0ABC..=0x0ACD | 0x0B01..=0x0B03 | 0x0B3C..=0x0B4D
+        | 0x0C00..=0x0C04 | 0x0C3E..=0x0C56 | 0x0D00..=0x0D03
+        | 0x0D3B..=0x0D4D | 0x0E31..=0x0E4E | 0x0F18..=0x0FBC
+        | 0x102B..=0x103E | 0x135D..=0x135F | 0x1712..=0x1715
+        | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF
+        | 0xFE20..=0xFE2F | 0xE0100..=0xE01EF)
+}
+
+/// Marks that normally attach below their base glyph (cedilla/ogonek families).
+fn is_below_combining_mark(character: char) -> bool {
+    matches!(character as u32,
+        0x0316..=0x0333 | 0x0339..=0x033C | 0x0345 | 0x0327..=0x0328
+        | 0x05B2..=0x05B5 | 0x05B7 | 0x05B9..=0x05BC | 0x05C5
+        | 0x064D..=0x0650 | 0x0656..=0x065F | 0x093C | 0x09BC
+        | 0x0A3C | 0x0ABC | 0x0B3C | 0x0C3C | 0x0CBC)
+}
+
+fn positioned_mark_origin(
+    character: char,
+    mark_width: usize,
+    mark_height: usize,
+    base: (f32, f32, usize, usize),
+) -> (f32, f32) {
+    let (base_left, base_top, base_width, base_height) = base;
+    let left = base_left + (base_width as f32 - mark_width as f32) * 0.5;
+    let top = if is_below_combining_mark(character) {
+        base_top + base_height as f32 - 1.0
+    } else {
+        base_top - mark_height as f32 + 1.0
+    };
+    (left, top)
+}
+
 fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
@@ -837,11 +912,13 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
                 previous = None;
             }
             character => {
-                if let Some(previous_character) = previous {
-                    line_width += font.kerning(previous_character, character, pixel_size);
+                if !is_combining_mark(character) {
+                    if let Some(previous_character) = previous {
+                        line_width += font.kerning(previous_character, character, pixel_size);
+                    }
+                    line_width += font.glyph(character, pixel_size).advance_width;
+                    previous = Some(character);
                 }
-                line_width += font.glyph(character, pixel_size).advance_width;
-                previous = Some(character);
             }
         }
     }
@@ -859,6 +936,34 @@ mod tests {
 
     // A compact embedded test font is deliberately avoided; loading behavior is
     // exercised by callers with their own licensed TTF/OTF asset.
+    #[test]
+    fn combining_mark_ranges_cover_common_latin_and_hebrew_marks() {
+        assert!(super::is_combining_mark('\\u{0301}'));
+        assert!(super::is_combining_mark('\\u{0327}'));
+        assert!(super::is_combining_mark('\\u{05B0}'));
+        assert!(super::is_combining_mark('\\u{20DD}'));
+        assert!(!super::is_combining_mark('A'));
+        assert!(!super::is_combining_mark('é'));
+    }
+
+    #[test]
+    fn combining_mark_position_is_centered_over_base() {
+        let origin = super::positioned_mark_origin(
+            '\\u{0301}',
+            3,
+            2,
+            (10.0, 20.0, 8, 12),
+        );
+        assert_eq!(origin, (12.5, 19.0));
+        let below = super::positioned_mark_origin(
+            '\\u{0327}',
+            3,
+            2,
+            (10.0, 20.0, 8, 12),
+        );
+        assert_eq!(below, (12.5, 31.0));
+    }
+
     #[test]
     fn affine_glyph_renderer_preserves_identity_coverage() {
         let glyph = super::CachedGlyph {
