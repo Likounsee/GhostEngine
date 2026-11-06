@@ -4,15 +4,19 @@
 //! framebuffer. Each command captures the active clip rectangle, so later
 //! clip-stack changes cannot affect commands that were already recorded.
 
+use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
 use crate::rasterizer::{draw_line, fill_rect_clipped};
-use crate::{Color, Framebuffer, Point, Rect};
+use crate::texture::{draw_texture_clipped, Texture, TextureFilter};
+use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
     FillRect { rect: Rect, color: Color, clip: Rect },
     StrokeRect { rect: Rect, color: Color, clip: Rect },
     Line { start: Point, end: Point, color: Color, clip: Rect },
+    FillPath { path: Path, transform: Transform2D, color: Color, tolerance: f32, clip: Rect },
+    DrawTexture { texture: Texture, destination: Rect, filter: TextureFilter, clip: Rect },
 }
 
 /// Summary of commands executed by one display-list replay.
@@ -28,7 +32,7 @@ pub struct RenderStats {
 /// The list owns no framebuffer or platform resources. Recording and replay
 /// are separate, which makes command generation testable without opening a
 /// window and allows applications to rebuild only the lists that changed.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct DisplayList {
     commands: Vec<Command>,
     clips: Vec<Rect>,
@@ -98,6 +102,29 @@ impl DisplayList {
         }
     }
 
+    /// Records a filled vector path. Geometry and transform are validated before
+    /// the command is accepted, so replay does not silently discard invalid paths.
+    pub fn fill_path(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), PathError> {
+        path.flatten(tolerance)?.transformed(transform)?;
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::FillPath { path, transform, color, tolerance, clip });
+        }
+        Ok(())
+    }
+
+    /// Records a scaled image command with its sampling mode and active clip.
+    pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::DrawTexture { texture, destination, filter, clip });
+        }
+    }
+
     /// Executes commands in submission order and returns basic replay counters.
     pub fn replay(&self, target: &mut Framebuffer) -> RenderStats {
         let mut stats = RenderStats {
@@ -106,30 +133,43 @@ impl DisplayList {
         };
 
         for command in &self.commands {
-            let executed = match *command {
+            let executed = match command {
                 Command::Clear(color) => {
-                    target.clear(color);
+                    target.clear(*color);
                     true
                 }
                 Command::FillRect { rect, color, clip } => {
-                    if rect.intersection(clip).is_some() {
-                        fill_rect_clipped(target, rect, clip, color);
+                    if rect.intersection(*clip).is_some() {
+                        fill_rect_clipped(target, *rect, *clip, *color);
                         true
                     } else {
                         false
                     }
                 }
                 Command::StrokeRect { rect, color, clip } => {
-                    draw_stroke_rect(target, rect, clip, color);
-                    rect.width > 0 && rect.height > 0 && rect.intersection(clip).is_some()
+                    draw_stroke_rect(target, *rect, *clip, *color);
+                    rect.width > 0 && rect.height > 0 && rect.intersection(*clip).is_some()
                 }
                 Command::Line { start, end, color, clip } => {
-                    if let Some((start, end)) = clip_line(start, end, clip) {
-                        draw_line(target, start, end, color);
+                    if let Some((start, end)) = clip_line(*start, *end, *clip) {
+                        draw_line(target, start, end, *color);
                         true
                     } else {
                         false
                     }
+                }
+                Command::FillPath { path, transform, color, tolerance, clip } => {
+                    let result = fill_transformed_path_even_odd_clipped(
+                        target, path, *transform, *color, *tolerance, *clip,
+                    );
+                    result.is_ok()
+                }
+                Command::DrawTexture { texture, destination, filter, clip } => {
+                    let visible = destination.width > 0
+                        && destination.height > 0
+                        && destination.intersection(*clip).is_some();
+                    draw_texture_clipped(target, texture, *destination, *filter, *clip);
+                    visible
                 }
             };
             if executed {
@@ -307,6 +347,57 @@ mod tests {
         assert_eq!(target.get_pixel(4, 2), Some(Color::BLACK));
         assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
         assert_eq!(target.get_pixel(2, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn vector_path_is_replayed_with_transform_and_clip() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(0.0, 0.0))
+            .line_to(crate::Vector::new(6.0, 0.0))
+            .line_to(crate::Vector::new(6.0, 6.0))
+            .line_to(crate::Vector::new(0.0, 6.0))
+            .close();
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(4, 3, 2, 2));
+        list.fill_path(
+            path,
+            crate::Transform2D::translation(2.0, 1.0),
+            Color::GREEN,
+            0.25,
+        ).unwrap();
+        let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(4, 3), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(6, 3), Some(Color::BLACK));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn invalid_path_is_rejected_before_recording() {
+        let mut path = crate::Path::new();
+        path.line_to(crate::Vector::new(1.0, 1.0));
+        let mut list = DisplayList::new();
+        assert_eq!(
+            list.fill_path(path, crate::Transform2D::IDENTITY, Color::RED, 0.25),
+            Err(crate::PathError::MissingCurrentPoint),
+        );
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn texture_command_keeps_sampling_and_clip_in_order() {
+        let texture = crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(2, 0, 2, 1));
+        list.draw_texture(texture, Rect::new(1, 0, 4, 1), crate::TextureFilter::Nearest);
+        let mut target = Framebuffer::new(6, 1, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(1, 0), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
+        assert_eq!(stats.commands_executed, 1);
     }
 
     #[test]
