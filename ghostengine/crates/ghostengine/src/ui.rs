@@ -507,8 +507,7 @@ pub fn draw_text_input(
         .measure(&state.text[..state.cursor], options.pixel_size)
         .width;
     let total_width = font.measure(&state.text, options.pixel_size).width;
-    let horizontal_offset =
-        text_input_scroll_offset(cursor_width, total_width, inner.width as f32);
+    let horizontal_offset = text_input_scroll_offset(cursor_width, total_width, inner.width as f32);
     let baseline_x = (i64::from(inner_x) - horizontal_offset.floor() as i64)
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let baseline = Point::new(baseline_x, baseline_y);
