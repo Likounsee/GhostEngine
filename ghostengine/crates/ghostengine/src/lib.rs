@@ -6,6 +6,7 @@
 pub mod color;
 pub mod composition;
 pub mod framebuffer;
+pub mod focus;
 pub mod geometry;
 pub mod layout;
 pub mod path;
@@ -22,6 +23,7 @@ pub mod window;
 pub use color::Color;
 pub use composition::{compose_layers, Layer};
 pub use framebuffer::{Framebuffer, FramebufferError};
+pub use focus::FocusManager;
 pub use geometry::{Point, Rect, Vector};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
