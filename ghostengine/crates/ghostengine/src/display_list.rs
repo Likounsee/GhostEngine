@@ -778,9 +778,7 @@ mod tests {
     #[test]
     fn linear_gradient_uses_active_affine_transform() {
         let mut list = DisplayList::new();
-        assert!(list.push_transform(crate::Transform2D::rotation(
-            std::f32::consts::FRAC_PI_2,
-        )));
+        assert!(list.push_transform(crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2,)));
         assert!(list.push_transform(crate::Transform2D::translation(4.0, 1.0)));
         list.fill_linear_gradient(
             Rect::new(0, 0, 4, 1),
