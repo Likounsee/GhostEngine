@@ -29,9 +29,9 @@ pub use path::{
     fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{fill_rect_clipped, Gradient, GradientError, GradientStop};
-pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
+pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
-pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
+pub use texture::{draw_texture, draw_texture_clipped, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_panel,
