@@ -528,13 +528,18 @@ pub fn draw_text_clipped(
             pen_x = origin_x;
             pen_y += line_height;
             line_count += 1;
+            previous = None;
             continue;
         }
         if character == '\t' {
             pen_x += tab_width;
+            previous = None;
             continue;
         }
 
+        if let Some(previous_character) = previous {
+            pen_x += font.kerning(previous_character, character, pixel_size);
+        }
         let glyph = font.glyph(character, pixel_size);
         let glyph_left = pen_x + glyph.xmin as f32;
         let glyph_top = pen_y - glyph.ymin as f32 - glyph.height as f32;
@@ -560,6 +565,7 @@ pub fn draw_text_clipped(
             }
         }
         pen_x += glyph.advance_width;
+        previous = Some(character);
     }
 
     max_width = max_width.max(pen_x - origin_x);
@@ -597,6 +603,7 @@ pub fn draw_text_transformed_clipped(
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
     let origin_x = pen_x;
+    let mut previous = None;
     let tab_width = (font.glyph(' ', pixel_size).advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
