@@ -6,7 +6,8 @@
 
 use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
 use crate::rasterizer::{
-    draw_line, fill_rect_linear_gradient, fill_rect_radial_gradient, Gradient,
+    draw_line, fill_transformed_rect_linear_gradient_clipped,
+    fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::stroke::{stroke_path_clipped, StrokeStyle};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
@@ -45,6 +46,7 @@ enum Command {
         rect: Rect,
         start: crate::Vector,
         end: crate::Vector,
+        transform: Transform2D,
         gradient: Gradient,
         clip: Rect,
     },
@@ -52,6 +54,7 @@ enum Command {
         rect: Rect,
         center: crate::Vector,
         radius: f32,
+        transform: Transform2D,
         gradient: Gradient,
         clip: Rect,
     },
@@ -230,8 +233,8 @@ impl DisplayList {
         }
     }
 
-    /// Records a linear-gradient rectangle. Gradient coordinates remain in
-    /// framebuffer space and are not altered by clipping.
+    /// Records a linear-gradient rectangle. The rectangle and gradient coordinates
+    /// are local to the active affine transform; clipping does not alter sampling.
     pub fn fill_linear_gradient(
         &mut self,
         rect: Rect,
@@ -244,13 +247,15 @@ impl DisplayList {
                 rect,
                 start,
                 end,
+                transform: self.active_transform(),
                 gradient,
                 clip,
             });
         }
     }
 
-    /// Records a radial-gradient rectangle. The radius must be finite and positive;
+    /// Records a radial-gradient rectangle. The center and radius are local to the
+    /// active affine transform. The radius must be finite and positive;
     /// invalid radii are ignored during replay, matching the rasterizer contract.
     pub fn fill_radial_gradient(
         &mut self,
@@ -264,6 +269,7 @@ impl DisplayList {
                 rect,
                 center,
                 radius,
+                transform: self.active_transform(),
                 gradient,
                 clip,
             });
@@ -341,30 +347,22 @@ impl DisplayList {
                     rect,
                     start,
                     end,
+                    transform,
                     gradient,
                     clip,
-                } => {
-                    if let Some(visible) = rect.intersection(*clip) {
-                        fill_rect_linear_gradient(target, visible, *start, *end, gradient);
-                        true
-                    } else {
-                        false
-                    }
-                }
+                } => fill_transformed_rect_linear_gradient_clipped(
+                    target, *rect, *transform, *start, *end, gradient, *clip,
+                ),
                 Command::RadialGradient {
                     rect,
                     center,
                     radius,
+                    transform,
                     gradient,
                     clip,
-                } => {
-                    if let Some(visible) = rect.intersection(*clip) {
-                        fill_rect_radial_gradient(target, visible, *center, *radius, gradient);
-                        true
-                    } else {
-                        false
-                    }
-                }
+                } => fill_transformed_rect_radial_gradient_clipped(
+                    target, *rect, *transform, *center, *radius, gradient, *clip,
+                ),
             };
             if executed {
                 stats.commands_executed += 1;
@@ -775,6 +773,63 @@ mod tests {
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
         assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(180, 180, 180)));
         assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
+    }
+
+    #[test]
+    fn linear_gradient_uses_active_affine_transform() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::rotation(
+            std::f32::consts::FRAC_PI_2,
+        )));
+        assert!(list.push_transform(crate::Transform2D::translation(4.0, 1.0)));
+        list.fill_linear_gradient(
+            Rect::new(0, 0, 4, 1),
+            crate::Vector::new(0.0, 0.5),
+            crate::Vector::new(4.0, 0.5),
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(6, 6, Color::RED).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(3, 1), Some(Color::rgb(32, 32, 32)));
+        assert_eq!(target.get_pixel(3, 4), Some(Color::rgb(223, 223, 223)));
+        assert_eq!(target.get_pixel(4, 1), Some(Color::RED));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn radial_gradient_uses_active_affine_transform_and_clip() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        list.push_clip(Rect::new(2, 1, 3, 3));
+        list.fill_radial_gradient(
+            Rect::new(0, 0, 4, 4),
+            crate::Vector::new(2.0, 2.0),
+            2.0,
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(7, 7, Color::RED).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(4, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::rgb(159, 159, 159)));
+        assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn singular_gradient_transform_is_skipped() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::scale(0.0, 1.0)));
+        list.fill_linear_gradient(
+            Rect::new(0, 0, 4, 4),
+            crate::Vector::new(0.0, 0.0),
+            crate::Vector::new(4.0, 4.0),
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(4, 4, Color::RED).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_executed, 0);
+        assert_eq!(stats.commands_skipped, 1);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
     }
 
     #[test]
