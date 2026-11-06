@@ -525,8 +525,12 @@ impl ListState {
             self.selected = None;
             return;
         }
-        let current = self.selected.unwrap_or(0).min(item_count - 1);
-        let next = (current as isize + delta).clamp(0, item_count as isize - 1);
+        let Some(current) = self.selected else {
+            self.selected = Some(if delta < 0 { item_count - 1 } else { 0 });
+            return;
+        };
+        let current = current.min(item_count - 1) as i128;
+        let next = (current + delta as i128).clamp(0, item_count as i128 - 1);
         self.selected = Some(next as usize);
     }
 
@@ -566,9 +570,15 @@ pub fn draw_list(
         .div_ceil(u64::from(row_height)))
         .min(items.len() as u64) as usize;
     let line_height = font.line_height(pixel_size);
-    for index in first.min(items.len())..last_exclusive {
-        let row_top = i64::from(bounds.y) + index as i64 * i64::from(row_height)
-            - i64::from(scroll_offset);
+    for (index, item) in items
+        .iter()
+        .enumerate()
+        .take(last_exclusive)
+        .skip(first.min(items.len()))
+    {
+        let row_top = i64::from(bounds.y)
+            .saturating_add((index as i64).saturating_mul(i64::from(row_height)))
+            .saturating_sub(i64::from(scroll_offset));
         if row_top < 0 || row_top > i64::from(u32::MAX) {
             continue;
         }
@@ -592,7 +602,7 @@ pub fn draw_list(
         draw_text_clipped(
             target,
             font,
-            items[index],
+            item,
             Point::new(x, y),
             pixel_size,
             theme.text,
@@ -619,6 +629,8 @@ mod tests {
         assert_eq!(list.selected(), None);
         list.select_first(0);
         assert_eq!(list.selected(), None);
+        list.move_selection(1, 4);
+        assert_eq!(list.selected(), Some(0));
         list.select_first(4);
         assert_eq!(list.selected(), Some(0));
         list.move_selection(-2, 4);
