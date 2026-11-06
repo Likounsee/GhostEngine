@@ -3,7 +3,7 @@
 //! The implementation evaluates stroke coverage at pixel centers and blends each
 //! covered pixel once. This avoids dark seams where adjacent segments overlap.
 
-use crate::{Color, Framebuffer, Path, PathError, Transform2D, Vector};
+use crate::{Color, Framebuffer, Path, PathError, Rect, Transform2D, Vector};
 
 /// Shape used to terminate an open stroked contour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,17 +66,38 @@ pub fn stroke_path(
     color: Color,
     tolerance: f32,
 ) -> Result<(), StrokeError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    stroke_path_clipped(target, path, transform, style, color, tolerance, clip)
+}
+
+/// Strokes a path while restricting pixel writes to a framebuffer-space viewport.
+///
+/// Geometry and stroke width are evaluated exactly as in the regular stroke API;
+/// the viewport only limits rasterization, without changing cap or join geometry.
+pub fn stroke_path_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), StrokeError> {
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
     }
     if !transform.is_finite() {
         return Err(StrokeError::InvalidTransform);
     }
+    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
     if target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
-
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
     let radius = style.width * 0.5;
     if !radius.is_finite() {
         return Err(StrokeError::InvalidWidth);
@@ -97,13 +118,10 @@ pub fn stroke_path(
             max_y = max_y.max(p.y);
         }
         let expand = radius + 1.0;
-        let left = (min_x - expand).floor().max(0.0).min(target.width() as f32) as u32;
-        let top = (min_y - expand)
-            .floor()
-            .max(0.0)
-            .min(target.height() as f32) as u32;
-        let right = (max_x + expand).ceil().max(0.0).min(target.width() as f32) as u32;
-        let bottom = (max_y + expand).ceil().max(0.0).min(target.height() as f32) as u32;
+        let left = (min_x - expand).floor().max(clip.x as f32).min(clip_right as f32) as u32;
+        let top = (min_y - expand).floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+        let right = (max_x + expand).ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+        let bottom = (max_y + expand).ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
         if left >= right || top >= bottom {
             continue;
         }
@@ -181,8 +199,8 @@ fn segment_distance(
 
 #[cfg(test)]
 mod tests {
-    use super::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
-    use crate::{Color, Framebuffer, Path, Transform2D, Vector};
+    use super::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
+    use crate::{Color, Framebuffer, Path, Rect, Transform2D, Vector};
 
     fn line() -> Path {
         let mut path = Path::new();
@@ -249,6 +267,43 @@ mod tests {
         )
         .unwrap();
         assert!(fb.pixels().contains(&Color::RED));
+    }
+
+    #[test]
+    fn clipped_stroke_never_writes_outside_viewport() {
+        let mut fb = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        stroke_path_clipped(
+            &mut fb,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(4.0).with_cap(StrokeCap::Round),
+            Color::RED,
+            0.2,
+            Rect::new(5, 4, 2, 3),
+        )
+        .unwrap();
+        for y in 0..12 {
+            for x in 0..14 {
+                let inside = (5..7).contains(&x) && (4..7).contains(&y);
+                assert_eq!(fb.get_pixel(x, y) != Some(Color::BLACK), inside);
+            }
+        }
+    }
+
+    #[test]
+    fn empty_stroke_clip_is_noop() {
+        let mut fb = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        stroke_path_clipped(
+            &mut fb,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(2.0),
+            Color::RED,
+            0.2,
+            Rect::new(8, 8, 2, 2),
+        )
+        .unwrap();
+        assert!(fb.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
