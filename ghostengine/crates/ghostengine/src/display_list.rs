@@ -375,16 +375,10 @@ impl DisplayList {
                     color,
                     tolerance,
                     clip,
-                } => stroke_path_clipped(
-                    target,
-                    path,
-                    *transform,
-                    *style,
-                    *color,
-                    *tolerance,
-                    *clip,
-                )
-                .is_ok(),
+                } => {
+                    stroke_path_clipped(target, path, *transform, *style, *color, *tolerance, *clip)
+                        .is_ok()
+                }
                 Command::DrawTexture {
                     texture,
                     destination,
