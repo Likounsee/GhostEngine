@@ -479,12 +479,13 @@ impl DisplayList {
                     font,
                     text,
                     baseline,
+                    transform,
                     pixel_size,
                     color,
                     options,
                     clip,
                 } => {
-                    draw_text_box_clipped(
+                    draw_text_box_transformed_clipped(
                         target,
                         &font.0,
                         text,
@@ -493,6 +494,7 @@ impl DisplayList {
                         *color,
                         *clip,
                         *options,
+                        *transform,
                     )
                     .line_count
                         > 0
