@@ -30,7 +30,7 @@ pub use path::{
 };
 pub use rasterizer::{fill_rect_clipped, Gradient, GradientError, GradientStop};
 pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
-pub use text::{draw_text, FontFace, TextMetrics};
+pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
 pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
 pub use ui::{
