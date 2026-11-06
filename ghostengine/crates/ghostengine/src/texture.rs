@@ -185,7 +185,7 @@ pub fn draw_texture_transformed_clipped(
         return false;
     }
     let Some(inverse) = transform.inverse() else {
-        return;
+        return false;
     };
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
