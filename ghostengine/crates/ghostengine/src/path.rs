@@ -359,14 +359,8 @@ mod tests {
             .line_to(Vector::new(1.0, 7.0))
             .close();
         let mut fb = Framebuffer::new(9, 9, Color::BLACK).unwrap();
-        super::fill_path_even_odd_clipped(
-            &mut fb,
-            &path,
-            Color::BLUE,
-            0.25,
-            Rect::new(3, 2, 2, 3),
-        )
-        .unwrap();
+        super::fill_path_even_odd_clipped(&mut fb, &path, Color::BLUE, 0.25, Rect::new(3, 2, 2, 3))
+            .unwrap();
         assert_eq!(fb.get_pixel(3, 2), Some(Color::BLUE));
         assert_eq!(fb.get_pixel(4, 4), Some(Color::BLUE));
         assert_eq!(fb.get_pixel(2, 3), Some(Color::BLACK));
