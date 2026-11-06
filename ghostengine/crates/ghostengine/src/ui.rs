@@ -99,7 +99,7 @@ pub fn draw_button(
         return;
     }
     let background = match state {
-        WidgetState::Normal => theme.accent,
+        WidgetState::Normal => options.theme.accent,
         WidgetState::Hovered => theme.accent_hover,
         WidgetState::Pressed => theme.accent_pressed,
         WidgetState::Disabled => theme.disabled,
