@@ -329,16 +329,14 @@ impl DisplayList {
                     transform,
                     filter,
                     clip,
-                } => {
-                    draw_texture_transformed_clipped(
-                        target,
-                        texture,
-                        *destination,
-                        *transform,
-                        *filter,
-                        *clip,
-                    )
-                }
+                } => draw_texture_transformed_clipped(
+                    target,
+                    texture,
+                    *destination,
+                    *transform,
+                    *filter,
+                    *clip,
+                ),
                 Command::LinearGradient {
                     rect,
                     start,
@@ -663,7 +661,11 @@ mod tests {
         let texture = crate::Texture::new(1, 1, vec![Color::WHITE]).unwrap();
         let mut list = DisplayList::new();
         assert!(list.push_transform(crate::Transform2D::scale(0.0, 1.0)));
-        list.draw_texture(texture, Rect::new(0, 0, 1, 1), crate::TextureFilter::Nearest);
+        list.draw_texture(
+            texture,
+            Rect::new(0, 0, 1, 1),
+            crate::TextureFilter::Nearest,
+        );
         let mut target = Framebuffer::new(3, 3, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
         assert_eq!(stats.commands_submitted, 1);
