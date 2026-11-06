@@ -149,7 +149,8 @@ impl FontFamily {
     /// Selects the first face containing a glyph; otherwise uses the primary face.
     #[must_use]
     pub fn font_for(&self, character: char) -> Option<&FontFace> {
-        self.faces.iter()
+        self.faces
+            .iter()
             .find(|face| face.has_glyph(character))
             .map(Arc::as_ref)
             .or_else(|| self.primary())
@@ -180,8 +181,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
-            '
-' => {
+            '\n' => {
                 max_width = max_width.max(width);
                 width = 0.0;
                 lines += 1;
@@ -222,12 +222,14 @@ pub fn draw_text_with_fallback_clipped(
     let metrics = measure_with_fallback(family, text, pixel_size);
     let mut x = baseline.x as f32;
     let mut y = baseline.y;
-    let space = family.font_for(' ').unwrap_or(primary).glyph(' ', pixel_size);
+    let space = family
+        .font_for(' ')
+        .unwrap_or(primary)
+        .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
-            '
-' => {
+            '\n' => {
                 x = baseline.x as f32;
                 let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
@@ -374,11 +376,9 @@ fn layout_lines(
     max_width: Option<f32>,
 ) -> Vec<String> {
     let Some(max_width) = max_width else {
-        return text.split('
-').map(str::to_owned).collect();
+        return text.split('\n').map(str::to_owned).collect();
     };
-    text.split('
-')
+    text.split('\n')
         .flat_map(|paragraph| {
             wrap_paragraph(paragraph, max_width, |part| {
                 measure_word(font, part, pixel_size)
@@ -481,8 +481,7 @@ pub fn draw_text_clipped(
     let tab_width = (space_metrics.advance_width * 4.0).max(pixel_size);
 
     for character in text.chars() {
-        if character == '
-' {
+        if character == '\n' {
             max_width = max_width.max(pen_x - origin_x);
             pen_x = origin_x;
             pen_y += line_height;
@@ -540,8 +539,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     let mut line_count = 1_u32;
     for character in text.chars() {
         match character {
-            '
-' => {
+            '\n' => {
                 max_width = max_width.max(line_width);
                 line_width = 0.0;
                 line_count += 1;
@@ -599,8 +597,7 @@ mod tests {
     }
 
     fn layout_lines_for_test(text: &str, max_width: f32) -> Vec<String> {
-        text.split('
-')
+        text.split('\n')
             .flat_map(|paragraph| {
                 super::wrap_paragraph(paragraph, max_width, |part| part.len() as f32)
             })
