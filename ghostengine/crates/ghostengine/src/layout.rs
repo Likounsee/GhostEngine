@@ -186,9 +186,98 @@ impl StackLayout {
     }
 }
 
+/// A scrollable viewport over content larger than its visible bounds.
+///
+/// The viewport rectangle is also the clip rectangle used by rendering calls.
+/// Content coordinates start at the viewport's top-left before the scroll offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScrollViewport {
+    bounds: Rect,
+    direction: LayoutDirection,
+    content_extent: u32,
+    offset: u32,
+}
+
+impl ScrollViewport {
+    #[must_use]
+    pub const fn new(bounds: Rect, direction: LayoutDirection, content_extent: u32) -> Self {
+        Self {
+            bounds,
+            direction,
+            content_extent,
+            offset: 0,
+        }
+    }
+
+    #[must_use]
+    pub const fn bounds(self) -> Rect {
+        self.bounds
+    }
+
+    /// Returns the viewport bounds to pass to clipped drawing operations.
+    #[must_use]
+    pub const fn clip(self) -> Rect {
+        self.bounds
+    }
+
+    #[must_use]
+    pub const fn offset(self) -> u32 {
+        self.offset
+    }
+
+    #[must_use]
+    pub fn max_offset(self) -> u32 {
+        self.content_extent.saturating_sub(self.viewport_extent())
+    }
+
+    #[must_use]
+    pub fn is_scrollable(self) -> bool {
+        self.max_offset() > 0
+    }
+
+    /// Returns the content origin in signed framebuffer coordinates.
+    #[must_use]
+    pub fn content_origin(self) -> (i64, i64) {
+        let x = i64::from(self.bounds.x);
+        let y = i64::from(self.bounds.y);
+        match self.direction {
+            LayoutDirection::Vertical => (x, y - i64::from(self.offset)),
+            LayoutDirection::Horizontal => (x - i64::from(self.offset), y),
+        }
+    }
+
+    pub fn set_offset(&mut self, offset: u32) {
+        self.offset = offset.min(self.max_offset());
+    }
+
+    pub fn scroll_by(&mut self, delta: i32) {
+        let next = i64::from(self.offset) + i64::from(delta);
+        self.offset = next.clamp(0, i64::from(self.max_offset())) as u32;
+    }
+
+    /// Updates content length and clamps the current offset if content shrinks.
+    pub fn set_content_extent(&mut self, content_extent: u32) {
+        self.content_extent = content_extent;
+        self.set_offset(self.offset);
+    }
+
+    /// Updates viewport bounds and clamps the current offset to the new size.
+    pub fn set_bounds(&mut self, bounds: Rect) {
+        self.bounds = bounds;
+        self.set_offset(self.offset);
+    }
+
+    fn viewport_extent(self) -> u32 {
+        match self.direction {
+            LayoutDirection::Vertical => self.bounds.height,
+            LayoutDirection::Horizontal => self.bounds.width,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Insets, LayoutDirection, LayoutItem, StackLayout};
+    use super::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
     use crate::Rect;
 
     #[test]
@@ -242,6 +331,58 @@ mod tests {
         );
         assert_eq!(result[0].height, 4);
         assert_eq!(result[1].height, 0);
+    }
+
+    #[test]
+    fn vertical_scroll_viewport_clamps_offsets_and_exposes_clip() {
+        let bounds = Rect::new(4, 6, 20, 10);
+        let mut viewport = ScrollViewport::new(bounds, LayoutDirection::Vertical, 40);
+        assert_eq!(viewport.clip(), bounds);
+        assert!(viewport.is_scrollable());
+        assert_eq!(viewport.max_offset(), 30);
+        viewport.set_offset(50);
+        assert_eq!(viewport.offset(), 30);
+        assert_eq!(viewport.content_origin(), (4, -24));
+        viewport.scroll_by(-8);
+        assert_eq!(viewport.offset(), 22);
+        viewport.scroll_by(-100);
+        assert_eq!(viewport.offset(), 0);
+    }
+
+    #[test]
+    fn horizontal_scroll_viewport_uses_width_and_signed_origin() {
+        let bounds = Rect::new(12, 5, 8, 14);
+        let mut viewport = ScrollViewport::new(bounds, LayoutDirection::Horizontal, 30);
+        viewport.scroll_by(7);
+        assert_eq!(viewport.max_offset(), 22);
+        assert_eq!(viewport.content_origin(), (5, 5));
+        assert_eq!(viewport.clip(), bounds);
+    }
+
+    #[test]
+    fn scroll_viewport_clamps_when_content_or_bounds_shrink() {
+        let mut viewport =
+            ScrollViewport::new(Rect::new(0, 0, 10, 10), LayoutDirection::Vertical, 50);
+        viewport.set_offset(40);
+        viewport.set_content_extent(18);
+        assert_eq!(viewport.offset(), 8);
+        viewport.set_bounds(Rect::new(0, 0, 10, 20));
+        assert_eq!(viewport.offset(), 0);
+        assert!(!viewport.is_scrollable());
+    }
+
+    #[test]
+    fn scroll_viewport_handles_empty_content_and_extreme_deltas() {
+        let mut viewport =
+            ScrollViewport::new(Rect::new(0, 0, 10, 10), LayoutDirection::Vertical, 0);
+        assert!(!viewport.is_scrollable());
+        viewport.scroll_by(i32::MAX);
+        assert_eq!(viewport.offset(), 0);
+        viewport.set_content_extent(u32::MAX);
+        viewport.scroll_by(i32::MAX);
+        assert_eq!(viewport.offset(), i32::MAX as u32);
+        viewport.scroll_by(i32::MIN);
+        assert_eq!(viewport.offset(), 0);
     }
 
     #[test]
