@@ -90,7 +90,9 @@ pub fn draw_text_box_clipped(
         || text.is_empty()
         || !options.line_spacing.is_finite()
         || options.line_spacing <= 0.0
-        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+        || options
+            .max_width
+            .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
         return TextMetrics::default();
     }
@@ -150,42 +152,50 @@ fn layout_lines(
     let Some(max_width) = max_width else {
         return text.split('\n').map(str::to_owned).collect();
     };
+    text.split('\n')
+        .flat_map(|paragraph| {
+            wrap_paragraph(paragraph, max_width, |part| {
+                measure_word(font, part, pixel_size)
+            })
+        })
+        .collect()
+}
+
+fn wrap_paragraph<F>(paragraph: &str, max_width: f32, mut measure: F) -> Vec<String>
+where
+    F: FnMut(&str) -> f32,
+{
     let mut output = Vec::new();
-    for paragraph in text.split('\n') {
-        let mut line = String::new();
-        let mut line_width = 0.0_f32;
-        for word in paragraph.split_whitespace() {
-            let word_width = measure_word(font, word, pixel_size);
-            let separator_width = if line.is_empty() {
-                0.0
-            } else {
-                font.font.metrics(' ', pixel_size).advance_width
-            };
-            if !line.is_empty() && line_width + separator_width + word_width > max_width {
-                output.push(std::mem::take(&mut line));
-                line_width = 0.0;
+    let mut line = String::new();
+    let mut line_width = 0.0_f32;
+    for word in paragraph.split_whitespace() {
+        let word_width = measure(word);
+        let separator_width = if line.is_empty() { 0.0 } else { measure(" ") };
+        if !line.is_empty() && line_width + separator_width + word_width > max_width {
+            output.push(std::mem::take(&mut line));
+            line_width = 0.0;
+        }
+        if word_width <= max_width {
+            if !line.is_empty() {
+                line.push(' ');
+                line_width += separator_width;
             }
-            if word_width <= max_width {
-                if !line.is_empty() {
-                    line.push(' ');
-                    line_width += separator_width;
+            line.push_str(word);
+            line_width += word_width;
+        } else {
+            for character in word.chars() {
+                let character_text = character.to_string();
+                let advance = measure(&character_text);
+                if !line.is_empty() && line_width + advance > max_width {
+                    output.push(std::mem::take(&mut line));
+                    line_width = 0.0;
                 }
-                line.push_str(word);
-                line_width += word_width;
-            } else {
-                for character in word.chars() {
-                    let advance = font.font.metrics(character, pixel_size).advance_width;
-                    if !line.is_empty() && line_width + advance > max_width {
-                        output.push(std::mem::take(&mut line));
-                        line_width = 0.0;
-                    }
-                    line.push(character);
-                    line_width += advance;
-                }
+                line.push(character);
+                line_width += advance;
             }
         }
-        output.push(line);
     }
+    output.push(line);
     output
 }
 
@@ -337,5 +347,23 @@ mod tests {
         assert_eq!(metrics.width, 0.0);
         assert_eq!(metrics.height, 0.0);
         assert_eq!(metrics.line_count, 0);
+    }
+
+    #[test]
+    fn text_wrapping_keeps_words_together_when_they_fit() {
+        let lines = super::wrap_paragraph("one two three", 7.0, |part| part.len() as f32);
+        assert_eq!(lines, ["one two", "three"]);
+    }
+
+    #[test]
+    fn text_wrapping_splits_words_wider_than_the_line() {
+        let lines = super::wrap_paragraph("abcdefgh", 3.0, |part| part.len() as f32);
+        assert_eq!(lines, ["abc", "def", "gh"]);
+    }
+
+    #[test]
+    fn text_wrapping_preserves_empty_paragraphs() {
+        let lines = super::layout_lines_for_test("first\\n\\nlast", 20.0);
+        assert_eq!(lines, ["first", "", "last"]);
     }
 }
