@@ -1,6 +1,6 @@
 //! CPU-side image storage and scaled texture compositing.
 
-use crate::{Color, Framebuffer, Rect};
+use crate::{Color, Framebuffer, Rect, Transform2D};
 
 /// Errors returned when constructing an in-memory texture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,38 +157,91 @@ pub fn draw_texture_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
-    if destination.width == 0 || destination.height == 0 {
+    draw_texture_transformed_clipped(
+        target,
+        texture,
+        destination,
+        Transform2D::IDENTITY,
+        filter,
+        clip,
+    );
+}
+
+/// Draws a texture through an affine transform while preserving source sampling.
+///
+/// The destination rectangle is defined in local coordinates. The inverse transform
+/// maps each destination pixel center back into that rectangle, so rotation, skew,
+/// non-uniform scale and translation all sample the original image consistently.
+pub fn draw_texture_transformed_clipped(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    transform: Transform2D,
+    filter: TextureFilter,
+    clip: Rect,
+) {
+    if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
         return;
     }
+    let Some(inverse) = transform.inverse() else {
+        return;
+    };
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
     };
+
+    let left = destination.x as f32;
+    let top = destination.y as f32;
+    let right = destination.x.saturating_add(destination.width) as f32;
+    let bottom = destination.y.saturating_add(destination.height) as f32;
+    let corners = [
+        transform.transform_point(crate::Vector::new(left, top)),
+        transform.transform_point(crate::Vector::new(right, top)),
+        transform.transform_point(crate::Vector::new(right, bottom)),
+        transform.transform_point(crate::Vector::new(left, bottom)),
+    ];
+    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+        return;
+    }
+    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let left = destination.x.max(clip.x).min(clip_right);
-    let top = destination.y.max(clip.y).min(clip_bottom);
-    let right =
-        (u64::from(destination.x) + u64::from(destination.width)).min(u64::from(clip_right)) as u32;
-    let bottom = (u64::from(destination.y) + u64::from(destination.height))
-        .min(u64::from(clip_bottom)) as u32;
-    if left >= right || top >= bottom {
+    let first_x = min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
+    let first_y = min_y.floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let end_x = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let end_y = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    if first_x >= end_x || first_y >= end_y {
         return;
     }
 
-    for y in top..bottom {
-        let local_y = y - destination.y;
-        let source_y =
-            (local_y as f32 + 0.5) * texture.height as f32 / destination.height as f32 - 0.5;
-        for x in left..right {
-            let local_x = x - destination.x;
-            let source_x =
-                (local_x as f32 + 0.5) * texture.width as f32 / destination.width as f32 - 0.5;
+    let local_left = destination.x as f32;
+    let local_top = destination.y as f32;
+    let local_right = local_left + destination.width as f32;
+    let local_bottom = local_top + destination.height as f32;
+    for y in first_y..end_y {
+        for x in first_x..end_x {
+            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+            if local.x < local_left
+                || local.x >= local_right
+                || local.y < local_top
+                || local.y >= local_bottom
+            {
+                continue;
+            }
+            let source_x = (local.x - local_left) * texture.width as f32
+                / destination.width as f32;
+            let source_y = (local.y - local_top) * texture.height as f32
+                / destination.height as f32;
             let color = match filter {
-                TextureFilter::Nearest => texture.sample_nearest(
-                    (local_x as f32 + 0.5) * texture.width as f32 / destination.width as f32,
-                    (local_y as f32 + 0.5) * texture.height as f32 / destination.height as f32,
-                ),
-                TextureFilter::Bilinear => texture.sample_bilinear(source_x, source_y),
+                TextureFilter::Nearest => {
+                    texture.sample_nearest(source_x, source_y)
+                }
+                TextureFilter::Bilinear => {
+                    texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
+                }
             };
             if color.a == 0 {
                 continue;
