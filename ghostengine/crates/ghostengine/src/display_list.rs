@@ -619,6 +619,6 @@ mod tests {
         assert!(list.is_empty());
         list.clear_color(Color::GREEN);
         list.replay(&mut target);
-        assert!(target.pixels().iter().all(|pixel| *pixel == Color.GREEN));
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::GREEN));
     }
 }
