@@ -1188,8 +1188,11 @@ mod tests {
 /// Fills only the intersection of a rectangle, a clip region, and the framebuffer.
 /// The clip is expressed in framebuffer coordinates and uses half-open bounds.
 pub fn fill_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
-    let Some(visible) = rect.intersection(clip)
-        .and_then(|intersection| intersection.intersection(Rect::new(0, 0, target.width(), target.height())))
+    let Some(visible) = rect
+        .intersection(clip)
+        .and_then(|intersection| {
+            intersection.intersection(Rect::new(0, 0, target.width(), target.height()))
+        })
     else {
         return;
     };
