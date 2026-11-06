@@ -118,10 +118,22 @@ pub fn stroke_path_clipped(
             max_y = max_y.max(p.y);
         }
         let expand = radius + 1.0;
-        let left = (min_x - expand).floor().max(clip.x as f32).min(clip_right as f32) as u32;
-        let top = (min_y - expand).floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
-        let right = (max_x + expand).ceil().max(clip.x as f32).min(clip_right as f32) as u32;
-        let bottom = (max_y + expand).ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+        let left = (min_x - expand)
+            .floor()
+            .max(clip.x as f32)
+            .min(clip_right as f32) as u32;
+        let top = (min_y - expand)
+            .floor()
+            .max(clip.y as f32)
+            .min(clip_bottom as f32) as u32;
+        let right = (max_x + expand)
+            .ceil()
+            .max(clip.x as f32)
+            .min(clip_right as f32) as u32;
+        let bottom = (max_y + expand)
+            .ceil()
+            .max(clip.y as f32)
+            .min(clip_bottom as f32) as u32;
         if left >= right || top >= bottom {
             continue;
         }
