@@ -172,6 +172,7 @@ pub fn draw_texture_clipped(
 /// The destination rectangle is defined in local coordinates. The inverse transform
 /// maps each destination pixel center back into that rectangle, so rotation, skew,
 /// non-uniform scale and translation all sample the original image consistently.
+/// Returns true when at least one destination pixel center is inside the transformed image.
 pub fn draw_texture_transformed_clipped(
     target: &mut Framebuffer,
     texture: &Texture,
