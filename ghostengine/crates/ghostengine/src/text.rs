@@ -36,6 +36,12 @@ impl FontFace {
         })
     }
 
+    /// Returns whether this face contains a glyph for the character.
+    #[must_use]
+    pub fn has_glyph(&self, character: char) -> bool {
+        self.font.lookup_glyph_index(character) != 0
+    }
+
     /// Returns the recommended baseline-to-baseline distance at this size.
     #[must_use]
     pub fn line_height(&self, pixel_size: f32) -> f32 {
@@ -92,6 +98,150 @@ impl FontFace {
         cache.insert(key, Arc::clone(&glyph));
         glyph
     }
+}
+
+/// Ordered font fallback chain used when a primary face lacks a character.
+#[derive(Debug, Clone, Default)]
+pub struct FontFamily {
+    faces: Vec<Arc<FontFace>>,
+}
+
+impl FontFamily {
+    /// Creates a family with one primary font.
+    #[must_use]
+    pub fn new(primary: Arc<FontFace>) -> Self {
+        Self { faces: vec![primary] }
+    }
+
+    /// Appends a fallback face. Duplicate face pointers are ignored.
+    pub fn add_fallback(&mut self, fallback: Arc<FontFace>) {
+        if !self.faces.iter().any(|face| Arc::ptr_eq(face, &fallback)) {
+            self.faces.push(fallback);
+        }
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.faces.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.faces.is_empty()
+    }
+
+    #[must_use]
+    pub fn primary(&self) -> Option<&FontFace> {
+        self.faces.first().map(Arc::as_ref)
+    }
+
+    /// Selects the first face containing a glyph; otherwise uses the primary face.
+    #[must_use]
+    pub fn font_for(&self, character: char) -> Option<&FontFace> {
+        self.faces.iter()
+            .find(|face| face.has_glyph(character))
+            .map(Arc::as_ref)
+            .or_else(|| self.primary())
+    }
+
+    #[must_use]
+    pub fn measure(&self, text: &str, pixel_size: f32) -> TextMetrics {
+        measure_with_fallback(self, text, pixel_size)
+    }
+}
+
+/// Measures text while selecting fallback faces character by character.
+pub fn measure_with_fallback(
+    family: &FontFamily,
+    text: &str,
+    pixel_size: f32,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+        return TextMetrics::default();
+    }
+    let Some(primary) = family.primary() else {
+        return TextMetrics::default();
+    };
+    let mut width = 0.0_f32;
+    let mut max_width = 0.0_f32;
+    let mut lines = 1_u32;
+    let mut line_height = primary.line_height(pixel_size);
+    let space = family.font_for(' ').unwrap_or(primary).glyph(' ', pixel_size);
+    let tab_width = (space.advance_width * 4.0).max(pixel_size);
+    for character in text.chars() {
+        match character {
+            '\n' => {
+                max_width = max_width.max(width);
+                width = 0.0;
+                lines += 1;
+            }
+            '\t' => width += tab_width,
+            character => {
+                let face = family.font_for(character).unwrap_or(primary);
+                line_height = line_height.max(face.line_height(pixel_size));
+                width += face.glyph(character, pixel_size).advance_width;
+            }
+        }
+    }
+    max_width = max_width.max(width);
+    TextMetrics {
+        width: max_width,
+        height: line_height * lines as f32,
+        line_count: lines,
+    }
+}
+
+/// Draws text with a fallback chain. Glyphs remain unshaped and use simple advances.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_with_fallback_clipped(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+        return TextMetrics::default();
+    }
+    let Some(primary) = family.primary() else {
+        return TextMetrics::default();
+    };
+    let metrics = measure_with_fallback(family, text, pixel_size);
+    let mut x = baseline.x as f32;
+    let mut y = baseline.y;
+    let space = family.font_for(' ').unwrap_or(primary).glyph(' ', pixel_size);
+    let tab_width = (space.advance_width * 4.0).max(pixel_size);
+    for character in text.chars() {
+        match character {
+            '\n' => {
+                x = baseline.x as f32;
+                let next_y = y as f32 + primary.line_height(pixel_size);
+                if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
+                    break;
+                }
+                y = next_y.round() as i32;
+            }
+            '\t' => x += tab_width,
+            character => {
+                let face = family.font_for(character).unwrap_or(primary);
+                if x.is_finite() && x >= i32::MIN as f32 && x <= i32::MAX as f32 {
+                    draw_text_clipped(
+                        target,
+                        face,
+                        &character.to_string(),
+                        Point::new(x.round() as i32, y),
+                        pixel_size,
+                        color,
+                        clip,
+                    );
+                }
+                x += face.glyph(character, pixel_size).advance_width;
+            }
+        }
+    }
+    metrics
 }
 
 /// Horizontal alignment used for each line in a constrained text run.
