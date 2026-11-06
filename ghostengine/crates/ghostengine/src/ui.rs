@@ -296,11 +296,23 @@ impl TextInputState {
     pub fn clear_selection(&mut self) { self.selection_anchor = None; }
 
     pub fn move_left(&mut self, extend_selection: bool) {
+        if !extend_selection {
+            if let Some((start, _)) = self.selection() {
+                self.set_cursor(start, false);
+                return;
+            }
+        }
         let next = previous_boundary(&self.text, self.cursor.saturating_sub(1));
         self.set_cursor(next, extend_selection);
     }
 
     pub fn move_right(&mut self, extend_selection: bool) {
+        if !extend_selection {
+            if let Some((_, end)) = self.selection() {
+                self.set_cursor(end, false);
+                return;
+            }
+        }
         let next = self.text[self.cursor..]
             .chars()
             .next()
@@ -389,7 +401,8 @@ pub fn draw_text_input(
         + (i64::from(rect.height) - line_height.round() as i64) / 2
         + (line_height * 0.78).round() as i64;
     let Ok(baseline_y) = i32::try_from(baseline_y) else { return; };
-    let baseline = Point::new(inner.x as i32, baseline_y);
+    let Ok(inner_x) = i32::try_from(inner.x) else { return; };
+    let baseline = Point::new(inner_x, baseline_y);
 
     if !state.text.is_empty() {
         if let Some((start, end)) = state.selection() {
@@ -463,6 +476,11 @@ mod tests {
         input.set_cursor(5, false);
         input.set_cursor(11, true);
         assert_eq!(input.selection(), Some((5, 11)));
+        input.move_left(false);
+        assert_eq!(input.cursor(), 5);
+        assert_eq!(input.selection(), None);
+        input.set_cursor(5, false);
+        input.set_cursor(11, true);
         input.insert_text("engine");
         assert_eq!(input.text(), "helloengine");
         assert_eq!(input.selection(), None);
