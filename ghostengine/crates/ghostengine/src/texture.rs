@@ -167,8 +167,8 @@ pub fn draw_texture_clipped(
     let clip_bottom = clip.y.saturating_add(clip.height);
     let left = destination.x.max(clip.x).min(clip_right);
     let top = destination.y.max(clip.y).min(clip_bottom);
-    let right = (u64::from(destination.x) + u64::from(destination.width))
-        .min(u64::from(clip_right)) as u32;
+    let right =
+        (u64::from(destination.x) + u64::from(destination.width)).min(u64::from(clip_right)) as u32;
     let bottom = (u64::from(destination.y) + u64::from(destination.height))
         .min(u64::from(clip_bottom)) as u32;
     if left >= right || top >= bottom {
