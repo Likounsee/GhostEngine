@@ -6,21 +6,18 @@
 
 use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
 use crate::rasterizer::{
-    draw_line, fill_rect_clipped, fill_rect_linear_gradient, fill_rect_radial_gradient, Gradient,
+    draw_line, fill_rect_linear_gradient, fill_rect_radial_gradient, Gradient,
 };
+use crate::stroke::{stroke_path_clipped, StrokeStyle};
 use crate::texture::{draw_texture_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
-    FillRect {
-        rect: Rect,
-        color: Color,
-        clip: Rect,
-    },
     StrokeRect {
-        rect: Rect,
+        path: Path,
+        transform: Transform2D,
         color: Color,
         clip: Rect,
     },
@@ -122,7 +119,7 @@ impl DisplayList {
         self.clips.pop().is_some()
     }
 
-    /// Pushes an affine transform for subsequent vector-path commands.
+    /// Pushes an affine transform for subsequent geometric drawing commands.
     /// Nested transforms are composed in push order:
     /// the existing transform is applied first, then the newly pushed transform.
     /// Non-finite matrices are rejected and leave the stack unchanged.
@@ -160,27 +157,32 @@ impl DisplayList {
         self.commands.push(Command::Clear(color));
     }
 
-    /// Records a filled rectangle using the clip active at recording time.
+    /// Records a filled rectangle as a transformed vector contour.
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
-        if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::FillRect { rect, color, clip });
-        }
+        let _ = self.fill_path(rectangle_path(rect), Transform2D::IDENTITY, color, 0.25);
     }
 
-    /// Records a one-pixel rectangle outline.
+    /// Records a one-pixel rectangle outline using the active affine transform.
     pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
         if let Some(clip) = self.active_clip() {
-            self.commands
-                .push(Command::StrokeRect { rect, color, clip });
+            self.commands.push(Command::StrokeRect {
+                path: rectangle_path(rect),
+                transform: self.active_transform(),
+                color,
+                clip,
+            });
         }
     }
 
-    /// Records a one-pixel line. Endpoints are clipped during replay.
+    /// Records a one-pixel line. Its endpoints are transformed when recorded.
     pub fn line(&mut self, start: Point, end: Point, color: Color) {
         if let Some(clip) = self.active_clip() {
+            let transform = self.active_transform();
+            let start = transform.transform_point(crate::Vector::new(start.x as f32, start.y as f32));
+            let end = transform.transform_point(crate::Vector::new(end.x as f32, end.y as f32));
             self.commands.push(Command::Line {
-                start,
-                end,
+                start: Point::new(start.x.round() as i32, start.y.round() as i32),
+                end: Point::new(end.x.round() as i32, end.y.round() as i32),
                 color,
                 clip,
             });
@@ -275,18 +277,21 @@ impl DisplayList {
                     target.clear(*color);
                     true
                 }
-                Command::FillRect { rect, color, clip } => {
-                    if rect.intersection(*clip).is_some() {
-                        fill_rect_clipped(target, *rect, *clip, *color);
-                        true
-                    } else {
-                        false
-                    }
-                }
-                Command::StrokeRect { rect, color, clip } => {
-                    draw_stroke_rect(target, *rect, *clip, *color);
-                    rect.width > 0 && rect.height > 0 && rect.intersection(*clip).is_some()
-                }
+                Command::StrokeRect {
+                    path,
+                    transform,
+                    color,
+                    clip,
+                } => stroke_path_clipped(
+                    target,
+                    path,
+                    *transform,
+                    StrokeStyle::new(1.0),
+                    *color,
+                    0.25,
+                    *clip,
+                )
+                .is_ok()
                 Command::Line {
                     start,
                     end,
@@ -371,32 +376,18 @@ impl DisplayList {
     }
 }
 
-fn draw_stroke_rect(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
-    if rect.width == 0 || rect.height == 0 {
-        return;
-    }
-    let top = Rect::new(rect.x, rect.y, rect.width, 1);
-    let bottom = Rect::new(
-        rect.x,
-        rect.y.saturating_add(rect.height - 1),
-        rect.width,
-        1,
-    );
-    let left = Rect::new(rect.x, rect.y, 1, rect.height);
-    let right = Rect::new(
-        rect.x.saturating_add(rect.width - 1),
-        rect.y,
-        1,
-        rect.height,
-    );
-    fill_rect_clipped(target, top, clip, color);
-    if rect.height > 1 {
-        fill_rect_clipped(target, bottom, clip, color);
-    }
-    fill_rect_clipped(target, left, clip, color);
-    if rect.width > 1 {
-        fill_rect_clipped(target, right, clip, color);
-    }
+fn rectangle_path(rect: Rect) -> Path {
+    let left = rect.x as f32;
+    let top = rect.y as f32;
+    let right = rect.x.saturating_add(rect.width) as f32;
+    let bottom = rect.y.saturating_add(rect.height) as f32;
+    let mut path = Path::new();
+    path.move_to(crate::Vector::new(left, top))
+        .line_to(crate::Vector::new(right, top))
+        .line_to(crate::Vector::new(right, bottom))
+        .line_to(crate::Vector::new(left, bottom))
+        .close();
+    path
 }
 
 fn clip_line(start: Point, end: Point, clip: Rect) -> Option<(Point, Point)> {
@@ -528,6 +519,44 @@ mod tests {
         assert_eq!(target.get_pixel(4, 2), Some(Color::BLACK));
         assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
         assert_eq!(target.get_pixel(2, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn filled_rectangle_uses_active_rotation_transform() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(5.0, 1.0)));
+        assert!(list.push_transform(crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)));
+        list.fill_rect(Rect::new(0, 0, 3, 2), Color::GREEN);
+        let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
+        list.replay(&mut target);
+        assert_eq!(target.get_pixel(3, 2), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(6, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(4, 4), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn rectangle_outline_uses_active_transform() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(3.0, 2.0)));
+        list.stroke_rect(Rect::new(0, 0, 4, 3), Color::RED);
+        let mut target = Framebuffer::new(9, 8, Color::BLACK).unwrap();
+        list.replay(&mut target);
+        assert_eq!(target.get_pixel(3, 2), Some(Color::RED));
+        assert_eq!(target.get_pixel(5, 2), Some(Color::RED));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn line_uses_active_transform_when_recorded() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        list.line(Point::new(1, 2), Point::new(5, 2), Color::WHITE);
+        assert!(list.pop_transform());
+        let mut target = Framebuffer::new(9, 6, Color::BLACK).unwrap();
+        list.replay(&mut target);
+        assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(1, 2), Some(Color::BLACK));
     }
 
     #[test]
