@@ -188,7 +188,7 @@ pub fn draw_texture_transformed_clipped(
         return false;
     };
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
-        return;
+        return false;
     };
 
     let left = destination.x as f32;
@@ -205,7 +205,7 @@ pub fn draw_texture_transformed_clipped(
         .iter()
         .any(|point| !point.x.is_finite() || !point.y.is_finite())
     {
-        return;
+        return false;
     }
     let min_x = corners
         .iter()
@@ -230,7 +230,7 @@ pub fn draw_texture_transformed_clipped(
     let end_x = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
     let end_y = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
     if first_x >= end_x || first_y >= end_y {
-        return;
+        return false;
     }
 
     let local_left = destination.x as f32;
