@@ -255,7 +255,10 @@ pub fn draw_texture_transformed_clipped(
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_texture, draw_texture_clipped, Texture, TextureError, TextureFilter};
+    use super::{
+        draw_texture, draw_texture_clipped, draw_texture_transformed_clipped, Texture,
+        TextureError, TextureFilter,
+    };
     use crate::{Color, Framebuffer, Rect};
 
     fn two_color_texture() -> Texture {
@@ -348,6 +351,41 @@ mod tests {
         assert_eq!(target.get_pixel(2, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn affine_texture_transform_supports_rotation_and_sampling() {
+        let texture = two_color_texture();
+        let transform = crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)
+            .then(crate::Transform2D::translation(3.0, 1.0));
+        let mut target = Framebuffer::new(6, 5, Color::BLACK).unwrap();
+        draw_texture_transformed_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 2, 1),
+            transform,
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 6, 5),
+        );
+        assert_eq!(target.get_pixel(2, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn singular_texture_transform_is_a_noop() {
+        let texture = two_color_texture();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        draw_texture_transformed_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 2, 1),
+            crate::Transform2D::scale(0.0, 1.0),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 4, 4),
+        );
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
