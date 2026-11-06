@@ -876,7 +876,6 @@ pub fn draw_text_box_transformed_clipped(
     }
 }
 
-
 /// Returns whether a Unicode scalar is a combining mark in common scripts.
 /// This is a positioning aid, not a full Unicode grapheme or shaping algorithm.
 fn is_combining_mark(character: char) -> bool {
@@ -982,19 +981,9 @@ mod tests {
 
     #[test]
     fn combining_mark_position_is_centered_over_base() {
-        let origin = super::positioned_mark_origin(
-            '\u{0301}',
-            3,
-            2,
-            (10.0, 20.0, 8, 12),
-        );
+        let origin = super::positioned_mark_origin('\u{0301}', 3, 2, (10.0, 20.0, 8, 12));
         assert_eq!(origin, (12.5, 19.0));
-        let below = super::positioned_mark_origin(
-            '\u{0327}',
-            3,
-            2,
-            (10.0, 20.0, 8, 12),
-        );
+        let below = super::positioned_mark_origin('\u{0327}', 3, 2, (10.0, 20.0, 8, 12));
         assert_eq!(below, (12.5, 31.0));
     }
 
