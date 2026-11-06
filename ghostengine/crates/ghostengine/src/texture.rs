@@ -201,13 +201,28 @@ pub fn draw_texture_transformed_clipped(
         transform.transform_point(crate::Vector::new(right, bottom)),
         transform.transform_point(crate::Vector::new(left, bottom)),
     ];
-    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
         return;
     }
-    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
-    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
-    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+    let min_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::INFINITY, f32::min);
+    let min_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::NEG_INFINITY, f32::max);
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
     let first_x = min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
@@ -234,17 +249,13 @@ pub fn draw_texture_transformed_clipped(
                 continue;
             }
             visible = true;
-            let source_x = (local.x - local_left) * texture.width as f32
-                / destination.width as f32;
-            let source_y = (local.y - local_top) * texture.height as f32
-                / destination.height as f32;
+            let source_x =
+                (local.x - local_left) * texture.width as f32 / destination.width as f32;
+            let source_y =
+                (local.y - local_top) * texture.height as f32 / destination.height as f32;
             let color = match filter {
-                TextureFilter::Nearest => {
-                    texture.sample_nearest(source_x, source_y)
-                }
-                TextureFilter::Bilinear => {
-                    texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
-                }
+                TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
+                TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
             };
             if color.a == 0 {
                 continue;
