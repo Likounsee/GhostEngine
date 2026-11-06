@@ -142,15 +142,35 @@ pub fn draw_texture(
     destination: Rect,
     filter: TextureFilter,
 ) {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    draw_texture_clipped(target, texture, destination, filter, clip);
+}
+
+/// Draws a scaled texture while restricting writes to a framebuffer-space viewport.
+///
+/// Sampling coordinates remain relative to the full destination rectangle, so
+/// clipping an image does not rescale or shift the visible portion.
+pub fn draw_texture_clipped(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+) {
     if destination.width == 0 || destination.height == 0 {
         return;
     }
-    let left = destination.x.min(target.width());
-    let top = destination.y.min(target.height());
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return;
+    };
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
+    let left = destination.x.max(clip.x).min(clip_right);
+    let top = destination.y.max(clip.y).min(clip_bottom);
     let right = (u64::from(destination.x) + u64::from(destination.width))
-        .min(u64::from(target.width())) as u32;
+        .min(u64::from(clip_right)) as u32;
     let bottom = (u64::from(destination.y) + u64::from(destination.height))
-        .min(u64::from(target.height())) as u32;
+        .min(u64::from(clip_bottom)) as u32;
     if left >= right || top >= bottom {
         return;
     }
@@ -182,7 +202,7 @@ pub fn draw_texture(
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_texture, Texture, TextureError, TextureFilter};
+    use super::{draw_texture, draw_texture_clipped, Texture, TextureError, TextureFilter};
     use crate::{Color, Framebuffer, Rect};
 
     fn two_color_texture() -> Texture {
@@ -258,6 +278,37 @@ mod tests {
         );
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
         assert_eq!(target.get_pixel(1, 1), Some(Color::WHITE));
+    }
+
+    #[test]
+    fn clipped_texture_preserves_original_sampling_and_viewport() {
+        let texture = two_color_texture();
+        let mut target = Framebuffer::new(6, 2, Color::BLACK).unwrap();
+        draw_texture_clipped(
+            &mut target,
+            &texture,
+            Rect::new(1, 0, 4, 1),
+            TextureFilter::Nearest,
+            Rect::new(2, 0, 2, 1),
+        );
+        assert_eq!(target.get_pixel(1, 0), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn empty_texture_clip_is_noop() {
+        let texture = two_color_texture();
+        let mut target = Framebuffer::new(3, 2, Color::BLACK).unwrap();
+        draw_texture_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 3, 2),
+            TextureFilter::Bilinear,
+            Rect::new(8, 8, 2, 2),
+        );
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
