@@ -240,6 +240,25 @@ pub fn draw_label_clipped(
     draw_text_clipped(target, font, text, baseline, pixel_size, color, clip)
 }
 
+/// Rendering options for a single-line text input.
+#[derive(Debug, Clone, Copy)]
+pub struct TextInputOptions<'a> {
+    pub placeholder: &'a str,
+    pub pixel_size: f32,
+    pub focused: bool,
+    pub theme: &'a UiTheme,
+}
+
+/// Rendering options for a scrolling list.
+#[derive(Debug, Clone, Copy)]
+pub struct ListOptions<'a> {
+    /// Scroll offset in pixels from the start of the list content.
+    pub scroll_offset: u32,
+    pub row_height: u32,
+    pub pixel_size: f32,
+    pub theme: &'a UiTheme,
+}
+
 /// Editable single-line text state with a UTF-8-safe cursor and selection.
 ///
 /// Cursor and selection positions are byte offsets kept on Unicode scalar
@@ -402,22 +421,19 @@ pub fn draw_text_input(
     font: &FontFace,
     rect: Rect,
     state: &TextInputState,
-    placeholder: &str,
-    pixel_size: f32,
-    focused: bool,
-    theme: &UiTheme,
+    options: TextInputOptions<'_>,
 ) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
-    fill_rounded_rect(target, rect, 5, theme.control);
+    fill_rounded_rect(target, rect, 5, options.theme.control);
     draw_rect(
         target,
         rect,
         if focused {
-            theme.accent
+            options.theme.accent
         } else {
-            theme.control_border
+            options.theme.control_border
         },
     );
 
@@ -433,16 +449,16 @@ pub fn draw_text_input(
     }
 
     let display = if state.text.is_empty() {
-        placeholder
+        options.placeholder
     } else {
         &state.text
     };
     let color = if state.text.is_empty() {
-        theme.muted_text
+        options.theme.muted_text
     } else {
-        theme.text
+        options.theme.text
     };
-    let line_height = font.line_height(pixel_size);
+    let line_height = font.line_height(options.pixel_size);
     let baseline_y = i64::from(rect.y)
         + (i64::from(rect.height) - line_height.round() as i64) / 2
         + (line_height * 0.78).round() as i64;
@@ -456,8 +472,8 @@ pub fn draw_text_input(
 
     if !state.text.is_empty() {
         if let Some((start, end)) = state.selection() {
-            let before = font.measure(&state.text[..start], pixel_size).width;
-            let selected = font.measure(&state.text[start..end], pixel_size).width;
+            let before = font.measure(&state.text[..start], options.pixel_size).width;
+            let selected = font.measure(&state.text[start..end], options.pixel_size).width;
             let selection_x = i64::from(inner.x) + before.floor() as i64;
             if let Ok(selection_x) = u32::try_from(selection_x) {
                 let selection_rect = Rect::new(
@@ -466,15 +482,15 @@ pub fn draw_text_input(
                     (selected.ceil() as u32).min(inner.width),
                     rect.height.saturating_sub(6),
                 );
-                fill_rect_clipped(target, selection_rect, inner, theme.accent_hover);
+                fill_rect_clipped(target, selection_rect, inner, options.theme.accent_hover);
             }
         }
     }
 
-    draw_text_clipped(target, font, display, baseline, pixel_size, color, inner);
+    draw_text_clipped(target, font, display, baseline, options.pixel_size, color, inner);
 
-    if focused && !state.text.is_empty() {
-        let prefix = font.measure(&state.text[..state.cursor], pixel_size).width;
+    if options.focused && !state.text.is_empty() {
+        let prefix = font.measure(&state.text[..state.cursor], options.pixel_size).width;
         let caret_x = i64::from(inner.x) + prefix.round() as i64;
         if let Ok(caret_x) = u32::try_from(caret_x) {
             fill_rect_clipped(
@@ -489,7 +505,7 @@ pub fn draw_text_input(
                 theme.accent,
             );
         }
-    } else if focused && state.text.is_empty() {
+    } else if options.focused && state.text.is_empty() {
         fill_rect_clipped(
             target,
             Rect::new(
@@ -558,23 +574,20 @@ pub fn draw_list(
     bounds: Rect,
     items: &[&str],
     state: ListState,
-    scroll_offset: u32,
-    row_height: u32,
-    pixel_size: f32,
-    theme: &UiTheme,
+    options: ListOptions<'_>,
 ) {
-    if bounds.width == 0 || bounds.height == 0 || row_height == 0 {
+    if bounds.width == 0 || bounds.height == 0 || options.row_height == 0 {
         return;
     }
     let clip = bounds.intersection(Rect::new(0, 0, target.width(), target.height()));
     let Some(clip) = clip else {
         return;
     };
-    let first = (scroll_offset / row_height) as usize;
-    let last_exclusive = ((u64::from(scroll_offset) + u64::from(bounds.height))
-        .div_ceil(u64::from(row_height)))
+    let first = (options.scroll_offset / options.row_height) as usize;
+    let last_exclusive = ((u64::from(options.scroll_offset) + u64::from(bounds.height))
+        .div_ceil(u64::from(options.row_height)))
     .min(items.len() as u64) as usize;
-    let line_height = font.line_height(pixel_size);
+    let line_height = font.line_height(options.pixel_size);
     for (index, item) in items
         .iter()
         .enumerate()
@@ -582,8 +595,8 @@ pub fn draw_list(
         .skip(first.min(items.len()))
     {
         let row_top = i64::from(bounds.y)
-            .saturating_add((index as i64).saturating_mul(i64::from(row_height)))
-            .saturating_sub(i64::from(scroll_offset));
+            .saturating_add((index as i64).saturating_mul(i64::from(options.row_height)))
+            .saturating_sub(i64::from(options.scroll_offset));
         if row_top < 0 || row_top > i64::from(u32::MAX) {
             continue;
         }
@@ -591,10 +604,10 @@ pub fn draw_list(
             bounds.x,
             row_top as u32,
             bounds.width,
-            row_height.min(u32::MAX.saturating_sub(row_top as u32)),
+            options.row_height.min(u32::MAX.saturating_sub(row_top as u32)),
         );
         if state.selected == Some(index) {
-            fill_rect_clipped(target, row, clip, theme.accent_hover);
+            fill_rect_clipped(target, row, clip, options.theme.accent_hover);
         }
         let baseline_y = row_top
             + (i64::from(row_height) - line_height.round() as i64) / 2
@@ -610,8 +623,8 @@ pub fn draw_list(
             font,
             item,
             Point::new(x, y),
-            pixel_size,
-            theme.text,
+            options.pixel_size,
+            options.theme.text,
             clip,
         );
     }
