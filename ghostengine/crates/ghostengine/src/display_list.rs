@@ -122,7 +122,8 @@ impl DisplayList {
         self.clips.pop().is_some()
     }
 
-    /// Pushes an affine transform. Nested transforms are composed in push order:
+    /// Pushes an affine transform for subsequent vector-path commands.
+    /// Nested transforms are composed in push order:
     /// the existing transform is applied first, then the newly pushed transform.
     /// Non-finite matrices are rejected and leave the stack unchanged.
     pub fn push_transform(&mut self, transform: Transform2D) -> bool {
@@ -585,7 +586,6 @@ mod tests {
         assert_eq!(stats.commands_executed, 1);
     }
 
-
     #[test]
     fn nested_transforms_are_composed_and_captured_when_recording() {
         let mut path = crate::Path::new();
@@ -607,13 +607,8 @@ mod tests {
         .unwrap();
         assert!(list.pop_transform());
         assert!(list.pop_transform());
-        list.fill_path(
-            path,
-            crate::Transform2D::IDENTITY,
-            Color::RED,
-            0.25,
-        )
-        .unwrap();
+        list.fill_path(path, crate::Transform2D::IDENTITY, Color::RED, 0.25)
+            .unwrap();
 
         let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         list.replay(&mut target);
