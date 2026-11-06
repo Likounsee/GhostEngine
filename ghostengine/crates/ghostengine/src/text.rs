@@ -528,7 +528,6 @@ pub fn draw_text_clipped(
     }
 }
 
-
 /// Draws a text run with a full affine transform applied to every glyph.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_text_transformed_clipped(
@@ -569,7 +568,14 @@ pub fn draw_text_transformed_clipped(
                 let left = pen_x + glyph.xmin as f32;
                 let top = pen_y - glyph.ymin as f32 - glyph.height as f32;
                 draw_affine_glyph(
-                    target, &glyph, left, top, color, visible_clip, transform, inverse,
+                    target,
+                    &glyph,
+                    left,
+                    top,
+                    color,
+                    visible_clip,
+                    transform,
+                    inverse,
                 );
                 pen_x += glyph.advance_width;
             }
@@ -598,7 +604,10 @@ fn draw_affine_glyph(
         crate::Vector::new(left + glyph.width as f32, top + glyph.height as f32),
     ]
     .map(|point| transform.transform_point(point));
-    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
         return;
     }
     let min_x = corners
@@ -686,7 +695,9 @@ pub fn draw_text_box_transformed_clipped(
         || text.is_empty()
         || !options.line_spacing.is_finite()
         || options.line_spacing <= 0.0
-        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+        || options
+            .max_width
+            .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
         return TextMetrics::default();
     }
