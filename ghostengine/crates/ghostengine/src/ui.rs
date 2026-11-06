@@ -4,7 +4,7 @@
 //! event loop, or platform state; applications provide interaction state and
 //! use the same CPU renderer as every other scene.
 
-use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rounded_rect};
+use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rect_clipped, fill_rounded_rect};
 use crate::{draw_text, draw_text_clipped, Color, FontFace, Framebuffer, Point, Rect, TextMetrics};
 
 /// Visual state supplied by an application's hit-testing/input layer.
@@ -240,16 +240,253 @@ pub fn draw_label_clipped(
     draw_text_clipped(target, font, text, baseline, pixel_size, color, clip)
 }
 
+/// Editable single-line text state with a UTF-8-safe cursor and selection.
+///
+/// Cursor and selection positions are byte offsets kept on Unicode scalar
+/// boundaries. This model is independent from the platform keyboard backend.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TextInputState {
+    text: String,
+    cursor: usize,
+    selection_anchor: Option<usize>,
+}
+
+impl TextInputState {
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Self {
+        let text = text.into();
+        let cursor = text.len();
+        Self { text, cursor, selection_anchor: None }
+    }
+
+    #[must_use]
+    pub fn text(&self) -> &str { &self.text }
+
+    #[must_use]
+    pub const fn cursor(&self) -> usize { self.cursor }
+
+    #[must_use]
+    pub fn selection(&self) -> Option<(usize, usize)> {
+        self.selection_anchor
+            .map(|anchor| (anchor.min(self.cursor), anchor.max(self.cursor)))
+            .filter(|(start, end)| start != end)
+    }
+
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.text = text.into();
+        self.cursor = self.text.len();
+        self.selection_anchor = None;
+    }
+
+    pub fn set_cursor(&mut self, byte_index: usize, extend_selection: bool) {
+        let next = previous_boundary(&self.text, byte_index.min(self.text.len()));
+        if extend_selection {
+            self.selection_anchor.get_or_insert(self.cursor);
+        } else {
+            self.selection_anchor = None;
+        }
+        self.cursor = next;
+    }
+
+    pub fn select_all(&mut self) {
+        self.selection_anchor = Some(0);
+        self.cursor = self.text.len();
+    }
+
+    pub fn clear_selection(&mut self) { self.selection_anchor = None; }
+
+    pub fn move_left(&mut self, extend_selection: bool) {
+        let next = previous_boundary(&self.text, self.cursor.saturating_sub(1));
+        self.set_cursor(next, extend_selection);
+    }
+
+    pub fn move_right(&mut self, extend_selection: bool) {
+        let next = self.text[self.cursor..]
+            .chars()
+            .next()
+            .map_or(self.text.len(), |ch| self.cursor + ch.len_utf8());
+        self.set_cursor(next, extend_selection);
+    }
+
+    pub fn move_home(&mut self, extend_selection: bool) {
+        self.set_cursor(0, extend_selection);
+    }
+
+    pub fn move_end(&mut self, extend_selection: bool) {
+        self.set_cursor(self.text.len(), extend_selection);
+    }
+
+    /// Inserts text at the cursor, replacing any active selection.
+    pub fn insert_text(&mut self, inserted: &str) {
+        self.delete_selection();
+        self.text.insert_str(self.cursor, inserted);
+        self.cursor += inserted.len();
+    }
+
+    pub fn backspace(&mut self) {
+        if self.delete_selection() { return; }
+        if self.cursor == 0 { return; }
+        let previous = previous_boundary(&self.text, self.cursor - 1);
+        self.text.replace_range(previous..self.cursor, "");
+        self.cursor = previous;
+    }
+
+    pub fn delete_forward(&mut self) {
+        if self.delete_selection() { return; }
+        let Some(next) = self.text[self.cursor..]
+            .chars()
+            .next()
+            .map(|ch| self.cursor + ch.len_utf8())
+        else { return; };
+        self.text.replace_range(self.cursor..next, "");
+    }
+
+    fn delete_selection(&mut self) -> bool {
+        let Some((start, end)) = self.selection() else { return false; };
+        self.text.replace_range(start..end, "");
+        self.cursor = start;
+        self.selection_anchor = None;
+        true
+    }
+}
+
+fn previous_boundary(text: &str, mut index: usize) -> usize {
+    while index > 0 && !text.is_char_boundary(index) { index -= 1; }
+    index
+}
+
+/// Draws a single-line text field, including optional selection and a focused caret.
+///
+/// This is a deterministic static frame; the application controls caret blinking
+/// and keyboard events. Long text is clipped to the field's inner viewport.
+pub fn draw_text_input(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    rect: Rect,
+    state: &TextInputState,
+    placeholder: &str,
+    pixel_size: f32,
+    focused: bool,
+    theme: &UiTheme,
+) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    fill_rounded_rect(target, rect, 5, theme.control);
+    draw_rect(target, rect, if focused { theme.accent } else { theme.control_border });
+
+    let inset = 8_u32.min(rect.width / 2);
+    let inner = Rect::new(
+        rect.x.saturating_add(inset),
+        rect.y,
+        rect.width.saturating_sub(inset.saturating_mul(2)),
+        rect.height,
+    );
+    if inner.width == 0 { return; }
+
+    let display = if state.text.is_empty() { placeholder } else { &state.text };
+    let color = if state.text.is_empty() { theme.muted_text } else { theme.text };
+    let line_height = font.line_height(pixel_size);
+    let baseline_y = i64::from(rect.y)
+        + (i64::from(rect.height) - line_height.round() as i64) / 2
+        + (line_height * 0.78).round() as i64;
+    let Ok(baseline_y) = i32::try_from(baseline_y) else { return; };
+    let baseline = Point::new(inner.x as i32, baseline_y);
+
+    if !state.text.is_empty() {
+        if let Some((start, end)) = state.selection() {
+            let before = font.measure(&state.text[..start], pixel_size).width;
+            let selected = font.measure(&state.text[start..end], pixel_size).width;
+            let selection_x = i64::from(inner.x) + before.floor() as i64;
+            if let Ok(selection_x) = u32::try_from(selection_x) {
+                let selection_rect = Rect::new(
+                    selection_x,
+                    rect.y.saturating_add(3),
+                    (selected.ceil() as u32).min(inner.width),
+                    rect.height.saturating_sub(6),
+                );
+                fill_rect_clipped(target, selection_rect, inner, theme.accent_hover);
+            }
+        }
+    }
+
+    draw_text_clipped(target, font, display, baseline, pixel_size, color, inner);
+
+    if focused && !state.text.is_empty() {
+        let prefix = font.measure(&state.text[..state.cursor], pixel_size).width;
+        let caret_x = i64::from(inner.x) + prefix.round() as i64;
+        if let Ok(caret_x) = u32::try_from(caret_x) {
+            fill_rect_clipped(
+                target,
+                Rect::new(caret_x, rect.y.saturating_add(5), 1, rect.height.saturating_sub(10)),
+                inner,
+                theme.accent,
+            );
+        }
+    } else if focused && state.text.is_empty() {
+        fill_rect_clipped(
+            target,
+            Rect::new(inner.x, rect.y.saturating_add(5), 1, rect.height.saturating_sub(10)),
+            inner,
+            theme.accent,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, UiTheme,
-        WidgetState,
+        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, TextInputState,
+        UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn text_input_inserts_moves_and_deletes_unicode_safely() {
+        let mut input = TextInputState::new("aé🙂");
+        input.move_left(false);
+        assert_eq!(input.cursor(), 3);
+        input.insert_text("界");
+        assert_eq!(input.text(), "aé界🙂");
+        input.backspace();
+        assert_eq!(input.text(), "aé🙂");
+        input.move_home(false);
+        input.delete_forward();
+        assert_eq!(input.text(), "é🙂");
+    }
+
+    #[test]
+    fn text_input_selection_replacement_and_deletion_work() {
+        let mut input = TextInputState::new("hello world");
+        input.set_cursor(5, false);
+        input.set_cursor(11, true);
+        assert_eq!(input.selection(), Some((5, 11)));
+        input.insert_text("engine");
+        assert_eq!(input.text(), "helloengine");
+        assert_eq!(input.selection(), None);
+        input.select_all();
+        input.backspace();
+        assert_eq!(input.text(), "");
+        assert_eq!(input.cursor(), 0);
+    }
+
+    #[test]
+    fn text_input_cursor_never_splits_utf8_and_home_end_work() {
+        let mut input = TextInputState::new("é🙂x");
+        input.set_cursor(2, false);
+        assert_eq!(input.cursor(), 2);
+        input.set_cursor(1, false);
+        assert_eq!(input.cursor(), 0);
+        input.move_end(false);
+        assert_eq!(input.cursor(), "é🙂x".len());
+        input.move_home(false);
+        assert_eq!(input.cursor(), 0);
+        input.move_right(true);
+        assert_eq!(input.selection(), Some((0, 2)));
+        input.clear_selection();
+        assert_eq!(input.selection(), None);
     }
 
     #[test]
