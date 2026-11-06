@@ -1184,7 +1184,6 @@ mod tests {
     }
 }
 
-
 /// Fills only the intersection of a rectangle, a clip region, and the framebuffer.
 /// The clip is expressed in framebuffer coordinates and uses half-open bounds.
 pub fn fill_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
