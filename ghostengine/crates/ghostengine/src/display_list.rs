@@ -164,9 +164,12 @@ impl DisplayList {
 
     /// Records a one-pixel rectangle outline using the active affine transform.
     pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
+        if rect.width == 0 || rect.height == 0 {
+            return;
+        }
         if let Some(clip) = self.active_clip() {
             self.commands.push(Command::StrokeRect {
-                path: rectangle_path(rect),
+                path: stroke_rectangle_path(rect),
                 transform: self.active_transform(),
                 color,
                 clip,
@@ -382,6 +385,20 @@ fn rectangle_path(rect: Rect) -> Path {
     let top = rect.y as f32;
     let right = rect.x.saturating_add(rect.width) as f32;
     let bottom = rect.y.saturating_add(rect.height) as f32;
+    let mut path = Path::new();
+    path.move_to(crate::Vector::new(left, top))
+        .line_to(crate::Vector::new(right, top))
+        .line_to(crate::Vector::new(right, bottom))
+        .line_to(crate::Vector::new(left, bottom))
+        .close();
+    path
+}
+
+fn stroke_rectangle_path(rect: Rect) -> Path {
+    let left = rect.x as f32 + 0.5;
+    let top = rect.y as f32 + 0.5;
+    let right = rect.x.saturating_add(rect.width) as f32 - 0.5;
+    let bottom = rect.y.saturating_add(rect.height) as f32 - 0.5;
     let mut path = Path::new();
     path.move_to(crate::Vector::new(left, top))
         .line_to(crate::Vector::new(right, top))
