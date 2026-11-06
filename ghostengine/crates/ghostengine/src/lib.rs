@@ -38,6 +38,5 @@ pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_list,
     draw_panel, draw_progress_bar, draw_text_input, state_for_pointer, ListOptions, ListState,
-    TextInputOptions, TextInputState,
-    UiTheme, WidgetState,
+    TextInputOptions, TextInputState, UiTheme, WidgetState,
 };
