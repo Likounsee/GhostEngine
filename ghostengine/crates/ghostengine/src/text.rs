@@ -584,6 +584,7 @@ pub fn draw_text_transformed_clipped(
     metrics
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_affine_glyph(
     target: &mut Framebuffer,
     glyph: &CachedGlyph,
