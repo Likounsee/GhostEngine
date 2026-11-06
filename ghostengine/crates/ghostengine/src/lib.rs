@@ -25,8 +25,8 @@ pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
-    fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path,
-    PathError,
+    fill_path_even_odd, fill_path_even_odd_clipped, fill_transformed_path_even_odd,
+    fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{fill_rect_clipped, Gradient, GradientError, GradientStop};
 pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
