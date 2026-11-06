@@ -5,6 +5,7 @@
 
 pub mod color;
 pub mod composition;
+pub mod display_list;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
@@ -22,6 +23,7 @@ pub mod window;
 
 pub use color::Color;
 pub use composition::{compose_layers, Layer};
+pub use display_list::{DisplayList, RenderStats};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
