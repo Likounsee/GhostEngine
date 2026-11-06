@@ -579,7 +579,10 @@ mod tests {
     #[test]
     fn fallback_measurement_rejects_invalid_sizes() {
         let family = super::FontFamily::default();
-        assert_eq!(family.measure("Hello", f32::NAN), super::TextMetrics::default());
+        assert_eq!(
+            family.measure("Hello", f32::NAN),
+            super::TextMetrics::default()
+        );
         assert_eq!(family.measure("Hello", 0.0), super::TextMetrics::default());
     }
 
