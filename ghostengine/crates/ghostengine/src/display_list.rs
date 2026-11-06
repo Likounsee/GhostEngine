@@ -291,7 +291,7 @@ impl DisplayList {
                     0.25,
                     *clip,
                 )
-                .is_ok()
+                .is_ok(),
                 Command::Line {
                     start,
                     end,
