@@ -452,16 +452,8 @@ impl DisplayList {
                     color,
                     clip,
                 } => {
-                    draw_text_clipped(
-                        target,
-                        &font.0,
-                        text,
-                        *baseline,
-                        *pixel_size,
-                        *color,
-                        *clip,
-                    )
-                    .line_count
+                    draw_text_clipped(target, &font.0, text, *baseline, *pixel_size, *color, *clip)
+                        .line_count
                         > 0
                 }
                 Command::DrawTexture {
