@@ -178,7 +178,8 @@ impl DisplayList {
     pub fn line(&mut self, start: Point, end: Point, color: Color) {
         if let Some(clip) = self.active_clip() {
             let transform = self.active_transform();
-            let start = transform.transform_point(crate::Vector::new(start.x as f32, start.y as f32));
+            let start =
+                transform.transform_point(crate::Vector::new(start.x as f32, start.y as f32));
             let end = transform.transform_point(crate::Vector::new(end.x as f32, end.y as f32));
             self.commands.push(Command::Line {
                 start: Point::new(start.x.round() as i32, start.y.round() as i32),
