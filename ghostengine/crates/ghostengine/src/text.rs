@@ -1,8 +1,8 @@
 //! Font loading, basic text measurement and CPU glyph rasterization.
 //!
-//! This first text layer intentionally provides deterministic single-line-run
-//! layout. Complex script shaping, fallback chains and persistent glyph caching
-//! are separate follow-up milestones.
+//! Text layout and glyph rasterization for application interfaces.
+//! Complex script shaping, fallback chains and persistent glyph caching remain
+//! separate follow-up milestones.
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
@@ -349,6 +349,14 @@ mod tests {
         assert_eq!(metrics.line_count, 0);
     }
 
+    fn layout_lines_for_test(text: &str, max_width: f32) -> Vec<String> {
+        text.split('\n')
+            .flat_map(|paragraph| {
+                super::wrap_paragraph(paragraph, max_width, |part| part.len() as f32)
+            })
+            .collect()
+    }
+
     #[test]
     fn text_wrapping_keeps_words_together_when_they_fit() {
         let lines = super::wrap_paragraph("one two three", 7.0, |part| part.len() as f32);
@@ -363,7 +371,7 @@ mod tests {
 
     #[test]
     fn text_wrapping_preserves_empty_paragraphs() {
-        let lines = super::layout_lines_for_test("first\\n\\nlast", 20.0);
+        let lines = super::layout_lines_for_test("first\n\nlast", 20.0);
         assert_eq!(lines, ["first", "", "last"]);
     }
 }
