@@ -579,7 +579,7 @@ mod tests {
         list.push_clip(Rect::new(1, 1, 2, 2));
         list.fill_radial_gradient(
             Rect::new(0, 0, 4, 4),
-            crate::Vector::new(2.0, 2.0),
+            crate::Vector::new(1.5, 1.5),
             2.0,
             black_to_white_gradient(),
         );
@@ -587,8 +587,8 @@ mod tests {
         list.replay(&mut target);
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
-        assert_eq!(target.get_pixel(1, 1), Some(Color::rgb(165, 165, 165)));
-        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(45, 45, 45)));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(90, 90, 90)));
         assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
     }
 
