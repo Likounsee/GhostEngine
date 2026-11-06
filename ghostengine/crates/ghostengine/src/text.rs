@@ -568,7 +568,7 @@ mod tests {
         assert!(family.is_empty());
         assert_eq!(family.len(), 0);
         assert!(family.primary().is_none());
-        assert_eq!(family.font_for('A'), None);
+        assert!(family.font_for('A').is_none());
         assert_eq!(family.measure("Hello", 16.0), super::TextMetrics::default());
         assert_eq!(
             super::measure_with_fallback(&family, "Hello", 16.0),
