@@ -33,12 +33,166 @@ impl FontFace {
     }
 }
 
+/// Horizontal alignment used for each line in a constrained text run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// Layout constraints for application text blocks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextLayoutOptions {
+    /// Optional maximum line width. Long words are split when necessary.
+    pub max_width: Option<f32>,
+    pub align: TextAlign,
+    /// Multiplier applied to the font's natural line height.
+    pub line_spacing: f32,
+}
+
+impl Default for TextLayoutOptions {
+    fn default() -> Self {
+        Self {
+            max_width: None,
+            align: TextAlign::Left,
+            line_spacing: 1.0,
+        }
+    }
+}
+
 /// Logical size of a laid-out text run, in pixels.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TextMetrics {
     pub width: f32,
     pub height: f32,
     pub line_count: u32,
+}
+
+/// Draws a wrapped and aligned text block with a framebuffer-space clip.
+///
+/// `baseline` is the baseline of the first line. `max_width` controls word
+/// wrapping and the alignment box. Newlines are always respected; words wider than the
+/// box are split at character boundaries. The returned width is the widest rendered line.
+pub fn draw_text_box_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    options: TextLayoutOptions,
+) -> TextMetrics {
+    if !pixel_size.is_finite()
+        || pixel_size <= 0.0
+        || text.is_empty()
+        || !options.line_spacing.is_finite()
+        || options.line_spacing <= 0.0
+        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+    {
+        return TextMetrics::default();
+    }
+
+    let lines = layout_lines(font, text, pixel_size, options.max_width);
+    if lines.is_empty() {
+        return TextMetrics::default();
+    }
+    let line_height = font.line_height(pixel_size) * options.line_spacing;
+    let box_width = options.max_width.unwrap_or_else(|| {
+        lines
+            .iter()
+            .map(|line| font.measure(line, pixel_size).width)
+            .fold(0.0_f32, f32::max)
+    });
+    let mut max_width = 0.0_f32;
+    for (index, line) in lines.iter().enumerate() {
+        let width = font.measure(line, pixel_size).width;
+        max_width = max_width.max(width);
+        let offset = match options.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => ((box_width - width) * 0.5).max(0.0),
+            TextAlign::Right => (box_width - width).max(0.0),
+        };
+        let y = baseline.y as f32 + index as f32 * line_height;
+        if !y.is_finite() || y < i32::MIN as f32 || y > i32::MAX as f32 {
+            continue;
+        }
+        let x = baseline.x as f32 + offset;
+        if !x.is_finite() || x < i32::MIN as f32 || x > i32::MAX as f32 {
+            continue;
+        }
+        draw_text_clipped(
+            target,
+            font,
+            line,
+            Point::new(x.round() as i32, y.round() as i32),
+            pixel_size,
+            color,
+            clip,
+        );
+    }
+
+    TextMetrics {
+        width: max_width,
+        height: line_height * lines.len() as f32,
+        line_count: lines.len() as u32,
+    }
+}
+
+fn layout_lines(
+    font: &FontFace,
+    text: &str,
+    pixel_size: f32,
+    max_width: Option<f32>,
+) -> Vec<String> {
+    let Some(max_width) = max_width else {
+        return text.split('\n').map(str::to_owned).collect();
+    };
+    let mut output = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        let mut line_width = 0.0_f32;
+        for word in paragraph.split_whitespace() {
+            let word_width = measure_word(font, word, pixel_size);
+            let separator_width = if line.is_empty() {
+                0.0
+            } else {
+                font.font.metrics(' ', pixel_size).advance_width
+            };
+            if !line.is_empty() && line_width + separator_width + word_width > max_width {
+                output.push(std::mem::take(&mut line));
+                line_width = 0.0;
+            }
+            if word_width <= max_width {
+                if !line.is_empty() {
+                    line.push(' ');
+                    line_width += separator_width;
+                }
+                line.push_str(word);
+                line_width += word_width;
+            } else {
+                for character in word.chars() {
+                    let advance = font.font.metrics(character, pixel_size).advance_width;
+                    if !line.is_empty() && line_width + advance > max_width {
+                        output.push(std::mem::take(&mut line));
+                        line_width = 0.0;
+                    }
+                    line.push(character);
+                    line_width += advance;
+                }
+            }
+        }
+        output.push(line);
+    }
+    output
+}
+
+fn measure_word(font: &FontFace, word: &str, pixel_size: f32) -> f32 {
+    word.chars()
+        .map(|character| font.font.metrics(character, pixel_size).advance_width)
+        .sum()
 }
 
 /// Draws text with the supplied baseline origin and returns its measured bounds.
