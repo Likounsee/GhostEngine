@@ -535,8 +535,8 @@ pub fn draw_text_input(
     );
 
     if options.focused && !state.text.is_empty() {
-        let caret_x = i64::from(inner.x) + cursor_width.round() as i64
-            - horizontal_offset.floor() as i64;
+        let caret_x =
+            i64::from(inner.x) + cursor_width.round() as i64 - horizontal_offset.floor() as i64;
         if let Ok(caret_x) = u32::try_from(caret_x) {
             fill_rect_clipped(
                 target,
