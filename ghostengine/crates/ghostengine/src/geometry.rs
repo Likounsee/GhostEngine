@@ -63,7 +63,12 @@ impl Rect {
         if u64::from(left) >= right || u64::from(top) >= bottom {
             return None;
         }
-        Some(Self::new(left, top, (right - u64::from(left)) as u32, (bottom - u64::from(top)) as u32))
+        Some(Self::new(
+            left,
+            top,
+            (right - u64::from(left)) as u32,
+            (bottom - u64::from(top)) as u32,
+        ))
     }
 
     #[must_use]
@@ -87,7 +92,10 @@ mod tests {
 
     #[test]
     fn rectangle_intersection_handles_overlap_touching_and_empty_rectangles() {
-        assert_eq!(Rect::new(2, 3, 8, 7).intersection(Rect::new(6, 1, 5, 5)), Some(Rect::new(6, 3, 4, 3)));
+        assert_eq!(
+            Rect::new(2, 3, 8, 7).intersection(Rect::new(6, 1, 5, 5)),
+            Some(Rect::new(6, 3, 4, 3))
+        );
         assert_eq!(Rect::new(0, 0, 4, 4).intersection(Rect::new(4, 0, 2, 2)), None);
         assert_eq!(Rect::new(0, 0, 0, 4).intersection(Rect::new(0, 0, 2, 2)), None);
     }
