@@ -10,7 +10,7 @@ use crate::rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
-use crate::text::{draw_text_clipped, FontFace};
+use crate::text::{draw_text_box_clipped, FontFace, TextLayoutOptions};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
@@ -66,6 +66,7 @@ enum Command {
         baseline: Point,
         pixel_size: f32,
         color: Color,
+        options: TextLayoutOptions,
         clip: Rect,
     },
     DrawTexture {
@@ -296,8 +297,35 @@ impl DisplayList {
         pixel_size: f32,
         color: Color,
     ) {
+        self.draw_text_box(
+            font,
+            text,
+            baseline,
+            pixel_size,
+            color,
+            TextLayoutOptions::default(),
+        );
+    }
+
+    /// Records a wrapped and aligned text block. Its first baseline is transformed
+    /// when recorded; glyphs themselves remain screen-aligned.
+    pub fn draw_text_box(
+        &mut self,
+        font: Arc<FontFace>,
+        text: impl Into<String>,
+        baseline: Point,
+        pixel_size: f32,
+        color: Color,
+        options: TextLayoutOptions,
+    ) {
         let text = text.into();
-        if text.is_empty() || !pixel_size.is_finite() || pixel_size <= 0.0 {
+        if text.is_empty()
+            || !pixel_size.is_finite()
+            || pixel_size <= 0.0
+            || !options.line_spacing.is_finite()
+            || options.line_spacing <= 0.0
+            || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+        {
             return;
         }
         if let Some(clip) = self.active_clip() {
@@ -319,6 +347,7 @@ impl DisplayList {
                 baseline: Point::new(origin.x.round() as i32, origin.y.round() as i32),
                 pixel_size,
                 color,
+                options,
                 clip,
             });
         }
@@ -450,10 +479,13 @@ impl DisplayList {
                     baseline,
                     pixel_size,
                     color,
+                    options,
                     clip,
                 } => {
-                    draw_text_clipped(target, &font.0, text, *baseline, *pixel_size, *color, *clip)
-                        .line_count
+                    draw_text_box_clipped(
+                        target, &font.0, text, *baseline, *pixel_size, *color, *clip, *options,
+                    )
+                    .line_count
                         > 0
                 }
                 Command::DrawTexture {
