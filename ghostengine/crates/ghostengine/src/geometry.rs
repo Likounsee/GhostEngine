@@ -96,8 +96,14 @@ mod tests {
             Rect::new(2, 3, 8, 7).intersection(Rect::new(6, 1, 5, 5)),
             Some(Rect::new(6, 3, 4, 3))
         );
-        assert_eq!(Rect::new(0, 0, 4, 4).intersection(Rect::new(4, 0, 2, 2)), None);
-        assert_eq!(Rect::new(0, 0, 0, 4).intersection(Rect::new(0, 0, 2, 2)), None);
+        assert_eq!(
+            Rect::new(0, 0, 4, 4).intersection(Rect::new(4, 0, 2, 2)),
+            None
+        );
+        assert_eq!(
+            Rect::new(0, 0, 0, 4).intersection(Rect::new(0, 0, 2, 2)),
+            None
+        );
     }
 
     #[test]
