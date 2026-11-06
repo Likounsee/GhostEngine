@@ -781,6 +781,58 @@ mod tests {
     // A compact embedded test font is deliberately avoided; loading behavior is
     // exercised by callers with their own licensed TTF/OTF asset.
     #[test]
+    fn affine_glyph_renderer_preserves_identity_coverage() {
+        let glyph = super::CachedGlyph {
+            xmin: 0,
+            ymin: 1,
+            width: 2,
+            height: 1,
+            advance_width: 2.0,
+            bitmap: std::sync::Arc::from([255_u8, 128_u8]),
+        };
+        let mut target = crate::Framebuffer::new(5, 4, crate::Color::BLACK).unwrap();
+        super::draw_affine_glyph(
+            &mut target,
+            &glyph,
+            1.0,
+            1.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 5, 4),
+            crate::Transform2D::IDENTITY,
+            crate::Transform2D::IDENTITY,
+        );
+        assert_eq!(target.get_pixel(1, 1), Some(crate::Color::WHITE));
+        assert_ne!(target.get_pixel(2, 1), Some(crate::Color::BLACK));
+        assert_eq!(target.get_pixel(3, 1), Some(crate::Color::BLACK));
+    }
+
+    #[test]
+    fn affine_glyph_renderer_rotates_glyph_bitmap() {
+        let glyph = super::CachedGlyph {
+            xmin: 0,
+            ymin: 1,
+            width: 1,
+            height: 1,
+            advance_width: 1.0,
+            bitmap: std::sync::Arc::from([255_u8]),
+        };
+        let transform = crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)
+            .then(crate::Transform2D::translation(4.0, 1.0));
+        let mut target = crate::Framebuffer::new(6, 6, crate::Color::BLACK).unwrap();
+        super::draw_affine_glyph(
+            &mut target,
+            &glyph,
+            1.0,
+            1.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 6, 6),
+            transform,
+            transform.inverse().unwrap(),
+        );
+        assert_eq!(target.get_pixel(2, 2), Some(crate::Color::WHITE));
+    }
+
+    #[test]
     fn empty_font_family_is_safe_and_reports_empty_metrics() {
         let family = super::FontFamily::default();
         assert!(family.is_empty());
