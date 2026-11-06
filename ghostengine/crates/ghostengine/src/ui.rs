@@ -205,7 +205,7 @@ pub fn draw_progress_bar(target: &mut Framebuffer, rect: Rect, progress: f32, th
             target,
             Rect::new(rect.x, rect.y, filled_width.min(rect.width), rect.height),
             radius.min(filled_width / 2),
-            theme.accent,
+            options.theme.accent,
         );
     }
 }
