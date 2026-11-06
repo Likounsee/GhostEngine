@@ -28,7 +28,10 @@ struct CachedGlyph {
 impl FontFace {
     /// Loads a font from in-memory TTF/OTF bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
-        Font::from_bytes(bytes, fontdue::FontSettings::default()).map(|font| Self {\n            font,\n            glyph_cache: Mutex::new(HashMap::new()),\n        })
+        Font::from_bytes(bytes, fontdue::FontSettings::default()).map(|font| Self {
+            font,
+            glyph_cache: Mutex::new(HashMap::new()),
+        })
     }
 
     /// Returns the recommended baseline-to-baseline distance at this size.
@@ -304,7 +307,7 @@ pub fn draw_text_clipped(
     let origin_x = pen_x;
     let mut max_width: f32 = 0.0;
     let mut line_count = 1_u32;
-    let (space_metrics, _) = font.font.rasterize(' ', pixel_size);
+    let space_metrics = font.glyph(' ', pixel_size);
     let tab_width = (space_metrics.advance_width * 4.0).max(pixel_size);
 
     for character in text.chars() {
@@ -372,7 +375,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
                 line_count += 1;
             }
             '\t' => line_width += tab_width,
-            character => line_width += font.font.metrics(character, pixel_size).advance_width,
+            character => line_width += font.glyph(character, pixel_size).advance_width,
         }
     }
     max_width = max_width.max(line_width);
