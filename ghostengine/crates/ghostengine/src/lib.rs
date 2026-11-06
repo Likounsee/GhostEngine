@@ -37,7 +37,10 @@ pub use rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
 };
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
-pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
+pub use text::{
+    draw_text, draw_text_box_clipped, draw_text_clipped, FontFace, TextAlign, TextLayoutOptions,
+    TextMetrics,
+};
 pub use texture::{
     draw_texture, draw_texture_clipped, draw_texture_transformed_clipped, Texture, TextureError,
     TextureFilter,
