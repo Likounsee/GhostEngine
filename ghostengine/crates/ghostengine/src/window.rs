@@ -41,6 +41,7 @@ pub struct InputState {
     pub pressed_characters: Vec<char>,
     pub backspace_pressed: bool,
     pub enter_pressed: bool,
+    pub tab_pressed: bool,
     pub escape_down: bool,
 }
 
@@ -102,6 +103,7 @@ impl WindowSurface {
             match key {
                 Key::Backspace => input.backspace_pressed = true,
                 Key::Enter => input.enter_pressed = true,
+                Key::Tab => input.tab_pressed = true,
                 _ => {
                     if let Some(character) = key_to_character(key) {
                         input.pressed_characters.push(character);
