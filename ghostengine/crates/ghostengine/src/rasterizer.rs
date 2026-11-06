@@ -1188,12 +1188,9 @@ mod tests {
 /// Fills only the intersection of a rectangle, a clip region, and the framebuffer.
 /// The clip is expressed in framebuffer coordinates and uses half-open bounds.
 pub fn fill_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
-    let Some(visible) = rect
-        .intersection(clip)
-        .and_then(|intersection| {
-            intersection.intersection(Rect::new(0, 0, target.width(), target.height()))
-        })
-    else {
+    let Some(visible) = rect.intersection(clip).and_then(|intersection| {
+        intersection.intersection(Rect::new(0, 0, target.width(), target.height()))
+    }) else {
         return;
     };
     fill_rect(target, visible, color);
@@ -1207,7 +1204,12 @@ mod clipping_tests {
     #[test]
     fn clipped_fill_respects_both_shape_and_viewport() {
         let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
-        fill_rect_clipped(&mut target, Rect::new(2, 1, 8, 7), Rect::new(5, 3, 4, 4), Color::RED);
+        fill_rect_clipped(
+            &mut target,
+            Rect::new(2, 1, 8, 7),
+            Rect::new(5, 3, 4, 4),
+            Color::RED,
+        );
         assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
         assert_eq!(target.get_pixel(8, 3), Some(Color::BLACK));
         assert_eq!(target.get_pixel(5, 7), Some(Color::BLACK));
@@ -1217,15 +1219,30 @@ mod clipping_tests {
     #[test]
     fn clipped_fill_handles_disjoint_and_offscreen_rectangles() {
         let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
-        fill_rect_clipped(&mut target, Rect::new(8, 8, 2, 2), Rect::new(0, 0, 4, 4), Color::RED);
-        fill_rect_clipped(&mut target, Rect::new(0, 0, 4, 4), Rect::new(20, 20, 3, 3), Color::RED);
+        fill_rect_clipped(
+            &mut target,
+            Rect::new(8, 8, 2, 2),
+            Rect::new(0, 0, 4, 4),
+            Color::RED,
+        );
+        fill_rect_clipped(
+            &mut target,
+            Rect::new(0, 0, 4, 4),
+            Rect::new(20, 20, 3, 3),
+            Color::RED,
+        );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
     fn clipped_fill_supports_clip_larger_than_framebuffer() {
         let mut target = Framebuffer::new(3, 2, Color::BLACK).unwrap();
-        fill_rect_clipped(&mut target, Rect::new(0, 0, 8, 8), Rect::new(0, 0, 20, 20), Color::WHITE);
+        fill_rect_clipped(
+            &mut target,
+            Rect::new(0, 0, 8, 8),
+            Rect::new(0, 0, 20, 20),
+            Color::WHITE,
+        );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
     }
 }
