@@ -142,7 +142,11 @@ impl DisplayList {
     }
 
     fn active_clip(&self) -> Option<Rect> {
-        self.clips.last().copied()
+        match self.clips.last().copied() {
+            Some(clip) if clip.width == 0 || clip.height == 0 => None,
+            Some(clip) => Some(clip),
+            None => Some(Rect::new(0, 0, u32::MAX, u32::MAX)),
+        }
     }
 }
 
