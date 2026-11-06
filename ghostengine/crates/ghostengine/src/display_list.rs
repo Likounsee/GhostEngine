@@ -332,27 +332,19 @@ impl DisplayList {
             return;
         }
         if let Some(clip) = self.active_clip() {
-            let origin = self
-                .active_transform()
-                .transform_point(crate::Vector::new(baseline.x as f32, baseline.y as f32));
-            if !origin.x.is_finite()
-                || !origin.y.is_finite()
-                || origin.x < i32::MIN as f32
-                || origin.x > i32::MAX as f32
-                || origin.y < i32::MIN as f32
-                || origin.y > i32::MAX as f32
-            {
-                return;
+            let transform = self.active_transform();
+            if transform.is_finite() && transform.inverse().is_some() {
+                self.commands.push(Command::DrawText {
+                    font: SharedFont(font),
+                    text,
+                    baseline,
+                    transform,
+                    pixel_size,
+                    color,
+                    options,
+                    clip,
+                });
             }
-            self.commands.push(Command::DrawText {
-                font: SharedFont(font),
-                text,
-                baseline: Point::new(origin.x.round() as i32, origin.y.round() as i32),
-                pixel_size,
-                color,
-                options,
-                clip,
-            });
         }
     }
 
