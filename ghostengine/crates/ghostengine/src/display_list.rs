@@ -11,7 +11,24 @@ use crate::rasterizer::{
 };
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
+use crate::text::{draw_text_clipped, FontFace};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct SharedFont(Arc<FontFace>);
+
+impl std::fmt::Debug for SharedFont {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("SharedFont(..)")
+    }
+}
+
+impl PartialEq for SharedFont {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
