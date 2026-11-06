@@ -326,6 +326,151 @@ pub fn fill_rect_radial_gradient(
     }
 }
 
+/// Fills an affine-transformed rectangle with a linear gradient.
+/// Gradient coordinates are expressed in the rectangle's local coordinate space.
+/// Pixel centers are mapped through the inverse transform for stable sampling.
+pub fn fill_transformed_rect_linear_gradient_clipped(
+    target: &mut Framebuffer,
+    rect: Rect,
+    transform: crate::Transform2D,
+    start: crate::Vector,
+    end: crate::Vector,
+    gradient: &Gradient,
+    clip: Rect,
+) -> bool {
+    if !transform.is_finite()
+        || !start.x.is_finite()
+        || !start.y.is_finite()
+        || !end.x.is_finite()
+        || !end.y.is_finite()
+        || rect.width == 0
+        || rect.height == 0
+    {
+        return false;
+    }
+    let Some(inverse) = transform.inverse() else {
+        return false;
+    };
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return false;
+    };
+    let corners = transformed_rect_corners(rect, transform);
+    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+        return false;
+    }
+    let Some((left, top, right, bottom)) = transformed_bounds(&corners, clip) else {
+        return false;
+    };
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_squared = dx * dx + dy * dy;
+    let mut visible = false;
+    for y in top..bottom {
+        for x in left..right {
+            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+            if !rect_contains_point(rect, local) {
+                continue;
+            }
+            visible = true;
+            let position = if length_squared <= f32::EPSILON {
+                0.0
+            } else {
+                (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
+                    .clamp(0.0, 1.0)
+            };
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
+        }
+    }
+    visible
+}
+
+/// Fills an affine-transformed rectangle with a radial gradient.
+/// The center and radius are expressed in local coordinate space.
+pub fn fill_transformed_rect_radial_gradient_clipped(
+    target: &mut Framebuffer,
+    rect: Rect,
+    transform: crate::Transform2D,
+    center: crate::Vector,
+    radius: f32,
+    gradient: &Gradient,
+    clip: Rect,
+) -> bool {
+    if !transform.is_finite()
+        || !center.x.is_finite()
+        || !center.y.is_finite()
+        || !radius.is_finite()
+        || radius <= 0.0
+        || rect.width == 0
+        || rect.height == 0
+    {
+        return false;
+    }
+    let Some(inverse) = transform.inverse() else {
+        return false;
+    };
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return false;
+    };
+    let corners = transformed_rect_corners(rect, transform);
+    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+        return false;
+    }
+    let Some((left, top, right, bottom)) = transformed_bounds(&corners, clip) else {
+        return false;
+    };
+    let mut visible = false;
+    for y in top..bottom {
+        for x in left..right {
+            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+            if !rect_contains_point(rect, local) {
+                continue;
+            }
+            visible = true;
+            let position = ((local.x - center.x).hypot(local.y - center.y) / radius)
+                .clamp(0.0, 1.0);
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
+        }
+    }
+    visible
+}
+
+fn transformed_rect_corners(rect: Rect, transform: crate::Transform2D) -> [crate::Vector; 4] {
+    let left = rect.x as f32;
+    let top = rect.y as f32;
+    let right = rect.x.saturating_add(rect.width) as f32;
+    let bottom = rect.y.saturating_add(rect.height) as f32;
+    [
+        transform.transform_point(crate::Vector::new(left, top)),
+        transform.transform_point(crate::Vector::new(right, top)),
+        transform.transform_point(crate::Vector::new(right, bottom)),
+        transform.transform_point(crate::Vector::new(left, bottom)),
+    ]
+}
+
+fn transformed_bounds(
+    corners: &[crate::Vector; 4],
+    clip: Rect,
+) -> Option<(u32, u32, u32, u32)> {
+    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
+    let left = min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
+    let top = min_y.floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let right = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let bottom = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    (left < right && top < bottom).then_some((left, top, right, bottom))
+}
+
+fn rect_contains_point(rect: Rect, point: crate::Vector) -> bool {
+    point.x >= rect.x as f32
+        && point.y >= rect.y as f32
+        && point.x < rect.x.saturating_add(rect.width) as f32
+        && point.y < rect.y.saturating_add(rect.height) as f32
+}
+
 /// Draws a one-pixel rectangle outline. The rectangle uses half-open bounds.
 pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     if rect.width == 0 || rect.height == 0 {
