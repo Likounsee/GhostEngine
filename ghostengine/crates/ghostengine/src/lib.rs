@@ -34,6 +34,6 @@ pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
 pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
 pub use transform::Transform2D;
 pub use ui::{
-    draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_panel, draw_progress_bar,
-    state_for_pointer, UiTheme, WidgetState,
+    draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_panel,
+    draw_progress_bar, state_for_pointer, UiTheme, WidgetState,
 };
