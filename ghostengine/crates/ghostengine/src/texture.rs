@@ -249,8 +249,7 @@ pub fn draw_texture_transformed_clipped(
                 continue;
             }
             visible = true;
-            let source_x =
-                (local.x - local_left) * texture.width as f32 / destination.width as f32;
+            let source_x = (local.x - local_left) * texture.width as f32 / destination.width as f32;
             let source_y =
                 (local.y - local_top) * texture.height as f32 / destination.height as f32;
             let color = match filter {
