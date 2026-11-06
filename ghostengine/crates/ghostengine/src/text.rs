@@ -580,8 +580,10 @@ pub fn draw_text_clipped(
             continue;
         }
 
-        if let Some(previous_character) = previous {
-            pen_x += font.kerning(previous_character, character, pixel_size);
+        if !is_combining_mark(character) {
+            if let Some(previous_character) = previous {
+                pen_x += font.kerning(previous_character, character, pixel_size);
+            }
         }
         let glyph = font.glyph(character, pixel_size);
         let mut glyph_left = pen_x + glyph.xmin as f32;
@@ -674,8 +676,10 @@ pub fn draw_text_transformed_clipped(
                 base_anchor = None;
             }
             character => {
-                if let Some(previous_character) = previous {
-                    pen_x += font.kerning(previous_character, character, pixel_size);
+                if !is_combining_mark(character) {
+                    if let Some(previous_character) = previous {
+                        pen_x += font.kerning(previous_character, character, pixel_size);
+                    }
                 }
                 let glyph = font.glyph(character, pixel_size);
                 let mut left = pen_x + glyph.xmin as f32;
