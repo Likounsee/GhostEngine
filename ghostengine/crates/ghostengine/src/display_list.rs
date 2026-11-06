@@ -9,7 +9,7 @@ use crate::rasterizer::{
     draw_line, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
-use crate::stroke::{stroke_path_clipped, StrokeStyle};
+use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 
@@ -31,6 +31,14 @@ enum Command {
     FillPath {
         path: Path,
         transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+        clip: Rect,
+    },
+    StrokePath {
+        path: Path,
+        transform: Transform2D,
+        style: StrokeStyle,
         color: Color,
         tolerance: f32,
         clip: Rect,
@@ -220,6 +228,37 @@ impl DisplayList {
         Ok(())
     }
 
+    /// Records a stroked vector path. Stroke width is measured in framebuffer
+    /// pixels after the combined local and active transforms are applied.
+    pub fn stroke_path(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        style: StrokeStyle,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), StrokeError> {
+        if !style.width.is_finite() || style.width <= 0.0 {
+            return Err(StrokeError::InvalidWidth);
+        }
+        let transform = transform.then(self.active_transform());
+        if !transform.is_finite() {
+            return Err(StrokeError::InvalidTransform);
+        }
+        path.flatten(tolerance)?.transformed(transform)?;
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::StrokePath {
+                path,
+                transform,
+                style,
+                color,
+                tolerance,
+                clip,
+            });
+        }
+        Ok(())
+    }
+
     /// Records an image command with its sampling mode, active transform and clip.
     pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
         if let Some(clip) = self.active_clip() {
@@ -329,6 +368,23 @@ impl DisplayList {
                     );
                     result.is_ok()
                 }
+                Command::StrokePath {
+                    path,
+                    transform,
+                    style,
+                    color,
+                    tolerance,
+                    clip,
+                } => stroke_path_clipped(
+                    target,
+                    path,
+                    *transform,
+                    *style,
+                    *color,
+                    *tolerance,
+                    *clip,
+                )
+                .is_ok(),
                 Command::DrawTexture {
                     texture,
                     destination,
@@ -613,6 +669,50 @@ mod tests {
         assert_eq!(
             list.fill_path(path, crate::Transform2D::IDENTITY, Color::RED, 0.25),
             Err(crate::PathError::MissingCurrentPoint),
+        );
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn stroked_vector_path_uses_active_transform_and_clip() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.0, 2.0))
+            .line_to(crate::Vector::new(6.0, 2.0));
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        list.push_clip(Rect::new(3, 1, 3, 3));
+        list.stroke_path(
+            path,
+            crate::Transform2D::IDENTITY,
+            crate::StrokeStyle::new(2.0),
+            Color::WHITE,
+            0.25,
+        )
+        .unwrap();
+        let mut target = Framebuffer::new(9, 6, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(3, 2), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(5, 2), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(6, 2), Some(Color::BLACK));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn invalid_stroke_is_rejected_before_recording() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(0.0, 0.0))
+            .line_to(crate::Vector::new(2.0, 0.0));
+        let mut list = DisplayList::new();
+        assert_eq!(
+            list.stroke_path(
+                path,
+                crate::Transform2D::IDENTITY,
+                crate::StrokeStyle::new(0.0),
+                Color::RED,
+                0.25,
+            ),
+            Err(crate::StrokeError::InvalidWidth),
         );
         assert!(list.is_empty());
     }
