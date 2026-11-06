@@ -6,6 +6,8 @@
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
+
+const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -73,6 +75,10 @@ impl FontFace {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(glyph) = cache.get(&key) {
             return Arc::clone(glyph);
+        }
+        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
+            // Bound memory when applications animate font sizes or render arbitrary text.
+            cache.clear();
         }
         let (metrics, bitmap) = self.font.rasterize(character, pixel_size);
         let glyph = Arc::new(CachedGlyph {
