@@ -5,7 +5,7 @@
 //! use the same CPU renderer as every other scene.
 
 use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rounded_rect};
-use crate::{draw_text, Color, FontFace, Framebuffer, Point, Rect};
+use crate::{draw_text, draw_text_clipped, Color, FontFace, Framebuffer, Point, Rect, TextMetrics};
 
 /// Visual state supplied by an application's hit-testing/input layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -118,13 +118,14 @@ pub fn draw_button(
         + (i64::from(rect.height) - line_height.round() as i64) / 2
         + (line_height * 0.78).round() as i64;
     if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(y)) {
-        draw_text(
+        draw_text_clipped(
             target,
             font,
             label,
             Point::new(x, y),
             pixel_size,
             foreground,
+            rect,
         );
     }
 }
@@ -224,6 +225,19 @@ pub fn draw_label(
     color: Color,
 ) {
     draw_text(target, font, text, baseline, pixel_size, color);
+}
+
+/// Draws a text label while restricting glyph pixels to a viewport rectangle.
+pub fn draw_label_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    draw_text_clipped(target, font, text, baseline, pixel_size, color, clip)
 }
 
 #[cfg(test)]
