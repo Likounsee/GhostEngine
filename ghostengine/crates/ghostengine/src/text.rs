@@ -205,6 +205,9 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                 previous = None;
             }
             character => {
+                if is_combining_mark(character) {
+                    continue;
+                }
                 let face = family.font_for(character).unwrap_or(primary);
                 let face_index = family
                     .faces
@@ -251,6 +254,7 @@ pub fn draw_text_with_fallback_clipped(
     let mut x = baseline.x as f32;
     let mut y = baseline.y;
     let mut previous: Option<(char, usize)> = None;
+    let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let space = family
         .font_for(' ')
         .unwrap_or(primary)
@@ -261,6 +265,7 @@ pub fn draw_text_with_fallback_clipped(
             '\n' => {
                 x = baseline.x as f32;
                 previous = None;
+                base_anchor = None;
                 let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
                     break;
@@ -270,6 +275,7 @@ pub fn draw_text_with_fallback_clipped(
             '\t' => {
                 x += tab_width;
                 previous = None;
+                base_anchor = None;
             }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
@@ -278,24 +284,48 @@ pub fn draw_text_with_fallback_clipped(
                     .iter()
                     .position(|candidate| std::ptr::eq(candidate.as_ref(), face))
                     .unwrap_or(0);
-                if let Some((previous_character, previous_face)) = previous {
-                    if previous_face == face_index {
-                        x += face.kerning(previous_character, character, pixel_size);
+                let glyph = face.glyph(character, pixel_size);
+                let combining = is_combining_mark(character);
+                if !combining {
+                    if let Some((previous_character, previous_face)) = previous {
+                        if previous_face == face_index {
+                            x += face.kerning(previous_character, character, pixel_size);
+                        }
                     }
                 }
-                if x.is_finite() && x >= i32::MIN as f32 && x <= i32::MAX as f32 {
+                let mut glyph_left = x + glyph.xmin as f32;
+                let mut glyph_top = y as f32 - glyph.ymin as f32 - glyph.height as f32;
+                if combining {
+                    if let Some(anchor) = base_anchor {
+                        (glyph_left, glyph_top) =
+                            positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+                    }
+                } else {
+                    base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
+                }
+                let draw_x = glyph_left - glyph.xmin as f32;
+                let draw_y = glyph_top + glyph.ymin as f32 + glyph.height as f32;
+                if draw_x.is_finite()
+                    && draw_y.is_finite()
+                    && draw_x >= i32::MIN as f32
+                    && draw_x <= i32::MAX as f32
+                    && draw_y >= i32::MIN as f32
+                    && draw_y <= i32::MAX as f32
+                {
                     draw_text_clipped(
                         target,
                         face,
                         &character.to_string(),
-                        Point::new(x.round() as i32, y),
+                        Point::new(draw_x.round() as i32, draw_y.round() as i32),
                         pixel_size,
                         color,
                         clip,
                     );
                 }
-                x += face.glyph(character, pixel_size).advance_width;
-                previous = Some((character, face_index));
+                if !combining {
+                    x += glyph.advance_width;
+                    previous = Some((character, face_index));
+                }
             }
         }
     }
