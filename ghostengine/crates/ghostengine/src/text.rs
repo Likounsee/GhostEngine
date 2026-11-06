@@ -42,6 +42,16 @@ impl FontFace {
         self.font.lookup_glyph_index(character) != 0
     }
 
+    /// Returns the horizontal kerning adjustment for an adjacent character pair.
+    /// Positive values increase spacing; negative values bring glyphs closer.
+    #[must_use]
+    pub fn kerning(&self, left: char, right: char, pixel_size: f32) -> f32 {
+        if !pixel_size.is_finite() || pixel_size <= 0.0 {
+            return 0.0;
+        }
+        self.font.horizontal_kern(left, right, pixel_size).unwrap_or(0.0)
+    }
+
     /// Returns the recommended baseline-to-baseline distance at this size.
     #[must_use]
     pub fn line_height(&self, pixel_size: f32) -> f32 {
@@ -174,6 +184,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
     let mut max_width = 0.0_f32;
     let mut lines = 1_u32;
     let mut line_height = family.line_height(pixel_size);
+    let mut previous: Option<(char, usize)> = None;
     let space = family
         .font_for(' ')
         .unwrap_or(primary)
@@ -185,12 +196,23 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                 max_width = max_width.max(width);
                 width = 0.0;
                 lines += 1;
+                previous = None;
             }
-            '\t' => width += tab_width,
+            '\t' => {
+                width += tab_width;
+                previous = None;
+            }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
+                let face_index = family.faces.iter().position(|candidate| std::ptr::eq(candidate.as_ref(), face)).unwrap_or(0);
+                if let Some((previous_character, previous_face)) = previous {
+                    if previous_face == face_index {
+                        width += face.kerning(previous_character, character, pixel_size);
+                    }
+                }
                 line_height = line_height.max(face.line_height(pixel_size));
                 width += face.glyph(character, pixel_size).advance_width;
+                previous = Some((character, face_index));
             }
         }
     }
@@ -222,6 +244,7 @@ pub fn draw_text_with_fallback_clipped(
     let metrics = measure_with_fallback(family, text, pixel_size);
     let mut x = baseline.x as f32;
     let mut y = baseline.y;
+    let mut previous: Option<(char, usize)> = None;
     let space = family
         .font_for(' ')
         .unwrap_or(primary)
@@ -231,15 +254,25 @@ pub fn draw_text_with_fallback_clipped(
         match character {
             '\n' => {
                 x = baseline.x as f32;
+                previous = None;
                 let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
                     break;
                 }
                 y = next_y.round() as i32;
             }
-            '\t' => x += tab_width,
+            '\t' => {
+                x += tab_width;
+                previous = None;
+            }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
+                let face_index = family.faces.iter().position(|candidate| std::ptr::eq(candidate.as_ref(), face)).unwrap_or(0);
+                if let Some((previous_character, previous_face)) = previous {
+                    if previous_face == face_index {
+                        x += face.kerning(previous_character, character, pixel_size);
+                    }
+                }
                 if x.is_finite() && x >= i32::MIN as f32 && x <= i32::MAX as f32 {
                     draw_text_clipped(
                         target,
@@ -252,6 +285,7 @@ pub fn draw_text_with_fallback_clipped(
                     );
                 }
                 x += face.glyph(character, pixel_size).advance_width;
+                previous = Some((character, face_index));
             }
         }
     }
@@ -426,9 +460,16 @@ where
 }
 
 fn measure_word(font: &FontFace, word: &str, pixel_size: f32) -> f32 {
-    word.chars()
-        .map(|character| font.glyph(character, pixel_size).advance_width)
-        .sum()
+    let mut previous = None;
+    let mut width = 0.0;
+    for character in word.chars() {
+        if let Some(previous_character) = previous {
+            width += font.kerning(previous_character, character, pixel_size);
+        }
+        width += font.glyph(character, pixel_size).advance_width;
+        previous = Some(character);
+    }
+    width
 }
 
 /// Draws text with the supplied baseline origin and returns its measured bounds.
@@ -475,6 +516,7 @@ pub fn draw_text_clipped(
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
     let origin_x = pen_x;
+    let mut previous = None;
     let mut max_width: f32 = 0.0;
     let mut line_count = 1_u32;
     let space_metrics = font.glyph(' ', pixel_size);
@@ -561,9 +603,16 @@ pub fn draw_text_transformed_clipped(
             '\n' => {
                 pen_x = origin_x;
                 pen_y += line_height;
+                previous = None;
             }
-            '\t' => pen_x += tab_width,
+            '\t' => {
+                pen_x += tab_width;
+                previous = None;
+            }
             character => {
+                if let Some(previous_character) = previous {
+                    pen_x += font.kerning(previous_character, character, pixel_size);
+                }
                 let glyph = font.glyph(character, pixel_size);
                 let left = pen_x + glyph.xmin as f32;
                 let top = pen_y - glyph.ymin as f32 - glyph.height as f32;
@@ -578,6 +627,7 @@ pub fn draw_text_transformed_clipped(
                     inverse,
                 );
                 pen_x += glyph.advance_width;
+                previous = Some(character);
             }
         }
     }
@@ -756,15 +806,26 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     let mut line_width = 0.0_f32;
     let mut max_width = 0.0_f32;
     let mut line_count = 1_u32;
+    let mut previous = None;
     for character in text.chars() {
         match character {
             '\n' => {
                 max_width = max_width.max(line_width);
                 line_width = 0.0;
                 line_count += 1;
+                previous = None;
             }
-            '\t' => line_width += tab_width,
-            character => line_width += font.glyph(character, pixel_size).advance_width,
+            '\t' => {
+                line_width += tab_width;
+                previous = None;
+            }
+            character => {
+                if let Some(previous_character) = previous {
+                    line_width += font.kerning(previous_character, character, pixel_size);
+                }
+                line_width += font.glyph(character, pixel_size).advance_width;
+                previous = Some(character);
+            }
         }
     }
     max_width = max_width.max(line_width);
