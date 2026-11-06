@@ -491,7 +491,18 @@ pub fn draw_text_input(
     let Ok(inner_x) = i32::try_from(inner.x) else {
         return;
     };
-    let baseline = Point::new(inner_x, baseline_y);
+    let cursor_width = font
+        .measure(&state.text[..state.cursor], options.pixel_size)
+        .width;
+    let mut horizontal_offset = 0.0_f32;
+    if cursor_width > inner.width as f32 {
+        horizontal_offset = cursor_width - inner.width as f32 + 2.0;
+    }
+    let total_width = font.measure(&state.text, options.pixel_size).width;
+    horizontal_offset = horizontal_offset.min((total_width - inner.width as f32).max(0.0));
+    let baseline_x = (i64::from(inner_x) - horizontal_offset.floor() as i64)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+    let baseline = Point::new(baseline_x, baseline_y);
 
     if !state.text.is_empty() {
         if let Some((start, end)) = state.selection() {
@@ -499,7 +510,8 @@ pub fn draw_text_input(
             let selected = font
                 .measure(&state.text[start..end], options.pixel_size)
                 .width;
-            let selection_x = i64::from(inner.x) + before.floor() as i64;
+            let selection_x =
+                i64::from(inner.x) + before.floor() as i64 - horizontal_offset.floor() as i64;
             if let Ok(selection_x) = u32::try_from(selection_x) {
                 let selection_rect = Rect::new(
                     selection_x,
@@ -523,10 +535,8 @@ pub fn draw_text_input(
     );
 
     if options.focused && !state.text.is_empty() {
-        let prefix = font
-            .measure(&state.text[..state.cursor], options.pixel_size)
-            .width;
-        let caret_x = i64::from(inner.x) + prefix.round() as i64;
+        let caret_x = i64::from(inner.x) + cursor_width.round() as i64
+            - horizontal_offset.floor() as i64;
         if let Ok(caret_x) = u32::try_from(caret_x) {
             fill_rect_clipped(
                 target,
