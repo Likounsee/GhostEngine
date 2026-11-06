@@ -612,12 +612,12 @@ mod tests {
 
         let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         list.replay(&mut target);
-        assert_eq!(target.get_pixel(0, 0), Some(Color.BLUE));
-        assert_eq!(target.get_pixel(1, 1), Some(Color.RED));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
 
         list.clear();
         assert!(list.is_empty());
-        list.clear_color(Color.GREEN);
+        list.clear_color(Color::GREEN);
         list.replay(&mut target);
         assert!(target.pixels().iter().all(|pixel| *pixel == Color.GREEN));
     }
