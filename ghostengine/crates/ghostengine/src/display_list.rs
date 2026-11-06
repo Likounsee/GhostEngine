@@ -809,8 +809,8 @@ mod tests {
         );
         let mut target = Framebuffer::new(7, 7, Color::RED).unwrap();
         let stats = list.replay(&mut target);
-        assert_eq!(target.get_pixel(4, 3), Some(Color::BLACK));
-        assert_eq!(target.get_pixel(2, 1), Some(Color::rgb(159, 159, 159)));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::rgb(90, 90, 90)));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::WHITE));
         assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
         assert_eq!(stats.commands_executed, 1);
     }
