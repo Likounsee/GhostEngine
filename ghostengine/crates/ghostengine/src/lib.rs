@@ -28,7 +28,7 @@ pub use path::{
     fill_path_even_odd, fill_transformed_path_even_odd, FlattenedPath, FlattenedSubpath, Path,
     PathError,
 };
-pub use rasterizer::{Gradient, GradientError, GradientStop};
+pub use rasterizer::{fill_rect_clipped, Gradient, GradientError, GradientStop};
 pub use stroke::{stroke_path, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, FontFace, TextMetrics};
 pub use texture::{draw_texture, Texture, TextureError, TextureFilter};
