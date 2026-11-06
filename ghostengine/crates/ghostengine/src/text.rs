@@ -49,7 +49,9 @@ impl FontFace {
         if !pixel_size.is_finite() || pixel_size <= 0.0 {
             return 0.0;
         }
-        self.font.horizontal_kern(left, right, pixel_size).unwrap_or(0.0)
+        self.font
+            .horizontal_kern(left, right, pixel_size)
+            .unwrap_or(0.0)
     }
 
     /// Returns the recommended baseline-to-baseline distance at this size.
@@ -204,7 +206,11 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
             }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
-                let face_index = family.faces.iter().position(|candidate| std::ptr::eq(candidate.as_ref(), face)).unwrap_or(0);
+                let face_index = family
+                    .faces
+                    .iter()
+                    .position(|candidate| std::ptr::eq(candidate.as_ref(), face))
+                    .unwrap_or(0);
                 if let Some((previous_character, previous_face)) = previous {
                     if previous_face == face_index {
                         width += face.kerning(previous_character, character, pixel_size);
