@@ -4,7 +4,7 @@
 //! layout. Complex script shaping, fallback chains and persistent glyph caching
 //! are separate follow-up milestones.
 
-use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point};
+use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
 
 /// A loaded TrueType/OpenType font backed by the fontdue parser and rasterizer.
@@ -51,15 +51,8 @@ pub fn draw_text(
     pixel_size: f32,
     color: Color,
 ) -> TextMetrics {
-    draw_text_clipped(
-        target,
-        font,
-        text,
-        baseline,
-        pixel_size,
-        color,
-        crate::Rect::new(0, 0, target.width(), target.height()),
-    )
+    let target_bounds = Rect::new(0, 0, target.width(), target.height());
+    draw_text_clipped(target, font, text, baseline, pixel_size, color, target_bounds)
 }
 
 /// Draws text while restricting glyph pixels to a framebuffer-coordinate clip rectangle.
@@ -73,13 +66,13 @@ pub fn draw_text_clipped(
     baseline: Point,
     pixel_size: f32,
     color: Color,
-    clip: crate::Rect,
+    clip: Rect,
 ) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
     }
 
-    let visible_clip = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()));
+    let visible_clip = clip.intersection(Rect::new(0, 0, target.width(), target.height()));
     let line_height = font.line_height(pixel_size);
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
