@@ -492,7 +492,12 @@ pub fn draw_text_input(
     } else if focused && state.text.is_empty() {
         fill_rect_clipped(
             target,
-            Rect::new(inner.x, rect.y.saturating_add(5), 1, rect.height.saturating_sub(10)),
+            Rect::new(
+                inner.x,
+                rect.y.saturating_add(5),
+                1,
+                rect.height.saturating_sub(10),
+            ),
             inner,
             theme.accent,
         );
@@ -568,7 +573,7 @@ pub fn draw_list(
     let first = (scroll_offset / row_height) as usize;
     let last_exclusive = ((u64::from(scroll_offset) + u64::from(bounds.height))
         .div_ceil(u64::from(row_height)))
-        .min(items.len() as u64) as usize;
+    .min(items.len() as u64) as usize;
     let line_height = font.line_height(pixel_size);
     for (index, item) in items
         .iter()
@@ -591,7 +596,8 @@ pub fn draw_list(
         if state.selected == Some(index) {
             fill_rect_clipped(target, row, clip, theme.accent_hover);
         }
-        let baseline_y = row_top + (i64::from(row_height) - line_height.round() as i64) / 2
+        let baseline_y = row_top
+            + (i64::from(row_height) - line_height.round() as i64) / 2
             + (line_height * 0.78).round() as i64;
         let Ok(x) = i32::try_from(bounds.x.saturating_add(8)) else {
             continue;
@@ -614,8 +620,8 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer,
-        ListState, TextInputState, UiTheme, WidgetState,
+        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, ListState,
+        TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
