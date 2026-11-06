@@ -273,7 +273,11 @@ pub fn draw_text_with_fallback_clipped(
             }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
-                let face_index = family.faces.iter().position(|candidate| std::ptr::eq(candidate.as_ref(), face)).unwrap_or(0);
+                let face_index = family
+                    .faces
+                    .iter()
+                    .position(|candidate| std::ptr::eq(candidate.as_ref(), face))
+                    .unwrap_or(0);
                 if let Some((previous_character, previous_face)) = previous {
                     if previous_face == face_index {
                         x += face.kerning(previous_character, character, pixel_size);
