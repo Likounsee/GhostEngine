@@ -101,7 +101,7 @@ impl FontFace {
 }
 
 /// Ordered font fallback chain used when a primary face lacks a character.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct FontFamily {
     faces: Vec<Arc<FontFace>>,
 }
@@ -128,6 +128,15 @@ impl FontFamily {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.faces.is_empty()
+    }
+
+    /// Maximum natural line height across all faces in the family.
+    #[must_use]
+    pub fn line_height(&self, pixel_size: f32) -> f32 {
+        self.faces
+            .iter()
+            .map(|face| face.line_height(pixel_size))
+            .fold(0.0_f32, f32::max)
     }
 
     #[must_use]
@@ -165,7 +174,7 @@ pub fn measure_with_fallback(
     let mut width = 0.0_f32;
     let mut max_width = 0.0_f32;
     let mut lines = 1_u32;
-    let mut line_height = primary.line_height(pixel_size);
+    let mut line_height = family.line_height(pixel_size);
     let space = family.font_for(' ').unwrap_or(primary).glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
@@ -217,7 +226,7 @@ pub fn draw_text_with_fallback_clipped(
         match character {
             '\n' => {
                 x = baseline.x as f32;
-                let next_y = y as f32 + primary.line_height(pixel_size);
+                let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
                     break;
                 }
@@ -548,6 +557,27 @@ mod tests {
 
     // A compact embedded test font is deliberately avoided; loading behavior is
     // exercised by callers with their own licensed TTF/OTF asset.
+    #[test]
+    fn empty_font_family_is_safe_and_reports_empty_metrics() {
+        let family = super::FontFamily::default();
+        assert!(family.is_empty());
+        assert_eq!(family.len(), 0);
+        assert!(family.primary().is_none());
+        assert_eq!(family.font_for('A'), None);
+        assert_eq!(family.measure("Hello", 16.0), super::TextMetrics::default());
+        assert_eq!(
+            super::measure_with_fallback(&family, "Hello", 16.0),
+            super::TextMetrics::default()
+        );
+    }
+
+    #[test]
+    fn fallback_measurement_rejects_invalid_sizes() {
+        let family = super::FontFamily::default();
+        assert_eq!(family.measure("Hello", f32::NAN), super::TextMetrics::default());
+        assert_eq!(family.measure("Hello", 0.0), super::TextMetrics::default());
+    }
+
     #[test]
     fn invalid_font_data_is_rejected() {
         assert!(FontFace::from_bytes(b"not a font").is_err());
