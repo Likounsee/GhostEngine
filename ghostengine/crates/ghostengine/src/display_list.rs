@@ -9,7 +9,7 @@ use crate::rasterizer::{
     draw_line, fill_rect_linear_gradient, fill_rect_radial_gradient, Gradient,
 };
 use crate::stroke::{stroke_path_clipped, StrokeStyle};
-use crate::texture::{draw_texture_clipped, Texture, TextureFilter};
+use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +37,7 @@ enum Command {
     DrawTexture {
         texture: Texture,
         destination: Rect,
+        transform: Transform2D,
         filter: TextureFilter,
         clip: Rect,
     },
@@ -216,12 +217,13 @@ impl DisplayList {
         Ok(())
     }
 
-    /// Records a scaled image command with its sampling mode and active clip.
+    /// Records an image command with its sampling mode, active transform and clip.
     pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
         if let Some(clip) = self.active_clip() {
             self.commands.push(Command::DrawTexture {
                 texture,
                 destination,
+                transform: self.active_transform(),
                 filter,
                 clip,
             });
@@ -324,13 +326,19 @@ impl DisplayList {
                 Command::DrawTexture {
                     texture,
                     destination,
+                    transform,
                     filter,
                     clip,
                 } => {
-                    let visible = destination.width > 0
-                        && destination.height > 0
-                        && destination.intersection(*clip).is_some();
-                    draw_texture_clipped(target, texture, *destination, *filter, *clip);
+                    let visible = destination.width > 0 && destination.height > 0;
+                    draw_texture_transformed_clipped(
+                        target,
+                        texture,
+                        *destination,
+                        *transform,
+                        *filter,
+                        *clip,
+                    );
                     visible
                 }
                 Command::LinearGradient {
@@ -632,6 +640,24 @@ mod tests {
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn texture_uses_active_transform_when_recorded() {
+        let texture = crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        list.draw_texture(
+            texture,
+            Rect::new(0, 0, 2, 1),
+            crate::TextureFilter::Nearest,
+        );
+        assert!(list.pop_transform());
+        let mut target = Framebuffer::new(6, 4, Color::BLACK).unwrap();
+        list.replay(&mut target);
+        assert_eq!(target.get_pixel(2, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
     }
 
     #[test]
