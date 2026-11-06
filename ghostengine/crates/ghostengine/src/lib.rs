@@ -39,7 +39,7 @@ pub use rasterizer::{
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{
     draw_text, draw_text_box_clipped, draw_text_box_transformed_clipped, draw_text_clipped,
-draw_text_transformed_clipped, draw_text_with_fallback_clipped,
+    draw_text_transformed_clipped, draw_text_with_fallback_clipped,
     measure_with_fallback, FontFace, FontFamily, TextAlign, TextLayoutOptions, TextMetrics,
 };
 pub use texture::{
@@ -50,6 +50,6 @@ pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_checkbox, draw_divider, draw_label, draw_label_clipped, draw_label_wrapped,
     draw_label_with_fallback, draw_list, draw_panel, draw_progress_bar, draw_text_input,
-    state_for_pointer, ListOptions,
-    ListState, TextInputOptions, TextInputState, UiTheme, WidgetState,
+    state_for_pointer, ListOptions, ListState, TextInputOptions, TextInputState, UiTheme,
+    WidgetState,
 };
