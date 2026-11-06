@@ -5,7 +5,9 @@
 //! clip-stack changes cannot affect commands that were already recorded.
 
 use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
-use crate::rasterizer::{draw_line, fill_rect_clipped};
+use crate::rasterizer::{
+    draw_line, fill_rect_clipped, fill_rect_linear_gradient, fill_rect_radial_gradient, Gradient,
+};
 use crate::texture::{draw_texture_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 
@@ -26,6 +28,20 @@ enum Command {
         texture: Texture,
         destination: Rect,
         filter: TextureFilter,
+        clip: Rect,
+    },
+    LinearGradient {
+        rect: Rect,
+        start: crate::Vector,
+        end: crate::Vector,
+        gradient: Gradient,
+        clip: Rect,
+    },
+    RadialGradient {
+        rect: Rect,
+        center: crate::Vector,
+        radius: f32,
+        gradient: Gradient,
         clip: Rect,
     },
 }
@@ -152,6 +168,46 @@ impl DisplayList {
         }
     }
 
+    /// Records a linear-gradient rectangle. Gradient coordinates remain in
+    /// framebuffer space and are not altered by clipping.
+    pub fn fill_linear_gradient(
+        &mut self,
+        rect: Rect,
+        start: crate::Vector,
+        end: crate::Vector,
+        gradient: Gradient,
+    ) {
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::LinearGradient {
+                rect,
+                start,
+                end,
+                gradient,
+                clip,
+            });
+        }
+    }
+
+    /// Records a radial-gradient rectangle. The radius must be finite and positive;
+    /// invalid radii are ignored during replay, matching the rasterizer contract.
+    pub fn fill_radial_gradient(
+        &mut self,
+        rect: Rect,
+        center: crate::Vector,
+        radius: f32,
+        gradient: Gradient,
+    ) {
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::RadialGradient {
+                rect,
+                center,
+                radius,
+                gradient,
+                clip,
+            });
+        }
+    }
+
     /// Executes commands in submission order and returns basic replay counters.
     pub fn replay(&self, target: &mut Framebuffer) -> RenderStats {
         let mut stats = RenderStats {
@@ -213,6 +269,34 @@ impl DisplayList {
                         && destination.intersection(*clip).is_some();
                     draw_texture_clipped(target, texture, *destination, *filter, *clip);
                     visible
+                },
+                Command::LinearGradient {
+                    rect,
+                    start,
+                    end,
+                    gradient,
+                    clip,
+                } => {
+                    if let Some(visible) = rect.intersection(*clip) {
+                        fill_rect_linear_gradient(target, visible, *start, *end, gradient);
+                        true
+                    } else {
+                        false
+                    }
+                }
+                Command::RadialGradient {
+                    rect,
+                    center,
+                    radius,
+                    gradient,
+                    clip,
+                } => {
+                    if let Some(visible) = rect.intersection(*clip) {
+                        fill_rect_radial_gradient(target, visible, *center, *radius, gradient);
+                        true
+                    } else {
+                        false
+                    }
                 }
             };
             if executed {
@@ -451,6 +535,61 @@ mod tests {
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+
+    fn black_to_white_gradient() -> crate::Gradient {
+        crate::Gradient::new(vec![
+            crate::GradientStop {
+                position: 0.0,
+                color: Color::BLACK,
+            },
+            crate::GradientStop {
+                position: 1.0,
+                color: Color::WHITE,
+            },
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn linear_gradient_replays_with_original_coordinates_and_clip() {
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(2, 0, 2, 1));
+        list.fill_linear_gradient(
+            Rect::new(0, 0, 4, 1),
+            crate::Vector::new(0.0, 0.5),
+            crate::Vector::new(4.0, 0.5),
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(4, 1, Color::RED).unwrap();
+        let stats = list.replay(&mut target);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::rgb(159, 159, 159)));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::rgb(223, 223, 223)));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn radial_gradient_respects_nested_clip() {
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(0, 0, 4, 4));
+        list.push_clip(Rect::new(1, 1, 2, 2));
+        list.fill_radial_gradient(
+            Rect::new(0, 0, 4, 4),
+            crate::Vector::new(2.0, 2.0),
+            2.0,
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(4, 4, Color::RED).unwrap();
+        list.replay(&mut target);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::rgb(165, 165, 165)));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(45, 45, 45)));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
     }
 
     #[test]
