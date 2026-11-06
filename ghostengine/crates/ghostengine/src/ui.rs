@@ -269,7 +269,9 @@ impl TextInputState {
     }
 
     #[must_use]
-    pub const fn cursor(&self) -> usize { self.cursor }
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
 
     #[must_use]
     pub fn selection(&self) -> Option<(usize, usize)> {
@@ -339,20 +341,30 @@ impl TextInputState {
     /// Inserts text at the cursor, replacing any active selection.
     pub fn insert_text(&mut self, inserted: &str) {
         self.delete_selection();
-        self.text.insert_str(self.cursor, inserted);
+        let inserted: String = inserted
+            .chars()
+            .filter(|character| *character != '\n' && *character != '\r')
+            .collect();
+        self.text.insert_str(self.cursor, &inserted);
         self.cursor += inserted.len();
     }
 
     pub fn backspace(&mut self) {
-        if self.delete_selection() { return; }
-        if self.cursor == 0 { return; }
+        if self.delete_selection() {
+            return;
+        }
+        if self.cursor == 0 {
+            return;
+        }
         let previous = previous_boundary(&self.text, self.cursor - 1);
         self.text.replace_range(previous..self.cursor, "");
         self.cursor = previous;
     }
 
     pub fn delete_forward(&mut self) {
-        if self.delete_selection() { return; }
+        if self.delete_selection() {
+            return;
+        }
         let Some(next) = self.text[self.cursor..]
             .chars()
             .next()
@@ -416,7 +428,9 @@ pub fn draw_text_input(
         rect.width.saturating_sub(inset.saturating_mul(2)),
         rect.height,
     );
-    if inner.width == 0 { return; }
+    if inner.width == 0 {
+        return;
+    }
 
     let display = if state.text.is_empty() {
         placeholder
@@ -465,7 +479,12 @@ pub fn draw_text_input(
         if let Ok(caret_x) = u32::try_from(caret_x) {
             fill_rect_clipped(
                 target,
-                Rect::new(caret_x, rect.y.saturating_add(5), 1, rect.height.saturating_sub(10)),
+                Rect::new(
+                    caret_x,
+                    rect.y.saturating_add(5),
+                    1,
+                    rect.height.saturating_sub(10),
+                ),
                 inner,
                 theme.accent,
             );
