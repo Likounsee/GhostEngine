@@ -330,7 +330,6 @@ impl DisplayList {
                     filter,
                     clip,
                 } => {
-                    let visible = destination.width > 0 && destination.height > 0;
                     draw_texture_transformed_clipped(
                         target,
                         texture,
@@ -338,8 +337,7 @@ impl DisplayList {
                         *transform,
                         *filter,
                         *clip,
-                    );
-                    visible
+                    )
                 }
                 Command::LinearGradient {
                     rect,
