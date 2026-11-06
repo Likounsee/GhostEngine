@@ -528,6 +528,128 @@ pub fn draw_text_clipped(
     }
 }
 
+
+/// Draws a text run with a full affine transform applied to every glyph.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_transformed_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    transform: crate::Transform2D,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || !transform.is_finite() {
+        return TextMetrics::default();
+    }
+    let Some(inverse) = transform.inverse() else { return TextMetrics::default(); };
+    let metrics = layout_metrics(font, text, pixel_size);
+    let Some(visible_clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return metrics;
+    };
+    let line_height = font.line_height(pixel_size);
+    let mut pen_x = baseline.x as f32;
+    let mut pen_y = baseline.y as f32;
+    let origin_x = pen_x;
+    let tab_width = (font.glyph(' ', pixel_size).advance_width * 4.0).max(pixel_size);
+    for character in text.chars() {
+        match character {
+            '\n' => { pen_x = origin_x; pen_y += line_height; }
+            '\t' => pen_x += tab_width,
+            character => {
+                let glyph = font.glyph(character, pixel_size);
+                let left = pen_x + glyph.xmin as f32;
+                let top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+                draw_affine_glyph(target, &glyph, left, top, color, visible_clip, transform, inverse);
+                pen_x += glyph.advance_width;
+            }
+        }
+    }
+    metrics
+}
+
+fn draw_affine_glyph(
+    target: &mut Framebuffer, glyph: &CachedGlyph, left: f32, top: f32,
+    color: Color, clip: Rect, transform: crate::Transform2D, inverse: crate::Transform2D,
+) {
+    if glyph.width == 0 || glyph.height == 0 { return; }
+    let corners = [
+        crate::Vector::new(left, top),
+        crate::Vector::new(left + glyph.width as f32, top),
+        crate::Vector::new(left, top + glyph.height as f32),
+        crate::Vector::new(left + glyph.width as f32, top + glyph.height as f32),
+    ].map(|p| transform.transform_point(p));
+    if corners.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) { return; }
+    let min_x = corners.iter().map(|p| p.x).fold(f32::INFINITY, f32::min).floor();
+    let max_x = corners.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max).ceil();
+    let min_y = corners.iter().map(|p| p.y).fold(f32::INFINITY, f32::min).floor();
+    let max_y = corners.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max).ceil();
+    if min_x < i32::MIN as f32 || max_x > i32::MAX as f32 || min_y < i32::MIN as f32 || max_y > i32::MAX as f32 { return; }
+    let x0 = (min_x as i32).max(clip.x as i32);
+    let y0 = (min_y as i32).max(clip.y as i32);
+    let x1 = (max_x as i32).min(clip.right().min(i32::MAX as u32) as i32);
+    let y1 = (max_y as i32).min(clip.bottom().min(i32::MAX as u32) as i32);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let p = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+            let sx = p.x - left - 0.5;
+            let sy = p.y - top - 0.5;
+            if !sx.is_finite() || !sy.is_finite() { continue; }
+            let ix = sx.floor() as i32;
+            let iy = sy.floor() as i32;
+            let fx = sx - ix as f32;
+            let fy = sy - iy as f32;
+            let sample = |px: i32, py: i32| -> f32 {
+                if px < 0 || py < 0 || px >= glyph.width as i32 || py >= glyph.height as i32 { 0.0 }
+                else { f32::from(glyph.bitmap[py as usize * glyph.width + px as usize]) }
+            };
+            let a = sample(ix, iy) * (1.0 - fx) + sample(ix + 1, iy) * fx;
+            let b = sample(ix, iy + 1) * (1.0 - fx) + sample(ix + 1, iy + 1) * fx;
+            let coverage = (a * (1.0 - fy) + b * fy).round().clamp(0.0, 255.0) as u8;
+            let alpha = ((u16::from(color.a) * u16::from(coverage) + 127) / 255) as u8;
+            if alpha > 0 { blend_pixel(target, Point::new(x, y), Color::rgba(color.r, color.g, color.b, alpha)); }
+        }
+    }
+}
+
+/// Draws a wrapped text block with the same affine transform applied to every glyph.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_box_transformed_clipped(
+    target: &mut Framebuffer, font: &FontFace, text: &str, baseline: Point,
+    pixel_size: f32, color: Color, clip: Rect, options: TextLayoutOptions,
+    transform: crate::Transform2D,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty()
+        || !options.line_spacing.is_finite() || options.line_spacing <= 0.0
+        || options.max_width.is_some_and(|w| !w.is_finite() || w <= 0.0) {
+        return TextMetrics::default();
+    }
+    let lines = layout_lines(font, text, pixel_size, options.max_width);
+    let line_height = font.line_height(pixel_size) * options.line_spacing;
+    let box_width = options.max_width.unwrap_or_else(|| lines.iter()
+        .map(|line| font.measure(line, pixel_size).width).fold(0.0_f32, f32::max));
+    let mut max_width = 0.0_f32;
+    for (i, line) in lines.iter().enumerate() {
+        let width = font.measure(line, pixel_size).width;
+        max_width = max_width.max(width);
+        let offset = match options.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => ((box_width - width) * 0.5).max(0.0),
+            TextAlign::Right => (box_width - width).max(0.0),
+        };
+        let x = baseline.x as f32 + offset;
+        let y = baseline.y as f32 + i as f32 * line_height;
+        if x.is_finite() && y.is_finite() && x >= i32::MIN as f32 && x <= i32::MAX as f32
+            && y >= i32::MIN as f32 && y <= i32::MAX as f32 {
+            draw_text_transformed_clipped(target, font, line, Point::new(x.round() as i32, y.round() as i32),
+                pixel_size, color, clip, transform);
+        }
+    }
+    TextMetrics { width: max_width, height: line_height * lines.len() as f32, line_count: lines.len() as u32 }
+}
+
 fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
