@@ -324,7 +324,9 @@ impl DisplayList {
             || pixel_size <= 0.0
             || !options.line_spacing.is_finite()
             || options.line_spacing <= 0.0
-            || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+            || options
+                .max_width
+                .is_some_and(|width| !width.is_finite() || width <= 0.0)
         {
             return;
         }
@@ -483,7 +485,14 @@ impl DisplayList {
                     clip,
                 } => {
                     draw_text_box_clipped(
-                        target, &font.0, text, *baseline, *pixel_size, *color, *clip, *options,
+                        target,
+                        &font.0,
+                        text,
+                        *baseline,
+                        *pixel_size,
+                        *color,
+                        *clip,
+                        *options,
                     )
                     .line_count
                         > 0
