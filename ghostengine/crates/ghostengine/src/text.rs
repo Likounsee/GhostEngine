@@ -52,7 +52,15 @@ pub fn draw_text(
     color: Color,
 ) -> TextMetrics {
     let target_bounds = Rect::new(0, 0, target.width(), target.height());
-    draw_text_clipped(target, font, text, baseline, pixel_size, color, target_bounds)
+    draw_text_clipped(
+        target,
+        font,
+        text,
+        baseline,
+        pixel_size,
+        color,
+        target_bounds,
+    )
 }
 
 /// Draws text while restricting glyph pixels to a framebuffer-coordinate clip rectangle.
