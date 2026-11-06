@@ -179,9 +179,9 @@ pub fn draw_texture_transformed_clipped(
     transform: Transform2D,
     filter: TextureFilter,
     clip: Rect,
-) {
+) -> bool {
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
-        return;
+        return false;
     }
     let Some(inverse) = transform.inverse() else {
         return;
@@ -221,6 +221,7 @@ pub fn draw_texture_transformed_clipped(
     let local_top = destination.y as f32;
     let local_right = local_left + destination.width as f32;
     let local_bottom = local_top + destination.height as f32;
+    let mut visible = false;
     for y in first_y..end_y {
         for x in first_x..end_x {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
@@ -231,6 +232,7 @@ pub fn draw_texture_transformed_clipped(
             {
                 continue;
             }
+            visible = true;
             let source_x = (local.x - local_left) * texture.width as f32
                 / destination.width as f32;
             let source_y = (local.y - local_top) * texture.height as f32
@@ -251,6 +253,7 @@ pub fn draw_texture_transformed_clipped(
             }
         }
     }
+    visible
 }
 
 #[cfg(test)]
