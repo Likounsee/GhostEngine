@@ -415,7 +415,10 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
         return false;
     };
     let corners = transformed_rect_corners(rect, transform);
-    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
         return false;
     }
     let Some((left, top, right, bottom)) = transformed_bounds(&corners, clip) else {
