@@ -1,8 +1,8 @@
 //! Font loading, basic text measurement and CPU glyph rasterization.
 //!
 //! Text layout and glyph rasterization for application interfaces.
-//! Complex script shaping, fallback chains and persistent glyph caching remain
-//! separate follow-up milestones.
+//! Font fallback, glyph caching, kerning and basic combining-mark placement are
+//! supported. Full Unicode shaping and OpenType layout remain follow-up milestones.
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
