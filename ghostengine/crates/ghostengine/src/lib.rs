@@ -32,7 +32,10 @@ pub use path::{
     fill_path_even_odd, fill_path_even_odd_clipped, fill_transformed_path_even_odd,
     fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
-pub use rasterizer::{fill_rect_clipped, Gradient, GradientError, GradientStop};
+pub use rasterizer::{
+    fill_rect_clipped, fill_transformed_rect_linear_gradient_clipped,
+    fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
+};
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{draw_text, draw_text_clipped, FontFace, TextMetrics};
 pub use texture::{
