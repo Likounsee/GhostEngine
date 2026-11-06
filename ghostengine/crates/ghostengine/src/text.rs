@@ -6,16 +6,29 @@
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// A loaded TrueType/OpenType font backed by the fontdue parser and rasterizer.
 pub struct FontFace {
     font: Font,
+    glyph_cache: Mutex<HashMap<(u32, char), Arc<CachedGlyph>>>,
+}
+
+#[derive(Debug)]
+struct CachedGlyph {
+    xmin: i32,
+    ymin: i32,
+    width: usize,
+    height: usize,
+    advance_width: f32,
+    bitmap: Arc<[u8]>,
 }
 
 impl FontFace {
     /// Loads a font from in-memory TTF/OTF bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
-        Font::from_bytes(bytes, fontdue::FontSettings::default()).map(|font| Self { font })
+        Font::from_bytes(bytes, fontdue::FontSettings::default()).map(|font| Self {\n            font,\n            glyph_cache: Mutex::new(HashMap::new()),\n        })
     }
 
     /// Returns the recommended baseline-to-baseline distance at this size.
@@ -30,6 +43,45 @@ impl FontFace {
     #[must_use]
     pub fn measure(&self, text: &str, pixel_size: f32) -> TextMetrics {
         layout_metrics(self, text, pixel_size)
+    }
+
+    /// Number of distinct glyph/size pairs currently retained by this font.
+    #[must_use]
+    pub fn cached_glyph_count(&self) -> usize {
+        self.glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    /// Releases cached glyph bitmaps. They are regenerated transparently on demand.
+    pub fn clear_glyph_cache(&self) {
+        self.glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+
+    fn glyph(&self, character: char, pixel_size: f32) -> Arc<CachedGlyph> {
+        let key = (pixel_size.to_bits(), character);
+        let mut cache = self
+            .glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(glyph) = cache.get(&key) {
+            return Arc::clone(glyph);
+        }
+        let (metrics, bitmap) = self.font.rasterize(character, pixel_size);
+        let glyph = Arc::new(CachedGlyph {
+            xmin: metrics.xmin,
+            ymin: metrics.ymin,
+            width: metrics.width,
+            height: metrics.height,
+            advance_width: metrics.advance_width,
+            bitmap: Arc::from(bitmap),
+        });
+        cache.insert(key, Arc::clone(&glyph));
+        glyph
     }
 }
 
@@ -202,7 +254,7 @@ where
 
 fn measure_word(font: &FontFace, word: &str, pixel_size: f32) -> f32 {
     word.chars()
-        .map(|character| font.font.metrics(character, pixel_size).advance_width)
+        .map(|character| font.glyph(character, pixel_size).advance_width)
         .sum()
 }
 
@@ -268,12 +320,12 @@ pub fn draw_text_clipped(
             continue;
         }
 
-        let (metrics, bitmap) = font.font.rasterize(character, pixel_size);
-        let glyph_left = pen_x + metrics.xmin as f32;
-        let glyph_top = pen_y - metrics.ymin as f32 - metrics.height as f32;
-        for row in 0..metrics.height {
-            for column in 0..metrics.width {
-                let coverage = bitmap[row * metrics.width + column];
+        let glyph = font.glyph(character, pixel_size);
+        let glyph_left = pen_x + glyph.xmin as f32;
+        let glyph_top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+        for row in 0..glyph.height {
+            for column in 0..glyph.width {
+                let coverage = glyph.bitmap[row * glyph.width + column];
                 if coverage == 0 {
                     continue;
                 }
@@ -292,7 +344,7 @@ pub fn draw_text_clipped(
                 }
             }
         }
-        pen_x += metrics.advance_width;
+        pen_x += glyph.advance_width;
     }
 
     max_width = max_width.max(pen_x - origin_x);
@@ -307,7 +359,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
         return TextMetrics::default();
     }
-    let (space, _) = font.font.rasterize(' ', pixel_size);
+    let space = font.glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     let mut line_width = 0.0_f32;
     let mut max_width = 0.0_f32;
