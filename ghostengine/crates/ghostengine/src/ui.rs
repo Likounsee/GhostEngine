@@ -916,6 +916,7 @@ impl TabsState {
 }
 
 /// Draws a ComboBox and, when open, its highlighted popup rows.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_combo_box(
     target: &mut Framebuffer,
     font: &FontFace,
