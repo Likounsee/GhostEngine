@@ -10,7 +10,7 @@
 //! `process_window_event`, then pass `take_frame()` to
 //! `ComponentTree::handle_window_input`.
 
-use crate::{ClipboardAction, InputState, Point, TextInputEvent};
+use crate::{window::InputState, ClipboardAction, Point, TextInputEvent};
 use arboard::Clipboard;
 use std::{error::Error, fmt, mem};
 use winit::{
@@ -258,7 +258,7 @@ impl From<arboard::Error> for NativeClipboardError {
 #[cfg(test)]
 mod tests {
     use super::{apply_key_code, clamp_coordinate, NativeInputAdapter};
-    use crate::{InputState, TextInputEvent};
+    use crate::{window::InputState, TextInputEvent};
     use winit::keyboard::KeyCode;
 
     #[test]
