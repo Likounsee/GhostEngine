@@ -998,7 +998,7 @@ fn wrap_shaped_fallback_paragraph(
 }
 
 /// Generic line wrapper that preserves whitespace and only splits oversized words
-/// at the engine's conservative grapheme-like cluster boundaries.
+/// at Unicode extended grapheme-cluster boundaries.
 fn wrap_paragraph_preserving_whitespace<F>(
     paragraph: &str,
     max_width: f32,
@@ -2428,6 +2428,23 @@ mod tests {
         assert_eq!(super::fallback_text_clusters("👨‍👩‍👧‍👦!"), ["👨‍👩‍👧‍👦", "!"]);
         assert_eq!(super::fallback_text_clusters("1️⃣!"), ["1️⃣", "!"]);
         assert_eq!(super::fallback_text_clusters("क्‍ष!"), ["क्‍ष", "!"]);
+    }
+
+    #[test]
+    fn shaped_wrapping_never_splits_extended_grapheme_clusters() {
+        let measure = |part: &str| part.chars().count() as f32;
+        assert_eq!(
+            super::wrap_paragraph_preserving_whitespace("a\u{0301}b", 1.0, measure),
+            ["a\u{0301}", "b"]
+        );
+        assert_eq!(
+            super::wrap_paragraph_preserving_whitespace("👨‍👩‍👧‍👦!", 1.0, measure),
+            ["👨‍👩‍👧‍👦", "!"]
+        );
+        assert_eq!(
+            super::wrap_paragraph_preserving_whitespace("क्‍ष!", 1.0, measure),
+            ["क्‍ष", "!"]
+        );
     }
 
     #[test]
