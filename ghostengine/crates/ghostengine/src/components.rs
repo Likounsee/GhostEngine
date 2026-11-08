@@ -401,7 +401,7 @@ impl ComponentTree {
                         target,
                         font,
                         placement.bounds,
-                        &state,
+                        state,
                         TextInputOptions {
                             placeholder,
                             pixel_size,
