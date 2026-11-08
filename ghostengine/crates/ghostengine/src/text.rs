@@ -775,7 +775,9 @@ pub(crate) fn prepare_shaped_text_box(
         let mut line = String::new();
         for word in paragraph.split_whitespace() {
             let word_width = measure_shaped_fallback_line(family, word, pixel_size);
-            let separator_width = if line.is_empty() { 0.0 } else {
+            let separator_width = if line.is_empty() {
+                0.0
+            } else {
                 measure_shaped_fallback_line(family, " ", pixel_size)
             };
             if !line.is_empty()
@@ -785,10 +787,14 @@ pub(crate) fn prepare_shaped_text_box(
                 text_lines.push(std::mem::take(&mut line));
             }
             if word_width <= max_width {
-                if !line.is_empty() { line.push(' '); }
+                if !line.is_empty() {
+                    line.push(' ');
+                }
                 line.push_str(word);
             } else {
-                if !line.is_empty() { text_lines.push(std::mem::take(&mut line)); }
+                if !line.is_empty() {
+                    text_lines.push(std::mem::take(&mut line));
+                }
                 for cluster in fallback_text_clusters(word) {
                     let candidate = format!("{line}{cluster}");
                     if !line.is_empty()
@@ -833,29 +839,53 @@ pub(crate) fn prepare_shaped_text_box(
         let primary = Arc::clone(&family.faces[0]);
         for character in line.chars() {
             let selected = if is_combining_mark(character) {
-                current_face.as_ref()
+                current_face
+                    .as_ref()
                     .filter(|face| face.has_glyph(character))
                     .cloned()
-                    .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                    .or_else(|| {
+                        family
+                            .faces
+                            .iter()
+                            .find(|face| face.has_glyph(character))
+                            .cloned()
+                    })
                     .unwrap_or_else(|| Arc::clone(&primary))
             } else {
-                family.faces.iter().find(|face| face.has_glyph(character)).cloned()
+                family
+                    .faces
+                    .iter()
+                    .find(|face| face.has_glyph(character))
+                    .cloned()
                     .unwrap_or_else(|| Arc::clone(&primary))
             };
-            if current_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+            if current_face
+                .as_ref()
+                .is_some_and(|face| !Arc::ptr_eq(face, &selected))
+            {
                 if let Some(face) = current_face.take() {
                     let shaped = face.shape_text(&current_run, pixel_size)?;
-                    runs.push(PreparedShapedTextRun { font: face, offset_x: pen_x, shaped: shaped.clone() });
+                    runs.push(PreparedShapedTextRun {
+                        font: face,
+                        offset_x: pen_x,
+                        shaped: shaped.clone(),
+                    });
                     pen_x += shaped.advance_x;
                 }
                 current_run.clear();
             }
-            if current_face.is_none() { current_face = Some(selected); }
+            if current_face.is_none() {
+                current_face = Some(selected);
+            }
             current_run.push(character);
         }
         if let Some(face) = current_face {
             let shaped = face.shape_text(&current_run, pixel_size)?;
-            runs.push(PreparedShapedTextRun { font: face, offset_x: pen_x, shaped: shaped.clone() });
+            runs.push(PreparedShapedTextRun {
+                font: face,
+                offset_x: pen_x,
+                shaped: shaped.clone(),
+            });
         }
         lines.push(PreparedShapedTextLine {
             baseline: Point::new(x.round() as i32, y.round() as i32),
