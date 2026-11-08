@@ -862,10 +862,7 @@ pub(crate) fn prepare_shaped_text_box(
     for paragraph in text.split('\n') {
         if let Some(max_width) = options.max_width {
             text_lines.extend(wrap_shaped_fallback_paragraph(
-                family,
-                paragraph,
-                pixel_size,
-                max_width,
+                family, paragraph, pixel_size, max_width,
             ));
         } else {
             text_lines.push(paragraph.to_owned());
@@ -905,6 +902,27 @@ pub(crate) fn prepare_shaped_text_box(
         let mut pen_x = 0.0_f32;
         let primary = Arc::clone(&family.faces[0]);
         for character in line.chars() {
+            if character == '\t' {
+                if let Some(face) = current_face.take() {
+                    let shaped = face.shape_text(&current_run, pixel_size)?;
+                    runs.push(PreparedShapedTextRun {
+                        font: face,
+                        offset_x: pen_x,
+                        shaped: shaped.clone(),
+                    });
+                    pen_x += shaped.advance_x;
+                    current_run.clear();
+                }
+                let space_advance = family
+                    .font_for(' ')
+                    .unwrap_or(primary.as_ref())
+                    .glyph(' ', pixel_size)
+                    .advance_width;
+                let tab_width = (space_advance * 4.0).max(pixel_size);
+                pen_x = ((pen_x / tab_width).floor() + 1.0) * tab_width;
+                continue;
+            }
+
             let selected = if is_combining_mark(character) {
                 current_face
                     .as_ref()
@@ -1002,10 +1020,7 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
     for paragraph in text.split('\n') {
         if let Some(max_width) = options.max_width {
             lines.extend(wrap_shaped_fallback_paragraph(
-                family,
-                paragraph,
-                pixel_size,
-                max_width,
+                family, paragraph, pixel_size, max_width,
             ));
         } else {
             lines.push(paragraph.to_owned());
