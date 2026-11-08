@@ -3,7 +3,9 @@
 //! GhostEngine renders the frame. minifb only creates a host window, forwards
 //! input and presents the completed CPU pixel buffer.
 
-use crate::{Color, ComponentEvents, ComponentKey, ComponentTree, Framebuffer, Point, Rect};
+use crate::{
+    ClipboardAction, Color, ComponentEvents, ComponentKey, ComponentTree, Framebuffer, Point, Rect,
+};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
 
@@ -59,6 +61,11 @@ pub struct InputState {
     pub tab_pressed: bool,
     /// True on the key-down edge of Ctrl+A.
     pub select_all_pressed: bool,
+    pub copy_pressed: bool,
+    pub cut_pressed: bool,
+    pub paste_pressed: bool,
+    /// Clipboard text supplied by the host after a paste request.
+    pub clipboard_text: Option<String>,
     pub escape_down: bool,
 }
 
@@ -202,6 +209,9 @@ impl WindowSurface {
                 Key::Enter => input.enter_pressed = true,
                 Key::Tab => input.tab_pressed = true,
                 Key::A if input.control_down => input.select_all_pressed = true,
+                Key::C if input.control_down => input.copy_pressed = true,
+                Key::X if input.control_down => input.cut_pressed = true,
+                Key::V if input.control_down => input.paste_pressed = true,
                 _ => {
                     if let Some(character) = key_to_character(key, input.shift_down) {
                         input.pressed_characters.push(character);
@@ -277,6 +287,25 @@ impl ComponentTree {
         if input.select_all_pressed {
             if let Some(id) = self.focused_text_input() {
                 self.select_all_text(id);
+            }
+        }
+        if let Some(id) = self.focused_text_input() {
+            if input.copy_pressed {
+                events.clipboard_action = self
+                    .copy_selected_text(id)
+                    .map(ClipboardAction::Copy);
+            }
+            if input.cut_pressed {
+                events.clipboard_action = self
+                    .cut_selected_text(id)
+                    .map(ClipboardAction::Copy);
+            }
+            if input.paste_pressed {
+                if let Some(text) = input.clipboard_text.as_deref() {
+                    self.insert_text(id, text);
+                } else {
+                    events.clipboard_action = Some(ClipboardAction::Paste);
+                }
             }
         }
 
