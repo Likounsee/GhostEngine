@@ -543,12 +543,18 @@ pub fn draw_text_input(
         return;
     }
 
-    let display = if state.text.is_empty() {
+    let composition = state.composition.as_deref().unwrap_or("");
+    let mut display_text = String::with_capacity(state.text.len() + composition.len());
+    display_text.push_str(&state.text[..state.cursor]);
+    display_text.push_str(composition);
+    display_text.push_str(&state.text[state.cursor..]);
+    let showing_placeholder = state.text.is_empty() && composition.is_empty();
+    let display = if showing_placeholder {
         options.placeholder
     } else {
-        &state.text
+        display_text.as_str()
     };
-    let color = if state.text.is_empty() {
+    let color = if showing_placeholder {
         options.theme.muted_text
     } else {
         options.theme.text
@@ -564,15 +570,15 @@ pub fn draw_text_input(
         return;
     };
     let cursor_width = font
-        .measure(&state.text[..state.cursor], options.pixel_size)
+        .measure(&display_text[..state.cursor + composition.len()], options.pixel_size)
         .width;
-    let total_width = font.measure(&state.text, options.pixel_size).width;
+    let total_width = font.measure(&display_text, options.pixel_size).width;
     let horizontal_offset = text_input_scroll_offset(cursor_width, total_width, inner.width as f32);
     let baseline_x = (i64::from(inner_x) - horizontal_offset.floor() as i64)
         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let baseline = Point::new(baseline_x, baseline_y);
 
-    if !state.text.is_empty() {
+    if !state.text.is_empty() && composition.is_empty() {
         if let Some((start, end)) = state.selection() {
             let before = font.measure(&state.text[..start], options.pixel_size).width;
             let selected = font
@@ -602,7 +608,7 @@ pub fn draw_text_input(
         inner,
     );
 
-    if options.focused && !state.text.is_empty() {
+    if options.focused && !showing_placeholder {
         let caret_x =
             i64::from(inner.x) + cursor_width.round() as i64 - horizontal_offset.floor() as i64;
         if let Ok(caret_x) = u32::try_from(caret_x) {
@@ -618,7 +624,7 @@ pub fn draw_text_input(
                 options.theme.accent,
             );
         }
-    } else if options.focused && state.text.is_empty() {
+    } else if options.focused && showing_placeholder {
         fill_rect_clipped(
             target,
             Rect::new(
@@ -970,3 +976,23 @@ mod tests {
         assert_eq!(image.get_pixel(8, 8), Some(theme.disabled));
     }
 }
+    if options.focused && !composition.is_empty() {
+        let prefix_width = font.measure(&state.text[..state.cursor], options.pixel_size).width;
+        let composition_width = font.measure(composition, options.pixel_size).width;
+        let underline_x = i64::from(inner.x) + prefix_width.floor() as i64
+            - horizontal_offset.floor() as i64;
+        if let Ok(underline_x) = u32::try_from(underline_x) {
+            fill_rect_clipped(
+                target,
+                Rect::new(
+                    underline_x,
+                    rect.y.saturating_add(rect.height.saturating_sub(7)),
+                    (composition_width.ceil() as u32).max(1).min(inner.width),
+                    1,
+                ),
+                inner,
+                options.theme.accent,
+            );
+        }
+    }
+
