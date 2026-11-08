@@ -239,12 +239,10 @@ impl FontFamily {
 
 /// Measures text while selecting fallback faces character by character.
 pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -> TextMetrics {
-    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || family.is_empty() {
         return TextMetrics::default();
     }
-    let Some(primary) = family.primary() else {
-        return TextMetrics::default();
-    };
+    let primary = Arc::clone(&family.faces[0]);
     let mut width = 0.0_f32;
     let mut max_width = 0.0_f32;
     let mut lines = 1_u32;
@@ -252,38 +250,43 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
     let mut previous: Option<(char, usize)> = None;
     let space = family
         .font_for(' ')
-        .unwrap_or(primary)
+        .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
-    for character in text.chars() {
-        match character {
-            '\n' => {
+
+    for cluster in fallback_text_clusters(text) {
+        match cluster.as_str() {
+            "\n" => {
                 max_width = max_width.max(width);
                 width = 0.0;
                 lines += 1;
                 previous = None;
             }
-            '\t' => {
+            "\t" => {
                 width += tab_width;
                 previous = None;
             }
-            character => {
-                if is_combining_mark(character) {
+            _ => {
+                let Some(character) = cluster.chars().find(|character| {
+                    !is_combining_mark(*character) && !is_shaping_control(*character)
+                }) else {
                     continue;
-                }
-                let face = family.font_for(character).unwrap_or(primary);
+                };
+                let current_face = previous.and_then(|(_, index)| family.faces.get(index));
+                let selected =
+                    fallback_face_for_cluster(family, current_face, &cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
-                    .position(|candidate| std::ptr::eq(candidate.as_ref(), face))
+                    .position(|candidate| Arc::ptr_eq(candidate, &selected))
                     .unwrap_or(0);
                 if let Some((previous_character, previous_face)) = previous {
                     if previous_face == face_index {
-                        width += face.kerning(previous_character, character, pixel_size);
+                        width += selected.kerning(previous_character, character, pixel_size);
                     }
                 }
-                line_height = line_height.max(face.line_height(pixel_size));
-                width += face.glyph(character, pixel_size).advance_width;
+                line_height = line_height.max(selected.line_height(pixel_size));
+                width += selected.glyph(character, pixel_size).advance_width;
                 previous = Some((character, face_index));
             }
         }
@@ -307,12 +310,10 @@ pub fn draw_text_with_fallback_clipped(
     color: Color,
     clip: Rect,
 ) -> TextMetrics {
-    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || family.is_empty() {
         return TextMetrics::default();
     }
-    let Some(primary) = family.primary() else {
-        return TextMetrics::default();
-    };
+    let primary = Arc::clone(&family.faces[0]);
     let metrics = measure_with_fallback(family, text, pixel_size);
     let mut x = baseline.x as f32;
     let mut y = baseline.y;
@@ -322,12 +323,13 @@ pub fn draw_text_with_fallback_clipped(
     let mut below_mark_offset = 0.0_f32;
     let space = family
         .font_for(' ')
-        .unwrap_or(primary)
+        .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
-    for character in text.chars() {
-        match character {
-            '\n' => {
+
+    for cluster in fallback_text_clusters(text) {
+        match cluster.as_str() {
+            "\n" => {
                 x = baseline.x as f32;
                 previous = None;
                 base_anchor = None;
@@ -339,78 +341,88 @@ pub fn draw_text_with_fallback_clipped(
                 }
                 y = next_y.round() as i32;
             }
-            '\t' => {
+            "\t" => {
                 x += tab_width;
                 previous = None;
                 base_anchor = None;
                 above_mark_offset = 0.0;
                 below_mark_offset = 0.0;
             }
-            character => {
-                let face = family.font_for(character).unwrap_or(primary);
+            _ => {
+                let current_face = previous.and_then(|(_, index)| family.faces.get(index));
+                let selected =
+                    fallback_face_for_cluster(family, current_face, &cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
-                    .position(|candidate| std::ptr::eq(candidate.as_ref(), face))
+                    .position(|candidate| Arc::ptr_eq(candidate, &selected))
                     .unwrap_or(0);
-                let glyph = face.glyph(character, pixel_size);
-                let combining = is_combining_mark(character);
-                if !combining {
-                    if let Some((previous_character, previous_face)) = previous {
-                        if previous_face == face_index {
-                            x += face.kerning(previous_character, character, pixel_size);
+                let face = selected.as_ref();
+
+                for character in cluster.chars() {
+                    if is_shaping_control(character) {
+                        continue;
+                    }
+                    let glyph = face.glyph(character, pixel_size);
+                    let combining = is_combining_mark(character);
+                    if !combining {
+                        if let Some((previous_character, previous_face)) = previous {
+                            if previous_face == face_index {
+                                x += face.kerning(previous_character, character, pixel_size);
+                            }
                         }
                     }
-                }
-                let mut glyph_left = x + glyph.xmin as f32;
-                let mut glyph_top = y as f32 - glyph.ymin as f32 - glyph.height as f32;
-                if combining {
-                    if let Some(anchor) = base_anchor {
-                        let offset = if is_below_combining_mark(character) {
-                            below_mark_offset
-                        } else {
-                            above_mark_offset
-                        };
-                        (glyph_left, glyph_top) = positioned_mark_origin_stacked(
-                            character,
-                            glyph.width,
-                            glyph.height,
-                            anchor,
-                            offset,
+                    let mut glyph_left = x + glyph.xmin as f32;
+                    let mut glyph_top =
+                        y as f32 - glyph.ymin as f32 - glyph.height as f32;
+                    if combining {
+                        if let Some(anchor) = base_anchor {
+                            let offset = if is_below_combining_mark(character) {
+                                below_mark_offset
+                            } else {
+                                above_mark_offset
+                            };
+                            (glyph_left, glyph_top) = positioned_mark_origin_stacked(
+                                character,
+                                glyph.width,
+                                glyph.height,
+                                anchor,
+                                offset,
+                            );
+                            if is_below_combining_mark(character) {
+                                below_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                            } else {
+                                above_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                            }
+                        }
+                    } else {
+                        base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
+                        above_mark_offset = 0.0;
+                        below_mark_offset = 0.0;
+                    }
+                    let draw_x = glyph_left - glyph.xmin as f32;
+                    let draw_y = glyph_top + glyph.ymin as f32 + glyph.height as f32;
+                    if draw_x.is_finite()
+                        && draw_y.is_finite()
+                        && draw_x >= i32::MIN as f32
+                        && draw_x <= i32::MAX as f32
+                        && draw_y >= i32::MIN as f32
+                        && draw_y <= i32::MAX as f32
+                    {
+                        draw_text_clipped(
+                            target,
+                            face,
+                            &character.to_string(),
+                            Point::new(draw_x.round() as i32, draw_y.round() as i32),
+                            pixel_size,
+                            color,
+                            clip,
                         );
-                        if is_below_combining_mark(character) {
-                            below_mark_offset = next_mark_stack_offset(offset, glyph.height);
-                        } else {
-                            above_mark_offset = next_mark_stack_offset(offset, glyph.height);
-                        }
                     }
-                } else {
-                    base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
-                    above_mark_offset = 0.0;
-                    below_mark_offset = 0.0;
-                }
-                let draw_x = glyph_left - glyph.xmin as f32;
-                let draw_y = glyph_top + glyph.ymin as f32 + glyph.height as f32;
-                if draw_x.is_finite()
-                    && draw_y.is_finite()
-                    && draw_x >= i32::MIN as f32
-                    && draw_x <= i32::MAX as f32
-                    && draw_y >= i32::MIN as f32
-                    && draw_y <= i32::MAX as f32
-                {
-                    draw_text_clipped(
-                        target,
-                        face,
-                        &character.to_string(),
-                        Point::new(draw_x.round() as i32, draw_y.round() as i32),
-                        pixel_size,
-                        color,
-                        clip,
-                    );
-                }
-                if !combining {
-                    x += glyph.advance_width;
-                    previous = Some((character, face_index));
+                    if !combining {
+                        x += glyph.advance_width;
+                        previous = Some((character, face_index));
+                    }
                 }
             }
         }
@@ -566,6 +578,15 @@ pub fn draw_text_bidi_clipped(
     }
 }
 
+/// Returns whether a scalar is a non-rendering Unicode shaping control.
+fn is_shaping_control(character: char) -> bool {
+    let code = character as u32;
+    character == '\u{200D}'
+        || (0xFE00..=0xFE0F).contains(&code)
+        || (0xE0100..=0xE01EF).contains(&code)
+        || (0xE0020..=0xE007F).contains(&code)
+}
+
 fn fallback_face_for_cluster(
     family: &FontFamily,
     current_face: Option<&Arc<FontFace>>,
@@ -576,21 +597,13 @@ fn fallback_face_for_cluster(
     let base = characters
         .iter()
         .copied()
-        .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
-    // ZWJ, variation selectors and emoji tag characters are shaping controls,
-    // not standalone glyphs. Every other scalar in the grapheme should be
-    // covered by one face whenever possible (including skin-tone modifiers,
-    // regional indicators and all components of a joined emoji).
+        .find(|character| !is_combining_mark(*character) && !is_shaping_control(*character));
+    // Shaping controls affect cluster presentation but are not independently
+    // rendered glyphs. All other scalars should be covered by one face.
     let required = characters
         .iter()
         .copied()
-        .filter(|character| {
-            let code = *character as u32;
-            *character != '\u{200D}'
-                && !(0xFE00..=0xFE0F).contains(&code)
-                && !(0xE0100..=0xE01EF).contains(&code)
-                && !(0xE0020..=0xE007F).contains(&code)
-        })
+        .filter(|character| !is_shaping_control(*character))
         .collect::<Vec<_>>();
     if let Some(base) = base {
         family
@@ -814,42 +827,26 @@ pub fn draw_text_with_fallback_shaped_clipped(
         run_text.clear();
     };
 
-    for character in text.chars() {
-        match character {
-            '\n' => {
+    for cluster in fallback_text_clusters(text) {
+        match cluster.as_str() {
+            "\n" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 max_width = max_width.max(pen_x - baseline.x as f32);
                 pen_x = baseline.x as f32;
                 pen_y += line_height;
                 line_count = line_count.saturating_add(1);
             }
-            '\t' => {
+            "\t" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 let relative = (pen_x - baseline.x as f32).max(0.0);
                 pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
             }
-            character => {
-                let selected = if is_combining_mark(character) {
-                    run_face
-                        .as_ref()
-                        .filter(|face| face.has_glyph(character))
-                        .cloned()
-                        .or_else(|| {
-                            family
-                                .faces
-                                .iter()
-                                .find(|face| face.has_glyph(character))
-                                .cloned()
-                        })
-                        .unwrap_or_else(|| Arc::clone(primary))
-                } else {
-                    family
-                        .faces
-                        .iter()
-                        .find(|face| face.has_glyph(character))
-                        .cloned()
-                        .unwrap_or_else(|| Arc::clone(primary))
-                };
+            _ => {
+                if cluster.chars().all(|character| is_shaping_control(character)) {
+                    continue;
+                }
+                let selected =
+                    fallback_face_for_cluster(family, run_face.as_ref(), &cluster, primary);
                 let same_face = run_face
                     .as_ref()
                     .is_some_and(|face| Arc::ptr_eq(face, &selected));
@@ -859,7 +856,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 if run_face.is_none() {
                     run_face = Some(selected);
                 }
-                run_text.push(character);
+                run_text.push_str(&cluster);
             }
         }
     }
@@ -2299,6 +2296,38 @@ mod tests {
             let x = index % target.width() as usize;
             (40..112).contains(&x) || *pixel == crate::Color::BLACK
         }));
+    }
+
+    #[test]
+    fn fallback_keeps_combining_sequences_on_one_font_face() {
+        use std::sync::Arc;
+
+        let hebrew_bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let arabic_bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let hebrew = Arc::new(FontFace::from_bytes(hebrew_bytes).expect("Hebrew font"));
+        let arabic = Arc::new(FontFace::from_bytes(arabic_bytes).expect("Arabic font"));
+        let mut family = super::FontFamily::new(Arc::clone(&hebrew));
+        family.add_fallback(Arc::clone(&arabic));
+
+        let hebrew_cluster = "שָׁ";
+        let selected = super::fallback_face_for_cluster(
+            &family,
+            None,
+            hebrew_cluster,
+            &hebrew,
+        );
+        assert!(Arc::ptr_eq(&selected, &hebrew));
+        assert!(hebrew_cluster.chars().all(|character| hebrew.has_glyph(character)));
+
+        let arabic_cluster = "لَا";
+        let selected = super::fallback_face_for_cluster(
+            &family,
+            None,
+            arabic_cluster,
+            &hebrew,
+        );
+        assert!(Arc::ptr_eq(&selected, &arabic));
+        assert!(arabic_cluster.chars().all(|character| arabic.has_glyph(character)));
     }
 
     #[test]
