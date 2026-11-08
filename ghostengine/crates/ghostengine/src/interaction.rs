@@ -271,7 +271,10 @@ mod tests {
             ui.focus_next(&[true, false, true], false).focus_changed,
             Some(2)
         );
-        assert_eq!(ui.focus_next(&[true, false, true], false).focus_changed, Some(0));
+        assert_eq!(
+            ui.focus_next(&[true, false, true], false).focus_changed,
+            Some(0)
+        );
         assert_eq!(
             ui.focus_next(&[true, false, true], true).focus_changed,
             Some(2)
