@@ -606,7 +606,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
     let mut max_width = 0.0_f32;
     let mut line_count = 0_u32;
 
-    for paragraph in text.split('\\n') {
+    for paragraph in text.split('\n') {
         let mut pen_x = baseline.x as f32;
 
         for bidi_run in crate::shaping::resolve_bidi_runs(paragraph) {
@@ -618,7 +618,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
             let mut current_text = String::new();
 
             for cluster in fallback_text_clusters(run_text) {
-                if cluster == "\\t" {
+                if cluster == "\t" {
                     if let Some(face) = current_face.take() {
                         segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
                     }
@@ -628,7 +628,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
 
                 let representative = cluster
                     .chars()
-                    .find(|character| !is_combining_mark(*character) && *character != '\\u{200D}');
+                    .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
                 let selected = if let Some(character) = representative {
                     if is_combining_mark(character) {
                         current_face
