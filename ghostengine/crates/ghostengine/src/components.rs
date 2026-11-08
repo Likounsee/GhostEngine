@@ -66,6 +66,7 @@ pub struct UiComponent {
     visible: bool,
     layout_item: LayoutItem,
     child_layout: StackLayout,
+    tooltip: Option<String>,
     children: Vec<Self>,
 }
 
@@ -189,6 +190,7 @@ impl UiComponent {
             visible: true,
             layout_item: LayoutItem::flexible(),
             child_layout: StackLayout::default(),
+            tooltip: None,
             children: Vec::new(),
         }
     }
@@ -227,6 +229,13 @@ impl UiComponent {
     #[must_use]
     pub fn with_child_layout(mut self, layout: StackLayout) -> Self {
         self.child_layout = layout;
+        self
+    }
+
+    /// Adds a tooltip displayed while this component is hovered.
+    #[must_use]
+    pub fn with_tooltip(mut self, text: impl Into<String>) -> Self {
+        self.tooltip = Some(text.into());
         self
     }
 
@@ -917,6 +926,56 @@ impl ComponentTree {
                         pixel_size,
                         theme,
                     );
+                }
+            }
+        }
+
+        // Tooltips are painted last so they remain visible above every widget.
+        if let Some(hovered_id) = self
+            .interaction
+            .hovered()
+            .and_then(|index| self.focusable_ids.get(index).copied())
+        {
+            let tooltip = self.find(hovered_id).and_then(|component| {
+                component.tooltip.as_deref().map(str::to_owned)
+            });
+            let anchor = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == hovered_id)
+                .map(|placement| placement.bounds);
+            if let (Some(text), Some(anchor)) = (tooltip, anchor) {
+                let metrics = font.measure(&text, pixel_size);
+                let line_height = font.line_height(pixel_size).ceil().max(1.0) as u32;
+                let width = (metrics.width.ceil() as u32).saturating_add(16).min(target.width());
+                let height = line_height.saturating_add(10).min(target.height());
+                if width > 0 && height > 0 {
+                    let max_x = target.width().saturating_sub(width);
+                    let x = anchor.x.min(max_x);
+                    let below = anchor.y.saturating_add(anchor.height).saturating_add(6);
+                    let y = if below.saturating_add(height) <= target.height() {
+                        below
+                    } else {
+                        anchor.y.saturating_sub(height.saturating_add(6))
+                    }.min(target.height().saturating_sub(height));
+                    let tooltip_bounds = Rect::new(x, y, width, height);
+                    draw_panel(target, tooltip_bounds, 4, theme);
+                    let baseline = i64::from(y)
+                        + (i64::from(height) + i64::from(line_height)) / 2;
+                    if let (Ok(text_x), Ok(text_y)) = (
+                        i32::try_from(x.saturating_add(8)),
+                        i32::try_from(baseline),
+                    ) {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            &text,
+                            Point::new(text_x, text_y),
+                            pixel_size,
+                            theme.text,
+                            tooltip_bounds,
+                        );
+                    }
                 }
             }
         }
