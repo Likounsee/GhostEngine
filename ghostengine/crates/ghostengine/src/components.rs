@@ -230,25 +230,23 @@ impl ComponentTree {
         self.focusable_ids.clear();
         self.focusable_bounds.clear();
 
-        let roots = self.roots.clone();
+        let roots: Vec<_> = self.roots.iter().filter(|node| node.visible).cloned().collect();
         let root_items: Vec<_> = roots.iter().map(|node| node.layout_item).collect();
         let root_rects = StackLayout::default().layout(bounds, &root_items);
         for (node, rect) in roots.iter().zip(root_rects) {
-            self.place_node(node, rect);
+            self.place_node(node, rect, true);
         }
         self.placed.as_slice()
     }
 
-    fn place_node(&mut self, node: &UiComponent, bounds: Rect) {
-        if !node.visible {
-            return;
-        }
-        let state = if node.is_focusable() {
+    fn place_node(&mut self, node: &UiComponent, bounds: Rect, ancestors_enabled: bool) {
+        let effectively_enabled = ancestors_enabled && node.enabled;
+        let state = if node.is_focusable() && ancestors_enabled {
             let index = self.focusable_ids.len();
             self.focusable_ids.push(node.id);
             self.focusable_bounds.push(bounds);
             self.interaction.widget_state(index, true)
-        } else if !node.enabled {
+        } else if !effectively_enabled {
             WidgetState::Disabled
         } else {
             WidgetState::Normal
@@ -259,11 +257,12 @@ impl ComponentTree {
             state,
         });
 
-        if !node.children.is_empty() {
-            let items: Vec<_> = node.children.iter().map(|child| child.layout_item).collect();
+        let children: Vec<_> = node.children.iter().filter(|child| child.visible).collect();
+        if !children.is_empty() {
+            let items: Vec<_> = children.iter().map(|child| child.layout_item).collect();
             let child_rects = node.child_layout.layout(bounds, &items);
-            for (child, child_bounds) in node.children.iter().zip(child_rects) {
-                self.place_node(child, child_bounds);
+            for (child, child_bounds) in children.into_iter().zip(child_rects) {
+                self.place_node(child, child_bounds, effectively_enabled);
             }
         }
     }
