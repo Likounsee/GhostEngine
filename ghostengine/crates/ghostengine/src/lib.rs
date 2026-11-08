@@ -24,6 +24,9 @@ pub mod ui;
 #[cfg(feature = "window")]
 pub mod window;
 
+#[cfg(feature = "native-input")]
+pub mod native_input;
+
 pub use color::Color;
 pub use components::{
     ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
