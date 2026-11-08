@@ -164,32 +164,188 @@ fn pack_rgb(color: Color) -> u32 {
 
 fn key_to_character(key: Key, shift: bool) -> Option<char> {
     Some(match key {
-        Key::A => if shift { 'A' } else { 'a' },
-        Key::B => if shift { 'B' } else { 'b' },
-        Key::C => if shift { 'C' } else { 'c' },
-        Key::D => if shift { 'D' } else { 'd' },
-        Key::E => if shift { 'E' } else { 'e' },
-        Key::F => if shift { 'F' } else { 'f' },
-        Key::G => if shift { 'G' } else { 'g' },
-        Key::H => if shift { 'H' } else { 'h' },
-        Key::I => if shift { 'I' } else { 'i' },
-        Key::J => if shift { 'J' } else { 'j' },
-        Key::K => if shift { 'K' } else { 'k' },
-        Key::L => if shift { 'L' } else { 'l' },
-        Key::M => if shift { 'M' } else { 'm' },
-        Key::N => if shift { 'N' } else { 'n' },
-        Key::O => if shift { 'O' } else { 'o' },
-        Key::P => if shift { 'P' } else { 'p' },
-        Key::Q => if shift { 'Q' } else { 'q' },
-        Key::R => if shift { 'R' } else { 'r' },
-        Key::S => if shift { 'S' } else { 's' },
-        Key::T => if shift { 'T' } else { 't' },
-        Key::U => if shift { 'U' } else { 'u' },
-        Key::V => if shift { 'V' } else { 'v' },
-        Key::W => if shift { 'W' } else { 'w' },
-        Key::X => if shift { 'X' } else { 'x' },
-        Key::Y => if shift { 'Y' } else { 'y' },
-        Key::Z => if shift { 'Z' } else { 'z' },
+        Key::A => {
+            if shift {
+                'A'
+            } else {
+                'a'
+            }
+        }
+        Key::B => {
+            if shift {
+                'B'
+            } else {
+                'b'
+            }
+        }
+        Key::C => {
+            if shift {
+                'C'
+            } else {
+                'c'
+            }
+        }
+        Key::D => {
+            if shift {
+                'D'
+            } else {
+                'd'
+            }
+        }
+        Key::E => {
+            if shift {
+                'E'
+            } else {
+                'e'
+            }
+        }
+        Key::F => {
+            if shift {
+                'F'
+            } else {
+                'f'
+            }
+        }
+        Key::G => {
+            if shift {
+                'G'
+            } else {
+                'g'
+            }
+        }
+        Key::H => {
+            if shift {
+                'H'
+            } else {
+                'h'
+            }
+        }
+        Key::I => {
+            if shift {
+                'I'
+            } else {
+                'i'
+            }
+        }
+        Key::J => {
+            if shift {
+                'J'
+            } else {
+                'j'
+            }
+        }
+        Key::K => {
+            if shift {
+                'K'
+            } else {
+                'k'
+            }
+        }
+        Key::L => {
+            if shift {
+                'L'
+            } else {
+                'l'
+            }
+        }
+        Key::M => {
+            if shift {
+                'M'
+            } else {
+                'm'
+            }
+        }
+        Key::N => {
+            if shift {
+                'N'
+            } else {
+                'n'
+            }
+        }
+        Key::O => {
+            if shift {
+                'O'
+            } else {
+                'o'
+            }
+        }
+        Key::P => {
+            if shift {
+                'P'
+            } else {
+                'p'
+            }
+        }
+        Key::Q => {
+            if shift {
+                'Q'
+            } else {
+                'q'
+            }
+        }
+        Key::R => {
+            if shift {
+                'R'
+            } else {
+                'r'
+            }
+        }
+        Key::S => {
+            if shift {
+                'S'
+            } else {
+                's'
+            }
+        }
+        Key::T => {
+            if shift {
+                'T'
+            } else {
+                't'
+            }
+        }
+        Key::U => {
+            if shift {
+                'U'
+            } else {
+                'u'
+            }
+        }
+        Key::V => {
+            if shift {
+                'V'
+            } else {
+                'v'
+            }
+        }
+        Key::W => {
+            if shift {
+                'W'
+            } else {
+                'w'
+            }
+        }
+        Key::X => {
+            if shift {
+                'X'
+            } else {
+                'x'
+            }
+        }
+        Key::Y => {
+            if shift {
+                'Y'
+            } else {
+                'y'
+            }
+        }
+        Key::Z => {
+            if shift {
+                'Z'
+            } else {
+                'z'
+            }
+        }
         Key::Key0 => '0',
         Key::Key1 => '1',
         Key::Key2 => '2',
@@ -200,9 +356,27 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
         Key::Key7 => '7',
         Key::Key8 => '8',
         Key::Key9 => '9',
-        Key::Period => if shift { '>' } else { '.' },
-        Key::Slash => if shift { '?' } else { '/' },
-        Key::Minus => if shift { '_' } else { '-' },
+        Key::Period => {
+            if shift {
+                '>'
+            } else {
+                '.'
+            }
+        }
+        Key::Slash => {
+            if shift {
+                '?'
+            } else {
+                '/'
+            }
+        }
+        Key::Minus => {
+            if shift {
+                '_'
+            } else {
+                '-'
+            }
+        }
         Key::Space => ' ',
         _ => return None,
     })
