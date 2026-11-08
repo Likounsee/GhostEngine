@@ -592,15 +592,15 @@ fn fallback_face_for_cluster(
                 && !(0xE0020..=0xE007F).contains(&code)
         })
         .collect::<Vec<_>>();
-    let supports_cluster = |face: &&Arc<FontFace>| {
-        required.iter().all(|character| face.has_glyph(*character))
-    };
-
     if let Some(base) = base {
         family
             .faces
             .iter()
-            .find(supports_cluster)
+            .find(|face| {
+                required
+                    .iter()
+                    .all(|character| face.has_glyph(*character))
+            })
             .or_else(|| family.faces.iter().find(|face| face.has_glyph(base)))
             .cloned()
             .unwrap_or_else(|| Arc::clone(primary))
