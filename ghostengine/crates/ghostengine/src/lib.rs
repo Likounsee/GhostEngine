@@ -40,9 +40,9 @@ pub use rasterizer::{
 pub use shaping::{OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError};
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{
-    draw_text, draw_text_shaped_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped, draw_text_clipped,
-    draw_text_transformed_clipped, draw_text_with_fallback_clipped, measure_with_fallback,
-    FontFace, FontFamily, TextAlign, TextLayoutOptions, TextMetrics,
+    draw_text, draw_text_box_clipped, draw_text_box_transformed_clipped, draw_text_clipped,
+    draw_text_shaped_clipped, draw_text_transformed_clipped, draw_text_with_fallback_clipped,
+    measure_with_fallback, FontFace, FontFamily, TextAlign, TextLayoutOptions, TextMetrics,
 };
 pub use texture::{
     draw_texture, draw_texture_clipped, draw_texture_transformed_clipped, Texture, TextureError,
