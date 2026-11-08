@@ -4,7 +4,7 @@
 //! and enabled arrays. The caller owns widget data and drawing; this module
 //! owns hover, pointer capture, click activation, and keyboard focus transitions.
 
-use crate::{FocusManager, Point, Rect};
+use crate::{FocusManager, Point, Rect, WidgetState};
 
 /// Events produced by one UI interaction update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -63,6 +63,23 @@ impl UiInteraction {
     #[must_use]
     pub const fn is_focused(self, index: usize) -> bool {
         matches!(self.focus.focused(), Some(current) if current == index)
+    }
+
+    /// Resolves the visual state expected by GhostEngine's built-in drawing widgets.
+    ///
+    /// A captured widget is visually pressed only while the pointer remains over it;
+    /// capture itself is retained until release so dragging outside cannot activate it.
+    #[must_use]
+    pub const fn widget_state(self, index: usize, enabled: bool) -> WidgetState {
+        if !enabled {
+            WidgetState::Disabled
+        } else if self.is_pressed(index) && self.is_hovered(index) {
+            WidgetState::Pressed
+        } else if self.is_hovered(index) {
+            WidgetState::Hovered
+        } else {
+            WidgetState::Normal
+        }
     }
 
     /// Updates pointer interaction for one frame.
@@ -179,11 +196,13 @@ mod tests {
     fn release_inside_captured_widget_emits_one_click_and_focuses_it() {
         let (enabled, bounds) = controls();
         let mut ui = UiInteraction::new();
-        ui.update(Some(Point::new(2, 2)), true, false, &enabled, &bounds);
+        let pressed_events =
+            ui.update(Some(Point::new(2, 2)), true, false, &enabled, &bounds);
         assert!(ui.is_pressed(0));
+        assert_eq!(pressed_events.focus_changed, Some(0));
         let events = ui.update(Some(Point::new(3, 3)), false, true, &enabled, &bounds);
         assert_eq!(events.clicked, Some(0));
-        assert_eq!(events.focus_changed, Some(0));
+        assert_eq!(events.focus_changed, None);
         assert!(!ui.is_pressed(0));
         assert_eq!(
             ui.update(Some(Point::new(3, 3)), false, false, &enabled, &bounds)
@@ -214,6 +233,21 @@ mod tests {
         assert_eq!(ui.hovered(), None);
         assert_eq!(ui.captured(), None);
         assert_eq!(ui.focused(), None);
+    }
+
+    #[test]
+    fn widget_visual_state_connects_interaction_to_existing_draw_helpers() {
+        let (enabled, bounds) = controls();
+        let mut ui = UiInteraction::new();
+        assert_eq!(ui.widget_state(0, true), WidgetState::Normal);
+        assert_eq!(ui.widget_state(2, false), WidgetState::Disabled);
+        ui.update(Some(Point::new(2, 2)), false, false, &enabled, &bounds);
+        assert_eq!(ui.widget_state(0, true), WidgetState::Hovered);
+        ui.update(Some(Point::new(2, 2)), true, false, &enabled, &bounds);
+        assert_eq!(ui.widget_state(0, true), WidgetState::Pressed);
+        ui.update(Some(Point::new(30, 30)), false, false, &enabled, &bounds);
+        assert_eq!(ui.widget_state(0, true), WidgetState::Normal);
+        assert_eq!(ui.captured(), Some(0));
     }
 
     #[test]
