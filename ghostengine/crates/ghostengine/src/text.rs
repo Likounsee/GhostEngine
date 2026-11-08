@@ -582,7 +582,13 @@ pub fn draw_text_with_fallback_shaped_clipped(
                         .as_ref()
                         .filter(|face| face.has_glyph(character))
                         .cloned()
-                        .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                        .or_else(|| {
+                            family
+                                .faces
+                                .iter()
+                                .find(|face| face.has_glyph(character))
+                                .cloned()
+                        })
                         .unwrap_or_else(|| Arc::clone(primary))
                 } else {
                     family
