@@ -428,8 +428,7 @@ impl DisplayList {
                     if run.shaped.glyphs.is_empty() {
                         continue;
                     }
-                    let run_transform =
-                        Transform2D::translation(run.offset_x, 0.0).then(transform);
+                    let run_transform = Transform2D::translation(run.offset_x, 0.0).then(transform);
                     self.commands.push(Command::DrawShapedText {
                         font: SharedFont(run.font),
                         shaped: run.shaped,
