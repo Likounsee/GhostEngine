@@ -267,11 +267,11 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                 previous = None;
             }
             _ => {
-                let Some(character) = cluster.chars().find(|character| {
-                    !is_combining_mark(*character) && !is_shaping_control(*character)
-                }) else {
+                if !cluster.chars().any(|character| {
+                    !is_combining_mark(character) && !is_shaping_control(character)
+                }) {
                     continue;
-                };
+                }
                 let current_face = previous.and_then(|(_, index)| family.faces.get(index));
                 let selected =
                     fallback_face_for_cluster(family, current_face, &cluster, &primary);
@@ -280,14 +280,19 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     .iter()
                     .position(|candidate| Arc::ptr_eq(candidate, &selected))
                     .unwrap_or(0);
-                if let Some((previous_character, previous_face)) = previous {
-                    if previous_face == face_index {
-                        width += selected.kerning(previous_character, character, pixel_size);
-                    }
-                }
                 line_height = line_height.max(selected.line_height(pixel_size));
-                width += selected.glyph(character, pixel_size).advance_width;
-                previous = Some((character, face_index));
+                for character in cluster.chars() {
+                    if is_combining_mark(character) || is_shaping_control(character) {
+                        continue;
+                    }
+                    if let Some((previous_character, previous_face)) = previous {
+                        if previous_face == face_index {
+                            width += selected.kerning(previous_character, character, pixel_size);
+                        }
+                    }
+                    width += selected.glyph(character, pixel_size).advance_width;
+                    previous = Some((character, face_index));
+                }
             }
         }
     }
