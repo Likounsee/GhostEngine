@@ -59,12 +59,7 @@ impl NativeWindowSurface {
     ///
     /// This is an event-loop entry point and should normally be called from
     /// the application's main thread. Winit's event loop can only be run once.
-    pub fn run<F>(
-        title: &str,
-        width: u32,
-        height: u32,
-        draw: F,
-    ) -> Result<(), NativeWindowError>
+    pub fn run<F>(title: &str, width: u32, height: u32, draw: F) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) + 'static,
     {
