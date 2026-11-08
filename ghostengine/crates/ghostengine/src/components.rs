@@ -191,10 +191,14 @@ pub enum ComponentKey {
     Space,
     ArrowLeft,
     ArrowRight,
+    WordLeft,
+    WordRight,
     Home,
     End,
     Backspace,
     Delete,
+    DeleteWordBackward,
+    DeleteWordForward,
 }
 
 /// A component's computed geometry and visual interaction state.
@@ -588,6 +592,43 @@ impl ComponentTree {
         true
     }
 
+    /// Moves the cursor by one Unicode word, optionally extending selection.
+    pub fn move_text_word_cursor(
+        &mut self,
+        id: ComponentId,
+        right: bool,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if right {
+            state.move_word_right(extend_selection);
+        } else {
+            state.move_word_left(extend_selection);
+        }
+        true
+    }
+
+    /// Deletes the word before or after the cursor.
+    pub fn delete_word_text(&mut self, id: ComponentId, forward: bool) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if forward {
+            state.delete_word_forward();
+        } else {
+            state.delete_word_backward();
+        }
+        self.commit_text_state(id)
+    }
+
     /// Selects all text in the specified input.
     pub fn select_all_text(&mut self, id: ComponentId) -> bool {
         if !self.sync_text_state(id) {
@@ -619,10 +660,14 @@ impl ComponentTree {
             }
             ComponentKey::ArrowLeft
             | ComponentKey::ArrowRight
+            | ComponentKey::WordLeft
+            | ComponentKey::WordRight
             | ComponentKey::Home
             | ComponentKey::End
             | ComponentKey::Backspace
-            | ComponentKey::Delete => {
+            | ComponentKey::Delete
+            | ComponentKey::DeleteWordBackward
+            | ComponentKey::DeleteWordForward => {
                 let Some(id) = self.focused_text_input() else {
                     return ComponentEvents::default();
                 };
@@ -632,6 +677,12 @@ impl ComponentTree {
                     }
                     ComponentKey::ArrowRight => {
                         self.move_text_cursor(id, true, shift);
+                    }
+                    ComponentKey::WordLeft => {
+                        self.move_text_word_cursor(id, false, shift);
+                    }
+                    ComponentKey::WordRight => {
+                        self.move_text_word_cursor(id, true, shift);
                     }
                     ComponentKey::Home => {
                         self.move_text_cursor_home_end(id, false, shift);
@@ -644,6 +695,12 @@ impl ComponentTree {
                     }
                     ComponentKey::Delete => {
                         self.delete_text(id);
+                    }
+                    ComponentKey::DeleteWordBackward => {
+                        self.delete_word_text(id, false);
+                    }
+                    ComponentKey::DeleteWordForward => {
+                        self.delete_word_text(id, true);
                     }
                     _ => {}
                 }
