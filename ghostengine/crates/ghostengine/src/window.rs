@@ -628,13 +628,18 @@ mod tests {
         let input_id = ComponentId(70);
         let button_id = ComponentId(71);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::text_input(input_id, "Type", "AB")
-                .with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::text_input(input_id, "Type", "AB").with_layout_item(LayoutItem::fixed(20)),
             UiComponent::button(button_id, "OK").with_layout_item(LayoutItem::fixed(20)),
         ]);
 
-        let tab = InputState { tab_pressed: true, ..InputState::default() };
-        assert_eq!(tree.handle_window_input(bounds, &tab).focus_changed, Some(input_id));
+        let tab = InputState {
+            tab_pressed: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            tree.handle_window_input(bounds, &tab).focus_changed,
+            Some(input_id)
+        );
 
         let type_text = InputState {
             pressed_characters: vec!['h', 'i'],
@@ -673,10 +678,22 @@ mod tests {
             crate::ComponentKind::TextInput { value, .. } if value == "x"
         ));
 
-        let tab = InputState { tab_pressed: true, ..InputState::default() };
-        assert_eq!(tree.handle_window_input(bounds, &tab).focus_changed, Some(button_id));
-        let enter = InputState { enter_pressed: true, ..InputState::default() };
-        assert_eq!(tree.handle_window_input(bounds, &enter).activated, Some(button_id));
+        let tab = InputState {
+            tab_pressed: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            tree.handle_window_input(bounds, &tab).focus_changed,
+            Some(button_id)
+        );
+        let enter = InputState {
+            enter_pressed: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            tree.handle_window_input(bounds, &enter).activated,
+            Some(button_id)
+        );
     }
 
     #[test]
