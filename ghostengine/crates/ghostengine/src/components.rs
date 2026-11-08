@@ -1643,6 +1643,44 @@ mod tests {
     }
 
     #[test]
+    fn retained_combo_box_selects_popup_rows_with_pointer() {
+        let id = ComponentId(123);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["First".into(), "Second".into(), "Third".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+        tree.focus_next(bounds, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+
+        let second_row = Point::new(20, 36 + 28 + 8);
+        tree.update_pointer(bounds, Some(second_row), true, false);
+        tree.update_pointer(bounds, Some(second_row), false, true);
+
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_tabs_select_the_clicked_tab_with_pointer() {
+        let id = ComponentId(124);
+        let bounds = Rect::new(0, 0, 180, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["General".into(), "Display".into(), "Input".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+
+        let third_tab = Point::new(150, 18);
+        tree.update_pointer(bounds, Some(third_tab), true, false);
+        let events = tree.update_pointer(bounds, Some(third_tab), false, true);
+
+        assert_eq!(events.activated, Some(id));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+    }
+
+    #[test]
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
