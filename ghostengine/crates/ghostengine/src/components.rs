@@ -3,6 +3,8 @@
 //! The tree owns component identity, hierarchy, layout participation, and
 //! interaction dispatch. Components render directly into GhostEngine's CPU framebuffer.
 
+use std::collections::HashMap;
+
 use crate::{
     draw_button, draw_checkbox, draw_label_clipped, draw_panel, draw_text_input, FontFace,
     Framebuffer, InteractionEvents, LayoutItem, Point, Rect, StackLayout, TextInputOptions,
@@ -181,6 +183,10 @@ impl UiComponent {
     }
 }
 
+/// Discrete keys routed by the retained component tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentKey { Tab, Enter, Space, ArrowLeft, ArrowRight, Home, End, Backspace, Delete }
+
 /// A component's computed geometry and visual interaction state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlacedComponent {
@@ -204,17 +210,23 @@ pub struct ComponentTree {
     focusable_ids: Vec<ComponentId>,
     focusable_bounds: Vec<Rect>,
     placed: Vec<PlacedComponent>,
+    text_states: HashMap<ComponentId, TextInputState>,
 }
 
 impl ComponentTree {
     #[must_use]
     pub fn new(roots: Vec<UiComponent>) -> Self {
+        let mut text_states = HashMap::new();
+        for root in &roots {
+            collect_text_states(root, &mut text_states);
+        }
         Self {
             roots,
             interaction: UiInteraction::new(),
             focusable_ids: Vec::new(),
             focusable_bounds: Vec::new(),
             placed: Vec::new(),
+            text_states,
         }
     }
 
@@ -363,8 +375,10 @@ impl ComponentTree {
                         );
                     }
                 }
-                ComponentKind::TextInput { placeholder, value } => {
-                    let state = TextInputState::new(value.clone());
+                ComponentKind::TextInput { placeholder, .. } => {
+                    let Some(state) = self.text_states.get(&placement.id) else {
+                        continue;
+                    };
                     let is_focused = focusable
                         .iter()
                         .position(|id| *id == placement.id)
@@ -403,45 +417,111 @@ impl ComponentTree {
         }
     }
 
-    /// Inserts text into a text input, replacing its current selection.
+    /// Returns the stable ID of the currently focused visible control.
+    #[must_use]
+    pub fn focused_component(&self) -> Option<ComponentId> {
+        self.interaction.focused().and_then(|index| self.focusable_ids.get(index).copied())
+    }
+
+    /// Returns the focused text input, if keyboard focus belongs to one.
+    #[must_use]
+    pub fn focused_text_input(&self) -> Option<ComponentId> {
+        let id = self.focused_component()?;
+        matches!(self.find(id).map(UiComponent::kind), Some(ComponentKind::TextInput { .. })).then_some(id)
+    }
+
+    /// Inserts text, replacing any active selection.
     pub fn insert_text(&mut self, id: ComponentId, text: &str) -> bool {
-        let Some(component) = self.find_mut(id) else {
-            return false;
-        };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
-            return false;
-        };
-        let mut state = TextInputState::new(value.clone());
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
         state.insert_text(text);
-        *value = state.text().to_owned();
-        true
+        self.commit_text_state(id)
     }
 
-    /// Deletes the previous grapheme from a text input.
+    /// Deletes the previous grapheme, or active selection.
     pub fn backspace_text(&mut self, id: ComponentId) -> bool {
-        let Some(component) = self.find_mut(id) else {
-            return false;
-        };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
-            return false;
-        };
-        let mut state = TextInputState::new(value.clone());
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
         state.backspace();
-        *value = state.text().to_owned();
+        self.commit_text_state(id)
+    }
+
+    /// Deletes the next grapheme, or active selection.
+    pub fn delete_text(&mut self, id: ComponentId) -> bool {
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
+        state.delete_forward();
+        self.commit_text_state(id)
+    }
+
+    /// Moves the cursor by one grapheme, optionally extending selection.
+    pub fn move_text_cursor(&mut self, id: ComponentId, right: bool, extend_selection: bool) -> bool {
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
+        if right { state.move_right(extend_selection); } else { state.move_left(extend_selection); }
         true
     }
 
-    /// Deletes the next grapheme from a text input.
-    pub fn delete_text(&mut self, id: ComponentId) -> bool {
-        let Some(component) = self.find_mut(id) else {
-            return false;
-        };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
-            return false;
-        };
-        let mut state = TextInputState::new(value.clone());
-        state.delete_forward();
-        *value = state.text().to_owned();
+    /// Moves the cursor to the beginning or end of the line.
+    pub fn move_text_cursor_home_end(&mut self, id: ComponentId, end: bool, extend_selection: bool) -> bool {
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
+        if end { state.move_end(extend_selection); } else { state.move_home(extend_selection); }
+        true
+    }
+
+    /// Selects all text in the specified input.
+    pub fn select_all_text(&mut self, id: ComponentId) -> bool {
+        if !self.sync_text_state(id) { return false; }
+        let Some(state) = self.text_states.get_mut(&id) else { return false; };
+        state.select_all();
+        true
+    }
+
+    /// Inserts text into the currently focused text input.
+    pub fn insert_text_focused(&mut self, text: &str) -> bool {
+        self.focused_text_input().is_some_and(|id| self.insert_text(id, text))
+    }
+
+    /// Routes a discrete key to focus navigation, activation, or text editing.
+    pub fn handle_key(&mut self, bounds: Rect, key: ComponentKey, shift: bool) -> ComponentEvents {
+        match key {
+            ComponentKey::Tab => self.focus_next(bounds, shift),
+            ComponentKey::Enter | ComponentKey::Space => {
+                if self.focused_text_input().is_some() { ComponentEvents::default() }
+                else { self.activate_focused(bounds) }
+            }
+            ComponentKey::ArrowLeft | ComponentKey::ArrowRight | ComponentKey::Home
+            | ComponentKey::End | ComponentKey::Backspace | ComponentKey::Delete => {
+                let Some(id) = self.focused_text_input() else { return ComponentEvents::default(); };
+                match key {
+                    ComponentKey::ArrowLeft => { self.move_text_cursor(id, false, shift); }
+                    ComponentKey::ArrowRight => { self.move_text_cursor(id, true, shift); }
+                    ComponentKey::Home => { self.move_text_cursor_home_end(id, false, shift); }
+                    ComponentKey::End => { self.move_text_cursor_home_end(id, true, shift); }
+                    ComponentKey::Backspace => { self.backspace_text(id); }
+                    ComponentKey::Delete => { self.delete_text(id); }
+                    _ => {}
+                }
+                ComponentEvents::default()
+            }
+        }
+    }
+
+    fn sync_text_state(&mut self, id: ComponentId) -> bool {
+        let Some(component) = self.find(id) else { return false; };
+        let ComponentKind::TextInput { value, .. } = component.kind() else { return false; };
+        let value = value.clone();
+        let state = self.text_states.entry(id).or_insert_with(|| TextInputState::new(value.clone()));
+        if state.text() != value { state.set_text(value); }
+        true
+    }
+
+    fn commit_text_state(&mut self, id: ComponentId) -> bool {
+        let Some(value) = self.text_states.get(&id).map(|state| state.text().to_owned()) else { return false; };
+        let Some(component) = self.find_mut(id) else { return false; };
+        let ComponentKind::TextInput { value: stored, .. } = &mut component.kind else { return false; };
+        *stored = value;
         true
     }
 
@@ -478,6 +558,13 @@ impl ComponentTree {
                 .and_then(|index| self.focusable_ids.get(index).copied()),
         }
     }
+}
+
+fn collect_text_states(node: &UiComponent, states: &mut HashMap<ComponentId, TextInputState>) {
+    if let ComponentKind::TextInput { value, .. } = node.kind() {
+        states.insert(node.id(), TextInputState::new(value.clone()));
+    }
+    for child in node.children() { collect_text_states(child, states); }
 }
 
 fn find_component(node: &UiComponent, id: ComponentId) -> Option<&UiComponent> {
