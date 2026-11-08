@@ -742,6 +742,96 @@ pub(crate) struct PreparedShapedTextBox {
     pub lines: Vec<PreparedShapedTextLine>,
 }
 
+/// Wraps shaped fallback text without normalizing or discarding whitespace.
+fn wrap_shaped_fallback_paragraph(
+    family: &FontFamily,
+    paragraph: &str,
+    pixel_size: f32,
+    max_width: f32,
+) -> Vec<String> {
+    wrap_paragraph_preserving_whitespace(paragraph, max_width, |candidate| {
+        measure_shaped_fallback_line(family, candidate, pixel_size)
+    })
+}
+
+/// Generic line wrapper that preserves whitespace and only splits oversized words
+/// at the engine's conservative grapheme-like cluster boundaries.
+fn wrap_paragraph_preserving_whitespace<F>(
+    paragraph: &str,
+    max_width: f32,
+    mut measure: F,
+) -> Vec<String>
+where
+    F: FnMut(&str) -> f32,
+{
+    if paragraph.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut output = Vec::new();
+    let mut line = String::new();
+    let mut token = String::new();
+    let mut token_is_whitespace = None;
+
+    let flush_token = |token: &mut String,
+                       token_is_whitespace: &mut Option<bool>,
+                       line: &mut String,
+                       output: &mut Vec<String>,
+                       measure: &mut F| {
+        if token.is_empty() {
+            return;
+        }
+        let is_whitespace = token_is_whitespace.unwrap_or(false);
+        if is_whitespace {
+            // Keep spaces and tabs verbatim. If they occur at a wrap boundary,
+            // they remain attached to the preceding line instead of disappearing.
+            line.push_str(token);
+        } else {
+            let candidate = format!("{line}{token}");
+            if !line.is_empty() && measure(&candidate) > max_width {
+                output.push(std::mem::take(line));
+            }
+            if measure(token) <= max_width {
+                line.push_str(token);
+            } else {
+                for cluster in fallback_text_clusters(token) {
+                    let candidate = format!("{line}{cluster}");
+                    if !line.is_empty() && measure(&candidate) > max_width {
+                        output.push(std::mem::take(line));
+                    }
+                    line.push_str(&cluster);
+                }
+            }
+        }
+        token.clear();
+        *token_is_whitespace = None;
+    };
+
+    for character in paragraph.chars() {
+        let whitespace = character.is_whitespace();
+        if token_is_whitespace.is_some_and(|previous| previous != whitespace) {
+            flush_token(
+                &mut token,
+                &mut token_is_whitespace,
+                &mut line,
+                &mut output,
+                &mut measure,
+            );
+        }
+        token_is_whitespace = Some(whitespace);
+        token.push(character);
+    }
+    flush_token(
+        &mut token,
+        &mut token_is_whitespace,
+        &mut line,
+        &mut output,
+        &mut measure,
+    );
+    output.push(line);
+    output
+}
+
 /// Shapes and lays out a fallback-font text block once, for reuse by display lists.
 pub(crate) fn prepare_shaped_text_box(
     family: &FontFamily,
@@ -770,47 +860,16 @@ pub(crate) fn prepare_shaped_text_box(
     }
     let mut text_lines = Vec::new();
     for paragraph in text.split('\n') {
-        let Some(max_width) = options.max_width else {
+        if let Some(max_width) = options.max_width {
+            text_lines.extend(wrap_shaped_fallback_paragraph(
+                family,
+                paragraph,
+                pixel_size,
+                max_width,
+            ));
+        } else {
             text_lines.push(paragraph.to_owned());
-            continue;
-        };
-        let mut line = String::new();
-        for word in paragraph.split_whitespace() {
-            let word_width = measure_shaped_fallback_line(family, word, pixel_size);
-            let separator_width = if line.is_empty() {
-                0.0
-            } else {
-                measure_shaped_fallback_line(family, " ", pixel_size)
-            };
-            if !line.is_empty()
-                && measure_shaped_fallback_line(family, &line, pixel_size)
-                    + separator_width
-                    + word_width
-                    > max_width
-            {
-                text_lines.push(std::mem::take(&mut line));
-            }
-            if word_width <= max_width {
-                if !line.is_empty() {
-                    line.push(' ');
-                }
-                line.push_str(word);
-            } else {
-                if !line.is_empty() {
-                    text_lines.push(std::mem::take(&mut line));
-                }
-                for cluster in fallback_text_clusters(word) {
-                    let candidate = format!("{line}{cluster}");
-                    if !line.is_empty()
-                        && measure_shaped_fallback_line(family, &candidate, pixel_size) > max_width
-                    {
-                        text_lines.push(std::mem::take(&mut line));
-                    }
-                    line.push_str(&cluster);
-                }
-            }
         }
-        text_lines.push(line);
     }
 
     let widths: Vec<f32> = text_lines
@@ -941,48 +1000,16 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
 
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
-        let Some(max_width) = options.max_width else {
+        if let Some(max_width) = options.max_width {
+            lines.extend(wrap_shaped_fallback_paragraph(
+                family,
+                paragraph,
+                pixel_size,
+                max_width,
+            ));
+        } else {
             lines.push(paragraph.to_owned());
-            continue;
-        };
-        let mut line = String::new();
-        for word in paragraph.split_whitespace() {
-            let word_width = measure_shaped_fallback_line(family, word, pixel_size);
-            let separator_width = if line.is_empty() {
-                0.0
-            } else {
-                measure_shaped_fallback_line(family, " ", pixel_size)
-            };
-            if !line.is_empty()
-                && measure_shaped_fallback_line(family, &line, pixel_size)
-                    + separator_width
-                    + word_width
-                    > max_width
-            {
-                lines.push(std::mem::take(&mut line));
-            }
-
-            if word_width <= max_width {
-                if !line.is_empty() {
-                    line.push(' ');
-                }
-                line.push_str(word);
-                continue;
-            }
-
-            if !line.is_empty() {
-                lines.push(std::mem::take(&mut line));
-            }
-            for cluster in fallback_text_clusters(word) {
-                let candidate = format!("{line}{cluster}");
-                let candidate_width = measure_shaped_fallback_line(family, &candidate, pixel_size);
-                if !line.is_empty() && candidate_width > max_width {
-                    lines.push(std::mem::take(&mut line));
-                }
-                line.push_str(&cluster);
-            }
         }
-        lines.push(line);
     }
 
     let widths: Vec<f32> = lines
@@ -1913,6 +1940,26 @@ mod tests {
         assert_eq!(super::fallback_text_clusters("👩‍💻x"), ["👩‍💻", "x"]);
         assert_eq!(super::fallback_text_clusters("🇫🇷!"), ["🇫🇷", "!"]);
         assert_eq!(super::fallback_text_clusters("✈️x"), ["✈️", "x"]);
+    }
+
+    #[test]
+    fn shaped_wrapping_preserves_repeated_leading_and_trailing_whitespace() {
+        let lines = super::wrap_paragraph_preserving_whitespace("  a  b  ", 4.0, |part| {
+            part.chars().count() as f32
+        });
+        assert_eq!(lines, ["  a  ", "b  "]);
+    }
+
+    #[test]
+    fn shaped_wrapping_preserves_tabs_and_blank_paragraphs() {
+        let lines = super::wrap_paragraph_preserving_whitespace("a\t\tb", 3.0, |part| {
+            part.chars().count() as f32
+        });
+        assert_eq!(lines, ["a\t\t", "b"]);
+        assert_eq!(
+            super::wrap_paragraph_preserving_whitespace("", 10.0, |_| 0.0),
+            [""]
+        );
     }
 
     #[test]
