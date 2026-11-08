@@ -813,6 +813,23 @@ mod tests {
     }
 
     #[test]
+    fn text_input_ime_composition_is_preedit_until_commit_or_cancel() {
+        let mut input = TextInputState::new("A🙂B");
+        input.move_left(false);
+        input.set_composition(Some("日本語".into()));
+        assert_eq!(input.text(), "A🙂B");
+        assert_eq!(input.composition(), Some("日本語"));
+        input.commit_composition();
+        assert_eq!(input.text(), "A🙂日本語B");
+        assert_eq!(input.composition(), None);
+
+        input.set_composition(Some("unfinished".into()));
+        input.cancel_composition();
+        assert_eq!(input.text(), "A🙂日本語B");
+        assert_eq!(input.composition(), None);
+    }
+
+    #[test]
     fn text_input_selection_replacement_and_deletion_work() {
         let mut input = TextInputState::new("hello world");
         input.set_cursor(5, false);
