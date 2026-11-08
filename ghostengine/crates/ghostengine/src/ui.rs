@@ -309,6 +309,7 @@ pub struct TextInputState {
     text: String,
     cursor: usize,
     selection_anchor: Option<usize>,
+    composition: Option<String>,
 }
 
 impl TextInputState {
@@ -320,6 +321,7 @@ impl TextInputState {
             text,
             cursor,
             selection_anchor: None,
+            composition: None,
         }
     }
 
@@ -341,6 +343,7 @@ impl TextInputState {
     }
 
     pub fn set_text(&mut self, text: impl Into<String>) {
+        self.composition = None;
         self.text = text.into();
         self.cursor = self.text.len();
         self.selection_anchor = None;
@@ -354,6 +357,36 @@ impl TextInputState {
             self.selection_anchor = None;
         }
         self.cursor = next;
+    }
+
+    /// Returns the selected UTF-8 text, if a non-empty selection exists.
+    #[must_use]
+    pub fn selected_text(&self) -> Option<&str> {
+        let (start, end) = self.selection()?;
+        Some(&self.text[start..end])
+    }
+
+    /// Updates the platform IME pre-edit string without committing it.
+    pub fn set_composition(&mut self, composition: Option<String>) {
+        self.composition = composition.filter(|value| !value.is_empty());
+    }
+
+    /// Returns the current IME pre-edit string.
+    #[must_use]
+    pub fn composition(&self) -> Option<&str> {
+        self.composition.as_deref()
+    }
+
+    /// Commits the current pre-edit string at the cursor.
+    pub fn commit_composition(&mut self) {
+        if let Some(composition) = self.composition.take() {
+            self.insert_text(&composition);
+        }
+    }
+
+    /// Cancels the current IME pre-edit string.
+    pub fn cancel_composition(&mut self) {
+        self.composition = None;
     }
 
     pub fn select_all(&mut self) {
@@ -397,6 +430,7 @@ impl TextInputState {
 
     /// Inserts text at the cursor, replacing any active selection.
     pub fn insert_text(&mut self, inserted: &str) {
+        self.composition = None;
         self.delete_selection();
         let inserted: String = inserted
             .chars()
@@ -429,7 +463,7 @@ impl TextInputState {
         self.text.replace_range(self.cursor..next, "");
     }
 
-    fn delete_selection(&mut self) -> bool {
+    pub fn delete_selection(&mut self) -> bool {
         let Some((start, end)) = self.selection() else {
             return false;
         };
