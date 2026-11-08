@@ -902,7 +902,7 @@ mod tests {
         state.move_word_left(false);
         assert_eq!(state.cursor(), "hello brave ".len());
         state.delete_word_backward();
-        assert_eq!(state.text(), "hello brave ");
+        assert_eq!(state.text(), "hello world");
 
         state.set_text("café 世界🙂!");
         state.move_home(false);
