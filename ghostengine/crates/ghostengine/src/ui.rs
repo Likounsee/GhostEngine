@@ -428,6 +428,51 @@ impl TextInputState {
         self.set_cursor(self.text.len(), extend_selection);
     }
 
+    /// Moves to the start of the previous Unicode word.
+    pub fn move_word_left(&mut self, extend_selection: bool) {
+        if !extend_selection {
+            if let Some((start, _)) = self.selection() {
+                self.set_cursor(start, false);
+                return;
+            }
+        }
+        let target = previous_word_boundary(&self.text, self.cursor);
+        self.set_cursor(target, extend_selection);
+    }
+
+    /// Moves to the end of the next Unicode word.
+    pub fn move_word_right(&mut self, extend_selection: bool) {
+        if !extend_selection {
+            if let Some((_, end)) = self.selection() {
+                self.set_cursor(end, false);
+                return;
+            }
+        }
+        let target = next_word_boundary(&self.text, self.cursor);
+        self.set_cursor(target, extend_selection);
+    }
+
+    /// Deletes the previous word, including intervening whitespace and punctuation.
+    pub fn delete_word_backward(&mut self) {
+        if self.delete_selection() || self.cursor == 0 {
+            return;
+        }
+        let start = previous_word_boundary(&self.text, self.cursor);
+        self.text.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
+    /// Deletes through the end of the next word, including intervening punctuation.
+    pub fn delete_word_forward(&mut self) {
+        if self.delete_selection() || self.cursor == self.text.len() {
+            return;
+        }
+        let end = next_word_boundary(&self.text, self.cursor);
+        if end > self.cursor {
+            self.text.replace_range(self.cursor..end, "");
+        }
+    }
+
     /// Inserts text at the cursor, replacing any active selection.
     pub fn insert_text(&mut self, inserted: &str) {
         self.composition = None;
@@ -504,6 +549,20 @@ fn next_grapheme_boundary(text: &str, index: usize) -> usize {
     text.grapheme_indices(true)
         .map(|(boundary, grapheme)| boundary + grapheme.len())
         .find(|boundary| *boundary > index)
+        .unwrap_or(text.len())
+}
+
+fn previous_word_boundary(text: &str, cursor: usize) -> usize {
+    text.unicode_word_indices()
+        .take_while(|(start, _)| *start < cursor)
+        .last()
+        .map_or(0, |(start, _)| start)
+}
+
+fn next_word_boundary(text: &str, cursor: usize) -> usize {
+    text.unicode_word_indices()
+        .map(|(start, word)| start + word.len())
+        .find(|end| *end > cursor)
         .unwrap_or(text.len())
 }
 
@@ -835,6 +894,32 @@ mod tests {
         input.move_home(false);
         input.delete_forward();
         assert_eq!(input.text(), "é🙂");
+    }
+
+    #[test]
+    fn word_navigation_and_deletion_respect_unicode_word_boundaries() {
+        let mut state = TextInputState::new("hello brave world");
+        state.move_word_left(false);
+        assert_eq!(state.cursor(), "hello brave ".len());
+        state.delete_word_backward();
+        assert_eq!(state.text(), "hello brave ");
+
+        state.set_text("café 世界🙂!");
+        state.move_home(false);
+        state.move_word_right(false);
+        assert_eq!(state.cursor(), "café".len());
+        state.move_word_right(false);
+        assert_eq!(state.cursor(), "café 世界".len());
+    }
+
+    #[test]
+    fn word_navigation_can_extend_and_replace_selection() {
+        let mut state = TextInputState::new("one two three");
+        state.move_home(false);
+        state.move_word_right(true);
+        assert_eq!(state.selected_text(), Some("one"));
+        state.insert_text("1");
+        assert_eq!(state.text(), "1 two three");
     }
 
     #[test]
