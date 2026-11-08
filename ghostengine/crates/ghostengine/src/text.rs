@@ -498,6 +498,123 @@ fn draw_cached_glyph_clipped(
     }
 }
 
+/// Draws OpenType-shaped text across a font fallback family.
+///
+/// Explicit newlines and four-space tab stops are handled here. Contiguous
+/// character runs are shaped with the selected face, so GSUB/GPOS are applied
+/// within each fallback run. This is not yet a full Unicode line-break or bidi
+/// layout engine; callers needing wrapping should lay out lines before calling.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_with_fallback_shaped_clipped(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || family.is_empty() {
+        return TextMetrics::default();
+    }
+
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+    let primary = &family.faces[0];
+    let space_advance = family
+        .font_for(' ')
+        .unwrap_or(primary)
+        .glyph(' ', pixel_size)
+        .advance_width;
+    let tab_width = (space_advance * 4.0).max(pixel_size);
+    let mut pen_x = baseline.x as f32;
+    let mut pen_y = baseline.y as f32;
+    let mut max_width = 0.0_f32;
+    let mut line_count = 1_u32;
+    let mut run_text = String::new();
+    let mut run_face: Option<Arc<FontFace>> = None;
+
+    let flush_run = |target: &mut Framebuffer,
+                     run_text: &mut String,
+                     run_face: &mut Option<Arc<FontFace>>,
+                     pen_x: &mut f32,
+                     pen_y: f32| {
+        if run_text.is_empty() {
+            *run_face = None;
+            return;
+        }
+        if let Some(face) = run_face.take() {
+            if let Ok(shaped) = face.shape_text(run_text, pixel_size) {
+                draw_text_shaped_clipped(
+                    target,
+                    &face,
+                    &shaped,
+                    Point::new(pen_x.round() as i32, pen_y.round() as i32),
+                    pixel_size,
+                    color,
+                    clip,
+                );
+                *pen_x += shaped.advance_x;
+            }
+        }
+        run_text.clear();
+    };
+
+    for character in text.chars() {
+        match character {
+            '\\n' => {
+                flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
+                max_width = max_width.max(pen_x - baseline.x as f32);
+                pen_x = baseline.x as f32;
+                pen_y += line_height;
+                line_count = line_count.saturating_add(1);
+            }
+            '\\t' => {
+                flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
+                let relative = (pen_x - baseline.x as f32).max(0.0);
+                pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
+            }
+            character => {
+                let selected = if is_combining_mark(character) {
+                    run_face
+                        .as_ref()
+                        .filter(|face| face.has_glyph(character))
+                        .cloned()
+                        .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                        .unwrap_or_else(|| Arc::clone(primary))
+                } else {
+                    family
+                        .faces
+                        .iter()
+                        .find(|face| face.has_glyph(character))
+                        .cloned()
+                        .unwrap_or_else(|| Arc::clone(primary))
+                };
+                let same_face = run_face
+                    .as_ref()
+                    .is_some_and(|face| Arc::ptr_eq(face, &selected));
+                if !same_face && !run_text.is_empty() {
+                    flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
+                }
+                if run_face.is_none() {
+                    run_face = Some(selected);
+                }
+                run_text.push(character);
+            }
+        }
+    }
+    flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
+    max_width = max_width.max(pen_x - baseline.x as f32);
+
+    TextMetrics {
+        width: max_width,
+        height: line_height * line_count as f32,
+        line_count,
+    }
+}
+
 /// Draws a shaped glyph run with a full affine transform and framebuffer clip.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_text_shaped_transformed_clipped(
