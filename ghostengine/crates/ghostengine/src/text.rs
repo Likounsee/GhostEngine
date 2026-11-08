@@ -280,8 +280,8 @@ pub fn draw_text_with_fallback_clipped(
                 x += tab_width;
                 previous = None;
                 base_anchor = None;
-            above_mark_offset = 0.0;
-            below_mark_offset = 0.0;
+                above_mark_offset = 0.0;
+                below_mark_offset = 0.0;
             }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
@@ -717,15 +717,15 @@ pub fn draw_text_transformed_clipped(
                 pen_y += line_height;
                 previous = None;
                 base_anchor = None;
-            above_mark_offset = 0.0;
-            below_mark_offset = 0.0;
+                above_mark_offset = 0.0;
+                below_mark_offset = 0.0;
             }
             '\t' => {
                 pen_x += tab_width;
                 previous = None;
                 base_anchor = None;
-            above_mark_offset = 0.0;
-            below_mark_offset = 0.0;
+                above_mark_offset = 0.0;
+                below_mark_offset = 0.0;
             }
             character => {
                 if !is_combining_mark(character) {
