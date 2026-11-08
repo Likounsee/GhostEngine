@@ -39,7 +39,7 @@ pub use native_window::{NativeWindowError, NativeWindowSurface};
 pub use color::Color;
 pub use components::{
     ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
-    PlacedComponent, TextInputEvent, UiComponent,
+    ComponentTreeError, PlacedComponent, TextInputEvent, UiComponent,
 };
 pub use composition::{compose_layers, Layer};
 pub use display_list::{DisplayList, RenderStats};
