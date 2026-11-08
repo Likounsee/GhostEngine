@@ -1060,6 +1060,263 @@ where
     output
 }
 
+
+/// Builds visual-order shaped runs for one bidi line, including font fallback.
+fn prepare_bidi_shaped_line(
+    family: &FontFamily,
+    line: &str,
+    pixel_size: f32,
+) -> Result<Vec<PreparedShapedTextRun>, ShapingError> {
+    enum Segment {
+        Glyphs(Arc<FontFace>, String),
+        Tab,
+    }
+
+    let primary = Arc::clone(&family.faces[0]);
+    let space_advance = family
+        .font_for(' ')
+        .unwrap_or(primary.as_ref())
+        .glyph(' ', pixel_size)
+        .advance_width;
+    let tab_width = (space_advance * 4.0).max(pixel_size);
+    let mut output = Vec::new();
+    let mut pen_x = 0.0_f32;
+
+    for bidi_run in crate::shaping::resolve_bidi_runs(line) {
+        let Some(run_text) = line.get(bidi_run.byte_range) else {
+            continue;
+        };
+        let mut segments = Vec::new();
+        let mut current_face: Option<Arc<FontFace>> = None;
+        let mut current_text = String::new();
+
+        for cluster in fallback_text_clusters(run_text) {
+            if cluster == "\t" {
+                if let Some(face) = current_face.take() {
+                    segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                }
+                segments.push(Segment::Tab);
+                continue;
+            }
+
+            let representative = cluster
+                .chars()
+                .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
+            let selected = if let Some(character) = representative {
+                if is_combining_mark(character) {
+                    current_face
+                        .as_ref()
+                        .filter(|face| face.has_glyph(character))
+                        .cloned()
+                        .or_else(|| {
+                            family
+                                .faces
+                                .iter()
+                                .find(|face| face.has_glyph(character))
+                                .cloned()
+                        })
+                        .unwrap_or_else(|| Arc::clone(&primary))
+                } else {
+                    family
+                        .faces
+                        .iter()
+                        .find(|face| face.has_glyph(character))
+                        .cloned()
+                        .unwrap_or_else(|| Arc::clone(&primary))
+                }
+            } else {
+                current_face.clone().unwrap_or_else(|| Arc::clone(&primary))
+            };
+
+            if current_face
+                .as_ref()
+                .is_some_and(|face| !Arc::ptr_eq(face, &selected))
+            {
+                if let Some(face) = current_face.take() {
+                    segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                }
+            }
+            if current_face.is_none() {
+                current_face = Some(selected);
+            }
+            current_text.push_str(&cluster);
+        }
+        if let Some(face) = current_face {
+            segments.push(Segment::Glyphs(face, current_text));
+        }
+
+        // The bidi resolver supplies runs in visual order. Within an RTL run,
+        // fallback spans must also be emitted in visual order, without reversing
+        // the characters inside a span (the shaper handles that).
+        if bidi_run.direction == TextDirection::RightToLeft {
+            segments.reverse();
+        }
+
+        for segment in segments {
+            match segment {
+                Segment::Tab => {
+                    pen_x = ((pen_x / tab_width).floor() + 1.0) * tab_width;
+                }
+                Segment::Glyphs(font, text) => {
+                    let shaped =
+                        font.shape_text_with_direction(&text, pixel_size, bidi_run.direction)?;
+                    let advance = shaped.advance_x.abs();
+                    if !advance.is_finite() {
+                        continue;
+                    }
+                    output.push(PreparedShapedTextRun {
+                        font,
+                        shaped,
+                        offset_x: pen_x,
+                    });
+                    pen_x += advance;
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn measure_bidi_shaped_fallback_line(
+    family: &FontFamily,
+    line: &str,
+    pixel_size: f32,
+) -> f32 {
+    prepare_bidi_shaped_line(family, line, pixel_size)
+        .map(|runs| {
+            runs.iter()
+                .map(|run| run.shaped.advance_x.abs())
+                .sum::<f32>()
+        })
+        .unwrap_or(0.0)
+}
+
+/// Shapes, wraps and lays out bidirectional fallback text for display-list replay.
+pub(crate) fn prepare_bidi_shaped_text_box(
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    options: TextLayoutOptions,
+) -> Result<PreparedShapedTextBox, ShapingError> {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 {
+        return Err(ShapingError::InvalidPixelSize);
+    }
+    if text.is_empty()
+        || family.is_empty()
+        || !options.line_spacing.is_finite()
+        || options.line_spacing <= 0.0
+        || options
+            .max_width
+            .is_some_and(|width| !width.is_finite() || width <= 0.0)
+    {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
+
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
+
+    let mut text_lines = Vec::new();
+    for paragraph in text.split('\n') {
+        if let Some(max_width) = options.max_width {
+            text_lines.extend(wrap_paragraph_preserving_whitespace(
+                paragraph,
+                max_width,
+                |candidate| {
+                    measure_bidi_shaped_fallback_line(family, candidate, pixel_size)
+                },
+            ));
+        } else {
+            text_lines.push(paragraph.to_owned());
+        }
+    }
+
+    let mut prepared_lines = Vec::with_capacity(text_lines.len());
+    let mut widest = 0.0_f32;
+    let widths = text_lines
+        .iter()
+        .map(|line| measure_bidi_shaped_fallback_line(family, line, pixel_size))
+        .collect::<Vec<_>>();
+    widest = widths.iter().copied().fold(0.0_f32, f32::max);
+    let alignment_width = options.max_width.unwrap_or(widest);
+    let line_step = line_height * options.line_spacing;
+
+    for (index, line) in text_lines.iter().enumerate() {
+        let alignment_offset = match options.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => ((alignment_width - widths[index]) * 0.5).max(0.0),
+            TextAlign::Right => (alignment_width - widths[index]).max(0.0),
+        };
+        let x = baseline.x as f32 + alignment_offset;
+        let y = baseline.y as f32 + index as f32 * line_step;
+        if !x.is_finite()
+            || !y.is_finite()
+            || x < i32::MIN as f32
+            || x > i32::MAX as f32
+            || y < i32::MIN as f32
+            || y > i32::MAX as f32
+        {
+            continue;
+        }
+        prepared_lines.push(PreparedShapedTextLine {
+            baseline: Point::new(x.round() as i32, y.round() as i32),
+            runs: prepare_bidi_shaped_line(family, line, pixel_size)?,
+        });
+    }
+
+    Ok(PreparedShapedTextBox {
+        lines: prepared_lines,
+    })
+}
+
+/// Draws wrapped, aligned bidirectional text with OpenType shaping and font fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_box_with_fallback_bidi_shaped_clipped(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    options: TextLayoutOptions,
+) -> TextMetrics {
+    let Ok(prepared) =
+        prepare_bidi_shaped_text_box(family, text, baseline, pixel_size, options)
+    else {
+        return TextMetrics::default();
+    };
+    let line_height = family.line_height(pixel_size);
+    let mut widest = 0.0_f32;
+    for line in &prepared.lines {
+        let mut width = 0.0_f32;
+        for run in &line.runs {
+            draw_text_shaped_clipped(
+                target,
+                &run.font,
+                &run.shaped,
+                Point::new(
+                    line.baseline.x.saturating_add(run.offset_x.round() as i32),
+                    line.baseline.y,
+                ),
+                pixel_size,
+                color,
+                clip,
+            );
+            width = width.max(run.offset_x + run.shaped.advance_x.abs());
+        }
+        widest = widest.max(width);
+    }
+    let step = line_height * options.line_spacing;
+    TextMetrics {
+        width: widest,
+        height: step * prepared.lines.len() as f32,
+        line_count: prepared.lines.len() as u32,
+    }
+}
+
 /// Shapes and lays out a fallback-font text block once, for reuse by display lists.
 pub(crate) fn prepare_shaped_text_box(
     family: &FontFamily,
