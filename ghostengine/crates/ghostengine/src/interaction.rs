@@ -333,11 +333,20 @@ mod tests {
     fn keyboard_activation_targets_only_the_focused_enabled_widget() {
         let (_, bounds) = controls();
         let mut ui = UiInteraction::new();
-        assert_eq!(ui.activate_focused(&[true, true, false], &bounds).clicked, None);
+        assert_eq!(
+            ui.activate_focused(&[true, true, false], &bounds).clicked,
+            None
+        );
         ui.focus_next(&[true, true, false], false);
-        assert_eq!(ui.activate_focused(&[true, true, false], &bounds).clicked, Some(0));
+        assert_eq!(
+            ui.activate_focused(&[true, true, false], &bounds).clicked,
+            Some(0)
+        );
         ui.focus_next(&[true, true, false], false);
-        assert_eq!(ui.activate_focused(&[true, false, false], &bounds).clicked, None);
+        assert_eq!(
+            ui.activate_focused(&[true, false, false], &bounds).clicked,
+            None
+        );
     }
 
     #[test]
