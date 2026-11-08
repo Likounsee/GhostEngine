@@ -9,6 +9,7 @@ use crate::{
     draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
     FontFace, FontFamily, Framebuffer, Point, Rect, TextLayoutOptions, TextMetrics,
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Visual state supplied by an application's hit-testing/input layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -346,7 +347,7 @@ impl TextInputState {
     }
 
     pub fn set_cursor(&mut self, byte_index: usize, extend_selection: bool) {
-        let next = previous_boundary(&self.text, byte_index.min(self.text.len()));
+        let next = previous_grapheme_boundary(&self.text, byte_index.min(self.text.len()));
         if extend_selection {
             self.selection_anchor.get_or_insert(self.cursor);
         } else {
@@ -371,7 +372,7 @@ impl TextInputState {
                 return;
             }
         }
-        let next = previous_boundary(&self.text, self.cursor.saturating_sub(1));
+        let next = previous_grapheme_boundary(&self.text, self.cursor.saturating_sub(1));
         self.set_cursor(next, extend_selection);
     }
 
@@ -382,10 +383,7 @@ impl TextInputState {
                 return;
             }
         }
-        let next = self.text[self.cursor..]
-            .chars()
-            .next()
-            .map_or(self.text.len(), |ch| self.cursor + ch.len_utf8());
+        let next = next_grapheme_boundary(&self.text, self.cursor);
         self.set_cursor(next, extend_selection);
     }
 
@@ -415,7 +413,7 @@ impl TextInputState {
         if self.cursor == 0 {
             return;
         }
-        let previous = previous_boundary(&self.text, self.cursor - 1);
+        let previous = previous_grapheme_boundary(&self.text, self.cursor - 1);
         self.text.replace_range(previous..self.cursor, "");
         self.cursor = previous;
     }
@@ -424,13 +422,10 @@ impl TextInputState {
         if self.delete_selection() {
             return;
         }
-        let Some(next) = self.text[self.cursor..]
-            .chars()
-            .next()
-            .map(|ch| self.cursor + ch.len_utf8())
-        else {
+        let next = next_grapheme_boundary(&self.text, self.cursor);
+        if next == self.cursor {
             return;
-        };
+        }
         self.text.replace_range(self.cursor..next, "");
     }
 
@@ -457,11 +452,22 @@ fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width:
     desired.min((total_width - viewport_width).max(0.0))
 }
 
-fn previous_boundary(text: &str, mut index: usize) -> usize {
-    while index > 0 && !text.is_char_boundary(index) {
-        index -= 1;
-    }
-    index
+/// Returns the beginning of the grapheme containing `index`, or the nearest
+/// preceding grapheme boundary when `index` falls inside a cluster.
+fn previous_grapheme_boundary(text: &str, index: usize) -> usize {
+    text.grapheme_indices(true)
+        .map(|(boundary, _)| boundary)
+        .take_while(|boundary| *boundary <= index)
+        .last()
+        .unwrap_or(0)
+}
+
+/// Returns the first grapheme boundary strictly after `index`.
+fn next_grapheme_boundary(text: &str, index: usize) -> usize {
+    text.grapheme_indices(true)
+        .map(|(boundary, grapheme)| boundary + grapheme.len())
+        .find(|boundary| *boundary > index)
+        .unwrap_or(text.len())
 }
 
 /// Draws a single-line text field, including optional selection and a focused caret.
@@ -781,6 +787,31 @@ mod tests {
         input.backspace();
         assert_eq!(input.text(), "");
         assert_eq!(input.cursor(), 0);
+    }
+
+    #[test]
+    fn text_input_cursor_and_deletion_respect_extended_graphemes() {
+        let family = "👨‍👩‍👧‍👦";
+        let mut input = TextInputState::new(format!("a{family}e\u{301}z"));
+
+        input.move_left(false);
+        assert_eq!(input.cursor(), "a{family}e\u{301}".len());
+        input.backspace();
+        assert_eq!(input.text(), format!("a{family}z"));
+
+        input.move_home(false);
+        input.move_right(false);
+        assert_eq!(input.cursor(), 1);
+        input.delete_forward();
+        assert_eq!(input.text(), format!("a{family}z").replace('a', ""));
+
+        let mut combined = TextInputState::new("e\u{301}x");
+        combined.set_cursor(1, false);
+        assert_eq!(combined.cursor(), 0);
+        combined.move_right(false);
+        assert_eq!(combined.cursor(), "e\u{301}".len());
+        combined.backspace();
+        assert_eq!(combined.text(), "x");
     }
 
     #[test]
