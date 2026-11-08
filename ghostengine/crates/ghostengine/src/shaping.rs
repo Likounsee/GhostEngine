@@ -5,6 +5,15 @@
 
 use std::sync::Arc;
 
+/// Explicit horizontal direction for an OpenType shaping run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextDirection {
+    #[default]
+    LeftToRight,
+    RightToLeft,
+}
+
+
 /// A font-backed OpenType shaper.
 #[derive(Clone)]
 pub struct OpenTypeShaper {
@@ -60,6 +69,20 @@ impl OpenTypeShaper {
     /// GPOS positioning. Returned glyph IDs can be passed to a glyph-index
     /// rasterization path; this method deliberately does not draw pixels.
     pub fn shape(&self, text: &str, pixel_size: f32) -> Result<ShapedText, ShapingError> {
+        self.shape_with_direction(text, pixel_size, TextDirection::LeftToRight)
+    }
+
+    /// Shapes a run with an explicitly selected horizontal direction.
+    ///
+    /// Right-to-left shaping changes glyph order and applies direction-sensitive
+    /// OpenType substitutions/positioning. Paragraph-level bidi resolution is
+    /// handled by the text layout layer rather than guessed here.
+    pub fn shape_with_direction(
+        &self,
+        text: &str,
+        pixel_size: f32,
+        direction: TextDirection,
+    ) -> Result<ShapedText, ShapingError> {
         if !pixel_size.is_finite() || pixel_size <= 0.0 {
             return Err(ShapingError::InvalidPixelSize);
         }
@@ -78,6 +101,10 @@ impl OpenTypeShaper {
         let mut buffer = rustybuzz::UnicodeBuffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
+        buffer.set_direction(match direction {
+            TextDirection::LeftToRight => rustybuzz::Direction::LeftToRight,
+            TextDirection::RightToLeft => rustybuzz::Direction::RightToLeft,
+        });
         let shaped = rustybuzz::shape(&face, &[], buffer);
 
         let glyphs = shaped
