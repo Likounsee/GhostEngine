@@ -522,8 +522,9 @@ impl ComponentTree {
             if let Some(point) = pointer {
                 let placements = self.placed.clone();
                 for placement in placements {
-                    let Some(ComponentKind::ComboBox { items }) =
-                        self.find(placement.id).map(|component| component.kind().clone())
+                    let Some(ComponentKind::ComboBox { items }) = self
+                        .find(placement.id)
+                        .map(|component| component.kind().clone())
                     else {
                         continue;
                     };
@@ -565,7 +566,8 @@ impl ComponentTree {
                                 let relative_x = point.x as u32 - placement.bounds.x;
                                 let tab_width = placement.bounds.width.max(1) as u64;
                                 let index = (u64::from(relative_x) * labels.len() as u64
-                                    / tab_width) as usize;
+                                    / tab_width)
+                                    as usize;
                                 self.tabs_states
                                     .entry(id)
                                     .or_default()
@@ -970,7 +972,11 @@ impl ComponentTree {
                     if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
                 {
                     self.tabs_states.entry(id).or_default().move_selection(
-                        if key == ComponentKey::ArrowLeft { -1 } else { 1 },
+                        if key == ComponentKey::ArrowLeft {
+                            -1
+                        } else {
+                            1
+                        },
                         labels.len(),
                     );
                     return ComponentEvents::default();
