@@ -210,6 +210,24 @@ pub struct PlacedComponent {
 pub struct ComponentEvents {
     pub activated: Option<ComponentId>,
     pub focus_changed: Option<ComponentId>,
+    /// Host clipboard operation requested by a keyboard shortcut.
+    pub clipboard_action: Option<ClipboardAction>,
+}
+
+/// Clipboard operations are delegated to the host application/window system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardAction {
+    Copy(String),
+    Paste,
+}
+
+/// Text delivered by a platform text service, independent of physical keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextInputEvent {
+    Insert(String),
+    CompositionUpdate(String),
+    CompositionCommit(String),
+    CompositionCancel,
 }
 
 /// Retained component hierarchy with layout and interaction dispatch.
@@ -450,6 +468,39 @@ impl ComponentTree {
         .then_some(id)
     }
 
+    /// Applies committed text or IME composition from a platform text service.
+    pub fn handle_text_input_event(&mut self, id: ComponentId, event: TextInputEvent) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        match event {
+            TextInputEvent::Insert(text) => state.insert_text(&text),
+            TextInputEvent::CompositionUpdate(text) => state.set_composition(Some(text)),
+            TextInputEvent::CompositionCommit(text) => {
+                state.cancel_composition();
+                state.insert_text(&text);
+            }
+            TextInputEvent::CompositionCancel => state.cancel_composition(),
+        }
+        self.commit_text_state(id)
+    }
+
+    /// Copies the active selection without modifying the input.
+    pub fn copy_selected_text(&mut self, id: ComponentId) -> Option<String> {
+        self.sync_text_state(id).then_some(())?;
+        self.text_states.get(&id)?.selected_text().map(str::to_owned)
+    }
+
+    /// Deletes the active selection and returns its former contents for the host clipboard.
+    pub fn cut_selected_text(&mut self, id: ComponentId) -> Option<String> {
+        let selected = self.copy_selected_text(id)?;
+        self.text_states.get_mut(&id)?.delete_selection();
+        self.commit_text_state(id).then_some(selected)
+    }
+
     /// Reads the retained editing state for a text input.
     #[must_use]
     pub fn text_input_state(&self, id: ComponentId) -> Option<&TextInputState> {
@@ -665,6 +716,7 @@ impl ComponentTree {
             focus_changed: events
                 .focus_changed
                 .and_then(|index| self.focusable_ids.get(index).copied()),
+            clipboard_action: None,
         }
     }
 }
