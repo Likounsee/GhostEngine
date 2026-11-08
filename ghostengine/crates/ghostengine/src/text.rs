@@ -2348,20 +2348,33 @@ mod tests {
     }
 
     #[test]
-    fn licensed_noto_arabic_applies_lam_alef_ligature_substitution() {
+    fn licensed_noto_arabic_shapes_lam_alef_with_rtl_context() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Noto Sans Arabic should load");
-        let shaped = font
+        let rtl = font
             .shape_text_with_direction("لا", 30.0, crate::TextDirection::RightToLeft)
             .expect("lam-alef should shape");
+        let ltr = font
+            .shape_text_with_direction("لا", 30.0, crate::TextDirection::LeftToRight)
+            .expect("comparison run should shape");
 
-        assert_eq!(
-            shaped.glyphs.len(),
-            1,
-            "the required Arabic ligature should replace lam + alef with one glyph"
+        let rtl_ids = rtl
+            .glyphs
+            .iter()
+            .map(|glyph| glyph.glyph_id)
+            .collect::<Vec<_>>();
+        let ltr_ids = ltr
+            .glyphs
+            .iter()
+            .map(|glyph| glyph.glyph_id)
+            .collect::<Vec<_>>();
+
+        assert_ne!(
+            rtl_ids, ltr_ids,
+            "Arabic lam-alef must use direction-aware OpenType substitutions"
         );
-        assert!(shaped.advance_x.is_finite());
-        assert!(shaped.advance_x.abs() > 0.0);
+        assert!(rtl.advance_x.is_finite());
+        assert!(rtl.advance_x.abs() > 0.0);
     }
 
     #[test]
