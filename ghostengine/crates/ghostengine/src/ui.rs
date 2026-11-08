@@ -637,6 +637,26 @@ pub fn draw_text_input(
             options.theme.accent,
         );
     }
+
+    if options.focused && !composition.is_empty() {
+        let prefix_width = font.measure(&state.text[..state.cursor], options.pixel_size).width;
+        let composition_width = font.measure(composition, options.pixel_size).width;
+        let underline_x = i64::from(inner.x) + prefix_width.floor() as i64
+            - horizontal_offset.floor() as i64;
+        if let Ok(underline_x) = u32::try_from(underline_x) {
+            fill_rect_clipped(
+                target,
+                Rect::new(
+                    underline_x,
+                    rect.y.saturating_add(rect.height.saturating_sub(7)),
+                    (composition_width.ceil() as u32).max(1).min(inner.width),
+                    1,
+                ),
+                inner,
+                options.theme.accent,
+            );
+        }
+    }
 }
 
 /// Keyboard and pointer selection model for a vertically scrolling list.
@@ -993,23 +1013,3 @@ mod tests {
         assert_eq!(image.get_pixel(8, 8), Some(theme.disabled));
     }
 }
-    if options.focused && !composition.is_empty() {
-        let prefix_width = font.measure(&state.text[..state.cursor], options.pixel_size).width;
-        let composition_width = font.measure(composition, options.pixel_size).width;
-        let underline_x = i64::from(inner.x) + prefix_width.floor() as i64
-            - horizontal_offset.floor() as i64;
-        if let Ok(underline_x) = u32::try_from(underline_x) {
-            fill_rect_clipped(
-                target,
-                Rect::new(
-                    underline_x,
-                    rect.y.saturating_add(rect.height.saturating_sub(7)),
-                    (composition_width.ceil() as u32).max(1).min(inner.width),
-                    1,
-                ),
-                inner,
-                options.theme.accent,
-            );
-        }
-    }
-
