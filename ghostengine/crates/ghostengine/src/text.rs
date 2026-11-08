@@ -1725,6 +1725,26 @@ mod tests {
     }
 
     #[test]
+    fn shaped_fallback_wrapping_keeps_grapheme_like_sequences_together() {
+        assert_eq!(
+            super::fallback_text_clusters("a\\u{0301}b"),
+            ["a\\u{0301}", "b"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("👩‍💻x"),
+            ["👩‍💻", "x"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("🇫🇷!"),
+            ["🇫🇷", "!"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("✈️x"),
+            ["✈️", "x"]
+        );
+    }
+
+    #[test]
     fn text_wrapping_keeps_words_together_when_they_fit() {
         let lines = super::wrap_paragraph("one two three", 7.0, |part| part.len() as f32);
         assert_eq!(lines, ["one two", "three"]);
