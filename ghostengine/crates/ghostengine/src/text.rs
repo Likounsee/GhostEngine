@@ -2,7 +2,7 @@
 //!
 //! Text layout and glyph rasterization for application interfaces.
 //! Font fallback, glyph caching, kerning and basic combining-mark placement are
-//! supported. Full Unicode shaping and OpenType layout remain follow-up milestones.
+//! supported. OpenType shaping is available through an explicit shaped-run API; automatic shaping in every text path remains a follow-up milestone.
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
@@ -35,7 +35,8 @@ impl FontFace {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
             .map_err(|_| "invalid font data")?;
-        let shaper = OpenTypeShaper::from_bytes(bytes).map_err(|_| "invalid OpenType layout data")?;
+        let shaper =
+            OpenTypeShaper::from_bytes(bytes).map_err(|_| "invalid OpenType layout data")?;
         Ok(Self {
             font,
             shaper,
@@ -51,7 +52,9 @@ impl FontFace {
 
     fn glyph_index(&self, glyph_index: u16, pixel_size: f32) -> Arc<CachedGlyph> {
         let key = (pixel_size.to_bits(), glyph_index);
-        let mut cache = self.indexed_glyph_cache.lock()
+        let mut cache = self
+            .indexed_glyph_cache
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(glyph) = cache.get(&key) {
             return Arc::clone(glyph);
