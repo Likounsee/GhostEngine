@@ -150,8 +150,19 @@ impl NativeInputAdapter {
         // KeyEvent::text is produced using the active OS keyboard layout. It
         // therefore supports AZERTY/QWERTY and composed characters, unlike
         // translating physical key positions into ASCII characters.
-        if !self.ime_enabled && !self.control_down && !self.alt_down {
-            if let Some(text) = event.text.as_ref().filter(|text| !text.is_empty()) {
+        // Only character keys (and Space) may produce text. Named editing
+        // keys such as Backspace can expose control-character text on some
+        // platform backends; inserting that value renders as an unknown glyph.
+        let is_text_key = matches!(
+            &event.logical_key,
+            Key::Character(_) | Key::Named(NamedKey::Space)
+        );
+        if is_text_key && !self.ime_enabled && !self.control_down && !self.alt_down {
+            if let Some(text) = event
+                .text
+                .as_ref()
+                .filter(|text| !text.is_empty() && text.chars().any(|ch| !ch.is_control()))
+            {
                 self.frame
                     .text_events
                     .push(TextInputEvent::Insert(text.to_string()));
@@ -298,7 +309,10 @@ mod tests {
     #[test]
     fn logical_backspace_is_supported_when_physical_key_is_unidentified() {
         let mut input = InputState::default();
-        apply_logical_key(&winit::keyboard::Key::Named(NamedKey::Backspace), &mut input);
+        apply_logical_key(
+            &winit::keyboard::Key::Named(NamedKey::Backspace),
+            &mut input,
+        );
         assert!(input.backspace_pressed);
     }
 
