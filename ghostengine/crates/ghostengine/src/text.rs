@@ -740,7 +740,6 @@ pub(crate) struct PreparedShapedTextLine {
 #[derive(Clone)]
 pub(crate) struct PreparedShapedTextBox {
     pub lines: Vec<PreparedShapedTextLine>,
-    pub metrics: TextMetrics,
 }
 
 /// Shapes and lays out a fallback-font text block once, for reuse by display lists.
@@ -762,10 +761,7 @@ pub(crate) fn prepare_shaped_text_box(
             .max_width
             .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
-        return Ok(PreparedShapedTextBox {
-            lines: Vec::new(),
-            metrics: TextMetrics::default(),
-        });
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
     }
 
     let line_height = family.line_height(pixel_size);
@@ -908,14 +904,7 @@ pub(crate) fn prepare_shaped_text_box(
         });
     }
 
-    Ok(PreparedShapedTextBox {
-        lines,
-        metrics: TextMetrics {
-            width: widest,
-            height: line_step * text_lines.len() as f32,
-            line_count: text_lines.len() as u32,
-        },
-    })
+    Ok(PreparedShapedTextBox { lines })
 }
 
 /// Draws a shaped fallback-font text block with wrapping and per-line alignment.
