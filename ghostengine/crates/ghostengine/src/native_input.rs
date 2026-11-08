@@ -153,10 +153,7 @@ impl NativeInputAdapter {
         // Only character keys (and Space) may produce text. Named editing
         // keys such as Backspace can expose control-character text on some
         // platform backends; inserting that value renders as an unknown glyph.
-        let is_text_key = matches!(
-            &event.logical_key,
-            Key::Character(_) | Key::Named(NamedKey::Space)
-        );
+        let is_text_key = accepts_text(&event.logical_key);
         if is_text_key && !self.ime_enabled && !self.control_down && !self.alt_down {
             if let Some(text) = event
                 .text
@@ -186,6 +183,10 @@ fn apply_logical_key(key: &Key, input: &mut InputState) {
             _ => {}
         }
     }
+}
+
+fn accepts_text(key: &Key) -> bool {
+    matches!(key, Key::Character(_) | Key::Named(NamedKey::Space))
 }
 
 fn clamp_coordinate(value: f64) -> i32 {
@@ -314,6 +315,22 @@ mod tests {
             &mut input,
         );
         assert!(input.backspace_pressed);
+    }
+
+    #[test]
+    fn named_editing_keys_are_not_forwarded_as_text() {
+        assert!(!super::accepts_text(&winit::keyboard::Key::Named(
+            NamedKey::Backspace
+        )));
+        assert!(!super::accepts_text(&winit::keyboard::Key::Named(
+            NamedKey::Delete
+        )));
+        assert!(super::accepts_text(&winit::keyboard::Key::Named(
+            NamedKey::Space
+        )));
+        assert!(super::accepts_text(&winit::keyboard::Key::Character(
+            "a".into()
+        )));
     }
 
     #[test]
