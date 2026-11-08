@@ -117,15 +117,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_pixel_sizes_before_shaping() {
-        // A valid font is not needed to validate the public size contract.
-        assert_eq!(
-            ShapingError::InvalidPixelSize,
-            ShapingError::InvalidPixelSize
-        );
-    }
-
-    #[test]
     fn shaped_text_default_is_empty_and_zero_advance() {
         assert_eq!(ShapedText::default(), ShapedText {
             glyphs: Vec::new(),
