@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn converts_rgba_to_softbuffer_rgb_without_alpha() {
         assert_eq!(
-            pack_softbuffer_pixel(Color::new(0x12, 0x34, 0x56, 0x78)),
+            pack_softbuffer_pixel(Color::rgba(0x12, 0x34, 0x56, 0x78)),
             0x0012_3456
         );
     }
