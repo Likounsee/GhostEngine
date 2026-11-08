@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::{
     draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
     draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
-    InteractionEvents, LayoutItem, Point, Rect, StackLayout, TabsState, TextInputOptions,
+    InteractionEvents, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout, TabsState, TextInputOptions,
     TextInputState, UiInteraction, UiTheme, WidgetState,
 };
 
@@ -304,7 +304,7 @@ impl UiComponent {
                     | ComponentKind::Tabs { .. }
                     | ComponentKind::Switch { .. }
                     | ComponentKind::RadioButton { .. }
-                    | ComponentKind::Slider { .. }
+                    | ComponentKind::Slider { .. }\n                    | ComponentKind::ListView { .. }
             )
     }
 }
@@ -393,7 +393,7 @@ pub struct ComponentTree {
     placed: Vec<PlacedComponent>,
     text_states: HashMap<ComponentId, TextInputState>,
     combo_states: HashMap<ComponentId, ComboBoxState>,
-    tabs_states: HashMap<ComponentId, TabsState>,
+    tabs_states: HashMap<ComponentId, TabsState>,\n    list_states: HashMap<ComponentId, ListState>,
 }
 
 impl ComponentTree {
@@ -401,9 +401,9 @@ impl ComponentTree {
     pub fn new(roots: Vec<UiComponent>) -> Self {
         let mut text_states = HashMap::new();
         let mut combo_states = HashMap::new();
-        let mut tabs_states = HashMap::new();
+        let mut tabs_states = HashMap::new();\n        let mut list_states = HashMap::new();
         for root in &roots {
-            collect_component_states(root, &mut text_states, &mut combo_states, &mut tabs_states);
+            collect_component_states(root, &mut text_states, &mut combo_states, &mut tabs_states, &mut list_states);
         }
         Self {
             roots,
@@ -545,7 +545,7 @@ impl ComponentTree {
         for removed_id in component_ids(&removed) {
             self.text_states.remove(&removed_id);
             self.combo_states.remove(&removed_id);
-            self.tabs_states.remove(&removed_id);
+            self.tabs_states.remove(&removed_id);\n            self.list_states.remove(&removed_id);
         }
         self.reset_after_structure_change();
         Some(removed)
@@ -672,6 +672,23 @@ impl ComponentTree {
             self.interaction
                 .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
         let translated = self.dispatch_events(events);
+        if released {
+            if let (Some(id), Some(point)) = (translated.activated, pointer) {
+                let list_config = self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::ListView { items, row_height, scroll_offset } =>
+                        Some((items.len(), *row_height, *scroll_offset)),
+                    _ => None,
+                });
+                if let (Some((item_count, row_height, scroll_offset)), Some(rect)) = (
+                    list_config,
+                    self.placed.iter().find(|placement| placement.id == id).map(|p| p.bounds),
+                ) {
+                    self.list_states.entry(id).or_default().select_at(
+                        rect, point, scroll_offset, row_height, item_count,
+                    );
+                }
+            }
+        }
 
         // Keep updating a slider for every pointer-move frame while its
         // pointer capture is held, not only on the final click/release.
@@ -910,6 +927,23 @@ impl ComponentTree {
                         theme,
                     );
                 }
+                ComponentKind::ListView { items, row_height, scroll_offset } => {
+                    let labels: Vec<_> = items.iter().map(String::as_str).collect();
+                    let state = self.list_states.get(&placement.id).copied().unwrap_or_default();
+                    crate::draw_list(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        ListOptions {
+                            scroll_offset: *scroll_offset,
+                            row_height: *row_height,
+                            pixel_size,
+                            theme,
+                        },
+                    );
+                }
                 ComponentKind::Tabs { labels } => {
                     let labels: Vec<_> = labels.iter().map(String::as_str).collect();
                     let state = self
@@ -979,6 +1013,21 @@ impl ComponentTree {
                 }
             }
         }
+    }
+
+    /// Returns the selected row index of a retained list view.
+    #[must_use]
+    pub fn list_view_selected(&self, id: ComponentId) -> Option<usize> {
+        self.list_states.get(&id).and_then(|state| state.selected())
+    }
+
+    /// Updates the pixel scroll offset of a retained list view.
+    pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
+        let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        else { return false; };
+        *scroll_offset = offset;
+        true
     }
 
     /// Returns the selected item index of a combo box.
@@ -1221,6 +1270,15 @@ impl ComponentTree {
                     ) {
                         return ComponentEvents::default();
                     }
+                }
+                Some(ComponentKind::ListView { items, .. })
+                    if key == ComponentKey::ArrowUp || key == ComponentKey::ArrowDown =>
+                {
+                    self.list_states.entry(id).or_default().move_selection(
+                        if key == ComponentKey::ArrowUp { -1 } else { 1 },
+                        items.len(),
+                    );
+                    return ComponentEvents::default();
                 }
                 Some(ComponentKind::Slider {
                     min, max, value, ..
@@ -1488,6 +1546,7 @@ fn collect_component_states(
     text_states: &mut HashMap<ComponentId, TextInputState>,
     combo_states: &mut HashMap<ComponentId, ComboBoxState>,
     tabs_states: &mut HashMap<ComponentId, TabsState>,
+    list_states: &mut HashMap<ComponentId, ListState>,
 ) {
     match node.kind() {
         ComponentKind::TextInput { value, .. } => {
@@ -1502,7 +1561,7 @@ fn collect_component_states(
         _ => {}
     }
     for child in node.children() {
-        collect_component_states(child, text_states, combo_states, tabs_states);
+        collect_component_states(child, text_states, combo_states, tabs_states, list_states);
     }
 }
 
