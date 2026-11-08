@@ -201,7 +201,7 @@ pub fn draw_switch(
     if rect.width == 0 || rect.height == 0 {
         return;
     }
-    let height = rect.height.min(24).max(1);
+    let height = rect.height.clamp(1, 24);
     let width = height.saturating_mul(2).min(rect.width);
     let x = rect.x.saturating_add(rect.width.saturating_sub(width) / 2);
     let y = rect
@@ -230,6 +230,7 @@ pub fn draw_switch(
 }
 
 /// Draws a radio indicator and its label.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_radio_button(
     target: &mut Framebuffer,
     font: &FontFace,
@@ -309,8 +310,8 @@ pub fn draw_slider(
     let low = min.min(max);
     let high = max.max(min);
     let clamped = value.clamp(low, high);
-    let track_height = rect.height.min(6).max(1);
-    let thumb = rect.height.min(18).max(6);
+    let track_height = rect.height.clamp(1, 6);
+    let thumb = rect.height.clamp(6, 18);
     let travel = rect.width.saturating_sub(thumb);
     let ratio = if high == low {
         0.0
