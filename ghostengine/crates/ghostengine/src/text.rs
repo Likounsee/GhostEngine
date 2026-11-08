@@ -6,7 +6,7 @@
 
 use crate::{
     rasterizer::blend_pixel, Color, Framebuffer, OpenTypeShaper, Point, Rect, ShapedText,
-    ShapingError,
+    ShapingError, TextDirection,
 };
 use fontdue::Font;
 
@@ -50,6 +50,17 @@ impl FontFace {
     /// Shapes a text run with this face's GSUB/GPOS tables.
     pub fn shape_text(&self, text: &str, pixel_size: f32) -> Result<ShapedText, ShapingError> {
         self.shaper.shape(text, pixel_size)
+    }
+
+    /// Shapes text in an explicit left-to-right or right-to-left direction.
+    pub fn shape_text_with_direction(
+        &self,
+        text: &str,
+        pixel_size: f32,
+        direction: TextDirection,
+    ) -> Result<ShapedText, ShapingError> {
+        self.shaper
+            .shape_with_direction(text, pixel_size, direction)
     }
 
     fn glyph_index(&self, glyph_index: u16, pixel_size: f32) -> Arc<CachedGlyph> {
