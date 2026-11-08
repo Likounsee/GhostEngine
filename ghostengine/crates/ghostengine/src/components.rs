@@ -1797,6 +1797,55 @@ mod tests {
     }
 
     #[test]
+    fn retained_switch_toggles_with_pointer_and_keyboard() {
+        let id = ComponentId(130);
+        let bounds = Rect::new(0, 0, 120, 32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::switch(id, "Wi-Fi", false).with_layout_item(LayoutItem::fixed(32)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.activate_focused(bounds);
+        assert!(matches!(tree.find(id).unwrap().kind(), ComponentKind::Switch { enabled: true, .. }));
+        tree.update_pointer(bounds, Some(Point::new(10, 16)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 16)), false, true);
+        assert!(matches!(tree.find(id).unwrap().kind(), ComponentKind::Switch { enabled: false, .. }));
+    }
+
+    #[test]
+    fn retained_radio_buttons_are_exclusive_within_their_group() {
+        let first = ComponentId(131);
+        let second = ComponentId(132);
+        let bounds = Rect::new(0, 0, 120, 64);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::radio_button(first, "One", 7, true).with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::radio_button(second, "Two", 7, false).with_layout_item(LayoutItem::fixed(32)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(first));
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(second));
+        tree.activate_focused(bounds);
+        assert!(matches!(tree.find(first).unwrap().kind(), ComponentKind::RadioButton { selected: false, .. }));
+        assert!(matches!(tree.find(second).unwrap().kind(), ComponentKind::RadioButton { selected: true, .. }));
+    }
+
+    #[test]
+    fn retained_slider_clamps_values_and_supports_keyboard_and_pointer() {
+        let id = ComponentId(133);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::slider(id, "Volume", 0, 10, 4).with_layout_item(LayoutItem::fixed(32)),
+        ]);
+        assert_eq!(tree.slider_value(id), Some(4));
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.slider_value(id), Some(5));
+        assert!(tree.set_slider_value(id, 99));
+        assert_eq!(tree.slider_value(id), Some(10));
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), false, true);
+        assert_eq!(tree.slider_value(id), Some(0));
+    }
+
+    #[test]
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
