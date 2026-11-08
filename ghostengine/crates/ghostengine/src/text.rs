@@ -1234,12 +1234,11 @@ pub(crate) fn prepare_bidi_shaped_text_box(
     }
 
     let mut prepared_lines = Vec::with_capacity(text_lines.len());
-    let mut widest = 0.0_f32;
     let widths = text_lines
         .iter()
         .map(|line| measure_bidi_shaped_fallback_line(family, line, pixel_size))
         .collect::<Vec<_>>();
-    widest = widths.iter().copied().fold(0.0_f32, f32::max);
+    let widest = widths.iter().copied().fold(0.0_f32, f32::max);
     let alignment_width = options.max_width.unwrap_or(widest);
     let line_step = line_height * options.line_spacing;
 
