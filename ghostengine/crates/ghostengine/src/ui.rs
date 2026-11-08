@@ -190,6 +190,81 @@ pub fn draw_checkbox(
     }
 }
 
+/// Draws a switch track and thumb. Interaction state is owned by the caller.
+pub fn draw_switch(
+    target: &mut Framebuffer,
+    rect: Rect,
+    enabled: bool,
+    state: WidgetState,
+    theme: &UiTheme,
+) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    let height = rect.height.min(24).max(1);
+    let width = height.saturating_mul(2).min(rect.width);
+    let x = rect.x.saturating_add(rect.width.saturating_sub(width) / 2);
+    let y = rect.y.saturating_add(rect.height.saturating_sub(height) / 2);
+    let track = if state == WidgetState::Disabled {
+        theme.disabled
+    } else if enabled {
+        theme.accent
+    } else {
+        theme.track
+    };
+    fill_rounded_rect(target, Rect::new(x, y, width, height), height / 2, track);
+    let diameter = height.saturating_sub(4).max(1);
+    let thumb_x = if enabled {
+        x.saturating_add(width.saturating_sub(diameter + 2))
+    } else {
+        x.saturating_add(2)
+    };
+    fill_rounded_rect(
+        target,
+        Rect::new(thumb_x, y.saturating_add(2), diameter, diameter),
+        diameter / 2,
+        Color::WHITE,
+    );
+}
+
+/// Draws a radio indicator and its label.
+pub fn draw_radio_button(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    rect: Rect,
+    label: &str,
+    selected: bool,
+    pixel_size: f32,
+    state: WidgetState,
+    theme: &UiTheme,
+) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    let side = rect.height.min(20);
+    let y = rect.y.saturating_add(rect.height.saturating_sub(side) / 2);
+    let outline = if state == WidgetState::Disabled { theme.disabled } else { theme.control_border };
+    let indicator = Rect::new(rect.x, y, side, side);
+    fill_rounded_rect(target, indicator, side / 2, theme.control);
+    draw_rect(target, indicator, outline);
+    if selected && side > 6 {
+        let inset = side / 4;
+        fill_rounded_rect(
+            target,
+            Rect::new(
+                rect.x.saturating_add(inset),
+                y.saturating_add(inset),
+                side.saturating_sub(inset * 2),
+                side.saturating_sub(inset * 2),
+            ),
+            side / 3,
+            if state == WidgetState::Disabled { theme.disabled } else { theme.accent },
+        );
+    }
+    let baseline = i64::from(rect.y)
+        + (i64::from(rect.height) + font.line_height(pixel_size).round() as i64) / 2;
+    if let (Ok(x), Ok(y)) = (i32::try_from(rect.x.saturating_add(side).saturating_add(8)), i32::try_from(baseline)) {
+        draw_label_clipped(target, font, label, Point::new(x, y), pixel_size,
+            if state == WidgetState::Disabled { theme.muted_text } else { theme.text }, rect);
+    }
+}
+
 /// Draws a progress bar. Non-finite progress is treated as zero and all other
 /// values are clamped to 0..=1.
 pub fn draw_progress_bar(target: &mut Framebuffer, rect: Rect, progress: f32, theme: &UiTheme) {
