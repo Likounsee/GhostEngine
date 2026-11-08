@@ -566,6 +566,154 @@ pub fn draw_text_bidi_clipped(
     }
 }
 
+/// Draws bidirectional OpenType text using an ordered font fallback family.
+///
+/// Paragraph direction is resolved by Unicode bidi, each visual directional
+/// run is shaped independently, and contiguous fallback-font spans are shaped
+/// in that run's direction. Wrapping and bidi-aware DisplayList preparation are
+/// separate layout operations and are not performed by this function.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_with_fallback_bidi_clipped(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || family.is_empty() {
+        return TextMetrics::default();
+    }
+
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+
+    enum Segment {
+        Glyphs(Arc<FontFace>, String),
+        Tab,
+    }
+
+    let primary = Arc::clone(&family.faces[0]);
+    let space_advance = family
+        .font_for(' ')
+        .unwrap_or(primary.as_ref())
+        .glyph(' ', pixel_size)
+        .advance_width;
+    let tab_width = (space_advance * 4.0).max(pixel_size);
+    let mut max_width = 0.0_f32;
+    let mut line_count = 0_u32;
+
+    for paragraph_with_break in text.split_inclusive('\\n') {
+        let paragraph = paragraph_with_break.strip_suffix('\\n').unwrap_or(paragraph_with_break);
+        let mut pen_x = baseline.x as f32;
+
+        for bidi_run in crate::shaping::resolve_bidi_runs(paragraph) {
+            let Some(run_text) = paragraph.get(bidi_run.byte_range) else {
+                continue;
+            };
+            let mut segments = Vec::new();
+            let mut current_face: Option<Arc<FontFace>> = None;
+            let mut current_text = String::new();
+
+            for cluster in fallback_text_clusters(run_text) {
+                if cluster == "\\t" {
+                    if let Some(face) = current_face.take() {
+                        segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                    }
+                    segments.push(Segment::Tab);
+                    continue;
+                }
+
+                let representative = cluster
+                    .chars()
+                    .find(|character| !is_combining_mark(*character) && *character != '\\u{200D}');
+                let selected = if let Some(character) = representative {
+                    if is_combining_mark(character) {
+                        current_face
+                            .as_ref()
+                            .filter(|face| face.has_glyph(character))
+                            .cloned()
+                            .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                            .unwrap_or_else(|| Arc::clone(&primary))
+                    } else {
+                        family.faces.iter()
+                            .find(|face| face.has_glyph(character))
+                            .cloned()
+                            .unwrap_or_else(|| Arc::clone(&primary))
+                    }
+                } else {
+                    current_face.clone().unwrap_or_else(|| Arc::clone(&primary))
+                };
+
+                if current_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+                    if let Some(face) = current_face.take() {
+                        segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                    }
+                }
+                if current_face.is_none() {
+                    current_face = Some(selected);
+                }
+                current_text.push_str(&cluster);
+            }
+            if let Some(face) = current_face {
+                segments.push(Segment::Glyphs(face, current_text));
+            }
+
+            if bidi_run.direction == TextDirection::RightToLeft {
+                segments.reverse();
+            }
+
+            for segment in segments {
+                match segment {
+                    Segment::Tab => {
+                        let relative_x = (pen_x - baseline.x as f32).max(0.0);
+                        pen_x = baseline.x as f32
+                            + ((relative_x / tab_width).floor() + 1.0) * tab_width;
+                    }
+                    Segment::Glyphs(face, run_text) => {
+                        let Ok(shaped) = face.shape_text_with_direction(
+                            &run_text,
+                            pixel_size,
+                            bidi_run.direction,
+                        ) else {
+                            continue;
+                        };
+                        if pen_x.is_finite()
+                            && pen_x >= i32::MIN as f32
+                            && pen_x <= i32::MAX as f32
+                            && baseline.y >= i32::MIN
+                            && baseline.y <= i32::MAX
+                        {
+                            draw_text_shaped_clipped(
+                                target,
+                                &face,
+                                &shaped,
+                                Point::new(pen_x.round() as i32, baseline.y + (line_count as i32).saturating_mul(line_height.round() as i32)),
+                                pixel_size,
+                                color,
+                                clip,
+                            );
+                        }
+                        pen_x += shaped.advance_x.abs();
+                    }
+                }
+            }
+        }
+
+        max_width = max_width.max(pen_x - baseline.x as f32);
+        line_count += 1;
+    }
+
+    TextMetrics {
+        width: max_width,
+        height: line_height * line_count as f32,
+        line_count,
+    }
+}
+
 /// Draws OpenType-shaped text across a font fallback family.
 ///
 /// Explicit newlines and four-space tab stops are handled here. Contiguous
