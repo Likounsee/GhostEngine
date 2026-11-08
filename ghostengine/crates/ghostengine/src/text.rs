@@ -530,7 +530,9 @@ pub fn draw_text_bidi_clipped(
     let mut line_count = 0_u32;
 
     for paragraph_with_break in text.split_inclusive('\n') {
-        let paragraph = paragraph_with_break.strip_suffix('\n').unwrap_or(paragraph_with_break);
+        let paragraph = paragraph_with_break
+            .strip_suffix('\n')
+            .unwrap_or(paragraph_with_break);
         let runs = crate::shaping::resolve_bidi_runs(paragraph);
         let mut x = baseline.x as f32;
         for run in runs {
