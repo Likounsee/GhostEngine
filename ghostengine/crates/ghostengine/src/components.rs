@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use crate::{
     draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
     draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
-    InteractionEvents, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout, TabsState, TextInputOptions,
-    TextInputState, UiInteraction, UiTheme, WidgetState,
+    InteractionEvents, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout, TabsState,
+    TextInputOptions, TextInputState, UiInteraction, UiTheme, WidgetState,
 };
 
 /// Stable caller-assigned identity for a component.
@@ -419,7 +419,13 @@ impl ComponentTree {
         let mut tabs_states = HashMap::new();
         let mut list_states = HashMap::new();
         for root in &roots {
-            collect_component_states(root, &mut text_states, &mut combo_states, &mut tabs_states, &mut list_states);
+            collect_component_states(
+                root,
+                &mut text_states,
+                &mut combo_states,
+                &mut tabs_states,
+                &mut list_states,
+            );
         }
         Self {
             roots,
@@ -694,16 +700,26 @@ impl ComponentTree {
         if released {
             if let (Some(id), Some(point)) = (translated.activated, pointer) {
                 let list_config = self.find(id).and_then(|component| match component.kind() {
-                    ComponentKind::ListView { items, row_height, scroll_offset } =>
-                        Some((items.len(), *row_height, *scroll_offset)),
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => Some((items.len(), *row_height, *scroll_offset)), 
                     _ => None,
                 });
                 if let (Some((item_count, row_height, scroll_offset)), Some(rect)) = (
                     list_config,
-                    self.placed.iter().find(|placement| placement.id == id).map(|p| p.bounds),
+                    self.placed
+                        .iter()
+                        .find(|placement| placement.id == id)
+                        .map(|p| p.bounds), 
                 ) {
                     self.list_states.entry(id).or_default().select_at(
-                        rect, point, scroll_offset, row_height, item_count,
+                        rect,
+                        point,
+                        scroll_offset,
+                        row_height,
+                        item_count,
                     );
                 }
             }
@@ -711,13 +727,10 @@ impl ComponentTree {
 
         // Keep updating a slider for every pointer-move frame while its
         // pointer capture is held, not only on the final click/release.
-        let captured_slider = captured_before_update
-            .and_then(|index| self.focusable_ids.get(index).copied());
+        let captured_slider =
+            captured_before_update.and_then(|index| self.focusable_ids.get(index).copied());
         let activated_slider = translated.activated;
-        if let (Some(id), Some(point)) = (
-            captured_slider.or(activated_slider),
-            pointer,
-        ) {
+        if let (Some(id), Some(point)) = (captured_slider.or(activated_slider), pointer) {
             if let Some(rect) = self
                 .placed
                 .iter()
@@ -730,15 +743,13 @@ impl ComponentTree {
                 });
                 if let Some((min, max)) = range {
                     let travel = rect.width.max(1);
-                    let relative = (point.x.max(0) as u32)
-                        .saturating_sub(rect.x)
-                        .min(travel);
+                    let relative = (point.x.max(0) as u32).saturating_sub(rect.x).min(travel);
                     let value = if max == min {
                         min
                     } else {
                         min.saturating_add(
-                            ((u64::from(max - min) * u64::from(relative))
-                                / u64::from(travel)) as u32,
+                            ((u64::from(max - min) * u64::from(relative)) / u64::from(travel))
+                                as u32,
                         )
                     };
                     self.set_slider_value(id, value);
@@ -946,9 +957,17 @@ impl ComponentTree {
                         theme,
                     );
                 }
-                ComponentKind::ListView { items, row_height, scroll_offset } => {
+                ComponentKind::ListView {
+                    items,
+                    row_height,
+                    scroll_offset,
+                } => {
                     let labels: Vec<_> = items.iter().map(String::as_str).collect();
-                    let state = self.list_states.get(&placement.id).copied().unwrap_or_default();
+                    let state = self
+                        .list_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
                     crate::draw_list(
                         target,
                         font,
@@ -989,9 +1008,9 @@ impl ComponentTree {
             .hovered()
             .and_then(|index| self.focusable_ids.get(index).copied())
         {
-            let tooltip = self.find(hovered_id).and_then(|component| {
-                component.tooltip.as_deref().map(str::to_owned)
-            });
+            let tooltip = self
+                .find(hovered_id)
+                .and_then(|component| component.tooltip.as_deref().map(str::to_owned));
             let anchor = self
                 .placed
                 .iter()
@@ -1000,7 +1019,9 @@ impl ComponentTree {
             if let (Some(text), Some(anchor)) = (tooltip, anchor) {
                 let metrics = font.measure(&text, pixel_size);
                 let line_height = font.line_height(pixel_size).ceil().max(1.0) as u32;
-                let width = (metrics.width.ceil() as u32).saturating_add(16).min(target.width());
+                let width = (metrics.width.ceil() as u32)
+                    .saturating_add(16)
+                    .min(target.width());
                 let height = line_height.saturating_add(10).min(target.height());
                 if width > 0 && height > 0 {
                     let max_x = target.width().saturating_sub(width);
@@ -1010,15 +1031,14 @@ impl ComponentTree {
                         below
                     } else {
                         anchor.y.saturating_sub(height.saturating_add(6))
-                    }.min(target.height().saturating_sub(height));
+                    }
+                    .min(target.height().saturating_sub(height));
                     let tooltip_bounds = Rect::new(x, y, width, height);
                     draw_panel(target, tooltip_bounds, 4, theme);
-                    let baseline = i64::from(y)
-                        + (i64::from(height) + i64::from(line_height)) / 2;
-                    if let (Ok(text_x), Ok(text_y)) = (
-                        i32::try_from(x.saturating_add(8)),
-                        i32::try_from(baseline),
-                    ) {
+                    let baseline = i64::from(y) + (i64::from(height) + i64::from(line_height)) / 2;
+                    if let (Ok(text_x), Ok(text_y)) =
+                        (i32::try_from(x.saturating_add(8)), i32::try_from(baseline))
+                    {
                         draw_label_clipped(
                             target,
                             font,
@@ -1044,7 +1064,9 @@ impl ComponentTree {
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
         let Some(ComponentKind::ListView { scroll_offset, .. }) =
             self.find_mut(id).map(|component| &mut component.kind)
-        else { return false; };
+        else {
+            return false;
+        };
         *scroll_offset = offset;
         true
     }
@@ -2128,10 +2150,9 @@ mod tests {
     fn retained_slider_tracks_pointer_motion_while_dragging() {
         let id = ComponentId(134);
         let bounds = Rect::new(0, 0, 100, 32);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::slider(id, "Volume", 0, 100, 0)
-                .with_layout_item(LayoutItem::fixed(32)),
-        ]);
+        let mut tree =
+            ComponentTree::new(vec![UiComponent::slider(id, "Volume", 0, 100, 0)
+                .with_layout_item(LayoutItem::fixed(32))]);
 
         tree.update_pointer(bounds, Some(Point::new(0, 16)), true, false);
         assert_eq!(tree.slider_value(id), Some(0));
@@ -2150,14 +2171,12 @@ mod tests {
     fn retained_list_view_supports_pointer_selection_keyboard_and_scroll() {
         let id = ComponentId(135);
         let bounds = Rect::new(0, 0, 100, 64);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::list_view(
-                id,
-                vec!["One".into(), "Two".into(), "Three".into(), "Four".into()],
-                16,
-            )
-            .with_layout_item(LayoutItem::fixed(64)),
-        ]);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["One".into(), "Two".into(), "Three".into(), "Four".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(64))]);
 
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
         tree.update_pointer(bounds, Some(Point::new(10, 40)), true, false);
