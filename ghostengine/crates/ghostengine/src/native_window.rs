@@ -9,7 +9,6 @@ use std::{
     error::Error,
     fmt,
     num::NonZeroU32,
-    rc::Rc,
     sync::Arc,
 };
 use winit::{
@@ -201,7 +200,7 @@ where
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        if self.window.as_ref().is_none_or(|window| window.id() != window_id) {
+        if self.window.as_ref().map_or(true, |window| window.id() != window_id) {
             return;
         }
         self.input.process_window_event(&event);
