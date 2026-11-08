@@ -643,6 +643,18 @@ impl ComponentTree {
         }
     }
 
+    /// Returns the selected item index of a combo box.
+    #[must_use]
+    pub fn combo_box_selected(&self, id: ComponentId) -> Option<usize> {
+        self.combo_states.get(&id).and_then(|state| state.selected())
+    }
+
+    /// Returns the selected tab index of a tab strip.
+    #[must_use]
+    pub fn tabs_selected(&self, id: ComponentId) -> Option<usize> {
+        self.tabs_states.get(&id).and_then(|state| state.selected())
+    }
+
     /// Returns the stable ID of the currently focused visible control.
     #[must_use]
     pub fn focused_component(&self) -> Option<ComponentId> {
@@ -883,7 +895,12 @@ impl ComponentTree {
                 };
                 if let Some(component) = self.find(id) {
                     if let ComponentKind::ComboBox { items } = component.kind() {
-                        self.combo_states.entry(id).or_default().toggle(items.len());
+                        let state = self.combo_states.entry(id).or_default();
+                        if state.is_open() {
+                            state.select_highlighted(items.len());
+                        } else {
+                            state.open(items.len());
+                        }
                         return ComponentEvents::default();
                     }
                 }
@@ -1467,6 +1484,60 @@ mod tests {
             ComponentKind::TextInput { value, .. } if value.is_empty()
         ));
         assert_eq!(tree.copy_selected_text(id), None);
+    }
+
+    #[test]
+    fn retained_combo_box_supports_focus_keyboard_open_highlight_and_selection() {
+        let id = ComponentId(120);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::combo_box(id, vec!["First".into(), "Second".into(), "Third".into()])
+                .with_layout_item(LayoutItem::fixed(36)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert!(tree.combo_states[&id].is_open());
+        assert_eq!(tree.combo_states[&id].highlighted(), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.combo_states[&id].highlighted(), Some(1));
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_combo_box_escape_closes_without_changing_selection() {
+        let id = ComponentId(121);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::combo_box(id, vec!["A".into(), "B".into()])
+                .with_layout_item(LayoutItem::fixed(36)),
+        ]);
+        tree.focus_next(bounds, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::Escape, false);
+        assert_eq!(tree.combo_box_selected(id), None);
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_tabs_support_focus_and_bounded_keyboard_navigation() {
+        let id = ComponentId(122);
+        let bounds = Rect::new(0, 0, 180, 36);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::tabs(id, vec!["General".into(), "Display".into(), "Input".into()])
+                .with_layout_item(LayoutItem::fixed(36)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.tabs_selected(id), Some(1));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
     }
 
     #[test]
