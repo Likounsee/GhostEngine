@@ -240,7 +240,9 @@ pub fn draw_radio_button(
     state: WidgetState,
     theme: &UiTheme,
 ) {
-    if rect.width == 0 || rect.height == 0 { return; }
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
     let side = rect.height.min(20);
     let y = rect.y.saturating_add(rect.height.saturating_sub(side) / 2);
     let outline = if state == WidgetState::Disabled {
@@ -301,7 +303,9 @@ pub fn draw_slider(
     state: WidgetState,
     theme: &UiTheme,
 ) {
-    if rect.width == 0 || rect.height == 0 { return; }
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
     let low = min.min(max);
     let high = max.max(min);
     let clamped = value.clamp(low, high);
