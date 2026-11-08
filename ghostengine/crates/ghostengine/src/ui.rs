@@ -455,6 +455,9 @@ fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width:
 /// Returns the beginning of the grapheme containing `index`, or the nearest
 /// preceding grapheme boundary when `index` falls inside a cluster.
 fn previous_grapheme_boundary(text: &str, index: usize) -> usize {
+    if index >= text.len() {
+        return text.len();
+    }
     text.grapheme_indices(true)
         .map(|(boundary, _)| boundary)
         .take_while(|boundary| *boundary <= index)
@@ -795,7 +798,7 @@ mod tests {
         let mut input = TextInputState::new(format!("a{family}e\u{301}z"));
 
         input.move_left(false);
-        assert_eq!(input.cursor(), "a{family}e\u{301}".len());
+        assert_eq!(input.cursor(), format!("a{family}e\u{301}").len());
         input.backspace();
         assert_eq!(input.text(), format!("a{family}z"));
 
