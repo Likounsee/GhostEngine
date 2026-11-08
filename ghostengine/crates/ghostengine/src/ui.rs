@@ -198,11 +198,15 @@ pub fn draw_switch(
     state: WidgetState,
     theme: &UiTheme,
 ) {
-    if rect.width == 0 || rect.height == 0 { return; }
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
     let height = rect.height.min(24).max(1);
     let width = height.saturating_mul(2).min(rect.width);
     let x = rect.x.saturating_add(rect.width.saturating_sub(width) / 2);
-    let y = rect.y.saturating_add(rect.height.saturating_sub(height) / 2);
+    let y = rect
+        .y
+        .saturating_add(rect.height.saturating_sub(height) / 2);
     let track = if state == WidgetState::Disabled {
         theme.disabled
     } else if enabled {
@@ -239,7 +243,11 @@ pub fn draw_radio_button(
     if rect.width == 0 || rect.height == 0 { return; }
     let side = rect.height.min(20);
     let y = rect.y.saturating_add(rect.height.saturating_sub(side) / 2);
-    let outline = if state == WidgetState::Disabled { theme.disabled } else { theme.control_border };
+    let outline = if state == WidgetState::Disabled {
+        theme.disabled
+    } else {
+        theme.control_border
+    };
     let indicator = Rect::new(rect.x, y, side, side);
     fill_rounded_rect(target, indicator, side / 2, theme.control);
     draw_rect(target, indicator, outline);
@@ -254,14 +262,32 @@ pub fn draw_radio_button(
                 side.saturating_sub(inset * 2),
             ),
             side / 3,
-            if state == WidgetState::Disabled { theme.disabled } else { theme.accent },
+            if state == WidgetState::Disabled {
+                theme.disabled
+            } else {
+                theme.accent
+            },
         );
     }
     let baseline = i64::from(rect.y)
         + (i64::from(rect.height) + font.line_height(pixel_size).round() as i64) / 2;
-    if let (Ok(x), Ok(y)) = (i32::try_from(rect.x.saturating_add(side).saturating_add(8)), i32::try_from(baseline)) {
-        draw_label_clipped(target, font, label, Point::new(x, y), pixel_size,
-            if state == WidgetState::Disabled { theme.muted_text } else { theme.text }, rect);
+    if let (Ok(x), Ok(y)) = (
+        i32::try_from(rect.x.saturating_add(side).saturating_add(8)),
+        i32::try_from(baseline),
+    ) {
+        draw_label_clipped(
+            target,
+            font,
+            label,
+            Point::new(x, y),
+            pixel_size,
+            if state == WidgetState::Disabled {
+                theme.muted_text
+            } else {
+                theme.text
+            },
+            rect,
+        );
     }
 }
 
@@ -282,15 +308,60 @@ pub fn draw_slider(
     let track_height = rect.height.min(6).max(1);
     let thumb = rect.height.min(18).max(6);
     let travel = rect.width.saturating_sub(thumb);
-    let ratio = if high == low { 0.0 } else { (clamped - low) as f64 / (high - low) as f64 };
-    let thumb_x = rect.x.saturating_add((f64::from(travel) * ratio).round() as u32);
-    let track_y = rect.y.saturating_add(rect.height.saturating_sub(track_height) / 2);
-    fill_rounded_rect(target, Rect::new(rect.x.saturating_add(thumb / 2), track_y, rect.width.saturating_sub(thumb).max(1), track_height), track_height / 2, theme.track);
+    let ratio = if high == low {
+        0.0
+    } else {
+        (clamped - low) as f64 / (high - low) as f64
+    };
+    let thumb_x = rect
+        .x
+        .saturating_add((f64::from(travel) * ratio).round() as u32);
+    let track_y = rect
+        .y
+        .saturating_add(rect.height.saturating_sub(track_height) / 2);
+    fill_rounded_rect(
+        target,
+        Rect::new(
+            rect.x.saturating_add(thumb / 2),
+            track_y,
+            rect.width.saturating_sub(thumb).max(1),
+            track_height,
+        ),
+        track_height / 2,
+        theme.track,
+    );
     let fill_width = thumb_x.saturating_sub(rect.x).saturating_add(thumb / 2);
-    fill_rounded_rect(target, Rect::new(rect.x.saturating_add(thumb / 2), track_y, fill_width.min(rect.width), track_height), track_height / 2,
-        if state == WidgetState::Disabled { theme.disabled } else { theme.accent });
-    let thumb_color = if state == WidgetState::Disabled { theme.disabled } else { theme.accent };
-    fill_rounded_rect(target, Rect::new(thumb_x, rect.y.saturating_add(rect.height.saturating_sub(thumb) / 2), thumb, thumb), thumb / 2, thumb_color);
+    fill_rounded_rect(
+        target,
+        Rect::new(
+            rect.x.saturating_add(thumb / 2),
+            track_y,
+            fill_width.min(rect.width),
+            track_height,
+        ),
+        track_height / 2,
+        if state == WidgetState::Disabled {
+            theme.disabled
+        } else {
+            theme.accent
+        },
+    );
+    let thumb_color = if state == WidgetState::Disabled {
+        theme.disabled
+    } else {
+        theme.accent
+    };
+    fill_rounded_rect(
+        target,
+        Rect::new(
+            thumb_x,
+            rect.y.saturating_add(rect.height.saturating_sub(thumb) / 2),
+            thumb,
+            thumb,
+        ),
+        thumb / 2,
+        thumb_color,
+    );
 }
 
 /// Draws a progress bar. Non-finite progress is treated as zero and all other
