@@ -63,7 +63,7 @@ impl NativeWindowSurface {
         title: &str,
         width: u32,
         height: u32,
-        mut draw: F,
+        draw: F,
     ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) + 'static,
