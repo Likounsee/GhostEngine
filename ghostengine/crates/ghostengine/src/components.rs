@@ -631,13 +631,38 @@ impl ComponentTree {
                 }
                 ComponentKind::ComboBox { items } => {
                     let labels: Vec<_> = items.iter().map(String::as_str).collect();
-                    let state = self.combo_states.get(&placement.id).copied().unwrap_or_default();
-                    draw_combo_box(target, font, placement.bounds, &labels, state, pixel_size, 28, theme);
+                    let state = self
+                        .combo_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
+                    draw_combo_box(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        pixel_size,
+                        28,
+                        theme,
+                    );
                 }
                 ComponentKind::Tabs { labels } => {
                     let labels: Vec<_> = labels.iter().map(String::as_str).collect();
-                    let state = self.tabs_states.get(&placement.id).copied().unwrap_or_default();
-                    draw_tabs(target, font, placement.bounds, &labels, state, pixel_size, theme);
+                    let state = self
+                        .tabs_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
+                    draw_tabs(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        pixel_size,
+                        theme,
+                    );
                 }
             }
         }
@@ -646,7 +671,9 @@ impl ComponentTree {
     /// Returns the selected item index of a combo box.
     #[must_use]
     pub fn combo_box_selected(&self, id: ComponentId) -> Option<usize> {
-        self.combo_states.get(&id).and_then(|state| state.selected())
+        self.combo_states
+            .get(&id)
+            .and_then(|state| state.selected())
     }
 
     /// Returns the selected tab index of a tab strip.
@@ -859,23 +886,37 @@ impl ComponentTree {
                     match key {
                         ComponentKey::Escape => state.close(),
                         ComponentKey::ArrowDown => {
-                            if state.is_open() { state.move_highlight(1, items.len()); }
-                            else { state.open(items.len()); }
+                            if state.is_open() {
+                                state.move_highlight(1, items.len());
+                            } else {
+                                state.open(items.len());
+                            }
                         }
                         ComponentKey::ArrowUp => {
-                            if state.is_open() { state.move_highlight(-1, items.len()); }
-                            else { state.open(items.len()); state.move_highlight(-1, items.len()); }
+                            if state.is_open() {
+                                state.move_highlight(-1, items.len());
+                            } else {
+                                state.open(items.len());
+                                state.move_highlight(-1, items.len());
+                            }
                         }
                         _ => {}
                     }
-                    if matches!(key, ComponentKey::Escape | ComponentKey::ArrowDown | ComponentKey::ArrowUp) {
+                    if matches!(
+                        key,
+                        ComponentKey::Escape | ComponentKey::ArrowDown | ComponentKey::ArrowUp
+                    ) {
                         return ComponentEvents::default();
                     }
                 }
                 Some(ComponentKind::Tabs { labels }) => {
                     if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight {
                         self.tabs_states.entry(id).or_default().move_selection(
-                            if key == ComponentKey::ArrowLeft { -1 } else { 1 },
+                            if key == ComponentKey::ArrowLeft {
+                                -1
+                            } else {
+                                1
+                            },
                             labels.len(),
                         );
                         return ComponentEvents::default();
@@ -1490,10 +1531,11 @@ mod tests {
     fn retained_combo_box_supports_focus_keyboard_open_highlight_and_selection() {
         let id = ComponentId(120);
         let bounds = Rect::new(0, 0, 160, 36);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::combo_box(id, vec!["First".into(), "Second".into(), "Third".into()])
-                .with_layout_item(LayoutItem::fixed(36)),
-        ]);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["First".into(), "Second".into(), "Third".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
         tree.handle_key(bounds, ComponentKey::Enter, false);
         assert!(tree.combo_states[&id].is_open());
@@ -1509,10 +1551,11 @@ mod tests {
     fn retained_combo_box_escape_closes_without_changing_selection() {
         let id = ComponentId(121);
         let bounds = Rect::new(0, 0, 160, 36);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::combo_box(id, vec!["A".into(), "B".into()])
-                .with_layout_item(LayoutItem::fixed(36)),
-        ]);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["A".into(), "B".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
         tree.focus_next(bounds, false);
         tree.handle_key(bounds, ComponentKey::Enter, false);
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
@@ -1525,10 +1568,11 @@ mod tests {
     fn retained_tabs_support_focus_and_bounded_keyboard_navigation() {
         let id = ComponentId(122);
         let bounds = Rect::new(0, 0, 180, 36);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::tabs(id, vec!["General".into(), "Display".into(), "Input".into()])
-                .with_layout_item(LayoutItem::fixed(36)),
-        ]);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["General".into(), "Display".into(), "Input".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
         tree.handle_key(bounds, ComponentKey::ArrowRight, false);
         assert_eq!(tree.tabs_selected(id), Some(0));
