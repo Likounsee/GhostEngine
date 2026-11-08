@@ -724,7 +724,6 @@ fn fallback_text_clusters(text: &str) -> Vec<String> {
     clusters
 }
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedShapedTextRun {
     pub font: Arc<FontFace>,
@@ -755,16 +754,26 @@ pub(crate) fn prepare_shaped_text_box(
     if !pixel_size.is_finite() || pixel_size <= 0.0 {
         return Err(ShapingError::InvalidPixelSize);
     }
-    if text.is_empty() || family.is_empty()
-        || !options.line_spacing.is_finite() || options.line_spacing <= 0.0
-        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+    if text.is_empty()
+        || family.is_empty()
+        || !options.line_spacing.is_finite()
+        || options.line_spacing <= 0.0
+        || options
+            .max_width
+            .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
-        return Ok(PreparedShapedTextBox { lines: Vec::new(), metrics: TextMetrics::default() });
+        return Ok(PreparedShapedTextBox {
+            lines: Vec::new(),
+            metrics: TextMetrics::default(),
+        });
     }
 
     let line_height = family.line_height(pixel_size);
     if !line_height.is_finite() || line_height <= 0.0 {
-        return Ok(PreparedShapedTextBox { lines: Vec::new(), metrics: TextMetrics::default() });
+        return Ok(PreparedShapedTextBox {
+            lines: Vec::new(),
+            metrics: TextMetrics::default(),
+        });
     }
     let mut text_lines = Vec::new();
     for paragraph in text.split('\n') {
@@ -782,7 +791,9 @@ pub(crate) fn prepare_shaped_text_box(
             };
             if !line.is_empty()
                 && measure_shaped_fallback_line(family, &line, pixel_size)
-                    + separator_width + word_width > max_width
+                    + separator_width
+                    + word_width
+                    > max_width
             {
                 text_lines.push(std::mem::take(&mut line));
             }
@@ -809,7 +820,8 @@ pub(crate) fn prepare_shaped_text_box(
         text_lines.push(line);
     }
 
-    let widths: Vec<f32> = text_lines.iter()
+    let widths: Vec<f32> = text_lines
+        .iter()
         .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
         .collect();
     let widest = widths.iter().copied().fold(0.0_f32, f32::max);
@@ -825,9 +837,12 @@ pub(crate) fn prepare_shaped_text_box(
         };
         let x = baseline.x as f32 + alignment_offset;
         let y = baseline.y as f32 + line_index as f32 * line_step;
-        if !x.is_finite() || !y.is_finite()
-            || x < i32::MIN as f32 || x > i32::MAX as f32
-            || y < i32::MIN as f32 || y > i32::MAX as f32
+        if !x.is_finite()
+            || !y.is_finite()
+            || x < i32::MIN as f32
+            || x > i32::MAX as f32
+            || y < i32::MIN as f32
+            || y > i32::MAX as f32
         {
             continue;
         }
