@@ -304,7 +304,8 @@ impl UiComponent {
                     | ComponentKind::Tabs { .. }
                     | ComponentKind::Switch { .. }
                     | ComponentKind::RadioButton { .. }
-                    | ComponentKind::Slider { .. }\n                    | ComponentKind::ListView { .. }
+                    | ComponentKind::Slider { .. }
+                    | ComponentKind::ListView { .. }
             )
     }
 }
@@ -393,7 +394,8 @@ pub struct ComponentTree {
     placed: Vec<PlacedComponent>,
     text_states: HashMap<ComponentId, TextInputState>,
     combo_states: HashMap<ComponentId, ComboBoxState>,
-    tabs_states: HashMap<ComponentId, TabsState>,\n    list_states: HashMap<ComponentId, ListState>,
+    tabs_states: HashMap<ComponentId, TabsState>,
+    list_states: HashMap<ComponentId, ListState>,
 }
 
 impl ComponentTree {
@@ -401,7 +403,8 @@ impl ComponentTree {
     pub fn new(roots: Vec<UiComponent>) -> Self {
         let mut text_states = HashMap::new();
         let mut combo_states = HashMap::new();
-        let mut tabs_states = HashMap::new();\n        let mut list_states = HashMap::new();
+        let mut tabs_states = HashMap::new();
+        let mut list_states = HashMap::new();
         for root in &roots {
             collect_component_states(root, &mut text_states, &mut combo_states, &mut tabs_states, &mut list_states);
         }
@@ -545,7 +548,8 @@ impl ComponentTree {
         for removed_id in component_ids(&removed) {
             self.text_states.remove(&removed_id);
             self.combo_states.remove(&removed_id);
-            self.tabs_states.remove(&removed_id);\n            self.list_states.remove(&removed_id);
+            self.tabs_states.remove(&removed_id);
+            self.list_states.remove(&removed_id);
         }
         self.reset_after_structure_change();
         Some(removed)
@@ -1557,6 +1561,9 @@ fn collect_component_states(
         }
         ComponentKind::Tabs { .. } => {
             tabs_states.insert(node.id(), TabsState::new());
+        }
+        ComponentKind::ListView { .. } => {
+            list_states.insert(node.id(), ListState::new());
         }
         _ => {}
     }
