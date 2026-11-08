@@ -27,8 +27,14 @@ pub mod window;
 #[cfg(feature = "native-input")]
 pub mod native_input;
 
+#[cfg(feature = "native-window")]
+pub mod native_window;
+
 #[cfg(feature = "native-input")]
 pub use native_input::{NativeClipboard, NativeClipboardError, NativeInputAdapter};
+
+#[cfg(feature = "native-window")]
+pub use native_window::{NativeWindowError, NativeWindowSurface};
 
 pub use color::Color;
 pub use components::{
