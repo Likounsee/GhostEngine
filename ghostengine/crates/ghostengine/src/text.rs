@@ -621,7 +621,6 @@ pub fn draw_text_with_fallback_shaped_clipped(
     }
 }
 
-
 /// Measures one line using OpenType shaping for each contiguous fallback-font run.
 fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32) -> f32 {
     let Some(primary) = family.faces.first() else {
@@ -661,15 +660,26 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
                 .as_ref()
                 .filter(|face| face.has_glyph(character))
                 .cloned()
-                .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                .or_else(|| {
+                    family
+                        .faces
+                        .iter()
+                        .find(|face| face.has_glyph(character))
+                        .cloned()
+                })
                 .unwrap_or_else(|| Arc::clone(primary))
         } else {
-            family.faces.iter()
+            family
+                .faces
+                .iter()
                 .find(|face| face.has_glyph(character))
                 .cloned()
                 .unwrap_or_else(|| Arc::clone(primary))
         };
-        if run_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+        if run_face
+            .as_ref()
+            .is_some_and(|face| !Arc::ptr_eq(face, &selected))
+        {
             flush(&mut run, &mut run_face, &mut width);
         }
         if run_face.is_none() {
@@ -688,8 +698,7 @@ fn fallback_text_clusters(text: &str) -> Vec<String> {
     let mut regional_count = 0_u8;
     for character in text.chars() {
         let code = character as u32;
-        let variation = (0xFE00..=0xFE0F).contains(&code)
-            || (0xE0100..=0xE01EF).contains(&code);
+        let variation = (0xFE00..=0xFE0F).contains(&code) || (0xE0100..=0xE01EF).contains(&code);
         let regional = (0x1F1E6..=0x1F1FF).contains(&code);
         let attach = is_combining_mark(character)
             || variation
