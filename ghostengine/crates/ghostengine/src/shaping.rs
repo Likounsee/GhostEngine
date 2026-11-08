@@ -168,7 +168,7 @@ impl OpenTypeShaper {
 
 #[cfg(test)]
 mod tests {
-    use super::{OpenTypeShaper, ShapedText, ShapingError};
+    use super::{OpenTypeShaper, ShapedText, ShapingError, TextDirection};
 
     #[test]
     fn bidi_runs_keep_original_ranges_and_visual_order() {
