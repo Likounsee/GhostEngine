@@ -42,6 +42,39 @@ pub struct ShapedText {
     pub advance_y: f32,
 }
 
+
+/// A logical UTF-8 range in the visual order of a bidirectional paragraph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BidiRun {
+    pub byte_range: std::ops::Range<usize>,
+    pub direction: TextDirection,
+}
+
+/// Resolves Unicode bidi levels and returns directional runs in visual order.
+///
+/// Ranges always refer to the original UTF-8 string. The function does not
+/// reverse UTF-8 bytes or characters; each range must be shaped independently
+/// with its returned direction.
+pub fn resolve_bidi_runs(text: &str) -> Vec<BidiRun> {
+    let bidi = unicode_bidi::BidiInfo::new(text, None);
+    let mut output = Vec::new();
+    for paragraph in &bidi.paragraphs {
+        let (_, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
+        for range in runs {
+            let direction = if bidi.levels.get(range.start).is_some_and(|level| level.is_rtl()) {
+                TextDirection::RightToLeft
+            } else {
+                TextDirection::LeftToRight
+            };
+            output.push(BidiRun {
+                byte_range: range,
+                direction,
+            });
+        }
+    }
+    output
+}
+
 /// Errors returned while shaping text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShapingError {
@@ -134,6 +167,25 @@ impl OpenTypeShaper {
 #[cfg(test)]
 mod tests {
     use super::{OpenTypeShaper, ShapedText, ShapingError};
+
+    #[test]
+    fn bidi_runs_keep_original_ranges_and_visual_order() {
+        let text = "abc אבג 123";
+        let runs = super::resolve_bidi_runs(text);
+        assert!(!runs.is_empty());
+        for run in &runs {
+            assert!(text.get(run.byte_range.clone()).is_some());
+        }
+        assert!(runs.iter().any(|run| run.direction == TextDirection::RightToLeft));
+        assert!(runs.iter().any(|run| run.direction == TextDirection::LeftToRight));
+    }
+
+    #[test]
+    fn pure_ltr_text_resolves_to_ltr_runs() {
+        let runs = super::resolve_bidi_runs("GhostEngine 123");
+        assert!(!runs.is_empty());
+        assert!(runs.iter().all(|run| run.direction == TextDirection::LeftToRight));
+    }
 
     #[test]
     fn rejects_invalid_font_data() {
