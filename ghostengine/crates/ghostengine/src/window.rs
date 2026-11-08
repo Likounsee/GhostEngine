@@ -142,8 +142,8 @@ impl WindowSurface {
             .map_err(|_| WindowError::AllocationFailed)?;
         presentation_buffer.resize(pixel_count, 0);
 
-        let mut resized = Framebuffer::new(width, height, Color::BLACK)
-            .map_err(|error| match error {
+        let mut resized =
+            Framebuffer::new(width, height, Color::BLACK).map_err(|error| match error {
                 crate::FramebufferError::ZeroDimension => WindowError::ZeroDimensions,
                 crate::FramebufferError::SizeOverflow => WindowError::SizeOverflow,
                 crate::FramebufferError::AllocationFailed => WindowError::AllocationFailed,
