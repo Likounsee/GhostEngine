@@ -736,7 +736,7 @@ impl ListState {
     }
 
     /// Selects the row under a pointer coordinate, accounting for scrolling.
-    /// Coordinates outside the list viewport clear no selection and return false.
+    /// Coordinates outside the list viewport leave the selection unchanged and return false.
     pub fn select_at(
         &mut self,
         bounds: Rect,
@@ -749,8 +749,7 @@ impl ListState {
             return false;
         }
         let relative_y = pointer.y.saturating_sub(bounds.y);
-        let index = (u64::from(relative_y) + u64::from(scroll_offset))
-            / u64::from(row_height);
+        let index = (u64::from(relative_y) + u64::from(scroll_offset)) / u64::from(row_height);
         if index >= item_count as u64 {
             return false;
         }
@@ -801,7 +800,11 @@ pub struct ComboBoxState {
 impl ComboBoxState {
     #[must_use]
     pub const fn new() -> Self {
-        Self { selected: None, highlighted: None, open: false }
+        Self {
+            selected: None,
+            highlighted: None,
+            open: false,
+        }
     }
 
     #[must_use]
@@ -821,7 +824,9 @@ impl ComboBoxState {
 
     pub fn open(&mut self, item_count: usize) {
         self.open = item_count > 0;
-        self.highlighted = self.selected.filter(|index| *index < item_count)
+        self.highlighted = self
+            .selected
+            .filter(|index| *index < item_count)
             .or_else(|| (item_count > 0).then_some(0));
     }
 
@@ -831,7 +836,11 @@ impl ComboBoxState {
     }
 
     pub fn toggle(&mut self, item_count: usize) {
-        if self.open { self.close(); } else { self.open(item_count); }
+        if self.open {
+            self.close();
+        } else {
+            self.open(item_count);
+        }
     }
 
     pub fn move_highlight(&mut self, delta: isize, item_count: usize) {
@@ -840,7 +849,8 @@ impl ComboBoxState {
             return;
         }
         let current = self.highlighted.unwrap_or(0).min(item_count - 1) as i128;
-        self.highlighted = Some((current + delta as i128).clamp(0, item_count as i128 - 1) as usize);
+        self.highlighted =
+            Some((current + delta as i128).clamp(0, item_count as i128 - 1) as usize);
     }
 
     pub fn select_highlighted(&mut self, item_count: usize) -> Option<usize> {
@@ -854,7 +864,9 @@ impl ComboBoxState {
         self.selected = index.filter(|index| *index < item_count);
         if self.open {
             self.highlighted = self.selected.or_else(|| (item_count > 0).then_some(0));
-            if item_count == 0 { self.close(); }
+            if item_count == 0 {
+                self.close();
+            }
         }
     }
 }
@@ -867,13 +879,19 @@ pub struct TabsState {
 
 impl TabsState {
     #[must_use]
-    pub const fn new() -> Self { Self { selected: None } }
+    pub const fn new() -> Self {
+        Self { selected: None }
+    }
 
     #[must_use]
-    pub const fn selected(self) -> Option<usize> { self.selected }
+    pub const fn selected(self) -> Option<usize> {
+        self.selected
+    }
 
     pub fn select(&mut self, index: usize, tab_count: usize) -> bool {
-        if index >= tab_count { return false; }
+        if index >= tab_count {
+            return false;
+        }
         self.selected = Some(index);
         true
     }
