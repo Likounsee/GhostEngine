@@ -184,7 +184,7 @@ fn hit_test(pointer: Point, enabled: &[bool], bounds: &[Rect]) -> Option<usize> 
 #[cfg(test)]
 mod tests {
     use super::UiInteraction;
-    use crate::{Point, Rect};
+    use crate::{Point, Rect, WidgetState};
 
     fn controls() -> ([bool; 3], [Rect; 3]) {
         (
