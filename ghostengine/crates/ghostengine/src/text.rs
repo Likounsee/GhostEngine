@@ -2327,6 +2327,53 @@ mod tests {
     }
 
     #[test]
+    fn simple_and_shaped_fallback_render_combining_clusters() {
+        use std::sync::Arc;
+
+        let hebrew_bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let arabic_bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let hebrew = Arc::new(FontFace::from_bytes(hebrew_bytes).expect("Hebrew font"));
+        let arabic = Arc::new(FontFace::from_bytes(arabic_bytes).expect("Arabic font"));
+        let mut family = super::FontFamily::new(Arc::clone(&hebrew));
+        family.add_fallback(Arc::clone(&arabic));
+        let text = "שָׁ لَا";
+
+        let mut simple_target =
+            crate::Framebuffer::new(320, 96, crate::Color::BLACK).expect("simple framebuffer");
+        let simple_metrics = super::draw_text_with_fallback_clipped(
+            &mut simple_target,
+            &family,
+            text,
+            crate::Point::new(12, 64),
+            30.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 320, 96),
+        );
+        assert!(simple_metrics.width.is_finite() && simple_metrics.width > 0.0);
+        assert!(simple_target
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel != crate::Color::BLACK));
+
+        let mut shaped_target =
+            crate::Framebuffer::new(320, 96, crate::Color::BLACK).expect("shaped framebuffer");
+        let shaped_metrics = super::draw_text_with_fallback_shaped_clipped(
+            &mut shaped_target,
+            &family,
+            text,
+            crate::Point::new(12, 64),
+            30.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 320, 96),
+        );
+        assert!(shaped_metrics.width.is_finite() && shaped_metrics.width > 0.0);
+        assert!(shaped_target
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel != crate::Color::BLACK));
+    }
+
+    #[test]
     fn licensed_hebrew_and_arabic_fallback_faces_render_one_bidi_paragraph() {
         use std::sync::Arc;
 
