@@ -38,6 +38,10 @@ impl Error for WindowError {}
 pub struct InputState {
     pub mouse_position: Option<Point>,
     pub left_mouse_down: bool,
+    /// True only on the frame the left mouse button transitions to down.
+    pub left_mouse_pressed: bool,
+    /// True only on the frame the left mouse button transitions to up.
+    pub left_mouse_released: bool,
     /// True while either Shift key is held.
     pub shift_down: bool,
     /// True while either Control key is held.
@@ -62,6 +66,7 @@ pub struct WindowSurface {
     width: u32,
     height: u32,
     presentation_buffer: Vec<u32>,
+    previous_left_mouse_down: bool,
 }
 
 impl WindowSurface {
@@ -96,6 +101,7 @@ impl WindowSurface {
             width,
             height,
             presentation_buffer,
+            previous_left_mouse_down: false,
         })
     }
 
@@ -164,9 +170,15 @@ impl WindowSurface {
             .get_mouse_pos(MouseMode::Clamp)
             .map(|(x, y)| Point::new(x.floor() as i32, y.floor() as i32));
         let pressed = self.window.get_keys_pressed(KeyRepeat::Yes);
+        let left_mouse_down = self.window.get_mouse_down(MouseButton::Left);
+        let (left_mouse_pressed, left_mouse_released) =
+            button_transition(self.previous_left_mouse_down, left_mouse_down);
+        self.previous_left_mouse_down = left_mouse_down;
         let mut input = InputState {
             mouse_position,
-            left_mouse_down: self.window.get_mouse_down(MouseButton::Left),
+            left_mouse_down,
+            left_mouse_pressed,
+            left_mouse_released,
             shift_down: self.window.is_key_down(Key::LeftShift)
                 || self.window.is_key_down(Key::RightShift),
             control_down: self.window.is_key_down(Key::LeftCtrl)
@@ -217,6 +229,11 @@ impl WindowSurface {
             )
             .map_err(|error| WindowError::Backend(error.to_string()))
     }
+}
+
+/// Resolves the edge events for a button sampled once per frame.
+fn button_transition(previous_down: bool, current_down: bool) -> (bool, bool) {
+    (current_down && !previous_down, previous_down && !current_down)
 }
 
 /// Copies the top-left overlapping region from one framebuffer to another.
@@ -486,6 +503,22 @@ mod tests {
         assert_eq!(smaller.width(), 2);
         assert_eq!(smaller.height(), 1);
         assert!(smaller.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn mouse_button_transitions_emit_single_press_and_release_edges() {
+        assert_eq!(super::button_transition(false, false), (false, false));
+        assert_eq!(super::button_transition(false, true), (true, false));
+        assert_eq!(super::button_transition(true, true), (false, false));
+        assert_eq!(super::button_transition(true, false), (false, true));
+    }
+
+    #[test]
+    fn input_state_defaults_mouse_edges_to_false() {
+        let input = InputState::default();
+        assert!(!input.left_mouse_down);
+        assert!(!input.left_mouse_pressed);
+        assert!(!input.left_mouse_released);
     }
 
     #[test]
