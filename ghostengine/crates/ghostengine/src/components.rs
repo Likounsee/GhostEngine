@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button, draw_switch, draw_tabs,
+    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button, draw_slider, draw_switch, draw_tabs,
     draw_text_input, ComboBoxState, FontFace, Framebuffer, InteractionEvents, LayoutItem, Point,
     Rect, StackLayout, TabsState, TextInputOptions, TextInputState, UiInteraction, UiTheme,
     WidgetState,
@@ -28,6 +28,7 @@ pub enum ComponentKind {
     Tabs { labels: Vec<String> },
     Switch { label: String, enabled: bool },
     RadioButton { label: String, group: u64, selected: bool },
+    Slider { label: String, min: u32, max: u32, value: u32 },
 }
 
 /// A retained component node. Child order is also layout and keyboard tab order.
@@ -87,6 +88,26 @@ impl UiComponent {
     #[must_use]
     pub fn label(id: ComponentId, text: impl Into<String>) -> Self {
         Self::new(id, ComponentKind::Label { text: text.into() })
+    }
+
+    /// Creates a keyboard- and pointer-operable switch.
+    #[must_use]
+    pub fn switch(id: ComponentId, label: impl Into<String>, enabled: bool) -> Self {
+        Self::new(id, ComponentKind::Switch { label: label.into(), enabled })
+    }
+
+    /// Creates a radio button belonging to an exclusive selection group.
+    #[must_use]
+    pub fn radio_button(id: ComponentId, label: impl Into<String>, group: u64, selected: bool) -> Self {
+        Self::new(id, ComponentKind::RadioButton { label: label.into(), group, selected })
+    }
+
+    /// Creates an integer slider with a clamped initial value.
+    #[must_use]
+    pub fn slider(id: ComponentId, label: impl Into<String>, min: u32, max: u32, value: u32) -> Self {
+        let low = min.min(max);
+        let high = max.max(min);
+        Self::new(id, ComponentKind::Slider { label: label.into(), min: low, max: high, value: value.clamp(low, high) })
     }
 
     /// Creates a keyboard- and pointer-operable combo box.
@@ -213,7 +234,7 @@ impl UiComponent {
                     | ComponentKind::Checkbox { .. }
                     | ComponentKind::TextInput { .. }
                     | ComponentKind::ComboBox { .. }
-                    | ComponentKind::Tabs { .. }\n                    | ComponentKind::Switch { .. }\n                    | ComponentKind::RadioButton { .. }
+                    | ComponentKind::Tabs { .. }\n                    | ComponentKind::Switch { .. }\n                    | ComponentKind::RadioButton { .. }\n                    | ComponentKind::Slider { .. }
             )
     }
 }
@@ -410,6 +431,23 @@ impl ComponentTree {
             .is_some_and(|component| component.set_checked(checked))
     }
 
+    /// Updates a slider value, clamping it to the configured range.
+    pub fn set_slider_value(&mut self, id: ComponentId, value: u32) -> bool {
+        let Some(ComponentKind::Slider { min, max, value: current, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        else { return false; };
+        *current = value.clamp(*min, *max);
+        true
+    }
+
+    #[must_use]
+    pub fn slider_value(&self, id: ComponentId) -> Option<u32> {
+        match self.find(id)?.kind() {
+            ComponentKind::Slider { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+
     /// Updates a label or text input by stable ID.
     pub fn set_text(&mut self, id: ComponentId, text: impl Into<String>) -> bool {
         let text = text.into();
@@ -558,6 +596,22 @@ impl ComponentTree {
             self.interaction
                 .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
         let translated = self.dispatch_events(events);
+        if let (Some(id), Some(point)) = (translated.activated, pointer) {
+            if let Some(rect) = self.placed.iter().find(|placement| placement.id == id).map(|p| p.bounds) {
+                let range = self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::Slider { min, max, .. } => Some((*min, *max)),
+                    _ => None,
+                });
+                if let Some((min, max)) = range {
+                    let travel = rect.width.max(1);
+                    let relative = (point.x.max(0) as u32).saturating_sub(rect.x).min(travel);
+                    let value = if max == min { min } else {
+                        min.saturating_add(((u64::from(max - min) * u64::from(relative)) / u64::from(travel)) as u32)
+                    };
+                    self.set_slider_value(id, value);
+                }
+            }
+        }
         if released {
             if let (Some(id), Some(point)) = (translated.activated, pointer) {
                 let kind = self.find(id).map(|component| component.kind().clone());
@@ -665,6 +719,9 @@ impl ComponentTree {
                 }
                 ComponentKind::RadioButton { label, selected, .. } => {
                     draw_radio_button(target, font, placement.bounds, label, *selected, pixel_size, placement.state, theme);
+                }
+                ComponentKind::Slider { min, max, value, .. } => {
+                    draw_slider(target, placement.bounds, *value, *min, *max, placement.state, theme);
                 }
                 ComponentKind::TextInput { placeholder, .. } => {
                     let Some(state) = self.text_states.get(&placement.id) else {
@@ -983,6 +1040,17 @@ impl ComponentTree {
                     ) {
                         return ComponentEvents::default();
                     }
+                }
+                Some(ComponentKind::Slider { min, max, value, .. })
+                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
+                {
+                    let next = if key == ComponentKey::ArrowLeft {
+                        value.saturating_sub(1).max(min)
+                    } else {
+                        value.saturating_add(1).min(max)
+                    };
+                    self.set_slider_value(id, next);
+                    return ComponentEvents::default();
                 }
                 Some(ComponentKind::Tabs { labels })
                     if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
