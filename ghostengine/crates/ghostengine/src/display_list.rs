@@ -12,8 +12,8 @@ use crate::rasterizer::{
 use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
 use crate::text::{
-    draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped, FontFace,
-    TextLayoutOptions,
+    draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
+    prepare_shaped_text_box, FontFace, FontFamily, TextLayoutOptions,
 };
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
@@ -396,6 +396,50 @@ impl DisplayList {
                     color,
                     clip,
                 });
+            }
+        }
+        Ok(())
+    }
+
+    /// Shapes, wraps and records a fallback-font text block once.
+    ///
+    /// Each fallback run is converted to glyph IDs while recording. Replaying
+    /// the display list only rasterizes those glyph IDs and never reshapes text.
+    pub fn draw_shaped_text_box(
+        &mut self,
+        family: Arc<FontFamily>,
+        text: &str,
+        baseline: Point,
+        pixel_size: f32,
+        color: Color,
+        options: TextLayoutOptions,
+    ) -> Result<(), ShapingError> {
+        let prepared = prepare_shaped_text_box(&family, text, baseline, pixel_size, options)?;
+        if prepared.lines.is_empty() {
+            return Ok(());
+        }
+        if let Some(clip) = self.active_clip() {
+            let transform = self.active_transform();
+            if !transform.is_finite() || transform.inverse().is_none() {
+                return Ok(());
+            }
+            for line in prepared.lines {
+                for run in line.runs {
+                    if run.shaped.glyphs.is_empty() {
+                        continue;
+                    }
+                    let run_transform =
+                        Transform2D::translation(run.offset_x, 0.0).then(transform);
+                    self.commands.push(Command::DrawShapedText {
+                        font: SharedFont(run.font),
+                        shaped: run.shaped,
+                        baseline: line.baseline,
+                        transform: run_transform,
+                        pixel_size,
+                        color,
+                        clip,
+                    });
+                }
             }
         }
         Ok(())
