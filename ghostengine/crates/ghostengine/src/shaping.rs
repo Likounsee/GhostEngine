@@ -67,8 +67,8 @@ impl OpenTypeShaper {
             return Ok(ShapedText::default());
         }
 
-        let face = rustybuzz::Face::from_slice(&self.font_data, 0)
-            .ok_or(ShapingError::InvalidFont)?;
+        let face =
+            rustybuzz::Face::from_slice(&self.font_data, 0).ok_or(ShapingError::InvalidFont)?;
         let units_per_em = f32::from(face.units_per_em());
         if !units_per_em.is_finite() || units_per_em <= 0.0 {
             return Err(ShapingError::InvalidFont);
@@ -118,10 +118,13 @@ mod tests {
 
     #[test]
     fn shaped_text_default_is_empty_and_zero_advance() {
-        assert_eq!(ShapedText::default(), ShapedText {
-            glyphs: Vec::new(),
-            advance_x: 0.0,
-            advance_y: 0.0,
-        });
+        assert_eq!(
+            ShapedText::default(),
+            ShapedText {
+                glyphs: Vec::new(),
+                advance_x: 0.0,
+                advance_y: 0.0,
+            }
+        );
     }
 }
