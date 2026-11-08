@@ -1985,6 +1985,28 @@ mod tests {
     }
 
     #[test]
+    fn retained_slider_tracks_pointer_motion_while_dragging() {
+        let id = ComponentId(134);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::slider(id, "Volume", 0, 100, 0)
+                .with_layout_item(LayoutItem::fixed(32)),
+        ]);
+
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), true, false);
+        assert_eq!(tree.slider_value(id), Some(0));
+
+        tree.update_pointer(bounds, Some(Point::new(50, 16)), false, false);
+        assert_eq!(tree.slider_value(id), Some(50));
+
+        tree.update_pointer(bounds, Some(Point::new(90, 16)), false, false);
+        assert_eq!(tree.slider_value(id), Some(90));
+
+        tree.update_pointer(bounds, Some(Point::new(90, 16)), false, true);
+        assert_eq!(tree.slider_value(id), Some(90));
+    }
+
+    #[test]
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
