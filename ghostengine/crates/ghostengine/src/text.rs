@@ -1727,8 +1727,8 @@ mod tests {
     #[test]
     fn shaped_fallback_wrapping_keeps_grapheme_like_sequences_together() {
         assert_eq!(
-            super::fallback_text_clusters("a\\u{0301}b"),
-            ["a\\u{0301}", "b"]
+            super::fallback_text_clusters("a\u{0301}b"),
+            ["a\u{0301}", "b"]
         );
         assert_eq!(
             super::fallback_text_clusters("👩‍💻x"),
