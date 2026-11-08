@@ -621,6 +621,211 @@ pub fn draw_text_with_fallback_shaped_clipped(
     }
 }
 
+
+/// Measures one line using OpenType shaping for each contiguous fallback-font run.
+fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32) -> f32 {
+    let Some(primary) = family.faces.first() else {
+        return 0.0;
+    };
+    let space = family
+        .font_for(' ')
+        .unwrap_or(primary)
+        .glyph(' ', pixel_size)
+        .advance_width;
+    let tab_width = (space * 4.0).max(pixel_size);
+    let mut width = 0.0_f32;
+    let mut run = String::new();
+    let mut run_face: Option<Arc<FontFace>> = None;
+
+    let flush = |run: &mut String, face: &mut Option<Arc<FontFace>>, width: &mut f32| {
+        if run.is_empty() {
+            *face = None;
+            return;
+        }
+        if let Some(selected) = face.take() {
+            if let Ok(shaped) = selected.shape_text(run, pixel_size) {
+                *width += shaped.advance_x;
+            }
+        }
+        run.clear();
+    };
+
+    for character in text.chars() {
+        if character == '\t' {
+            flush(&mut run, &mut run_face, &mut width);
+            width = ((width / tab_width).floor() + 1.0) * tab_width;
+            continue;
+        }
+        let selected = if is_combining_mark(character) {
+            run_face
+                .as_ref()
+                .filter(|face| face.has_glyph(character))
+                .cloned()
+                .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                .unwrap_or_else(|| Arc::clone(primary))
+        } else {
+            family.faces.iter()
+                .find(|face| face.has_glyph(character))
+                .cloned()
+                .unwrap_or_else(|| Arc::clone(primary))
+        };
+        if run_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+            flush(&mut run, &mut run_face, &mut width);
+        }
+        if run_face.is_none() {
+            run_face = Some(selected);
+        }
+        run.push(character);
+    }
+    flush(&mut run, &mut run_face, &mut width);
+    width
+}
+
+/// Keeps combining sequences, variation selectors and joined emoji sequences together.
+fn fallback_text_clusters(text: &str) -> Vec<String> {
+    let mut clusters: Vec<String> = Vec::new();
+    let mut join_next = false;
+    let mut regional_count = 0_u8;
+    for character in text.chars() {
+        let code = character as u32;
+        let variation = (0xFE00..=0xFE0F).contains(&code)
+            || (0xE0100..=0xE01EF).contains(&code);
+        let regional = (0x1F1E6..=0x1F1FF).contains(&code);
+        let attach = is_combining_mark(character)
+            || variation
+            || join_next
+            || character == '\u{200D}'
+            || (regional && regional_count % 2 == 1);
+        if attach {
+            if let Some(last) = clusters.last_mut() {
+                last.push(character);
+            } else {
+                clusters.push(character.to_string());
+            }
+        } else {
+            clusters.push(character.to_string());
+        }
+        join_next = character == '\u{200D}';
+        if regional {
+            regional_count = regional_count.saturating_add(1);
+        } else if !is_combining_mark(character) && !variation && character != '\u{200D}' {
+            regional_count = 0;
+        }
+    }
+    clusters
+}
+
+/// Draws a shaped fallback-font text block with wrapping and per-line alignment.
+///
+/// Words are kept intact where possible. Overlong words are split only at
+/// conservative grapheme-like boundaries (combining sequences, variation
+/// selectors, ZWJ sequences and regional-indicator pairs remain together).
+/// Explicit newlines, including empty paragraphs, are preserved. This is not
+/// yet a complete Unicode line-breaking or bidirectional layout implementation.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_box_with_fallback_shaped_clipped(
+    target: &mut Framebuffer,
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    options: TextLayoutOptions,
+) -> TextMetrics {
+    if !pixel_size.is_finite()
+        || pixel_size <= 0.0
+        || text.is_empty()
+        || family.is_empty()
+        || !options.line_spacing.is_finite()
+        || options.line_spacing <= 0.0
+        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+    {
+        return TextMetrics::default();
+    }
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        let Some(max_width) = options.max_width else {
+            lines.push(paragraph.to_owned());
+            continue;
+        };
+        let mut line = String::new();
+        for word in paragraph.split_whitespace() {
+            let word_width = measure_shaped_fallback_line(family, word, pixel_size);
+            let separator_width = if line.is_empty() { 0.0 } else {
+                measure_shaped_fallback_line(family, " ", pixel_size)
+            };
+            if !line.is_empty()
+                && measure_shaped_fallback_line(family, &line, pixel_size)
+                    + separator_width + word_width > max_width
+            {
+                lines.push(std::mem::take(&mut line));
+            }
+
+            if word_width <= max_width {
+                if !line.is_empty() {
+                    line.push(' ');
+                }
+                line.push_str(word);
+                continue;
+            }
+
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+            }
+            for cluster in fallback_text_clusters(word) {
+                let candidate = format!("{line}{cluster}");
+                let candidate_width = measure_shaped_fallback_line(family, &candidate, pixel_size);
+                if !line.is_empty() && candidate_width > max_width {
+                    lines.push(std::mem::take(&mut line));
+                }
+                line.push_str(&cluster);
+            }
+        }
+        lines.push(line);
+    }
+
+    let widths: Vec<f32> = lines.iter()
+        .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
+        .collect();
+    let widest = widths.iter().copied().fold(0.0_f32, f32::max);
+    let alignment_width = options.max_width.unwrap_or(widest);
+    let step = line_height * options.line_spacing;
+    for (index, line) in lines.iter().enumerate() {
+        let offset = match options.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => ((alignment_width - widths[index]) * 0.5).max(0.0),
+            TextAlign::Right => (alignment_width - widths[index]).max(0.0),
+        };
+        let x = baseline.x as f32 + offset;
+        let y = baseline.y as f32 + index as f32 * step;
+        if x.is_finite() && y.is_finite()
+            && x >= i32::MIN as f32 && x <= i32::MAX as f32
+            && y >= i32::MIN as f32 && y <= i32::MAX as f32
+        {
+            draw_text_with_fallback_shaped_clipped(
+                target,
+                family,
+                line,
+                Point::new(x.round() as i32, y.round() as i32),
+                pixel_size,
+                color,
+                clip,
+            );
+        }
+    }
+    TextMetrics {
+        width: widest,
+        height: step * lines.len() as f32,
+        line_count: lines.len() as u32,
+    }
+}
+
 /// Draws a shaped glyph run with a full affine transform and framebuffer clip.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_text_shaped_transformed_clipped(
