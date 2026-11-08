@@ -6,6 +6,7 @@
 
 use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
 use fontdue::Font;
+use crate::{OpenTypeShaper, ShapedText, ShapingError};
 
 const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
 use std::collections::HashMap;
@@ -14,7 +15,9 @@ use std::sync::{Arc, Mutex};
 /// A loaded TrueType/OpenType font backed by the fontdue parser and rasterizer.
 pub struct FontFace {
     font: Font,
+    shaper: OpenTypeShaper,
     glyph_cache: Mutex<HashMap<(u32, char), Arc<CachedGlyph>>>,
+    indexed_glyph_cache: Mutex<HashMap<(u32, u16), Arc<CachedGlyph>>>,
 }
 
 #[derive(Debug)]
@@ -30,10 +33,43 @@ struct CachedGlyph {
 impl FontFace {
     /// Loads a font from in-memory TTF/OTF bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
-        Font::from_bytes(bytes, fontdue::FontSettings::default()).map(|font| Self {
+        let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
+            .map_err(|_| "invalid font data")?;
+        let shaper = OpenTypeShaper::from_bytes(bytes).map_err(|_| "invalid OpenType layout data")?;
+        Ok(Self {
             font,
+            shaper,
             glyph_cache: Mutex::new(HashMap::new()),
+            indexed_glyph_cache: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Shapes a text run with this face's GSUB/GPOS tables.
+    pub fn shape_text(&self, text: &str, pixel_size: f32) -> Result<ShapedText, ShapingError> {
+        self.shaper.shape(text, pixel_size)
+    }
+
+    fn glyph_index(&self, glyph_index: u16, pixel_size: f32) -> Arc<CachedGlyph> {
+        let key = (pixel_size.to_bits(), glyph_index);
+        let mut cache = self.indexed_glyph_cache.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(glyph) = cache.get(&key) {
+            return Arc::clone(glyph);
+        }
+        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
+            cache.clear();
+        }
+        let (metrics, bitmap) = self.font.rasterize_indexed(glyph_index, pixel_size);
+        let glyph = Arc::new(CachedGlyph {
+            xmin: metrics.xmin,
+            ymin: metrics.ymin,
+            width: metrics.width,
+            height: metrics.height,
+            advance_width: metrics.advance_width,
+            bitmap: Arc::from(bitmap),
+        });
+        cache.insert(key, Arc::clone(&glyph));
+        glyph
     }
 
     /// Returns whether this face contains a glyph for the character.
@@ -353,6 +389,79 @@ pub fn draw_text_with_fallback_clipped(
         }
     }
     metrics
+}
+
+/// Draws a shaped glyph run using GhostEngine's own CPU glyph rasterizer.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_shaped_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    shaped: &ShapedText,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || shaped.glyphs.is_empty() {
+        return TextMetrics::default();
+    }
+    let mut pen_x = baseline.x as f32;
+    let mut pen_y = baseline.y as f32;
+    for shaped_glyph in &shaped.glyphs {
+        let Ok(glyph_index) = u16::try_from(shaped_glyph.glyph_id) else {
+            pen_x += shaped_glyph.x_advance;
+            pen_y -= shaped_glyph.y_advance;
+            continue;
+        };
+        let glyph = font.glyph_index(glyph_index, pixel_size);
+        let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
+        let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
+        if left.is_finite() && top.is_finite()
+            && left >= i32::MIN as f32 && left <= i32::MAX as f32
+            && top >= i32::MIN as f32 && top <= i32::MAX as f32
+        {
+            draw_cached_glyph_clipped(
+                target, &glyph, left.round() as i32, top.round() as i32, color, clip,
+            );
+        }
+        pen_x += shaped_glyph.x_advance;
+        pen_y -= shaped_glyph.y_advance;
+    }
+    TextMetrics {
+        width: shaped.advance_x.abs(),
+        height: font.line_height(pixel_size),
+        line_count: 1,
+    }
+}
+
+fn draw_cached_glyph_clipped(
+    target: &mut Framebuffer,
+    glyph: &CachedGlyph,
+    left: i32,
+    top: i32,
+    color: Color,
+    clip: Rect,
+) {
+    if glyph.width == 0 || glyph.height == 0 { return; }
+    let x0 = left.max(clip.x.min(i32::MAX as u32) as i32).max(0);
+    let y0 = top.max(clip.y.min(i32::MAX as u32) as i32).max(0);
+    let clip_right = clip.x.saturating_add(clip.width).min(i32::MAX as u32) as i32;
+    let clip_bottom = clip.y.saturating_add(clip.height).min(i32::MAX as u32) as i32;
+    let x1 = left.saturating_add(glyph.width.min(i32::MAX as usize) as i32)
+        .min(clip_right).min(target.width() as i32);
+    let y1 = top.saturating_add(glyph.height.min(i32::MAX as usize) as i32)
+        .min(clip_bottom).min(target.height() as i32);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let source_x = (x - left) as usize;
+            let source_y = (y - top) as usize;
+            let coverage = glyph.bitmap[source_y * glyph.width + source_x];
+            let alpha = ((u16::from(color.a) * u16::from(coverage) + 127) / 255) as u8;
+            if alpha != 0 {
+                blend_pixel(target, Point::new(x, y), Color::rgba(color.r, color.g, color.b, alpha));
+            }
+        }
+    }
 }
 
 /// Horizontal alignment used for each line in a constrained text run.
