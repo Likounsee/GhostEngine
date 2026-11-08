@@ -570,7 +570,10 @@ pub fn draw_text_input(
         return;
     };
     let cursor_width = font
-        .measure(&display_text[..state.cursor + composition.len()], options.pixel_size)
+        .measure(
+            &display_text[..state.cursor + composition.len()],
+            options.pixel_size,
+        )
         .width;
     let total_width = font.measure(&display_text, options.pixel_size).width;
     let horizontal_offset = text_input_scroll_offset(cursor_width, total_width, inner.width as f32);
@@ -639,10 +642,12 @@ pub fn draw_text_input(
     }
 
     if options.focused && !composition.is_empty() {
-        let prefix_width = font.measure(&state.text[..state.cursor], options.pixel_size).width;
+        let prefix_width = font
+            .measure(&state.text[..state.cursor], options.pixel_size)
+            .width;
         let composition_width = font.measure(composition, options.pixel_size).width;
-        let underline_x = i64::from(inner.x) + prefix_width.floor() as i64
-            - horizontal_offset.floor() as i64;
+        let underline_x =
+            i64::from(inner.x) + prefix_width.floor() as i64 - horizontal_offset.floor() as i64;
         if let Ok(underline_x) = u32::try_from(underline_x) {
             fill_rect_clipped(
                 target,

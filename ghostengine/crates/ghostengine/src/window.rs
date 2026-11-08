@@ -298,14 +298,10 @@ impl ComponentTree {
                 self.handle_text_input_event(id, event.clone());
             }
             if input.copy_pressed {
-                events.clipboard_action = self
-                    .copy_selected_text(id)
-                    .map(ClipboardAction::Copy);
+                events.clipboard_action = self.copy_selected_text(id).map(ClipboardAction::Copy);
             }
             if input.cut_pressed {
-                events.clipboard_action = self
-                    .cut_selected_text(id)
-                    .map(ClipboardAction::Copy);
+                events.clipboard_action = self.cut_selected_text(id).map(ClipboardAction::Copy);
             }
             if input.paste_pressed {
                 if let Some(text) = input.clipboard_text.as_deref() {
@@ -586,7 +582,10 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::{key_to_character, pack_rgb, ClipboardAction, ComponentTree, InputState, TextInputEvent, WindowError};
+    use super::{
+        key_to_character, pack_rgb, ClipboardAction, ComponentTree, InputState, TextInputEvent,
+        WindowError,
+    };
     use crate::Color;
     use minifb::Key;
 
@@ -738,9 +737,12 @@ mod tests {
         let bounds = crate::Rect::new(0, 0, 120, 40);
         let id = ComponentId(90);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::text_input(id, "Input", "").with_layout_item(LayoutItem::fixed(40)),
+            UiComponent::text_input(id, "Input", "").with_layout_item(LayoutItem::fixed(40))
         ]);
-        let tab = InputState { tab_pressed: true, ..InputState::default() };
+        let tab = InputState {
+            tab_pressed: true,
+            ..InputState::default()
+        };
         tree.handle_window_input(bounds, &tab);
 
         let ime = InputState {
@@ -761,13 +763,21 @@ mod tests {
         ));
 
         tree.select_all_text(id);
-        let copy = InputState { copy_pressed: true, control_down: true, ..InputState::default() };
+        let copy = InputState {
+            copy_pressed: true,
+            control_down: true,
+            ..InputState::default()
+        };
         assert_eq!(
             tree.handle_window_input(bounds, &copy).clipboard_action,
             Some(ClipboardAction::Copy("日本語🙂".into()))
         );
 
-        let cut = InputState { cut_pressed: true, control_down: true, ..InputState::default() };
+        let cut = InputState {
+            cut_pressed: true,
+            control_down: true,
+            ..InputState::default()
+        };
         assert_eq!(
             tree.handle_window_input(bounds, &cut).clipboard_action,
             Some(ClipboardAction::Copy("日本語🙂".into()))
@@ -778,7 +788,8 @@ mod tests {
             ..InputState::default()
         };
         assert_eq!(
-            tree.handle_window_input(bounds, &paste_request).clipboard_action,
+            tree.handle_window_input(bounds, &paste_request)
+                .clipboard_action,
             Some(ClipboardAction::Paste)
         );
         let paste_result = InputState {

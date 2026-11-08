@@ -491,7 +491,10 @@ impl ComponentTree {
     /// Copies the active selection without modifying the input.
     pub fn copy_selected_text(&mut self, id: ComponentId) -> Option<String> {
         self.sync_text_state(id).then_some(())?;
-        self.text_states.get(&id)?.selected_text().map(str::to_owned)
+        self.text_states
+            .get(&id)?
+            .selected_text()
+            .map(str::to_owned)
     }
 
     /// Deletes the active selection and returns its former contents for the host clipboard.
@@ -979,7 +982,9 @@ mod tests {
             tree.find(id).unwrap().kind(),
             ComponentKind::TextInput { value, .. } if value == "hello"
         ));
-        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionCommit("日本語".into())));
+        assert!(
+            tree.handle_text_input_event(id, TextInputEvent::CompositionCommit("日本語".into()))
+        );
         assert_eq!(tree.text_input_state(id).unwrap().composition(), None);
         assert!(matches!(
             tree.find(id).unwrap().kind(),
