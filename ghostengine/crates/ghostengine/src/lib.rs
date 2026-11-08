@@ -4,6 +4,7 @@
 //! The crate intentionally has no graphics API or platform dependencies.
 
 pub mod color;
+pub mod components;
 pub mod composition;
 pub mod display_list;
 pub mod focus;
@@ -24,6 +25,7 @@ pub mod ui;
 pub mod window;
 
 pub use color::Color;
+pub use components::{ComponentEvents, ComponentId, ComponentKind, ComponentTree, PlacedComponent, UiComponent};
 pub use composition::{compose_layers, Layer};
 pub use display_list::{DisplayList, RenderStats};
 pub use focus::FocusManager;
