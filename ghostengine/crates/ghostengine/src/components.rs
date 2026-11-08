@@ -658,16 +658,26 @@ impl ComponentTree {
                 }
             }
         }
+        let captured_before_update = self.interaction.captured();
         let events =
             self.interaction
                 .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
         let translated = self.dispatch_events(events);
-        if let (Some(id), Some(point)) = (translated.activated, pointer) {
+
+        // Keep updating a slider for every pointer-move frame while its
+        // pointer capture is held, not only on the final click/release.
+        let captured_slider = captured_before_update
+            .and_then(|index| self.focusable_ids.get(index).copied());
+        let activated_slider = translated.activated;
+        if let (Some(id), Some(point)) = (
+            captured_slider.or(activated_slider),
+            pointer,
+        ) {
             if let Some(rect) = self
                 .placed
                 .iter()
                 .find(|placement| placement.id == id)
-                .map(|p| p.bounds)
+                .map(|placement| placement.bounds)
             {
                 let range = self.find(id).and_then(|component| match component.kind() {
                     ComponentKind::Slider { min, max, .. } => Some((*min, *max)),
@@ -675,13 +685,15 @@ impl ComponentTree {
                 });
                 if let Some((min, max)) = range {
                     let travel = rect.width.max(1);
-                    let relative = (point.x.max(0) as u32).saturating_sub(rect.x).min(travel);
+                    let relative = (point.x.max(0) as u32)
+                        .saturating_sub(rect.x)
+                        .min(travel);
                     let value = if max == min {
                         min
                     } else {
                         min.saturating_add(
-                            ((u64::from(max - min) * u64::from(relative)) / u64::from(travel))
-                                as u32,
+                            ((u64::from(max - min) * u64::from(relative))
+                                / u64::from(travel)) as u32,
                         )
                     };
                     self.set_slider_value(id, value);
