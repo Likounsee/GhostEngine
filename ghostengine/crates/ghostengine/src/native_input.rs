@@ -159,7 +159,9 @@ fn clamp_coordinate(value: f64) -> i32 {
     if !value.is_finite() {
         return 0;
     }
-    value\n        .round()\n        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+    value
+        .round()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
 }
 
 fn apply_key_code(code: KeyCode, control: bool, shift: bool, input: &mut InputState) {
