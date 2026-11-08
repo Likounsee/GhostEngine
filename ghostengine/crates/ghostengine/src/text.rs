@@ -846,7 +846,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
             _ => {
                 if cluster
                     .chars()
-                    .all(|character| is_shaping_control(character))
+                    .all(is_shaping_control)
                 {
                     continue;
                 }
