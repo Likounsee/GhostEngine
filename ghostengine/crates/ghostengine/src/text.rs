@@ -724,20 +724,20 @@ fn fallback_text_clusters(text: &str) -> Vec<String> {
     clusters
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PreparedShapedTextRun {
     pub font: Arc<FontFace>,
     pub shaped: ShapedText,
     pub offset_x: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PreparedShapedTextLine {
     pub baseline: Point,
     pub runs: Vec<PreparedShapedTextRun>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PreparedShapedTextBox {
     pub lines: Vec<PreparedShapedTextLine>,
     pub metrics: TextMetrics,
