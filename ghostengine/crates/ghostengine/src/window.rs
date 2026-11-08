@@ -38,6 +38,12 @@ impl Error for WindowError {}
 pub struct InputState {
     pub mouse_position: Option<Point>,
     pub left_mouse_down: bool,
+    /// True while either Shift key is held.
+    pub shift_down: bool,
+    /// True while either Control key is held.
+    pub control_down: bool,
+    /// True while either Alt key is held.
+    pub alt_down: bool,
     pub pressed_characters: Vec<char>,
     pub backspace_pressed: bool,
     pub delete_pressed: bool,
@@ -100,6 +106,12 @@ impl WindowSurface {
         let mut input = InputState {
             mouse_position,
             left_mouse_down: self.window.get_mouse_down(MouseButton::Left),
+            shift_down: self.window.is_key_down(Key::LeftShift)
+                || self.window.is_key_down(Key::RightShift),
+            control_down: self.window.is_key_down(Key::LeftCtrl)
+                || self.window.is_key_down(Key::RightCtrl),
+            alt_down: self.window.is_key_down(Key::LeftAlt)
+                || self.window.is_key_down(Key::RightAlt),
             escape_down: self.window.is_key_down(Key::Escape),
             ..InputState::default()
         };
@@ -115,7 +127,7 @@ impl WindowSurface {
                 Key::Enter => input.enter_pressed = true,
                 Key::Tab => input.tab_pressed = true,
                 _ => {
-                    if let Some(character) = key_to_character(key) {
+                    if let Some(character) = key_to_character(key, input.shift_down) {
                         input.pressed_characters.push(character);
                     }
                 }
@@ -150,34 +162,34 @@ fn pack_rgb(color: Color) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
 }
 
-fn key_to_character(key: Key) -> Option<char> {
+fn key_to_character(key: Key, shift: bool) -> Option<char> {
     Some(match key {
-        Key::A => 'a',
-        Key::B => 'b',
-        Key::C => 'c',
-        Key::D => 'd',
-        Key::E => 'e',
-        Key::F => 'f',
-        Key::G => 'g',
-        Key::H => 'h',
-        Key::I => 'i',
-        Key::J => 'j',
-        Key::K => 'k',
-        Key::L => 'l',
-        Key::M => 'm',
-        Key::N => 'n',
-        Key::O => 'o',
-        Key::P => 'p',
-        Key::Q => 'q',
-        Key::R => 'r',
-        Key::S => 's',
-        Key::T => 't',
-        Key::U => 'u',
-        Key::V => 'v',
-        Key::W => 'w',
-        Key::X => 'x',
-        Key::Y => 'y',
-        Key::Z => 'z',
+        Key::A => if shift { 'A' } else { 'a' },
+        Key::B => if shift { 'B' } else { 'b' },
+        Key::C => if shift { 'C' } else { 'c' },
+        Key::D => if shift { 'D' } else { 'd' },
+        Key::E => if shift { 'E' } else { 'e' },
+        Key::F => if shift { 'F' } else { 'f' },
+        Key::G => if shift { 'G' } else { 'g' },
+        Key::H => if shift { 'H' } else { 'h' },
+        Key::I => if shift { 'I' } else { 'i' },
+        Key::J => if shift { 'J' } else { 'j' },
+        Key::K => if shift { 'K' } else { 'k' },
+        Key::L => if shift { 'L' } else { 'l' },
+        Key::M => if shift { 'M' } else { 'm' },
+        Key::N => if shift { 'N' } else { 'n' },
+        Key::O => if shift { 'O' } else { 'o' },
+        Key::P => if shift { 'P' } else { 'p' },
+        Key::Q => if shift { 'Q' } else { 'q' },
+        Key::R => if shift { 'R' } else { 'r' },
+        Key::S => if shift { 'S' } else { 's' },
+        Key::T => if shift { 'T' } else { 't' },
+        Key::U => if shift { 'U' } else { 'u' },
+        Key::V => if shift { 'V' } else { 'v' },
+        Key::W => if shift { 'W' } else { 'w' },
+        Key::X => if shift { 'X' } else { 'x' },
+        Key::Y => if shift { 'Y' } else { 'y' },
+        Key::Z => if shift { 'Z' } else { 'z' },
         Key::Key0 => '0',
         Key::Key1 => '1',
         Key::Key2 => '2',
@@ -188,9 +200,9 @@ fn key_to_character(key: Key) -> Option<char> {
         Key::Key7 => '7',
         Key::Key8 => '8',
         Key::Key9 => '9',
-        Key::Period => '.',
-        Key::Slash => '/',
-        Key::Minus => '-',
+        Key::Period => if shift { '>' } else { '.' },
+        Key::Slash => if shift { '?' } else { '/' },
+        Key::Minus => if shift { '_' } else { '-' },
         Key::Space => ' ',
         _ => return None,
     })
@@ -198,7 +210,7 @@ fn key_to_character(key: Key) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::{key_to_character, pack_rgb, WindowError};
+    use super::{key_to_character, pack_rgb, InputState, WindowError};
     use crate::Color;
     use minifb::Key;
 
@@ -209,11 +221,22 @@ mod tests {
 
     #[test]
     fn keyboard_maps_basic_url_characters() {
-        assert_eq!(key_to_character(Key::A), Some('a'));
-        assert_eq!(key_to_character(Key::Key7), Some('7'));
-        assert_eq!(key_to_character(Key::Period), Some('.'));
-        assert_eq!(key_to_character(Key::Slash), Some('/'));
-        assert_eq!(key_to_character(Key::F1), None);
+        assert_eq!(key_to_character(Key::A, false), Some('a'));
+        assert_eq!(key_to_character(Key::A, true), Some('A'));
+        assert_eq!(key_to_character(Key::Slash, true), Some('?'));
+        assert_eq!(key_to_character(Key::Minus, true), Some('_'));
+        assert_eq!(key_to_character(Key::Key7, false), Some('7'));
+        assert_eq!(key_to_character(Key::Period, false), Some('.'));
+        assert_eq!(key_to_character(Key::Slash, false), Some('/'));
+        assert_eq!(key_to_character(Key::F1, false), None);
+    }
+
+    #[test]
+    fn input_state_defaults_modifiers_to_released() {
+        let input = InputState::default();
+        assert!(!input.shift_down);
+        assert!(!input.control_down);
+        assert!(!input.alt_down);
     }
 
     #[test]
