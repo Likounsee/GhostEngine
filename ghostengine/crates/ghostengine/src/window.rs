@@ -760,6 +760,14 @@ mod tests {
             tree.handle_window_input(bounds, &tab).focus_changed,
             Some(button_id)
         );
+        let space = InputState {
+            space_pressed: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            tree.handle_window_input(bounds, &space).activated,
+            Some(button_id)
+        );
         let enter = InputState {
             enter_pressed: true,
             ..InputState::default()
