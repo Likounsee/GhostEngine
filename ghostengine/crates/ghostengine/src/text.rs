@@ -975,15 +975,6 @@ fn is_below_combining_mark(character: char) -> bool {
         | 0x0A3C | 0x0ABC | 0x0B3C | 0x0C3C | 0x0CBC)
 }
 
-fn positioned_mark_origin(
-    character: char,
-    mark_width: usize,
-    mark_height: usize,
-    base: (f32, f32, usize, usize),
-) -> (f32, f32) {
-    positioned_mark_origin_stacked(character, mark_width, mark_height, base, 0.0)
-}
-
 /// Positions a mark while keeping earlier marks in the same stack visible.
 fn positioned_mark_origin_stacked(
     character: char,
@@ -1066,9 +1057,9 @@ mod tests {
 
     #[test]
     fn combining_mark_position_is_centered_over_base() {
-        let origin = super::positioned_mark_origin('\u{0301}', 3, 2, (10.0, 20.0, 8, 12));
+        let origin = super::positioned_mark_origin_stacked('\u{0301}', 3, 2, (10.0, 20.0, 8, 12), 0.0);
         assert_eq!(origin, (12.5, 19.0));
-        let below = super::positioned_mark_origin('\u{0327}', 3, 2, (10.0, 20.0, 8, 12));
+        let below = super::positioned_mark_origin_stacked('\u{0327}', 3, 2, (10.0, 20.0, 8, 12), 0.0);
         assert_eq!(below, (12.5, 31.0));
     }
 
