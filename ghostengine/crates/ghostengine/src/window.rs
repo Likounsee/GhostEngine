@@ -5,6 +5,7 @@
 
 use crate::{
     ClipboardAction, Color, ComponentEvents, ComponentKey, ComponentTree, Framebuffer, Point, Rect,
+    TextInputEvent,
 };
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
@@ -50,6 +51,9 @@ pub struct InputState {
     pub control_down: bool,
     /// True while either Alt key is held.
     pub alt_down: bool,
+    /// Committed or composing text delivered by a platform text service.
+    pub text_events: Vec<TextInputEvent>,
+    /// Legacy printable-key fallback for the minifb adapter (limited layout support).
     pub pressed_characters: Vec<char>,
     pub backspace_pressed: bool,
     pub delete_pressed: bool,
@@ -290,6 +294,9 @@ impl ComponentTree {
             }
         }
         if let Some(id) = self.focused_text_input() {
+            for event in &input.text_events {
+                self.handle_text_input_event(id, event.clone());
+            }
             if input.copy_pressed {
                 events.clipboard_action = self
                     .copy_selected_text(id)
