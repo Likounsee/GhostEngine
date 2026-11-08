@@ -1164,7 +1164,10 @@ mod tests {
             Some(ComponentId(102))
         );
         assert!(tree.set_visible(ComponentId(102), false));
-        assert!(tree.layout(bounds).is_empty());
+        let remaining = tree.layout(bounds);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, ComponentId(101));
+        assert_eq!(remaining[0].state, WidgetState::Disabled);
         assert_eq!(tree.focus_next(bounds, false).focus_changed, None);
         assert!(!tree.set_visible(ComponentId(102), false));
         assert!(!tree.set_enabled(ComponentId(999), true));
