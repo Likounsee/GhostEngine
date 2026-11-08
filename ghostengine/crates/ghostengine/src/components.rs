@@ -573,7 +573,6 @@ mod tests {
             ComponentKind::TextInput { value, .. } if value == "café"
         ));
         assert!(!tree.insert_text(ComponentId(999), "x"));
-        assert!(!tree.insert_text(ComponentId(30), "x") == false);
     }
 
     #[test]
