@@ -109,18 +109,29 @@ impl FontFace {
         layout_metrics(self, text, pixel_size)
     }
 
-    /// Number of distinct glyph/size pairs currently retained by this font.
+    /// Number of distinct character- and glyph-ID/size pairs retained by this font.
     #[must_use]
     pub fn cached_glyph_count(&self) -> usize {
+        let character_count = self
+            .glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len();
+        let indexed_count = self
+            .indexed_glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len();
+        character_count + indexed_count
+    }
+
+    /// Releases both character and shaped-glyph bitmaps. They are regenerated on demand.
+    pub fn clear_glyph_cache(&self) {
         self.glyph_cache
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
-
-    /// Releases cached glyph bitmaps. They are regenerated transparently on demand.
-    pub fn clear_glyph_cache(&self) {
-        self.glyph_cache
+            .clear();
+        self.indexed_glyph_cache
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
