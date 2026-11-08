@@ -13,7 +13,6 @@ pub enum TextDirection {
     RightToLeft,
 }
 
-
 /// A font-backed OpenType shaper.
 #[derive(Clone)]
 pub struct OpenTypeShaper {
@@ -42,7 +41,6 @@ pub struct ShapedText {
     pub advance_y: f32,
 }
 
-
 /// A logical UTF-8 range in the visual order of a bidirectional paragraph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BidiRun {
@@ -61,7 +59,11 @@ pub fn resolve_bidi_runs(text: &str) -> Vec<BidiRun> {
     for paragraph in &bidi.paragraphs {
         let (_, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
         for range in runs {
-            let direction = if bidi.levels.get(range.start).is_some_and(|level| level.is_rtl()) {
+            let direction = if bidi
+                .levels
+                .get(range.start)
+                .is_some_and(|level| level.is_rtl())
+            {
                 TextDirection::RightToLeft
             } else {
                 TextDirection::LeftToRight
@@ -176,15 +178,21 @@ mod tests {
         for run in &runs {
             assert!(text.get(run.byte_range.clone()).is_some());
         }
-        assert!(runs.iter().any(|run| run.direction == TextDirection::RightToLeft));
-        assert!(runs.iter().any(|run| run.direction == TextDirection::LeftToRight));
+        assert!(runs
+            .iter()
+            .any(|run| run.direction == TextDirection::RightToLeft));
+        assert!(runs
+            .iter()
+            .any(|run| run.direction == TextDirection::LeftToRight));
     }
 
     #[test]
     fn pure_ltr_text_resolves_to_ltr_runs() {
         let runs = super::resolve_bidi_runs("GhostEngine 123");
         assert!(!runs.is_empty());
-        assert!(runs.iter().all(|run| run.direction == TextDirection::LeftToRight));
+        assert!(runs
+            .iter()
+            .all(|run| run.direction == TextDirection::LeftToRight));
     }
 
     #[test]
