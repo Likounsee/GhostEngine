@@ -750,7 +750,9 @@ fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut Ui
 
 #[cfg(test)]
 mod tests {
-    use super::{ComponentId, ComponentKey, ComponentKind, ComponentTree, UiComponent};
+    use super::{
+        ComponentId, ComponentKey, ComponentKind, ComponentTree, TextInputEvent, UiComponent,
+    };
     use crate::{Insets, LayoutDirection, LayoutItem, Point, Rect, StackLayout, WidgetState};
 
     fn sample_tree() -> ComponentTree {
@@ -965,6 +967,41 @@ mod tests {
             tree.text_input_state(id).unwrap().cursor(),
             "updated!".len()
         );
+    }
+
+    #[test]
+    fn platform_text_events_keep_ime_preedit_separate_until_commit() {
+        let id = ComponentId(81);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "hello")]);
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionUpdate("に".into())));
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), Some("に"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "hello"
+        ));
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionCommit("日本語".into())));
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), None);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "hello日本語"
+        ));
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionUpdate("x".into())));
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionCancel));
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), None);
+    }
+
+    #[test]
+    fn clipboard_selection_can_be_copied_and_cut() {
+        let id = ComponentId(82);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "hello")]);
+        assert!(tree.select_all_text(id));
+        assert_eq!(tree.copy_selected_text(id).as_deref(), Some("hello"));
+        assert_eq!(tree.cut_selected_text(id).as_deref(), Some("hello"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value.is_empty()
+        ));
+        assert_eq!(tree.copy_selected_text(id), None);
     }
 
     #[test]
