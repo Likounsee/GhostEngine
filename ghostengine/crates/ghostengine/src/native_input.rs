@@ -261,15 +261,16 @@ mod tests {
         apply_key_code(KeyCode::Backspace, true, true, &mut input);
         apply_key_code(KeyCode::KeyA, true, true, &mut input);
         apply_key_code(KeyCode::KeyC, true, true, &mut input);
-        apply_key_code(KeyCode::Space, false, false, &mut input);
 
         assert!(input.left_pressed);
         assert!(input.backspace_pressed);
         assert!(input.select_all_pressed);
         assert!(input.copy_pressed);
-        assert!(input.space_pressed);
         assert!(input.shift_down);
         assert!(input.control_down);
+
+        apply_key_code(KeyCode::Space, false, false, &mut input);
+        assert!(input.space_pressed);
     }
 
     #[test]
