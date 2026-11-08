@@ -81,8 +81,16 @@ impl WindowSurface {
             .map_err(|_| WindowError::AllocationFailed)?;
         presentation_buffer.resize(pixel_count, 0);
 
-        let window = Window::new(title, width_usize, height_usize, WindowOptions::default())
-            .map_err(|error| WindowError::Backend(error.to_string()))?;
+        let window = Window::new(
+            title,
+            width_usize,
+            height_usize,
+            WindowOptions {
+                resize: true,
+                ..WindowOptions::default()
+            },
+        )
+        .map_err(|error| WindowError::Backend(error.to_string()))?;
         Ok(Self {
             window,
             width,
@@ -94,6 +102,59 @@ impl WindowSurface {
     #[must_use]
     pub fn is_open(&self) -> bool {
         self.window.is_open()
+    }
+    /// Returns the current drawable size of the native window in pixels.
+    #[must_use]
+    pub fn size(&self) -> (u32, u32) {
+        let (width, height) = self.window.get_size();
+        (
+            u32::try_from(width).unwrap_or(u32::MAX),
+            u32::try_from(height).unwrap_or(u32::MAX),
+        )
+    }
+
+    /// Resizes the CPU framebuffer and presentation buffer to the current
+    /// native window size. Existing pixels in the overlapping area are kept.
+    ///
+    /// Returns `true` when a resize was applied. A minimized/zero-sized native
+    /// surface is ignored and returns `false`.
+    pub fn sync_framebuffer_size(
+        &mut self,
+        framebuffer: &mut Framebuffer,
+    ) -> Result<bool, WindowError> {
+        let (native_width, native_height) = self.window.get_size();
+        if native_width == 0 || native_height == 0 {
+            return Ok(false);
+        }
+
+        let width = u32::try_from(native_width).map_err(|_| WindowError::SizeOverflow)?;
+        let height = u32::try_from(native_height).map_err(|_| WindowError::SizeOverflow)?;
+        if width == self.width && height == self.height {
+            return Ok(false);
+        }
+
+        let pixel_count = native_width
+            .checked_mul(native_height)
+            .ok_or(WindowError::SizeOverflow)?;
+        let mut presentation_buffer = Vec::new();
+        presentation_buffer
+            .try_reserve_exact(pixel_count)
+            .map_err(|_| WindowError::AllocationFailed)?;
+        presentation_buffer.resize(pixel_count, 0);
+
+        let mut resized = Framebuffer::new(width, height, Color::BLACK)
+            .map_err(|error| match error {
+                crate::FramebufferError::ZeroDimension => WindowError::ZeroDimensions,
+                crate::FramebufferError::SizeOverflow => WindowError::SizeOverflow,
+                crate::FramebufferError::AllocationFailed => WindowError::AllocationFailed,
+            })?;
+        copy_framebuffer_overlap(framebuffer, &mut resized);
+
+        *framebuffer = resized;
+        self.width = width;
+        self.height = height;
+        self.presentation_buffer = presentation_buffer;
+        Ok(true)
     }
 
     /// Samples pointer and keyboard input for the current frame.
@@ -155,6 +216,19 @@ impl WindowSurface {
                 self.height as usize,
             )
             .map_err(|error| WindowError::Backend(error.to_string()))
+    }
+}
+
+/// Copies the top-left overlapping region from one framebuffer to another.
+fn copy_framebuffer_overlap(source: &Framebuffer, destination: &mut Framebuffer) {
+    let width = source.width().min(destination.width());
+    let height = source.height().min(destination.height());
+    for y in 0..height {
+        for x in 0..width {
+            if let Some(pixel) = source.get_pixel(x, y) {
+                destination.set_pixel(x, y, pixel);
+            }
+        }
     }
 }
 
@@ -387,6 +461,32 @@ mod tests {
     use super::{key_to_character, pack_rgb, InputState, WindowError};
     use crate::Color;
     use minifb::Key;
+
+    #[test]
+    fn framebuffer_resize_preserves_overlapping_pixels_and_clears_new_area() {
+        let mut source = crate::Framebuffer::new(2, 2, Color::RED).unwrap();
+        source.set_pixel(1, 1, Color::BLUE);
+        let mut larger = crate::Framebuffer::new(3, 4, Color::BLACK).unwrap();
+
+        super::copy_framebuffer_overlap(&source, &mut larger);
+
+        assert_eq!(larger.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(larger.get_pixel(1, 1), Some(Color::BLUE));
+        assert_eq!(larger.get_pixel(2, 1), Some(Color::BLACK));
+        assert_eq!(larger.get_pixel(1, 2), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn framebuffer_resize_truncates_pixels_outside_new_bounds() {
+        let source = crate::Framebuffer::new(4, 3, Color::WHITE).unwrap();
+        let mut smaller = crate::Framebuffer::new(2, 1, Color::BLACK).unwrap();
+
+        super::copy_framebuffer_overlap(&source, &mut smaller);
+
+        assert_eq!(smaller.width(), 2);
+        assert_eq!(smaller.height(), 1);
+        assert!(smaller.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
 
     #[test]
     fn presentation_uses_rgb_packed_into_u32() {
