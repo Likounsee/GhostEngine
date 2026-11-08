@@ -844,10 +844,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
             }
             _ => {
-                if cluster
-                    .chars()
-                    .all(is_shaping_control)
-                {
+                if cluster.chars().all(is_shaping_control) {
                     continue;
                 }
                 let selected =
