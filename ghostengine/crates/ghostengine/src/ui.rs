@@ -883,8 +883,13 @@ impl TabsState {
             self.selected = None;
             return None;
         }
-        let current = self.selected.unwrap_or(0).min(tab_count - 1) as i128;
-        let next = (current + delta as i128).clamp(0, tab_count as i128 - 1) as usize;
+        let Some(current) = self.selected else {
+            let initial = if delta < 0 { tab_count - 1 } else { 0 };
+            self.selected = Some(initial);
+            return self.selected;
+        };
+        let next = (current.min(tab_count - 1) as i128 + delta as i128)
+            .clamp(0, tab_count as i128 - 1) as usize;
         self.selected = Some(next);
         self.selected
     }
@@ -1004,6 +1009,7 @@ mod tests {
     #[test]
     fn tabs_state_supports_keyboard_navigation_and_invalid_indices() {
         let mut tabs = super::TabsState::new();
+        assert_eq!(tabs.move_selection(1, 3), Some(0));
         assert_eq!(tabs.move_selection(1, 3), Some(1));
         assert_eq!(tabs.move_selection(-1, 3), Some(0));
         assert_eq!(tabs.move_selection(-1, 3), Some(0));
