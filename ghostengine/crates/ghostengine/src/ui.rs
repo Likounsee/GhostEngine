@@ -735,6 +735,29 @@ impl ListState {
         Self { selected: None }
     }
 
+    /// Selects the row under a pointer coordinate, accounting for scrolling.
+    /// Coordinates outside the list viewport clear no selection and return false.
+    pub fn select_at(
+        &mut self,
+        bounds: Rect,
+        pointer: Point,
+        scroll_offset: u32,
+        row_height: u32,
+        item_count: usize,
+    ) -> bool {
+        if row_height == 0 || !bounds.contains(pointer) {
+            return false;
+        }
+        let relative_y = pointer.y.saturating_sub(bounds.y);
+        let index = (u64::from(relative_y) + u64::from(scroll_offset))
+            / u64::from(row_height);
+        if index >= item_count as u64 {
+            return false;
+        }
+        self.selected = Some(index as usize);
+        true
+    }
+
     #[must_use]
     pub const fn selected(self) -> Option<usize> {
         self.selected
@@ -764,6 +787,106 @@ impl ListState {
 
     pub fn select_last(&mut self, item_count: usize) {
         self.selected = item_count.checked_sub(1);
+    }
+}
+
+/// Open/closed and highlighted selection state for a ComboBox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ComboBoxState {
+    selected: Option<usize>,
+    highlighted: Option<usize>,
+    open: bool,
+}
+
+impl ComboBoxState {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { selected: None, highlighted: None, open: false }
+    }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<usize> {
+        self.selected
+    }
+
+    #[must_use]
+    pub const fn highlighted(self) -> Option<usize> {
+        self.highlighted
+    }
+
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        self.open
+    }
+
+    pub fn open(&mut self, item_count: usize) {
+        self.open = item_count > 0;
+        self.highlighted = self.selected.filter(|index| *index < item_count)
+            .or_else(|| (item_count > 0).then_some(0));
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.highlighted = None;
+    }
+
+    pub fn toggle(&mut self, item_count: usize) {
+        if self.open { self.close(); } else { self.open(item_count); }
+    }
+
+    pub fn move_highlight(&mut self, delta: isize, item_count: usize) {
+        if !self.open || item_count == 0 {
+            self.highlighted = None;
+            return;
+        }
+        let current = self.highlighted.unwrap_or(0).min(item_count - 1) as i128;
+        self.highlighted = Some((current + delta as i128).clamp(0, item_count as i128 - 1) as usize);
+    }
+
+    pub fn select_highlighted(&mut self, item_count: usize) -> Option<usize> {
+        let selected = self.highlighted.filter(|index| *index < item_count)?;
+        self.selected = Some(selected);
+        self.close();
+        Some(selected)
+    }
+
+    pub fn select(&mut self, index: Option<usize>, item_count: usize) {
+        self.selected = index.filter(|index| *index < item_count);
+        if self.open {
+            self.highlighted = self.selected.or_else(|| (item_count > 0).then_some(0));
+            if item_count == 0 { self.close(); }
+        }
+    }
+}
+
+/// Selected page state for a tab strip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TabsState {
+    selected: Option<usize>,
+}
+
+impl TabsState {
+    #[must_use]
+    pub const fn new() -> Self { Self { selected: None } }
+
+    #[must_use]
+    pub const fn selected(self) -> Option<usize> { self.selected }
+
+    pub fn select(&mut self, index: usize, tab_count: usize) -> bool {
+        if index >= tab_count { return false; }
+        self.selected = Some(index);
+        true
+    }
+
+    pub fn move_selection(&mut self, delta: isize, tab_count: usize) -> Option<usize> {
+        if tab_count == 0 {
+            self.selected = None;
+            return None;
+        }
+        let current = self.selected.unwrap_or(0).min(tab_count - 1) as i128;
+        let next = (current + delta as i128).clamp(0, tab_count as i128 - 1) as usize;
+        self.selected = Some(next);
+        self.selected
     }
 }
 
@@ -845,6 +968,49 @@ mod tests {
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn list_pointer_selection_accounts_for_viewport_and_scroll() {
+        let mut state = ListState::new();
+        let bounds = Rect::new(10, 20, 100, 60);
+        assert!(state.select_at(bounds, Point::new(15, 25), 20, 10, 20));
+        assert_eq!(state.selected(), Some(2));
+        assert!(!state.select_at(bounds, Point::new(9, 25), 20, 10, 20));
+        assert!(!state.select_at(bounds, Point::new(15, 25), 20, 0, 20));
+        assert!(!state.select_at(bounds, Point::new(15, 25), 200, 10, 20));
+        assert_eq!(state.selected(), Some(2));
+    }
+
+    #[test]
+    fn combo_box_keyboard_navigation_and_selection_are_bounded() {
+        let mut combo = super::ComboBoxState::new();
+        combo.open(3);
+        assert!(combo.is_open());
+        assert_eq!(combo.highlighted(), Some(0));
+        combo.move_highlight(1, 3);
+        assert_eq!(combo.highlighted(), Some(1));
+        combo.move_highlight(99, 3);
+        assert_eq!(combo.highlighted(), Some(2));
+        assert_eq!(combo.select_highlighted(3), Some(2));
+        assert_eq!(combo.selected(), Some(2));
+        assert!(!combo.is_open());
+        combo.open(0);
+        assert!(!combo.is_open());
+        combo.select(Some(9), 3);
+        assert_eq!(combo.selected(), None);
+    }
+
+    #[test]
+    fn tabs_state_supports_keyboard_navigation_and_invalid_indices() {
+        let mut tabs = super::TabsState::new();
+        assert_eq!(tabs.move_selection(1, 3), Some(1));
+        assert_eq!(tabs.move_selection(-1, 3), Some(0));
+        assert_eq!(tabs.move_selection(-1, 3), Some(0));
+        assert!(tabs.select(2, 3));
+        assert_eq!(tabs.selected(), Some(2));
+        assert!(!tabs.select(3, 3));
+        assert_eq!(tabs.move_selection(1, 0), None);
     }
 
     #[test]
