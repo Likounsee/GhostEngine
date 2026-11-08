@@ -62,6 +62,7 @@ pub struct InputState {
     pub home_pressed: bool,
     pub end_pressed: bool,
     pub enter_pressed: bool,
+    pub space_pressed: bool,
     pub tab_pressed: bool,
     /// True on the key-down edge of Ctrl+A.
     pub select_all_pressed: bool,
@@ -268,6 +269,10 @@ impl ComponentTree {
         }
         if input.enter_pressed {
             let next = self.handle_key(bounds, ComponentKey::Enter, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.space_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
             merge_component_events(&mut events, next);
         }
         if input.left_pressed {
