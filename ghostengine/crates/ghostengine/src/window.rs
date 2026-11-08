@@ -233,7 +233,10 @@ impl WindowSurface {
 
 /// Resolves the edge events for a button sampled once per frame.
 fn button_transition(previous_down: bool, current_down: bool) -> (bool, bool) {
-    (current_down && !previous_down, previous_down && !current_down)
+    (
+        current_down && !previous_down,
+        previous_down && !current_down,
+    )
 }
 
 /// Copies the top-left overlapping region from one framebuffer to another.
