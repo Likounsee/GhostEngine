@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [features]
 default = []
 window = ["dep:minifb"]
-native-input = ["dep:winit", "dep:arboard"]
+native-input = ["window", "dep:winit", "dep:arboard"]
 
 [dependencies]
 fontdue = "0.9"
