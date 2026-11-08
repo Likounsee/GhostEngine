@@ -15,7 +15,7 @@ use arboard::Clipboard;
 use std::{error::Error, fmt, mem};
 use winit::{
     event::{ElementState, Ime, MouseButton, WindowEvent},
-    keyboard::{KeyCode, ModifiersState, PhysicalKey},
+    keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
 };
 
 /// Stateful adapter from native window events to GhostEngine input frames.
@@ -129,18 +129,23 @@ impl NativeInputAdapter {
 
     fn process_keyboard_event(&mut self, event: &winit::event::KeyEvent) {
         let pressed = event.state == ElementState::Pressed;
-        let PhysicalKey::Code(code) = event.physical_key else {
-            return;
-        };
-
-        if code == KeyCode::Escape {
-            self.escape_down = pressed;
+        if let PhysicalKey::Code(code) = event.physical_key {
+            if code == KeyCode::Escape {
+                self.escape_down = pressed;
+            }
+            if pressed {
+                apply_key_code(code, self.control_down, self.shift_down, &mut self.frame);
+            }
         }
+
         if !pressed {
             return;
         }
 
-        apply_key_code(code, self.control_down, self.shift_down, &mut self.frame);
+        // Some platform keyboard backends can report an unidentified physical
+        // key while still providing its semantic meaning. Prefer the physical
+        // mapping above, but retain editing/navigation through the logical key.
+        apply_logical_key(&event.logical_key, &mut self.frame);
 
         // KeyEvent::text is produced using the active OS keyboard layout. It
         // therefore supports AZERTY/QWERTY and composed characters, unlike
@@ -151,6 +156,23 @@ impl NativeInputAdapter {
                     .text_events
                     .push(TextInputEvent::Insert(text.to_string()));
             }
+        }
+    }
+}
+
+fn apply_logical_key(key: &Key, input: &mut InputState) {
+    if let Key::Named(named) = key {
+        match named {
+            NamedKey::Backspace => input.backspace_pressed = true,
+            NamedKey::Delete => input.delete_pressed = true,
+            NamedKey::ArrowLeft => input.left_pressed = true,
+            NamedKey::ArrowRight => input.right_pressed = true,
+            NamedKey::Home => input.home_pressed = true,
+            NamedKey::End => input.end_pressed = true,
+            NamedKey::Enter => input.enter_pressed = true,
+            NamedKey::Space => input.space_pressed = true,
+            NamedKey::Tab => input.tab_pressed = true,
+            _ => {}
         }
     }
 }
@@ -250,9 +272,9 @@ impl From<arboard::Error> for NativeClipboardError {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_key_code, clamp_coordinate, NativeInputAdapter};
+    use super::{apply_key_code, apply_logical_key, clamp_coordinate, NativeInputAdapter};
     use crate::{window::InputState, TextInputEvent};
-    use winit::keyboard::KeyCode;
+    use winit::keyboard::{KeyCode, NamedKey};
 
     #[test]
     fn native_key_mapping_preserves_shortcuts_and_navigation() {
@@ -271,6 +293,13 @@ mod tests {
 
         apply_key_code(KeyCode::Space, false, false, &mut input);
         assert!(input.space_pressed);
+    }
+
+    #[test]
+    fn logical_backspace_is_supported_when_physical_key_is_unidentified() {
+        let mut input = InputState::default();
+        apply_logical_key(&winit::keyboard::Key::Named(NamedKey::Backspace), &mut input);
+        assert!(input.backspace_pressed);
     }
 
     #[test]
