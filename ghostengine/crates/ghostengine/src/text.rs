@@ -2302,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    fn licensed_noto_arabic_shapes_lam_alef_and_rasterizes() {
+    fn licensed_noto_arabic_applies_contextual_forms_and_rasterizes() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Noto Sans Arabic should load");
         let shaped = font
@@ -2310,9 +2310,22 @@ mod tests {
             .expect("Arabic run should shape");
 
         assert!(!shaped.glyphs.is_empty());
-        assert!(
-            shaped.glyphs.len() < "سلام".chars().count(),
-            "lam-alef should use an OpenType ligature"
+        let unjoined = font
+            .shape_text_with_direction("سلام", 30.0, crate::TextDirection::LeftToRight)
+            .expect("comparison run should shape");
+        let joined_ids = shaped
+            .glyphs
+            .iter()
+            .map(|glyph| glyph.glyph_id)
+            .collect::<Vec<_>>();
+        let unjoined_ids = unjoined
+            .glyphs
+            .iter()
+            .map(|glyph| glyph.glyph_id)
+            .collect::<Vec<_>>();
+        assert_ne!(
+            joined_ids, unjoined_ids,
+            "RTL Arabic shaping should select contextual joining forms"
         );
         assert!(shaped.advance_x.is_finite());
         assert!(shaped.advance_x.abs() > 0.0);
