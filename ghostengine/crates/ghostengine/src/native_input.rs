@@ -140,12 +140,7 @@ impl NativeInputAdapter {
             return;
         }
 
-        apply_key_code(
-            code,
-            self.control_down,
-            self.shift_down,
-            &mut self.frame,
-        );
+        apply_key_code(code, self.control_down, self.shift_down, &mut self.frame);
 
         // KeyEvent::text is produced using the active OS keyboard layout. It
         // therefore supports AZERTY/QWERTY and composed characters, unlike
@@ -164,15 +159,10 @@ fn clamp_coordinate(value: f64) -> i32 {
     if !value.is_finite() {
         return 0;
     }
-    value.round().clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+    value\n        .round()\n        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
 }
 
-fn apply_key_code(
-    code: KeyCode,
-    control: bool,
-    shift: bool,
-    input: &mut InputState,
-) {
+fn apply_key_code(code: KeyCode, control: bool, shift: bool, input: &mut InputState) {
     match code {
         KeyCode::Backspace => input.backspace_pressed = true,
         KeyCode::Delete => input.delete_pressed = true,
@@ -300,9 +290,10 @@ mod tests {
     #[test]
     fn ime_events_are_kept_as_composition_events() {
         let mut adapter = NativeInputAdapter::new();
-        adapter.frame.text_events.push(TextInputEvent::CompositionUpdate(
-            "に".to_owned(),
-        ));
+        adapter
+            .frame
+            .text_events
+            .push(TextInputEvent::CompositionUpdate("に".to_owned()));
         let frame = adapter.take_frame();
         assert_eq!(
             frame.text_events,
