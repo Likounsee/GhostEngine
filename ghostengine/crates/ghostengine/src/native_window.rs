@@ -50,8 +50,8 @@ impl From<FramebufferError> for NativeWindowError {
 ///
 /// The callback is invoked for each redraw with the accumulated native input
 /// frame and a system clipboard handle. It should render into the supplied
-/// framebuffer. Clipboard requests produced by ComponentTree can be resolved
-/// with `clipboard.resolve(&action)`.
+/// framebuffer and return `false` to close the window. Clipboard requests
+/// produced by ComponentTree can be resolved with `clipboard.resolve(&action)`.
 pub struct NativeWindowSurface;
 
 impl NativeWindowSurface {
@@ -61,7 +61,7 @@ impl NativeWindowSurface {
     /// the application's main thread. Winit's event loop can only be run once.
     pub fn run<F>(title: &str, width: u32, height: u32, draw: F) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) + 'static,
+        F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool + 'static,
     {
         if width == 0 || height == 0 {
             return Err(NativeWindowError::InvalidDimensions);
@@ -106,7 +106,7 @@ struct NativeApp<F> {
 
 impl<F> NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard),
+    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool,
 {
     fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
@@ -161,7 +161,7 @@ where
 
 impl<F> ApplicationHandler for NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard),
+    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -175,6 +175,7 @@ where
             return;
         };
         let window = Arc::new(window);
+        window.set_ime_allowed(true);
         match Surface::new(&self.context, window.clone()) {
             Ok(surface) => {
                 self.surface = Some(surface);
@@ -209,7 +210,10 @@ where
             }
             WindowEvent::RedrawRequested => {
                 let input = self.input.take_frame();
-                (self.draw)(&mut self.framebuffer, input, &mut self.clipboard);
+                if !(self.draw)(&mut self.framebuffer, input, &mut self.clipboard) {
+                    event_loop.exit();
+                    return;
+                }
                 if self.present().is_err() {
                     event_loop.exit();
                 }
