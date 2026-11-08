@@ -242,7 +242,13 @@ mod tests {
     fn disabling_focused_widget_reports_reconciled_focus() {
         let (_, bounds) = controls();
         let mut ui = UiInteraction::new();
-        ui.update(Some(Point::new(2, 2)), true, false, &[true, true, false], &bounds);
+        ui.update(
+            Some(Point::new(2, 2)),
+            true,
+            false,
+            &[true, true, false],
+            &bounds,
+        );
         let events = ui.update(
             Some(Point::new(30, 30)),
             false,
