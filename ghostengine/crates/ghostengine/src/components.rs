@@ -337,6 +337,10 @@ impl ComponentTree {
         pixel_size: f32,
         theme: &UiTheme,
     ) {
+        let text_input_ids: Vec<_> = self.text_states.keys().copied().collect();
+        for id in text_input_ids {
+            self.sync_text_state(id);
+        }
         self.layout(bounds);
         let placements = self.placed.clone();
         let focused = self.interaction.focused();
@@ -428,6 +432,12 @@ impl ComponentTree {
     pub fn focused_text_input(&self) -> Option<ComponentId> {
         let id = self.focused_component()?;
         matches!(self.find(id).map(UiComponent::kind), Some(ComponentKind::TextInput { .. })).then_some(id)
+    }
+
+    /// Reads the retained editing state for a text input.
+    #[must_use]
+    pub fn text_input_state(&self, id: ComponentId) -> Option<&TextInputState> {
+        self.text_states.get(&id)
     }
 
     /// Inserts text, replacing any active selection.
@@ -587,7 +597,7 @@ fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut Ui
 
 #[cfg(test)]
 mod tests {
-    use super::{ComponentId, ComponentKind, ComponentTree, UiComponent};
+    use super::{ComponentId, ComponentKey, ComponentKind, ComponentTree, UiComponent};
     use crate::{Insets, LayoutDirection, LayoutItem, Point, Rect, StackLayout, WidgetState};
 
     fn sample_tree() -> ComponentTree {
@@ -728,6 +738,76 @@ mod tests {
             ComponentKind::TextInput { value, .. } if value == "café"
         ));
         assert!(!tree.insert_text(ComponentId(999), "x"));
+    }
+
+    #[test]
+    fn cursor_and_selection_persist_between_text_edit_operations() {
+        let id = ComponentId(31);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "abcd")]);
+        assert!(tree.move_text_cursor(id, false, false));
+        assert!(tree.move_text_cursor(id, false, false));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 2);
+        assert!(tree.insert_text(id, "X"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "abXcd"
+        ));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 3);
+        assert!(tree.backspace_text(id));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "abcd"
+        ));
+        assert!(tree.select_all_text(id));
+        assert!(tree.insert_text(id, "é🙂"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "é🙂"
+        ));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "é🙂".len());
+    }
+
+    #[test]
+    fn keyboard_events_route_to_focused_text_input() {
+        let bounds = Rect::new(0, 0, 100, 40);
+        let id = ComponentId(32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Name", "AB").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(33), "OK").with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        assert_eq!(tree.focused_text_input(), Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert!(tree.insert_text_focused("🙂"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "A🙂B"
+        ));
+        tree.handle_key(bounds, ComponentKey::Backspace, false);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "AB"
+        ));
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Tab, false).focus_changed,
+            Some(ComponentId(33))
+        );
+        assert_eq!(tree.focused_text_input(), None);
+    }
+
+    #[test]
+    fn external_text_updates_resynchronize_the_retained_cursor() {
+        let id = ComponentId(34);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "abc")]);
+        tree.move_text_cursor(id, false, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 2);
+        assert!(tree.find_mut(id).unwrap().set_text("updated"));
+        assert!(tree.insert_text(id, "!"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "updated!"
+        ));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "updated!".len());
     }
 
     #[test]
