@@ -416,12 +416,20 @@ pub fn draw_text_shaped_clipped(
         let glyph = font.glyph_index(glyph_index, pixel_size);
         let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
         let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
-        if left.is_finite() && top.is_finite()
-            && left >= i32::MIN as f32 && left <= i32::MAX as f32
-            && top >= i32::MIN as f32 && top <= i32::MAX as f32
+        if left.is_finite()
+            && top.is_finite()
+            && left >= i32::MIN as f32
+            && left <= i32::MAX as f32
+            && top >= i32::MIN as f32
+            && top <= i32::MAX as f32
         {
             draw_cached_glyph_clipped(
-                target, &glyph, left.round() as i32, top.round() as i32, color, clip,
+                target,
+                &glyph,
+                left.round() as i32,
+                top.round() as i32,
+                color,
+                clip,
             );
         }
         pen_x += shaped_glyph.x_advance;
@@ -442,15 +450,21 @@ fn draw_cached_glyph_clipped(
     color: Color,
     clip: Rect,
 ) {
-    if glyph.width == 0 || glyph.height == 0 { return; }
+    if glyph.width == 0 || glyph.height == 0 {
+        return;
+    }
     let x0 = left.max(clip.x.min(i32::MAX as u32) as i32).max(0);
     let y0 = top.max(clip.y.min(i32::MAX as u32) as i32).max(0);
     let clip_right = clip.x.saturating_add(clip.width).min(i32::MAX as u32) as i32;
     let clip_bottom = clip.y.saturating_add(clip.height).min(i32::MAX as u32) as i32;
-    let x1 = left.saturating_add(glyph.width.min(i32::MAX as usize) as i32)
-        .min(clip_right).min(target.width() as i32);
-    let y1 = top.saturating_add(glyph.height.min(i32::MAX as usize) as i32)
-        .min(clip_bottom).min(target.height() as i32);
+    let x1 = left
+        .saturating_add(glyph.width.min(i32::MAX as usize) as i32)
+        .min(clip_right)
+        .min(target.width() as i32);
+    let y1 = top
+        .saturating_add(glyph.height.min(i32::MAX as usize) as i32)
+        .min(clip_bottom)
+        .min(target.height() as i32);
     for y in y0..y1 {
         for x in x0..x1 {
             let source_x = (x - left) as usize;
@@ -458,7 +472,11 @@ fn draw_cached_glyph_clipped(
             let coverage = glyph.bitmap[source_y * glyph.width + source_x];
             let alpha = ((u16::from(color.a) * u16::from(coverage) + 127) / 255) as u8;
             if alpha != 0 {
-                blend_pixel(target, Point::new(x, y), Color::rgba(color.r, color.g, color.b, alpha));
+                blend_pixel(
+                    target,
+                    Point::new(x, y),
+                    Color::rgba(color.r, color.g, color.b, alpha),
+                );
             }
         }
     }
