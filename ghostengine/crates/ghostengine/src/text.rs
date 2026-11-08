@@ -564,14 +564,14 @@ pub fn draw_text_with_fallback_shaped_clipped(
 
     for character in text.chars() {
         match character {
-            '\\n' => {
+            '\n' => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 max_width = max_width.max(pen_x - baseline.x as f32);
                 pen_x = baseline.x as f32;
                 pen_y += line_height;
                 line_count = line_count.saturating_add(1);
             }
-            '\\t' => {
+            '\t' => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 let relative = (pen_x - baseline.x as f32).max(0.0);
                 pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
