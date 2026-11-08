@@ -13,6 +13,7 @@ path = "src/lib.rs"
 default = []
 window = ["dep:minifb"]
 native-input = ["window", "dep:winit", "dep:arboard"]
+native-window = ["native-input", "dep:softbuffer"]
 
 [dependencies]
 fontdue = "0.9"
@@ -22,6 +23,7 @@ unicode-segmentation = "1.12"
 minifb = { version = "0.27", optional = true }
 winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen"], optional = true }
 arboard = { version = "3", optional = true }
+softbuffer = { version = "0.4.8", optional = true }
 
 [[example]]
 name = "browser_frontend"
