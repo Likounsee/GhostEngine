@@ -3,7 +3,7 @@
 //! GhostEngine renders the frame. minifb only creates a host window, forwards
 //! input and presents the completed CPU pixel buffer.
 
-use crate::{Color, Framebuffer, Point};
+use crate::{Color, ComponentEvents, ComponentKey, ComponentTree, Framebuffer, Point, Rect};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
 
@@ -57,6 +57,8 @@ pub struct InputState {
     pub end_pressed: bool,
     pub enter_pressed: bool,
     pub tab_pressed: bool,
+    /// True on the key-down edge of Ctrl+A.
+    pub select_all_pressed: bool,
     pub escape_down: bool,
 }
 
@@ -199,6 +201,7 @@ impl WindowSurface {
                 Key::End => input.end_pressed = true,
                 Key::Enter => input.enter_pressed = true,
                 Key::Tab => input.tab_pressed = true,
+                Key::A if input.control_down => input.select_all_pressed = true,
                 _ => {
                     if let Some(character) = key_to_character(key, input.shift_down) {
                         input.pressed_characters.push(character);
@@ -228,6 +231,75 @@ impl WindowSurface {
                 self.height as usize,
             )
             .map_err(|error| WindowError::Backend(error.to_string()))
+    }
+}
+
+/// Routes one sampled native input frame into the retained component tree.
+///
+/// Printable characters are supplied by the host adapter; cursor/navigation
+/// keys are translated here. IME composition and platform text services remain
+/// the responsibility of a future text-input backend.
+impl ComponentTree {
+    pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
+        let mut events = self.update_pointer(
+            bounds,
+            input.mouse_position,
+            input.left_mouse_pressed,
+            input.left_mouse_released,
+        );
+
+        if input.tab_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Tab, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.enter_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Enter, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.left_pressed {
+            self.handle_key(bounds, ComponentKey::ArrowLeft, input.shift_down);
+        }
+        if input.right_pressed {
+            self.handle_key(bounds, ComponentKey::ArrowRight, input.shift_down);
+        }
+        if input.home_pressed {
+            self.handle_key(bounds, ComponentKey::Home, input.shift_down);
+        }
+        if input.end_pressed {
+            self.handle_key(bounds, ComponentKey::End, input.shift_down);
+        }
+        if input.backspace_pressed {
+            self.handle_key(bounds, ComponentKey::Backspace, input.shift_down);
+        }
+        if input.delete_pressed {
+            self.handle_key(bounds, ComponentKey::Delete, input.shift_down);
+        }
+        if input.select_all_pressed {
+            if let Some(id) = self.focused_text_input() {
+                self.select_all_text(id);
+            }
+        }
+
+        if !input.control_down && !input.alt_down {
+            for character in &input.pressed_characters {
+                if *character == ' ' && self.focused_text_input().is_none() {
+                    let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
+                    merge_component_events(&mut events, next);
+                } else if self.focused_text_input().is_some() {
+                    self.insert_text_focused(&character.to_string());
+                }
+            }
+        }
+        events
+    }
+}
+
+fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
+    if next.activated.is_some() {
+        target.activated = next.activated;
+    }
+    if next.focus_changed.is_some() {
+        target.focus_changed = next.focus_changed;
     }
 }
 
@@ -547,6 +619,64 @@ mod tests {
         assert!(!input.shift_down);
         assert!(!input.control_down);
         assert!(!input.alt_down);
+    }
+
+    #[test]
+    fn sampled_window_input_edits_text_and_activates_focused_controls() {
+        use crate::{ComponentId, LayoutItem, UiComponent};
+        let bounds = crate::Rect::new(0, 0, 120, 40);
+        let input_id = ComponentId(70);
+        let button_id = ComponentId(71);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(input_id, "Type", "AB")
+                .with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(button_id, "OK").with_layout_item(LayoutItem::fixed(20)),
+        ]);
+
+        let tab = InputState { tab_pressed: true, ..InputState::default() };
+        assert_eq!(tree.handle_window_input(bounds, &tab).focus_changed, Some(input_id));
+
+        let type_text = InputState {
+            pressed_characters: vec!['h', 'i'],
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &type_text);
+        assert!(matches!(
+            tree.find(input_id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "ABhi"
+        ));
+
+        let select_and_replace = InputState {
+            left_pressed: true,
+            shift_down: true,
+            pressed_characters: vec!['🙂'],
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &select_and_replace);
+        assert!(matches!(
+            tree.find(input_id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "ABh🙂"
+        ));
+
+        let select_all = InputState {
+            select_all_pressed: true,
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &select_all);
+        let replace = InputState {
+            pressed_characters: vec!['x'],
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &replace);
+        assert!(matches!(
+            tree.find(input_id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "x"
+        ));
+
+        let tab = InputState { tab_pressed: true, ..InputState::default() };
+        assert_eq!(tree.handle_window_input(bounds, &tab).focus_changed, Some(button_id));
+        let enter = InputState { enter_pressed: true, ..InputState::default() };
+        assert_eq!(tree.handle_window_input(bounds, &enter).activated, Some(button_id));
     }
 
     #[test]
