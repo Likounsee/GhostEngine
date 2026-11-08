@@ -459,18 +459,6 @@ impl ComponentTree {
             .find_map(|root| find_component_mut(root, id))
     }
 
-    fn all_components_mut(&mut self) -> Vec<&mut UiComponent> {
-        fn collect<'a>(nodes: &'a mut [UiComponent], output: &mut Vec<&'a mut UiComponent>) {
-            for node in nodes {
-                let children = &mut node.children;
-                output.push(node);
-                collect(children, output);
-            }
-        }
-        let mut output = Vec::new();
-        collect(&mut self.roots, &mut output);
-        output
-    }
 
     /// Computes the full visible component tree in depth-first paint order.
     /// Child rectangles are produced by each parent's stack layout.
@@ -1152,18 +1140,7 @@ impl ComponentTree {
                     }
                 }
                 Some(ComponentKind::RadioButton { group, .. }) => {
-                    for component in self.all_components_mut() {
-                        if let ComponentKind::RadioButton {
-                            group: candidate_group,
-                            selected,
-                            ..
-                        } = &mut component.kind
-                        {
-                            if *candidate_group == group {
-                                *selected = component.id == id;
-                            }
-                        }
-                    }
+                    set_radio_group_selection(&mut self.roots, group, id);
                 }
                 _ => {}
             }
@@ -1192,6 +1169,22 @@ impl ComponentTree {
                 .and_then(|index| self.focusable_ids.get(index).copied()),
             clipboard_action: None,
         }
+    }
+}
+
+fn set_radio_group_selection(nodes: &mut [UiComponent], group: u64, selected_id: ComponentId) {
+    for node in nodes {
+        if let ComponentKind::RadioButton {
+            group: candidate_group,
+            selected,
+            ..
+        } = &mut node.kind
+        {
+            if *candidate_group == group {
+                *selected = node.id == selected_id;
+            }
+        }
+        set_radio_group_selection(&mut node.children, group, selected_id);
     }
 }
 
