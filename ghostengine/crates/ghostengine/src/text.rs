@@ -2266,8 +2266,45 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
 mod tests {
     use super::FontFace;
 
-    // A compact embedded test font is deliberately avoided; loading behavior is
-    // exercised by callers with their own licensed TTF/OTF asset.
+    #[test]
+    fn licensed_noto_hebrew_font_shapes_and_rasterizes_real_glyphs() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Noto Sans Hebrew should load");
+        let shaped = font
+            .shape_text_with_direction("שלום", 28.0, crate::TextDirection::RightToLeft)
+            .expect("Hebrew run should shape");
+
+        assert!(!shaped.glyphs.is_empty());
+        assert!(shaped.advance_x.is_finite());
+        assert!(shaped.advance_x.abs() > 0.0);
+
+        let mut target =
+            crate::Framebuffer::new(160, 64, crate::Color::BLACK).expect("framebuffer");
+        let metrics = super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &shaped,
+            crate::Point::new(42, 46),
+            28.0,
+            crate::Color::WHITE,
+            crate::Rect::new(40, 0, 72, 64),
+        );
+
+        assert!(metrics.width > 0.0);
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel != crate::Color::BLACK));
+        assert!(target
+            .pixels()
+            .iter()
+            .enumerate()
+            .all(|(index, pixel)| {
+                let x = index % target.width() as usize;
+                (x >= 40 && x < 112) || *pixel == crate::Color::BLACK
+            }));
+    }
+
     #[test]
     fn combining_mark_ranges_cover_common_latin_and_hebrew_marks() {
         assert!(super::is_combining_mark('\u{0301}'));
