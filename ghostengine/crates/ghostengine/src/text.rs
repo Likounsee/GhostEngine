@@ -509,6 +509,61 @@ fn draw_cached_glyph_clipped(
     }
 }
 
+/// Draws a single-font paragraph using Unicode bidirectional visual ordering.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_bidi_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+        return TextMetrics::default();
+    }
+
+    let line_height = font.line_height(pixel_size);
+    let mut y = baseline.y as f32;
+    let mut max_width = 0.0_f32;
+    let mut line_count = 0_u32;
+
+    for paragraph_with_break in text.split_inclusive('\n') {
+        let paragraph = paragraph_with_break.strip_suffix('\n').unwrap_or(paragraph_with_break);
+        let runs = crate::shaping::resolve_bidi_runs(paragraph);
+        let mut x = baseline.x as f32;
+        for run in runs {
+            let Some(run_text) = paragraph.get(run.byte_range) else {
+                continue;
+            };
+            let Ok(shaped) = font.shape_text_with_direction(run_text, pixel_size, run.direction)
+            else {
+                continue;
+            };
+            draw_text_shaped_clipped(
+                target,
+                font,
+                &shaped,
+                Point::new(x.round() as i32, y.round() as i32),
+                pixel_size,
+                color,
+                clip,
+            );
+            x += shaped.advance_x.abs();
+        }
+        max_width = max_width.max(x - baseline.x as f32);
+        line_count += 1;
+        y += line_height;
+    }
+
+    TextMetrics {
+        width: max_width,
+        height: line_height * line_count as f32,
+        line_count,
+    }
+}
+
 /// Draws OpenType-shaped text across a font fallback family.
 ///
 /// Explicit newlines and four-space tab stops are handled here. Contiguous
