@@ -681,17 +681,19 @@ pub fn draw_text_with_fallback_bidi_clipped(
                         ) else {
                             continue;
                         };
+                        let y = baseline.y as f32 + line_count as f32 * line_height;
                         if pen_x.is_finite()
                             && pen_x >= i32::MIN as f32
                             && pen_x <= i32::MAX as f32
-                            && baseline.y >= i32::MIN
-                            && baseline.y <= i32::MAX
+                            && y.is_finite()
+                            && y >= i32::MIN as f32
+                            && y <= i32::MAX as f32
                         {
                             draw_text_shaped_clipped(
                                 target,
                                 &face,
                                 &shaped,
-                                Point::new(pen_x.round() as i32, baseline.y + (line_count as i32).saturating_mul(line_height.round() as i32)),
+                                Point::new(pen_x.round() as i32, y.round() as i32),
                                 pixel_size,
                                 color,
                                 clip,
