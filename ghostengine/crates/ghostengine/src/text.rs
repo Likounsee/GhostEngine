@@ -2295,14 +2295,10 @@ mod tests {
             .pixels()
             .iter()
             .any(|pixel| *pixel != crate::Color::BLACK));
-        assert!(target
-            .pixels()
-            .iter()
-            .enumerate()
-            .all(|(index, pixel)| {
-                let x = index % target.width() as usize;
-                (x >= 40 && x < 112) || *pixel == crate::Color::BLACK
-            }));
+        assert!(target.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % target.width() as usize;
+            (x >= 40 && x < 112) || *pixel == crate::Color::BLACK
+        }));
     }
 
     #[test]
