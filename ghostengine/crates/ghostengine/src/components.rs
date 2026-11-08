@@ -516,10 +516,67 @@ impl ComponentTree {
     ) -> ComponentEvents {
         self.layout(bounds);
         let enabled = vec![true; self.focusable_ids.len()];
+        // Popup rows live outside the combo box's layout rectangle, so route
+        // their pointer releases before normal component hit testing.
+        if released {
+            if let Some(point) = pointer {
+                let placements = self.placed.clone();
+                for placement in placements {
+                    let Some(ComponentKind::ComboBox { items }) =
+                        self.find(placement.id).map(|component| component.kind().clone())
+                    else {
+                        continue;
+                    };
+                    let Some(state) = self.combo_states.get_mut(&placement.id) else {
+                        continue;
+                    };
+                    if !state.is_open() {
+                        continue;
+                    }
+                    let popup_top = placement.bounds.y.saturating_add(placement.bounds.height);
+                    let popup_height = (items.len() as u32).saturating_mul(28);
+                    let popup = Rect::new(
+                        placement.bounds.x,
+                        popup_top,
+                        placement.bounds.width,
+                        popup_height,
+                    );
+                    if popup.contains(point) {
+                        let index = ((point.y as u32 - popup_top) / 28) as usize;
+                        state.select(Some(index), items.len());
+                        return ComponentEvents::default();
+                    }
+                }
+            }
+        }
         let events =
             self.interaction
                 .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
-        self.dispatch_events(events)
+        let translated = self.dispatch_events(events);
+        if released {
+            if let (Some(id), Some(point)) = (translated.activated, pointer) {
+                let kind = self.find(id).map(|component| component.kind().clone());
+                if let Some(ComponentKind::Tabs { labels }) = kind {
+                    if !labels.is_empty() {
+                        if let Some(placement) =
+                            self.placed.iter().find(|placement| placement.id == id)
+                        {
+                            if placement.bounds.contains(point) {
+                                let relative_x = point.x as u32 - placement.bounds.x;
+                                let tab_width = placement.bounds.width.max(1) as u64;
+                                let index = (u64::from(relative_x) * labels.len() as u64
+                                    / tab_width) as usize;
+                                self.tabs_states
+                                    .entry(id)
+                                    .or_default()
+                                    .select(index.min(labels.len() - 1), labels.len());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        translated
     }
 
     /// Moves focus through visible enabled controls in depth-first tab order.
