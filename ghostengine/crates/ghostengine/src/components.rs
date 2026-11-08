@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_tabs,
+    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button, draw_switch, draw_tabs,
     draw_text_input, ComboBoxState, FontFace, Framebuffer, InteractionEvents, LayoutItem, Point,
     Rect, StackLayout, TabsState, TextInputOptions, TextInputState, UiInteraction, UiTheme,
     WidgetState,
@@ -26,6 +26,8 @@ pub enum ComponentKind {
     Label { text: String },
     ComboBox { items: Vec<String> },
     Tabs { labels: Vec<String> },
+    Switch { label: String, enabled: bool },
+    RadioButton { label: String, group: u64, selected: bool },
 }
 
 /// A retained component node. Child order is also layout and keyboard tab order.
@@ -211,7 +213,7 @@ impl UiComponent {
                     | ComponentKind::Checkbox { .. }
                     | ComponentKind::TextInput { .. }
                     | ComponentKind::ComboBox { .. }
-                    | ComponentKind::Tabs { .. }
+                    | ComponentKind::Tabs { .. }\n                    | ComponentKind::Switch { .. }\n                    | ComponentKind::RadioButton { .. }
             )
     }
 }
@@ -457,6 +459,19 @@ impl ComponentTree {
             .find_map(|root| find_component_mut(root, id))
     }
 
+    fn all_components_mut(&mut self) -> Vec<&mut UiComponent> {
+        fn collect<'a>(nodes: &'a mut [UiComponent], output: &mut Vec<&'a mut UiComponent>) {
+            for node in nodes {
+                let children = &mut node.children;
+                output.push(node);
+                collect(children, output);
+            }
+        }
+        let mut output = Vec::new();
+        collect(&mut self.roots, &mut output);
+        output
+    }
+
     /// Computes the full visible component tree in depth-first paint order.
     /// Child rectangles are produced by each parent's stack layout.
     pub fn layout(&mut self, bounds: Rect) -> &[PlacedComponent] {
@@ -650,6 +665,18 @@ impl ComponentTree {
                             placement.bounds,
                         );
                     }
+                }
+                ComponentKind::Switch { label, enabled } => {
+                    draw_switch(target, placement.bounds, *enabled, placement.state, theme);
+                    let x = placement.bounds.x.saturating_add(placement.bounds.height.min(24) * 2 + 10);
+                    let baseline = i64::from(placement.bounds.y)
+                        + (i64::from(placement.bounds.height) + font.line_height(pixel_size).round() as i64) / 2;
+                    if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(baseline)) {
+                        draw_label_clipped(target, font, label, Point::new(x, y), pixel_size, theme.text, placement.bounds);
+                    }
+                }
+                ComponentKind::RadioButton { label, selected, .. } => {
+                    draw_radio_button(target, font, placement.bounds, label, *selected, pixel_size, placement.state, theme);
                 }
                 ComponentKind::TextInput { placeholder, .. } => {
                     let Some(state) = self.text_states.get(&placement.id) else {
@@ -1116,6 +1143,27 @@ impl ComponentTree {
                 }
                 Some(ComponentKind::ComboBox { items }) => {
                     self.combo_states.entry(id).or_default().toggle(items.len());
+                }
+                Some(ComponentKind::Switch { .. }) => {
+                    if let Some(ComponentKind::Switch { enabled, .. }) =
+                        self.find_mut(id).map(|component| &mut component.kind)
+                    {
+                        *enabled = !*enabled;
+                    }
+                }
+                Some(ComponentKind::RadioButton { group, .. }) => {
+                    for component in self.all_components_mut() {
+                        if let ComponentKind::RadioButton {
+                            group: candidate_group,
+                            selected,
+                            ..
+                        } = &mut component.kind
+                        {
+                            if *candidate_group == group {
+                                *selected = component.id == id;
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
