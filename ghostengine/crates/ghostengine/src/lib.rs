@@ -26,8 +26,8 @@ pub mod window;
 
 pub use color::Color;
 pub use components::{
-    ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree, PlacedComponent,
-    UiComponent,
+    ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
+    PlacedComponent, TextInputEvent, UiComponent,
 };
 pub use composition::{compose_layers, Layer};
 pub use display_list::{DisplayList, RenderStats};
