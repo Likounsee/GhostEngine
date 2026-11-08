@@ -499,7 +499,9 @@ pub fn draw_text_shaped_transformed_clipped(
     clip: Rect,
     transform: crate::Transform2D,
 ) -> TextMetrics {
-    if !pixel_size.is_finite() || pixel_size <= 0.0 || shaped.glyphs.is_empty()
+    if !pixel_size.is_finite()
+        || pixel_size <= 0.0
+        || shaped.glyphs.is_empty()
         || !transform.is_finite()
     {
         return TextMetrics::default();
@@ -519,16 +521,7 @@ pub fn draw_text_shaped_transformed_clipped(
         let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
         let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
         if left.is_finite() && top.is_finite() {
-            draw_affine_glyph(
-                target,
-                &glyph,
-                left,
-                top,
-                color,
-                clip,
-                transform,
-                inverse,
-            );
+            draw_affine_glyph(target, &glyph, left, top, color, clip, transform, inverse);
         }
         pen_x += shaped_glyph.x_advance;
         pen_y -= shaped_glyph.y_advance;
