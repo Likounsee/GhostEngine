@@ -273,8 +273,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     continue;
                 }
                 let current_face = previous.and_then(|(_, index)| family.faces.get(index));
-                let selected =
-                    fallback_face_for_cluster(family, current_face, &cluster, &primary);
+                let selected = fallback_face_for_cluster(family, current_face, &cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
@@ -378,8 +377,7 @@ pub fn draw_text_with_fallback_clipped(
                         }
                     }
                     let mut glyph_left = x + glyph.xmin as f32;
-                    let mut glyph_top =
-                        y as f32 - glyph.ymin as f32 - glyph.height as f32;
+                    let mut glyph_top = y as f32 - glyph.ymin as f32 - glyph.height as f32;
                     if combining {
                         if let Some(anchor) = base_anchor {
                             let offset = if is_below_combining_mark(character) {
@@ -847,7 +845,10 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
             }
             _ => {
-                if cluster.chars().all(|character| is_shaping_control(character)) {
+                if cluster
+                    .chars()
+                    .all(|character| is_shaping_control(character))
+                {
                     continue;
                 }
                 let selected =
@@ -2315,24 +2316,18 @@ mod tests {
         family.add_fallback(Arc::clone(&arabic));
 
         let hebrew_cluster = "שָׁ";
-        let selected = super::fallback_face_for_cluster(
-            &family,
-            None,
-            hebrew_cluster,
-            &hebrew,
-        );
+        let selected = super::fallback_face_for_cluster(&family, None, hebrew_cluster, &hebrew);
         assert!(Arc::ptr_eq(&selected, &hebrew));
-        assert!(hebrew_cluster.chars().all(|character| hebrew.has_glyph(character)));
+        assert!(hebrew_cluster
+            .chars()
+            .all(|character| hebrew.has_glyph(character)));
 
         let arabic_cluster = "لَا";
-        let selected = super::fallback_face_for_cluster(
-            &family,
-            None,
-            arabic_cluster,
-            &hebrew,
-        );
+        let selected = super::fallback_face_for_cluster(&family, None, arabic_cluster, &hebrew);
         assert!(Arc::ptr_eq(&selected, &arabic));
-        assert!(arabic_cluster.chars().all(|character| arabic.has_glyph(character)));
+        assert!(arabic_cluster
+            .chars()
+            .all(|character| arabic.has_glyph(character)));
     }
 
     #[test]
