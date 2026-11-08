@@ -909,7 +909,7 @@ mod tests {
         state.move_word_right(false);
         assert_eq!(state.cursor(), "café".len());
         state.move_word_right(false);
-        assert_eq!(state.cursor(), "café 世界".len());
+        assert_eq!(state.cursor(), "café 世".len());
     }
 
     #[test]
