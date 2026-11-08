@@ -76,7 +76,8 @@ pub use texture::{
 pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_checkbox, draw_combo_box, draw_divider, draw_label, draw_label_clipped,
-    draw_label_with_fallback, draw_label_wrapped, draw_list, draw_panel, draw_progress_bar,\n    draw_radio_button, draw_slider, draw_switch,
+    draw_label_with_fallback, draw_label_wrapped, draw_list, draw_panel, draw_progress_bar,
+    draw_radio_button, draw_slider, draw_switch,
     draw_tabs, draw_text_input, state_for_pointer, ComboBoxState, ListOptions, ListState,
     TabsState, TextInputOptions, TextInputState, UiTheme, WidgetState,
 };
