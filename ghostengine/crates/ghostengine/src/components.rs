@@ -909,18 +909,14 @@ impl ComponentTree {
                         return ComponentEvents::default();
                     }
                 }
-                Some(ComponentKind::Tabs { labels }) => {
-                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight {
-                        self.tabs_states.entry(id).or_default().move_selection(
-                            if key == ComponentKey::ArrowLeft {
-                                -1
-                            } else {
-                                1
-                            },
-                            labels.len(),
-                        );
-                        return ComponentEvents::default();
-                    }
+                Some(ComponentKind::Tabs { labels })
+                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
+                {
+                    self.tabs_states.entry(id).or_default().move_selection(
+                        if key == ComponentKey::ArrowLeft { -1 } else { 1 },
+                        labels.len(),
+                    );
+                    return ComponentEvents::default();
                 }
                 _ => {}
             }
