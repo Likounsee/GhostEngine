@@ -942,44 +942,17 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
     width
 }
 
-/// Keeps combining sequences, variation selectors and joined emoji sequences together.
+/// Splits text at Unicode extended grapheme-cluster boundaries (UAX #29).
+///
+/// This keeps combining sequences, variation selectors, emoji modifiers,
+/// regional-indicator pairs, and ZWJ emoji sequences together during fallback
+/// selection and when an oversized word must be wrapped.
 fn fallback_text_clusters(text: &str) -> Vec<String> {
-    let mut clusters: Vec<String> = Vec::new();
-    let mut join_next = false;
-    let mut regional_count = 0_u8;
-    for character in text.chars() {
-        let code = character as u32;
-        let variation = (0xFE00..=0xFE0F).contains(&code) || (0xE0100..=0xE01EF).contains(&code);
-        // Emoji modifiers (skin tones) and tag characters are grapheme
-        // extenders too. Keeping them with their base prevents font fallback
-        // from splitting a single displayed emoji across separate runs.
-        let emoji_modifier = (0x1F3FB..=0x1F3FF).contains(&code);
-        let emoji_tag = (0xE0020..=0xE007F).contains(&code);
-        let regional = (0x1F1E6..=0x1F1FF).contains(&code);
-        let attach = is_combining_mark(character)
-            || variation
-            || emoji_modifier
-            || emoji_tag
-            || join_next
-            || character == '\u{200D}'
-            || (regional && regional_count % 2 == 1);
-        if attach {
-            if let Some(last) = clusters.last_mut() {
-                last.push(character);
-            } else {
-                clusters.push(character.to_string());
-            }
-        } else {
-            clusters.push(character.to_string());
-        }
-        join_next = character == '\u{200D}';
-        if regional {
-            regional_count = regional_count.saturating_add(1);
-        } else if !is_combining_mark(character) && !variation && character != '\u{200D}' {
-            regional_count = 0;
-        }
-    }
-    clusters
+    use unicode_segmentation::UnicodeSegmentation;
+
+    UnicodeSegmentation::graphemes(text, true)
+        .map(str::to_owned)
+        .collect()
 }
 
 #[derive(Clone)]
@@ -2440,6 +2413,9 @@ mod tests {
             ["🏴\u{E0067}\u{E0062}\u{E007F}", "!"]
         );
         assert_eq!(super::fallback_text_clusters("✈️x"), ["✈️", "x"]);
+        assert_eq!(super::fallback_text_clusters("👨‍👩‍👧‍👦!"), ["👨‍👩‍👧‍👦", "!"]);
+        assert_eq!(super::fallback_text_clusters("1️⃣!"), ["1️⃣", "!"]);
+        assert_eq!(super::fallback_text_clusters("क्‍ष!"), ["क्‍ष", "!"]);
     }
 
     #[test]
