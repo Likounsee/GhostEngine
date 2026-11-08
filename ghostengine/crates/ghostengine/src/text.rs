@@ -2302,6 +2302,50 @@ mod tests {
     }
 
     #[test]
+    fn licensed_hebrew_and_arabic_fallback_faces_render_one_bidi_paragraph() {
+        use std::sync::Arc;
+
+        let hebrew_bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let arabic_bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let hebrew = Arc::new(FontFace::from_bytes(hebrew_bytes).expect("Hebrew font"));
+        let arabic = Arc::new(FontFace::from_bytes(arabic_bytes).expect("Arabic font"));
+
+        let mut family = super::FontFamily::new(Arc::clone(&hebrew));
+        family.add_fallback(Arc::clone(&arabic));
+
+        assert!(std::ptr::eq(
+            family.font_for('ש').expect("Hebrew face should be selected"),
+            hebrew.as_ref()
+        ));
+        assert!(std::ptr::eq(
+            family.font_for('ل').expect("Arabic fallback should be selected"),
+            arabic.as_ref()
+        ));
+
+        let mut target =
+            crate::Framebuffer::new(320, 96, crate::Color::BLACK).expect("framebuffer");
+        let metrics = super::draw_text_with_fallback_bidi_clipped(
+            &mut target,
+            &family,
+            "שלום  لا",
+            crate::Point::new(24, 64),
+            30.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 320, 96),
+        );
+
+        assert_eq!(metrics.line_count, 1);
+        assert!(metrics.width.is_finite() && metrics.width > 0.0);
+        assert!(
+            target
+                .pixels()
+                .iter()
+                .any(|pixel| *pixel != crate::Color::BLACK),
+            "mixed Hebrew and Arabic fallback runs should rasterize into the framebuffer"
+        );
+    }
+
+    #[test]
     fn licensed_noto_arabic_applies_contextual_forms_and_rasterizes() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Noto Sans Arabic should load");
