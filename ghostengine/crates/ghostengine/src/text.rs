@@ -2302,6 +2302,39 @@ mod tests {
     }
 
     #[test]
+    fn licensed_noto_arabic_shapes_lam_alef_and_rasterizes() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Noto Sans Arabic should load");
+        let shaped = font
+            .shape_text_with_direction("سلام", 30.0, crate::TextDirection::RightToLeft)
+            .expect("Arabic run should shape");
+
+        assert!(!shaped.glyphs.is_empty());
+        assert!(
+            shaped.glyphs.len() < "سلام".chars().count(),
+            "lam-alef should use an OpenType ligature"
+        );
+        assert!(shaped.advance_x.is_finite());
+        assert!(shaped.advance_x.abs() > 0.0);
+
+        let mut target =
+            crate::Framebuffer::new(160, 64, crate::Color::BLACK).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &shaped,
+            crate::Point::new(80, 46),
+            30.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 160, 64),
+        );
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel != crate::Color::BLACK));
+    }
+
+    #[test]
     fn combining_mark_ranges_cover_common_latin_and_hebrew_marks() {
         assert!(super::is_combining_mark('\u{0301}'));
         assert!(super::is_combining_mark('\u{0327}'));
