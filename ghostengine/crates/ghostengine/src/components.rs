@@ -465,7 +465,7 @@ mod tests {
             .with_children(vec![
                 UiComponent::button(ComponentId(21), "Hidden")
                     .with_layout_item(LayoutItem::fixed(10))
-                .with_visible(false),
+                    .with_visible(false),
                 UiComponent::button(ComponentId(22), "Visible")
                     .with_layout_item(LayoutItem::fixed(10)),
             ]);
