@@ -875,71 +875,82 @@ pub fn draw_text_with_fallback_shaped_clipped(
 
 /// Measures one line using OpenType shaping for each contiguous fallback-font run.
 fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32) -> f32 {
-    let Some(primary) = family.faces.first() else {
+    let Some(primary) = family.faces.first().cloned() else {
         return 0.0;
     };
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+        return 0.0;
+    }
+
+    enum Segment {
+        Glyphs(Arc<FontFace>, String),
+        Tab,
+    }
+
     let space = family
         .font_for(' ')
-        .unwrap_or(primary)
+        .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space * 4.0).max(pixel_size);
     let mut width = 0.0_f32;
-    let mut run = String::new();
-    let mut run_face: Option<Arc<FontFace>> = None;
 
-    let flush = |run: &mut String, face: &mut Option<Arc<FontFace>>, width: &mut f32| {
-        if run.is_empty() {
-            *face = None;
-            return;
+    for bidi_run in crate::shaping::resolve_bidi_runs(text) {
+        let Some(run_text) = text.get(bidi_run.byte_range) else {
+            continue;
+        };
+        let mut segments = Vec::new();
+        let mut current_face: Option<Arc<FontFace>> = None;
+        let mut current_text = String::new();
+
+        for cluster in fallback_text_clusters(run_text) {
+            if cluster == "\t" {
+                if let Some(face) = current_face.take() {
+                    segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                }
+                segments.push(Segment::Tab);
+                continue;
+            }
+
+            let selected =
+                fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
+            if current_face
+                .as_ref()
+                .is_some_and(|face| !Arc::ptr_eq(face, &selected))
+            {
+                if let Some(face) = current_face.take() {
+                    segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
+                }
+            }
+            if current_face.is_none() {
+                current_face = Some(selected);
+            }
+            current_text.push_str(&cluster);
         }
-        if let Some(selected) = face.take() {
-            if let Ok(shaped) = selected.shape_text(run, pixel_size) {
-                *width += shaped.advance_x;
+
+        if let Some(face) = current_face {
+            segments.push(Segment::Glyphs(face, current_text));
+        }
+        if bidi_run.direction == TextDirection::RightToLeft {
+            segments.reverse();
+        }
+
+        for segment in segments {
+            match segment {
+                Segment::Tab => {
+                    width = ((width / tab_width).floor() + 1.0) * tab_width;
+                }
+                Segment::Glyphs(face, run) => {
+                    if let Ok(shaped) =
+                        face.shape_text_with_direction(&run, pixel_size, bidi_run.direction)
+                    {
+                        width += shaped.advance_x.abs();
+                    }
+                }
             }
         }
-        run.clear();
-    };
-
-    for character in text.chars() {
-        if character == '\t' {
-            flush(&mut run, &mut run_face, &mut width);
-            width = ((width / tab_width).floor() + 1.0) * tab_width;
-            continue;
-        }
-        let selected = if is_combining_mark(character) {
-            run_face
-                .as_ref()
-                .filter(|face| face.has_glyph(character))
-                .cloned()
-                .or_else(|| {
-                    family
-                        .faces
-                        .iter()
-                        .find(|face| face.has_glyph(character))
-                        .cloned()
-                })
-                .unwrap_or_else(|| Arc::clone(primary))
-        } else {
-            family
-                .faces
-                .iter()
-                .find(|face| face.has_glyph(character))
-                .cloned()
-                .unwrap_or_else(|| Arc::clone(primary))
-        };
-        if run_face
-            .as_ref()
-            .is_some_and(|face| !Arc::ptr_eq(face, &selected))
-        {
-            flush(&mut run, &mut run_face, &mut width);
-        }
-        if run_face.is_none() {
-            run_face = Some(selected);
-        }
-        run.push(character);
     }
-    flush(&mut run, &mut run_face, &mut width);
+
     width
 }
 
