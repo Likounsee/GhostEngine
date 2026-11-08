@@ -2314,11 +2314,15 @@ mod tests {
         family.add_fallback(Arc::clone(&arabic));
 
         assert!(std::ptr::eq(
-            family.font_for('ש').expect("Hebrew face should be selected"),
+            family
+                .font_for('ש')
+                .expect("Hebrew face should be selected"),
             hebrew.as_ref()
         ));
         assert!(std::ptr::eq(
-            family.font_for('ل').expect("Arabic fallback should be selected"),
+            family
+                .font_for('ل')
+                .expect("Arabic fallback should be selected"),
             arabic.as_ref()
         ));
 
