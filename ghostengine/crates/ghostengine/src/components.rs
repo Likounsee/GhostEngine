@@ -6,10 +6,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button, draw_slider, draw_switch, draw_tabs,
-    draw_text_input, ComboBoxState, FontFace, Framebuffer, InteractionEvents, LayoutItem, Point,
-    Rect, StackLayout, TabsState, TextInputOptions, TextInputState, UiInteraction, UiTheme,
-    WidgetState,
+    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
+    draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
+    InteractionEvents, LayoutItem, Point, Rect, StackLayout, TabsState, TextInputOptions,
+    TextInputState, UiInteraction, UiTheme, WidgetState,
 };
 
 /// Stable caller-assigned identity for a component.
@@ -20,15 +20,41 @@ pub struct ComponentId(pub u64);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComponentKind {
     Panel,
-    Button { label: String },
-    Checkbox { label: String, checked: bool },
-    TextInput { placeholder: String, value: String },
-    Label { text: String },
-    ComboBox { items: Vec<String> },
-    Tabs { labels: Vec<String> },
-    Switch { label: String, enabled: bool },
-    RadioButton { label: String, group: u64, selected: bool },
-    Slider { label: String, min: u32, max: u32, value: u32 },
+    Button {
+        label: String,
+    },
+    Checkbox {
+        label: String,
+        checked: bool,
+    },
+    TextInput {
+        placeholder: String,
+        value: String,
+    },
+    Label {
+        text: String,
+    },
+    ComboBox {
+        items: Vec<String>,
+    },
+    Tabs {
+        labels: Vec<String>,
+    },
+    Switch {
+        label: String,
+        enabled: bool,
+    },
+    RadioButton {
+        label: String,
+        group: u64,
+        selected: bool,
+    },
+    Slider {
+        label: String,
+        min: u32,
+        max: u32,
+        value: u32,
+    },
 }
 
 /// A retained component node. Child order is also layout and keyboard tab order.
@@ -93,21 +119,53 @@ impl UiComponent {
     /// Creates a keyboard- and pointer-operable switch.
     #[must_use]
     pub fn switch(id: ComponentId, label: impl Into<String>, enabled: bool) -> Self {
-        Self::new(id, ComponentKind::Switch { label: label.into(), enabled })
+        Self::new(
+            id,
+            ComponentKind::Switch {
+                label: label.into(),
+                enabled,
+            },
+        )
     }
 
     /// Creates a radio button belonging to an exclusive selection group.
     #[must_use]
-    pub fn radio_button(id: ComponentId, label: impl Into<String>, group: u64, selected: bool) -> Self {
-        Self::new(id, ComponentKind::RadioButton { label: label.into(), group, selected })
+    pub fn radio_button(
+        id: ComponentId,
+        label: impl Into<String>,
+        group: u64,
+        selected: bool,
+    ) -> Self {
+        Self::new(
+            id,
+            ComponentKind::RadioButton {
+                label: label.into(),
+                group,
+                selected,
+            },
+        )
     }
 
     /// Creates an integer slider with a clamped initial value.
     #[must_use]
-    pub fn slider(id: ComponentId, label: impl Into<String>, min: u32, max: u32, value: u32) -> Self {
+    pub fn slider(
+        id: ComponentId,
+        label: impl Into<String>,
+        min: u32,
+        max: u32,
+        value: u32,
+    ) -> Self {
         let low = min.min(max);
         let high = max.max(min);
-        Self::new(id, ComponentKind::Slider { label: label.into(), min: low, max: high, value: value.clamp(low, high) })
+        Self::new(
+            id,
+            ComponentKind::Slider {
+                label: label.into(),
+                min: low,
+                max: high,
+                value: value.clamp(low, high),
+            },
+        )
     }
 
     /// Creates a keyboard- and pointer-operable combo box.
@@ -436,9 +494,15 @@ impl ComponentTree {
 
     /// Updates a slider value, clamping it to the configured range.
     pub fn set_slider_value(&mut self, id: ComponentId, value: u32) -> bool {
-        let Some(ComponentKind::Slider { min, max, value: current, .. }) =
-            self.find_mut(id).map(|component| &mut component.kind)
-        else { return false; };
+        let Some(ComponentKind::Slider {
+            min,
+            max,
+            value: current,
+            ..
+        }) = self.find_mut(id).map(|component| &mut component.kind)
+        else {
+            return false;
+        };
         *current = value.clamp(*min, *max);
         true
     }
@@ -499,7 +563,6 @@ impl ComponentTree {
             .iter_mut()
             .find_map(|root| find_component_mut(root, id))
     }
-
 
     /// Computes the full visible component tree in depth-first paint order.
     /// Child rectangles are produced by each parent's stack layout.
@@ -600,7 +663,12 @@ impl ComponentTree {
                 .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
         let translated = self.dispatch_events(events);
         if let (Some(id), Some(point)) = (translated.activated, pointer) {
-            if let Some(rect) = self.placed.iter().find(|placement| placement.id == id).map(|p| p.bounds) {
+            if let Some(rect) = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == id)
+                .map(|p| p.bounds)
+            {
                 let range = self.find(id).and_then(|component| match component.kind() {
                     ComponentKind::Slider { min, max, .. } => Some((*min, *max)),
                     _ => None,
@@ -608,8 +676,13 @@ impl ComponentTree {
                 if let Some((min, max)) = range {
                     let travel = rect.width.max(1);
                     let relative = (point.x.max(0) as u32).saturating_sub(rect.x).min(travel);
-                    let value = if max == min { min } else {
-                        min.saturating_add(((u64::from(max - min) * u64::from(relative)) / u64::from(travel)) as u32)
+                    let value = if max == min {
+                        min
+                    } else {
+                        min.saturating_add(
+                            ((u64::from(max - min) * u64::from(relative)) / u64::from(travel))
+                                as u32,
+                        )
                     };
                     self.set_slider_value(id, value);
                 }
@@ -713,18 +786,52 @@ impl ComponentTree {
                 }
                 ComponentKind::Switch { label, enabled } => {
                     draw_switch(target, placement.bounds, *enabled, placement.state, theme);
-                    let x = placement.bounds.x.saturating_add(placement.bounds.height.min(24) * 2 + 10);
+                    let x = placement
+                        .bounds
+                        .x
+                        .saturating_add(placement.bounds.height.min(24) * 2 + 10);
                     let baseline = i64::from(placement.bounds.y)
-                        + (i64::from(placement.bounds.height) + font.line_height(pixel_size).round() as i64) / 2;
+                        + (i64::from(placement.bounds.height)
+                            + font.line_height(pixel_size).round() as i64)
+                            / 2;
                     if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(baseline)) {
-                        draw_label_clipped(target, font, label, Point::new(x, y), pixel_size, theme.text, placement.bounds);
+                        draw_label_clipped(
+                            target,
+                            font,
+                            label,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
                     }
                 }
-                ComponentKind::RadioButton { label, selected, .. } => {
-                    draw_radio_button(target, font, placement.bounds, label, *selected, pixel_size, placement.state, theme);
+                ComponentKind::RadioButton {
+                    label, selected, ..
+                } => {
+                    draw_radio_button(
+                        target,
+                        font,
+                        placement.bounds,
+                        label,
+                        *selected,
+                        pixel_size,
+                        placement.state,
+                        theme,
+                    );
                 }
-                ComponentKind::Slider { min, max, value, .. } => {
-                    draw_slider(target, placement.bounds, *value, *min, *max, placement.state, theme);
+                ComponentKind::Slider {
+                    min, max, value, ..
+                } => {
+                    draw_slider(
+                        target,
+                        placement.bounds,
+                        *value,
+                        *min,
+                        *max,
+                        placement.state,
+                        theme,
+                    );
                 }
                 ComponentKind::TextInput { placeholder, .. } => {
                     let Some(state) = self.text_states.get(&placement.id) else {
@@ -1044,8 +1151,9 @@ impl ComponentTree {
                         return ComponentEvents::default();
                     }
                 }
-                Some(ComponentKind::Slider { min, max, value, .. })
-                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
+                Some(ComponentKind::Slider {
+                    min, max, value, ..
+                }) if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
                 {
                     let next = if key == ComponentKey::ArrowLeft {
                         value.saturating_sub(1).max(min)
@@ -1804,14 +1912,20 @@ mod tests {
         let id = ComponentId(130);
         let bounds = Rect::new(0, 0, 120, 32);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::switch(id, "Wi-Fi", false).with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::switch(id, "Wi-Fi", false).with_layout_item(LayoutItem::fixed(32))
         ]);
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
         tree.activate_focused(bounds);
-        assert!(matches!(tree.find(id).unwrap().kind(), ComponentKind::Switch { enabled: true, .. }));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::Switch { enabled: true, .. }
+        ));
         tree.update_pointer(bounds, Some(Point::new(10, 16)), true, false);
         tree.update_pointer(bounds, Some(Point::new(10, 16)), false, true);
-        assert!(matches!(tree.find(id).unwrap().kind(), ComponentKind::Switch { enabled: false, .. }));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::Switch { enabled: false, .. }
+        ));
     }
 
     #[test]
@@ -1820,14 +1934,25 @@ mod tests {
         let second = ComponentId(132);
         let bounds = Rect::new(0, 0, 120, 64);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::radio_button(first, "One", 7, true).with_layout_item(LayoutItem::fixed(32)),
-            UiComponent::radio_button(second, "Two", 7, false).with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::radio_button(first, "One", 7, true)
+                .with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::radio_button(second, "Two", 7, false)
+                .with_layout_item(LayoutItem::fixed(32)),
         ]);
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(first));
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(second));
         tree.activate_focused(bounds);
-        assert!(matches!(tree.find(first).unwrap().kind(), ComponentKind::RadioButton { selected: false, .. }));
-        assert!(matches!(tree.find(second).unwrap().kind(), ComponentKind::RadioButton { selected: true, .. }));
+        assert!(matches!(
+            tree.find(first).unwrap().kind(),
+            ComponentKind::RadioButton {
+                selected: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            tree.find(second).unwrap().kind(),
+            ComponentKind::RadioButton { selected: true, .. }
+        ));
     }
 
     #[test]
@@ -1835,7 +1960,7 @@ mod tests {
         let id = ComponentId(133);
         let bounds = Rect::new(0, 0, 100, 32);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::slider(id, "Volume", 0, 10, 4).with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::slider(id, "Volume", 0, 10, 4).with_layout_item(LayoutItem::fixed(32))
         ]);
         assert_eq!(tree.slider_value(id), Some(4));
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
