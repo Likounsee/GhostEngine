@@ -268,8 +268,8 @@ pub fn draw_text_with_fallback_clipped(
                 x = baseline.x as f32;
                 previous = None;
                 base_anchor = None;
-            above_mark_offset = 0.0;
-            below_mark_offset = 0.0;
+                above_mark_offset = 0.0;
+                below_mark_offset = 0.0;
                 let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
                     break;
@@ -309,7 +309,11 @@ pub fn draw_text_with_fallback_clipped(
                             above_mark_offset
                         };
                         (glyph_left, glyph_top) = positioned_mark_origin_stacked(
-                            character, glyph.width, glyph.height, anchor, offset,
+                            character,
+                            glyph.width,
+                            glyph.height,
+                            anchor,
+                            offset,
                         );
                         if is_below_combining_mark(character) {
                             below_mark_offset = next_mark_stack_offset(offset, glyph.height);
@@ -618,20 +622,26 @@ pub fn draw_text_clipped(
             if let Some(anchor) = base_anchor {
                 let offset = if is_below_combining_mark(character) {
                     below_mark_offset
-                        } else {
+                } else {
                     above_mark_offset
-                        };
-                        (glyph_left, glyph_top) = positioned_mark_origin_stacked(
-                    character, glyph.width, glyph.height, anchor, offset,
-                        );
-                        if is_below_combining_mark(character) {
+                };
+                (glyph_left, glyph_top) = positioned_mark_origin_stacked(
+                    character,
+                    glyph.width,
+                    glyph.height,
+                    anchor,
+                    offset,
+                );
+                if is_below_combining_mark(character) {
                     below_mark_offset = next_mark_stack_offset(offset, glyph.height);
-                        } else {
+                } else {
                     above_mark_offset = next_mark_stack_offset(offset, glyph.height);
-                        }
+                }
             }
         } else {
             base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
         }
         for row in 0..glyph.height {
             for column in 0..glyph.width {
@@ -735,7 +745,11 @@ pub fn draw_text_transformed_clipped(
                             above_mark_offset
                         };
                         (left, top) = positioned_mark_origin_stacked(
-                            character, glyph.width, glyph.height, anchor, offset,
+                            character,
+                            glyph.width,
+                            glyph.height,
+                            anchor,
+                            offset,
                         );
                         if is_below_combining_mark(character) {
                             below_mark_offset = next_mark_stack_offset(offset, glyph.height);
@@ -1061,20 +1075,24 @@ mod tests {
     #[test]
     fn multiple_combining_marks_stack_without_overlapping() {
         let base = (10.0, 20.0, 8, 12);
-        let first_above = super::positioned_mark_origin_stacked(
-            '\u{0301}', 3, 2, base, 0.0,
-        );
+        let first_above = super::positioned_mark_origin_stacked('\u{0301}', 3, 2, base, 0.0);
         let second_above = super::positioned_mark_origin_stacked(
-            '\u{0308}', 3, 2, base, super::next_mark_stack_offset(0.0, 2),
+            '\u{0308}',
+            3,
+            2,
+            base,
+            super::next_mark_stack_offset(0.0, 2),
         );
         assert_eq!(first_above, (12.5, 19.0));
         assert_eq!(second_above, (12.5, 16.0));
 
-        let first_below = super::positioned_mark_origin_stacked(
-            '\u{0327}', 3, 2, base, 0.0,
-        );
+        let first_below = super::positioned_mark_origin_stacked('\u{0327}', 3, 2, base, 0.0);
         let second_below = super::positioned_mark_origin_stacked(
-            '\u{0328}', 3, 2, base, super::next_mark_stack_offset(0.0, 2),
+            '\u{0328}',
+            3,
+            2,
+            base,
+            super::next_mark_stack_offset(0.0, 2),
         );
         assert_eq!(first_below, (12.5, 31.0));
         assert_eq!(second_below, (12.5, 34.0));
