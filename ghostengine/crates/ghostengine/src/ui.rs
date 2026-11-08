@@ -913,6 +913,125 @@ impl TabsState {
     }
 }
 
+/// Draws a ComboBox and, when open, its highlighted popup rows.
+pub fn draw_combo_box(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    bounds: Rect,
+    items: &[&str],
+    state: ComboBoxState,
+    pixel_size: f32,
+    row_height: u32,
+    theme: &UiTheme,
+) {
+    if bounds.width == 0 || bounds.height == 0 {
+        return;
+    }
+    fill_rounded_rect(target, bounds, 5, theme.control);
+    draw_rect(target, bounds, theme.control_border);
+    let label = state
+        .selected()
+        .and_then(|index| items.get(index).copied())
+        .unwrap_or("");
+    let baseline = i64::from(bounds.y)
+        + (i64::from(bounds.height) + font.line_height(pixel_size).round() as i64) / 2
+        + (font.line_height(pixel_size) * 0.28).round() as i64;
+    if let (Ok(x), Ok(y)) = (i32::try_from(bounds.x.saturating_add(8)), i32::try_from(baseline)) {
+        draw_text_clipped(
+            target,
+            font,
+            label,
+            Point::new(x, y),
+            pixel_size,
+            theme.text,
+            bounds,
+        );
+    }
+    if !state.is_open() || items.is_empty() || row_height == 0 {
+        return;
+    }
+    let visible_rows = items.len().min(8);
+    let popup = Rect::new(
+        bounds.x,
+        bounds.y.saturating_add(bounds.height),
+        bounds.width,
+        row_height.saturating_mul(visible_rows as u32),
+    );
+    fill_rect(target, popup, theme.control);
+    draw_rect(target, popup, theme.control_border);
+    let mut list_state = ListState::new();
+    list_state.select(state.highlighted(), items.len());
+    draw_list(
+        target,
+        font,
+        popup,
+        items,
+        list_state,
+        ListOptions {
+            scroll_offset: 0,
+            row_height,
+            pixel_size,
+            theme,
+        },
+    );
+}
+
+/// Draws a horizontal tab strip. The selected tab receives an accent underline.
+pub fn draw_tabs(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    bounds: Rect,
+    labels: &[&str],
+    state: TabsState,
+    pixel_size: f32,
+    theme: &UiTheme,
+) {
+    if bounds.width == 0 || bounds.height == 0 || labels.is_empty() {
+        return;
+    }
+    let count = labels.len() as u64;
+    for (index, label) in labels.iter().enumerate() {
+        let left = u64::from(bounds.x) + u64::from(bounds.width) * index as u64 / count;
+        let right = u64::from(bounds.x) + u64::from(bounds.width) * (index as u64 + 1) / count;
+        let Ok(x) = u32::try_from(left) else { continue };
+        let Ok(width) = u32::try_from(right.saturating_sub(left)) else { continue };
+        if width == 0 {
+            continue;
+        }
+        let tab = Rect::new(x, bounds.y, width, bounds.height);
+        let selected = state.selected() == Some(index);
+        if selected {
+            fill_rect(target, tab, theme.control);
+            fill_rect(
+                target,
+                Rect::new(
+                    x,
+                    bounds.y.saturating_add(bounds.height.saturating_sub(2)),
+                    width,
+                    2,
+                ),
+                theme.accent,
+            );
+        }
+        let metrics = font.measure(label, pixel_size);
+        let text_x = i64::from(x) + (i64::from(width) - metrics.width.round() as i64) / 2;
+        let baseline = i64::from(bounds.y)
+            + (i64::from(bounds.height) + font.line_height(pixel_size).round() as i64) / 2
+            + (font.line_height(pixel_size) * 0.28).round() as i64;
+        if let (Ok(text_x), Ok(y)) = (i32::try_from(text_x), i32::try_from(baseline)) {
+            draw_text_clipped(
+                target,
+                font,
+                label,
+                Point::new(text_x, y),
+                pixel_size,
+                theme.text,
+                tab,
+            );
+        }
+    }
+}
+
 /// Draws visible rows of a list. Scroll offset is measured in pixels.
 ///
 /// Only rows intersecting the viewport are visited, and both row backgrounds
