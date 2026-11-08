@@ -196,8 +196,7 @@ mod tests {
     fn release_inside_captured_widget_emits_one_click_and_focuses_it() {
         let (enabled, bounds) = controls();
         let mut ui = UiInteraction::new();
-        let pressed_events =
-            ui.update(Some(Point::new(2, 2)), true, false, &enabled, &bounds);
+        let pressed_events = ui.update(Some(Point::new(2, 2)), true, false, &enabled, &bounds);
         assert!(ui.is_pressed(0));
         assert_eq!(pressed_events.focus_changed, Some(0));
         let events = ui.update(Some(Point::new(3, 3)), false, true, &enabled, &bounds);
