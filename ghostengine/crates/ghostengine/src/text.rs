@@ -675,12 +675,8 @@ pub fn draw_text_with_fallback_bidi_clipped(
                     continue;
                 }
 
-                let selected = fallback_face_for_cluster(
-                    family,
-                    current_face.as_ref(),
-                    &cluster,
-                    &primary,
-                );
+                let selected =
+                    fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
 
                 if current_face
                     .as_ref()
@@ -1125,12 +1121,8 @@ fn prepare_bidi_shaped_line(
                 continue;
             }
 
-            let selected = fallback_face_for_cluster(
-                family,
-                current_face.as_ref(),
-                &cluster,
-                &primary,
-            );
+            let selected =
+                fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
 
             if current_face
                 .as_ref()
