@@ -704,7 +704,7 @@ impl ComponentTree {
                         items,
                         row_height,
                         scroll_offset,
-                    } => Some((items.len(), *row_height, *scroll_offset)), 
+                    } => Some((items.len(), *row_height, *scroll_offset)),
                     _ => None,
                 });
                 if let (Some((item_count, row_height, scroll_offset)), Some(rect)) = (
@@ -712,7 +712,7 @@ impl ComponentTree {
                     self.placed
                         .iter()
                         .find(|placement| placement.id == id)
-                        .map(|p| p.bounds), 
+                        .map(|p| p.bounds),
                 ) {
                     self.list_states.entry(id).or_default().select_at(
                         rect,
