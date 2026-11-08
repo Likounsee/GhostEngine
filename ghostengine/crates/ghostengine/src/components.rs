@@ -175,6 +175,19 @@ impl UiComponent {
         Self::new(id, ComponentKind::ComboBox { items })
     }
 
+    /// Creates a retained list view with a fixed row height.
+    #[must_use]
+    pub fn list_view(id: ComponentId, items: Vec<String>, row_height: u32) -> Self {
+        Self::new(
+            id,
+            ComponentKind::ListView {
+                items,
+                row_height: row_height.max(1),
+                scroll_offset: 0,
+            },
+        )
+    }
+
     /// Creates a keyboard- and pointer-operable horizontal tab strip.
     #[must_use]
     pub fn tabs(id: ComponentId, labels: Vec<String>) -> Self {
@@ -417,6 +430,7 @@ impl ComponentTree {
             text_states,
             combo_states,
             tabs_states,
+            list_states,
         }
     }
 
@@ -439,6 +453,7 @@ impl ComponentTree {
             &mut self.text_states,
             &mut self.combo_states,
             &mut self.tabs_states,
+            &mut self.list_states,
         );
         self.roots.push(component);
         self.reset_after_structure_change();
@@ -549,7 +564,6 @@ impl ComponentTree {
             self.text_states.remove(&removed_id);
             self.combo_states.remove(&removed_id);
             self.tabs_states.remove(&removed_id);
-            self.list_states.remove(&removed_id);
             self.list_states.remove(&removed_id);
         }
         self.reset_after_structure_change();
