@@ -265,6 +265,34 @@ pub fn draw_radio_button(
     }
 }
 
+/// Draws a horizontal integer slider with a track and thumb.
+pub fn draw_slider(
+    target: &mut Framebuffer,
+    rect: Rect,
+    value: u32,
+    min: u32,
+    max: u32,
+    state: WidgetState,
+    theme: &UiTheme,
+) {
+    if rect.width == 0 || rect.height == 0 { return; }
+    let low = min.min(max);
+    let high = max.max(min);
+    let clamped = value.clamp(low, high);
+    let track_height = rect.height.min(6).max(1);
+    let thumb = rect.height.min(18).max(6);
+    let travel = rect.width.saturating_sub(thumb);
+    let ratio = if high == low { 0.0 } else { (clamped - low) as f64 / (high - low) as f64 };
+    let thumb_x = rect.x.saturating_add((f64::from(travel) * ratio).round() as u32);
+    let track_y = rect.y.saturating_add(rect.height.saturating_sub(track_height) / 2);
+    fill_rounded_rect(target, Rect::new(rect.x.saturating_add(thumb / 2), track_y, rect.width.saturating_sub(thumb).max(1), track_height), track_height / 2, theme.track);
+    let fill_width = thumb_x.saturating_sub(rect.x).saturating_add(thumb / 2);
+    fill_rounded_rect(target, Rect::new(rect.x.saturating_add(thumb / 2), track_y, fill_width.min(rect.width), track_height), track_height / 2,
+        if state == WidgetState::Disabled { theme.disabled } else { theme.accent });
+    let thumb_color = if state == WidgetState::Disabled { theme.disabled } else { theme.accent };
+    fill_rounded_rect(target, Rect::new(thumb_x, rect.y.saturating_add(rect.height.saturating_sub(thumb) / 2), thumb, thumb), thumb / 2, thumb_color);
+}
+
 /// Draws a progress bar. Non-finite progress is treated as zero and all other
 /// values are clamped to 0..=1.
 pub fn draw_progress_bar(target: &mut Framebuffer, rect: Rect, progress: f32, theme: &UiTheme) {
