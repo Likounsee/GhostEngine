@@ -739,7 +739,9 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
         || family.is_empty()
         || !options.line_spacing.is_finite()
         || options.line_spacing <= 0.0
-        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+        || options
+            .max_width
+            .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
         return TextMetrics::default();
     }
@@ -757,12 +759,16 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
         let mut line = String::new();
         for word in paragraph.split_whitespace() {
             let word_width = measure_shaped_fallback_line(family, word, pixel_size);
-            let separator_width = if line.is_empty() { 0.0 } else {
+            let separator_width = if line.is_empty() {
+                0.0
+            } else {
                 measure_shaped_fallback_line(family, " ", pixel_size)
             };
             if !line.is_empty()
                 && measure_shaped_fallback_line(family, &line, pixel_size)
-                    + separator_width + word_width > max_width
+                    + separator_width
+                    + word_width
+                    > max_width
             {
                 lines.push(std::mem::take(&mut line));
             }
@@ -790,7 +796,8 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
         lines.push(line);
     }
 
-    let widths: Vec<f32> = lines.iter()
+    let widths: Vec<f32> = lines
+        .iter()
         .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
         .collect();
     let widest = widths.iter().copied().fold(0.0_f32, f32::max);
@@ -804,9 +811,12 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
         };
         let x = baseline.x as f32 + offset;
         let y = baseline.y as f32 + index as f32 * step;
-        if x.is_finite() && y.is_finite()
-            && x >= i32::MIN as f32 && x <= i32::MAX as f32
-            && y >= i32::MIN as f32 && y <= i32::MAX as f32
+        if x.is_finite()
+            && y.is_finite()
+            && x >= i32::MIN as f32
+            && x <= i32::MAX as f32
+            && y >= i32::MIN as f32
+            && y <= i32::MAX as f32
         {
             draw_text_with_fallback_shaped_clipped(
                 target,
