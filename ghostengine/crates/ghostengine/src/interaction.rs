@@ -80,7 +80,10 @@ impl UiInteraction {
     ) -> InteractionEvents {
         let previous_focus = self.focus.focused();
         self.focus.reconcile(enabled);
-        if self.captured.is_some_and(|index| !is_enabled(index, enabled) || index >= bounds.len()) {
+        if self
+            .captured
+            .is_some_and(|index| !is_enabled(index, enabled) || index >= bounds.len())
+        {
             self.captured = None;
         }
 
@@ -183,7 +186,8 @@ mod tests {
         assert_eq!(events.focus_changed, Some(0));
         assert!(!ui.is_pressed(0));
         assert_eq!(
-            ui.update(Some(Point::new(3, 3)), false, false, &enabled, &bounds).clicked,
+            ui.update(Some(Point::new(3, 3)), false, false, &enabled, &bounds)
+                .clicked,
             None
         );
     }
@@ -216,8 +220,20 @@ mod tests {
     fn disabling_a_captured_widget_cancels_capture() {
         let (_, bounds) = controls();
         let mut ui = UiInteraction::new();
-        ui.update(Some(Point::new(2, 2)), true, false, &[true, true, false], &bounds);
-        ui.update(Some(Point::new(2, 2)), false, false, &[false, true, false], &bounds);
+        ui.update(
+            Some(Point::new(2, 2)),
+            true,
+            false,
+            &[true, true, false],
+            &bounds,
+        );
+        ui.update(
+            Some(Point::new(2, 2)),
+            false,
+            false,
+            &[false, true, false],
+            &bounds,
+        );
         assert_eq!(ui.captured(), None);
         assert_eq!(ui.focused(), Some(1));
     }
@@ -241,10 +257,19 @@ mod tests {
     #[test]
     fn tab_navigation_skips_disabled_controls_and_wraps() {
         let mut ui = UiInteraction::new();
+        assert_eq!(
+            ui.focus_next(&[true, false, true], false).focus_changed,
+            Some(0)
+        );
+        assert_eq!(
+            ui.focus_next(&[true, false, true], false).focus_changed,
+            Some(2)
+        );
         assert_eq!(ui.focus_next(&[true, false, true], false).focus_changed, Some(0));
-        assert_eq!(ui.focus_next(&[true, false, true], false).focus_changed, Some(2));
-        assert_eq!(ui.focus_next(&[true, false, true], false).focus_changed, Some(0));
-        assert_eq!(ui.focus_next(&[true, false, true], true).focus_changed, Some(2));
+        assert_eq!(
+            ui.focus_next(&[true, false, true], true).focus_changed,
+            Some(2)
+        );
     }
 
     #[test]
