@@ -9,6 +9,7 @@ pub mod display_list;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
+pub mod interaction;
 pub mod layout;
 pub mod path;
 pub mod rasterizer;
@@ -28,6 +29,7 @@ pub use display_list::{DisplayList, RenderStats};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
     fill_path_even_odd, fill_path_even_odd_clipped, fill_transformed_path_even_odd,
