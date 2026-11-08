@@ -10,7 +10,11 @@ use crate::rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
-use crate::text::{draw_text_box_transformed_clipped, FontFace, TextLayoutOptions};
+use crate::text::{
+    draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped, FontFace,
+    TextLayoutOptions,
+};
+use crate::shaping::{ShapedText, ShapingError};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
@@ -68,6 +72,15 @@ enum Command {
         pixel_size: f32,
         color: Color,
         options: TextLayoutOptions,
+        clip: Rect,
+    },
+    DrawShapedText {
+        font: SharedFont,
+        shaped: ShapedText,
+        baseline: Point,
+        transform: Transform2D,
+        pixel_size: f32,
+        color: Color,
         clip: Rect,
     },
     DrawTexture {
@@ -348,6 +361,46 @@ impl DisplayList {
         }
     }
 
+    /// Shapes and records a single OpenType text run.
+    ///
+    /// Shaping is performed once, while recording; replay only rasterizes the
+    /// resulting glyph IDs. Newlines and wrapping are intentionally handled by
+    /// the text-layout API rather than this single-run method.
+    pub fn draw_shaped_text(
+        &mut self,
+        font: Arc<FontFace>,
+        text: &str,
+        baseline: Point,
+        pixel_size: f32,
+        color: Color,
+    ) -> Result<(), ShapingError> {
+        if !pixel_size.is_finite() || pixel_size <= 0.0 {
+            return Err(ShapingError::InvalidPixelSize);
+        }
+        if text.is_empty() {
+            return Ok(());
+        }
+        let shaped = font.shape_text(text, pixel_size)?;
+        if shaped.glyphs.is_empty() {
+            return Ok(());
+        }
+        if let Some(clip) = self.active_clip() {
+            let transform = self.active_transform();
+            if transform.is_finite() && transform.inverse().is_some() {
+                self.commands.push(Command::DrawShapedText {
+                    font: SharedFont(font),
+                    shaped,
+                    baseline,
+                    transform,
+                    pixel_size,
+                    color,
+                    clip,
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Records an image command with its sampling mode, active transform and clip.
     pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
         if let Some(clip) = self.active_clip() {
@@ -487,6 +540,28 @@ impl DisplayList {
                         *color,
                         *clip,
                         *options,
+                        *transform,
+                    )
+                    .line_count
+                        > 0
+                }
+                Command::DrawShapedText {
+                    font,
+                    shaped,
+                    baseline,
+                    transform,
+                    pixel_size,
+                    color,
+                    clip,
+                } => {
+                    draw_text_shaped_transformed_clipped(
+                        target,
+                        &font.0,
+                        shaped,
+                        *baseline,
+                        *pixel_size,
+                        *color,
+                        *clip,
                         *transform,
                     )
                     .line_count
