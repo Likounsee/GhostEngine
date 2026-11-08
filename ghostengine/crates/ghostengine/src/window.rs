@@ -586,7 +586,7 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::{key_to_character, pack_rgb, ComponentTree, InputState, WindowError};
+    use super::{key_to_character, pack_rgb, ClipboardAction, ComponentTree, InputState, TextInputEvent, WindowError};
     use crate::Color;
     use minifb::Key;
 
@@ -730,6 +730,68 @@ mod tests {
             tree.handle_window_input(bounds, &enter).activated,
             Some(button_id)
         );
+    }
+
+    #[test]
+    fn host_unicode_ime_and_clipboard_events_are_routed_to_focused_input() {
+        use crate::{ComponentId, LayoutItem, UiComponent};
+        let bounds = crate::Rect::new(0, 0, 120, 40);
+        let id = ComponentId(90);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Input", "").with_layout_item(LayoutItem::fixed(40)),
+        ]);
+        let tab = InputState { tab_pressed: true, ..InputState::default() };
+        tree.handle_window_input(bounds, &tab);
+
+        let ime = InputState {
+            text_events: vec![TextInputEvent::CompositionUpdate("に".into())],
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &ime);
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), Some("に"));
+
+        let commit = InputState {
+            text_events: vec![TextInputEvent::CompositionCommit("日本語🙂".into())],
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &commit);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "日本語🙂"
+        ));
+
+        tree.select_all_text(id);
+        let copy = InputState { copy_pressed: true, control_down: true, ..InputState::default() };
+        assert_eq!(
+            tree.handle_window_input(bounds, &copy).clipboard_action,
+            Some(ClipboardAction::Copy("日本語🙂".into()))
+        );
+
+        let cut = InputState { cut_pressed: true, control_down: true, ..InputState::default() };
+        assert_eq!(
+            tree.handle_window_input(bounds, &cut).clipboard_action,
+            Some(ClipboardAction::Copy("日本語🙂".into()))
+        );
+        let paste_request = InputState {
+            paste_pressed: true,
+            control_down: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            tree.handle_window_input(bounds, &paste_request).clipboard_action,
+            Some(ClipboardAction::Paste)
+        );
+        let paste_result = InputState {
+            paste_pressed: true,
+            control_down: true,
+            clipboard_text: Some("collé 🎮".into()),
+            ..InputState::default()
+        };
+        tree.handle_window_input(bounds, &paste_result);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "collé 🎮"
+        ));
     }
 
     #[test]
