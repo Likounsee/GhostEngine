@@ -2348,6 +2348,63 @@ mod tests {
     }
 
     #[test]
+    fn licensed_noto_arabic_applies_lam_alef_ligature_substitution() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Noto Sans Arabic should load");
+        let shaped = font
+            .shape_text_with_direction("لا", 30.0, crate::TextDirection::RightToLeft)
+            .expect("lam-alef should shape");
+
+        assert_eq!(
+            shaped.glyphs.len(),
+            1,
+            "the required Arabic ligature should replace lam + alef with one glyph"
+        );
+        assert!(shaped.advance_x.is_finite());
+        assert!(shaped.advance_x.abs() > 0.0);
+    }
+
+    #[test]
+    fn licensed_noto_hebrew_applies_gpos_mark_to_base_positioning() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Noto Sans Hebrew should load");
+        let shaped = font
+            .shape_text_with_direction("שָׁ", 32.0, crate::TextDirection::RightToLeft)
+            .expect("Hebrew base and marks should shape");
+
+        assert!(
+            shaped.glyphs.len() >= 2,
+            "the base and combining marks should remain represented in the shaped run"
+        );
+        assert!(
+            shaped
+                .glyphs
+                .iter()
+                .any(|glyph| glyph.x_offset != 0.0 || glyph.y_offset != 0.0),
+            "GPOS mark attachment should produce a positioned mark offset"
+        );
+
+        let mut target =
+            crate::Framebuffer::new(96, 64, crate::Color::BLACK).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &shaped,
+            crate::Point::new(48, 48),
+            32.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 96, 64),
+        );
+        assert!(
+            target
+                .pixels()
+                .iter()
+                .any(|pixel| *pixel != crate::Color::BLACK),
+            "positioned Hebrew marks should reach the CPU framebuffer"
+        );
+    }
+
+    #[test]
     fn combining_mark_ranges_cover_common_latin_and_hebrew_marks() {
         assert!(super::is_combining_mark('\u{0301}'));
         assert!(super::is_combining_mark('\u{0327}'));
