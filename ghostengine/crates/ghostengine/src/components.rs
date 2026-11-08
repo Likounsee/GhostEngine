@@ -619,6 +619,16 @@ impl ComponentTree {
                         );
                     }
                 }
+                ComponentKind::ComboBox { items } => {
+                    let labels: Vec<_> = items.iter().map(String::as_str).collect();
+                    let state = self.combo_states.get(&placement.id).copied().unwrap_or_default();
+                    draw_combo_box(target, font, placement.bounds, &labels, state, pixel_size, 28, theme);
+                }
+                ComponentKind::Tabs { labels } => {
+                    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+                    let state = self.tabs_states.get(&placement.id).copied().unwrap_or_default();
+                    draw_tabs(target, font, placement.bounds, &labels, state, pixel_size, theme);
+                }
             }
         }
     }
@@ -819,6 +829,39 @@ impl ComponentTree {
 
     /// Routes a discrete key to focus navigation, activation, or text editing.
     pub fn handle_key(&mut self, bounds: Rect, key: ComponentKey, shift: bool) -> ComponentEvents {
+        if let Some(id) = self.focused_component() {
+            let kind = self.find(id).map(|component| component.kind().clone());
+            match kind {
+                Some(ComponentKind::ComboBox { items }) => {
+                    let state = self.combo_states.entry(id).or_default();
+                    match key {
+                        ComponentKey::Escape => state.close(),
+                        ComponentKey::ArrowDown => {
+                            if state.is_open() { state.move_highlight(1, items.len()); }
+                            else { state.open(items.len()); }
+                        }
+                        ComponentKey::ArrowUp => {
+                            if state.is_open() { state.move_highlight(-1, items.len()); }
+                            else { state.open(items.len()); state.move_highlight(-1, items.len()); }
+                        }
+                        _ => {}
+                    }
+                    if matches!(key, ComponentKey::Escape | ComponentKey::ArrowDown | ComponentKey::ArrowUp) {
+                        return ComponentEvents::default();
+                    }
+                }
+                Some(ComponentKind::Tabs { labels }) => {
+                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight {
+                        self.tabs_states.entry(id).or_default().move_selection(
+                            if key == ComponentKey::ArrowLeft { -1 } else { 1 },
+                            labels.len(),
+                        );
+                        return ComponentEvents::default();
+                    }
+                }
+                _ => {}
+            }
+        }
         match key {
             ComponentKey::Tab => self.focus_next(bounds, shift),
             ComponentKey::Enter | ComponentKey::Space => {
@@ -929,10 +972,19 @@ impl ComponentTree {
     fn dispatch_events(&mut self, events: InteractionEvents) -> ComponentEvents {
         let translated = self.translate_events(events);
         if let Some(id) = translated.activated {
-            if let Some(component) = self.find_mut(id) {
-                if let ComponentKind::Checkbox { checked, .. } = &mut component.kind {
-                    *checked = !*checked;
+            let kind = self.find(id).map(|component| component.kind().clone());
+            match kind {
+                Some(ComponentKind::Checkbox { .. }) => {
+                    if let Some(ComponentKind::Checkbox { checked, .. }) =
+                        self.find_mut(id).map(|component| &mut component.kind)
+                    {
+                        *checked = !*checked;
+                    }
                 }
+                Some(ComponentKind::ComboBox { items }) => {
+                    self.combo_states.entry(id).or_default().toggle(items.len());
+                }
+                _ => {}
             }
         }
         translated
@@ -1008,12 +1060,26 @@ fn remove_component(nodes: &mut Vec<UiComponent>, id: ComponentId) -> Option<UiC
     None
 }
 
-fn collect_text_states(node: &UiComponent, states: &mut HashMap<ComponentId, TextInputState>) {
-    if let ComponentKind::TextInput { value, .. } = node.kind() {
-        states.insert(node.id(), TextInputState::new(value.clone()));
+fn collect_component_states(
+    node: &UiComponent,
+    text_states: &mut HashMap<ComponentId, TextInputState>,
+    combo_states: &mut HashMap<ComponentId, ComboBoxState>,
+    tabs_states: &mut HashMap<ComponentId, TabsState>,
+) {
+    match node.kind() {
+        ComponentKind::TextInput { value, .. } => {
+            text_states.insert(node.id(), TextInputState::new(value.clone()));
+        }
+        ComponentKind::ComboBox { .. } => {
+            combo_states.insert(node.id(), ComboBoxState::new());
+        }
+        ComponentKind::Tabs { .. } => {
+            tabs_states.insert(node.id(), TabsState::new());
+        }
+        _ => {}
     }
     for child in node.children() {
-        collect_text_states(child, states);
+        collect_component_states(child, text_states, combo_states, tabs_states);
     }
 }
 
