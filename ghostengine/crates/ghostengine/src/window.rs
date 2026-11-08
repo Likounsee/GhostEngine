@@ -750,6 +750,61 @@ mod tests {
     }
 
     #[test]
+    fn control_word_shortcuts_move_and_delete_unicode_words() {
+        use crate::{ComponentId, LayoutItem, UiComponent};
+        let bounds = crate::Rect::new(0, 0, 180, 40);
+        let id = ComponentId(91);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Input", "hello brave world")
+                .with_layout_item(LayoutItem::fixed(40)),
+        ]);
+        tree.handle_window_input(bounds, &InputState {
+            tab_pressed: true,
+            ..InputState::default()
+        });
+
+        tree.handle_window_input(bounds, &InputState {
+            left_pressed: true,
+            control_down: true,
+            ..InputState::default()
+        });
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "hello brave ".len());
+
+        tree.handle_window_input(bounds, &InputState {
+            backspace_pressed: true,
+            control_down: true,
+            ..InputState::default()
+        });
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "hello world"
+        ));
+    }
+
+    #[test]
+    fn host_unicode_text_events_take_precedence_over_legacy_key_fallback() {
+        use crate::{ComponentId, LayoutItem, UiComponent};
+        let bounds = crate::Rect::new(0, 0, 120, 40);
+        let id = ComponentId(92);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Input", "").with_layout_item(LayoutItem::fixed(40)),
+        ]);
+        tree.handle_window_input(bounds, &InputState {
+            tab_pressed: true,
+            ..InputState::default()
+        });
+        tree.handle_window_input(bounds, &InputState {
+            text_events: vec![TextInputEvent::Insert("é🙂".into())],
+            pressed_characters: vec!['x'],
+            ..InputState::default()
+        });
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            crate::ComponentKind::TextInput { value, .. } if value == "é🙂"
+        ));
+    }
+
+    #[test]
     fn host_unicode_ime_and_clipboard_events_are_routed_to_focused_input() {
         use crate::{ComponentId, LayoutItem, UiComponent};
         let bounds = crate::Rect::new(0, 0, 120, 40);
