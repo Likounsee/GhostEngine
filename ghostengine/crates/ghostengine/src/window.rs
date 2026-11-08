@@ -250,9 +250,9 @@ impl WindowSurface {
 
 /// Routes one sampled native input frame into the retained component tree.
 ///
-/// Printable characters are supplied by the host adapter; cursor/navigation
-/// keys are translated here. IME composition and platform text services remain
-/// the responsibility of a future text-input backend.
+/// Unicode text and IME composition are supplied through text_events by
+/// the host text-input service. The minifb fallback remains a limited physical
+/// key mapping; it is not an AZERTY/QWERTY layout implementation.
 impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
         let mut events = self.update_pointer(
@@ -271,10 +271,18 @@ impl ComponentTree {
             merge_component_events(&mut events, next);
         }
         if input.left_pressed {
-            self.handle_key(bounds, ComponentKey::ArrowLeft, input.shift_down);
+            self.handle_key(
+                bounds,
+                if input.control_down { ComponentKey::WordLeft } else { ComponentKey::ArrowLeft },
+                input.shift_down,
+            );
         }
         if input.right_pressed {
-            self.handle_key(bounds, ComponentKey::ArrowRight, input.shift_down);
+            self.handle_key(
+                bounds,
+                if input.control_down { ComponentKey::WordRight } else { ComponentKey::ArrowRight },
+                input.shift_down,
+            );
         }
         if input.home_pressed {
             self.handle_key(bounds, ComponentKey::Home, input.shift_down);
@@ -283,10 +291,18 @@ impl ComponentTree {
             self.handle_key(bounds, ComponentKey::End, input.shift_down);
         }
         if input.backspace_pressed {
-            self.handle_key(bounds, ComponentKey::Backspace, input.shift_down);
+            self.handle_key(
+                bounds,
+                if input.control_down { ComponentKey::DeleteWordBackward } else { ComponentKey::Backspace },
+                input.shift_down,
+            );
         }
         if input.delete_pressed {
-            self.handle_key(bounds, ComponentKey::Delete, input.shift_down);
+            self.handle_key(
+                bounds,
+                if input.control_down { ComponentKey::DeleteWordForward } else { ComponentKey::Delete },
+                input.shift_down,
+            );
         }
         if input.select_all_pressed {
             if let Some(id) = self.focused_text_input() {
@@ -312,7 +328,9 @@ impl ComponentTree {
             }
         }
 
-        if !input.control_down && !input.alt_down {
+        // Prefer committed Unicode text from the host text service. The legacy
+        // character list is only a fallback for adapters that cannot emit text events.
+        if input.text_events.is_empty() && !input.control_down && !input.alt_down {
             for character in &input.pressed_characters {
                 if *character == ' ' && self.focused_text_input().is_none() {
                     let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
