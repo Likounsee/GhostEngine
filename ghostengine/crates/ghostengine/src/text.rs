@@ -4,9 +4,11 @@
 //! Font fallback, glyph caching, kerning and basic combining-mark placement are
 //! supported. OpenType shaping is available through an explicit shaped-run API; automatic shaping in every text path remains a follow-up milestone.
 
-use crate::{rasterizer::blend_pixel, Color, Framebuffer, Point, Rect};
+use crate::{
+    rasterizer::blend_pixel, Color, Framebuffer, OpenTypeShaper, Point, Rect, ShapedText,
+    ShapingError,
+};
 use fontdue::Font;
-use crate::{OpenTypeShaper, ShapedText, ShapingError};
 
 const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
 use std::collections::HashMap;
