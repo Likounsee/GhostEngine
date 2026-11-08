@@ -420,15 +420,15 @@ mod tests {
     fn disabled_and_hidden_components_are_excluded_from_layout_and_tab_order() {
         let root = UiComponent::panel(ComponentId(10), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
-            UiComponent::button(ComponentId(11), "Disabled")
+                UiComponent::button(ComponentId(11), "Disabled")
                 .with_layout_item(LayoutItem::fixed(10))
                 .with_enabled(false),
-            UiComponent::button(ComponentId(12), "Hidden")
+                UiComponent::button(ComponentId(12), "Hidden")
                 .with_layout_item(LayoutItem::fixed(10))
                 .with_visible(false),
-            UiComponent::button(ComponentId(13), "Visible")
+                UiComponent::button(ComponentId(13), "Visible")
                 .with_layout_item(LayoutItem::fixed(10)),
-        ]);
+            ]);
         let mut tree = ComponentTree::new(vec![root]);
         let placed = tree.layout(Rect::new(0, 0, 40, 40));
         assert_eq!(placed.len(), 3);
@@ -463,10 +463,10 @@ mod tests {
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
-            UiComponent::button(ComponentId(21), "Hidden")
+                UiComponent::button(ComponentId(21), "Hidden")
                 .with_layout_item(LayoutItem::fixed(10))
                 .with_visible(false),
-            UiComponent::button(ComponentId(22), "Visible")
+                UiComponent::button(ComponentId(22), "Visible")
                 .with_layout_item(LayoutItem::fixed(10)),
         ]);
         let mut tree = ComponentTree::new(vec![root]);
