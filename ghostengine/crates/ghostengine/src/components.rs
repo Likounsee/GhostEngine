@@ -2147,6 +2147,33 @@ mod tests {
     }
 
     #[test]
+    fn retained_list_view_supports_pointer_selection_keyboard_and_scroll() {
+        let id = ComponentId(135);
+        let bounds = Rect::new(0, 0, 100, 64);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::list_view(
+                id,
+                vec!["One".into(), "Two".into(), "Three".into(), "Four".into()],
+                16,
+            )
+            .with_layout_item(LayoutItem::fixed(64)),
+        ]);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.update_pointer(bounds, Some(Point::new(10, 40)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 40)), false, true);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+
+        tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+
+        assert!(tree.set_list_view_scroll(id, 16));
+        tree.update_pointer(bounds, Some(Point::new(10, 8)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 8)), false, true);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+    }
+
+    #[test]
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
