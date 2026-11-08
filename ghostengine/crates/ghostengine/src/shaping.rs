@@ -69,7 +69,7 @@ impl OpenTypeShaper {
 
         let face =
             rustybuzz::Face::from_slice(&self.font_data, 0).ok_or(ShapingError::InvalidFont)?;
-        let units_per_em = f32::from(face.units_per_em());
+        let units_per_em = face.units_per_em() as f32;
         if !units_per_em.is_finite() || units_per_em <= 0.0 {
             return Err(ShapingError::InvalidFont);
         }
