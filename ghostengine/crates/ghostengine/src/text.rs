@@ -724,6 +724,155 @@ fn fallback_text_clusters(text: &str) -> Vec<String> {
     clusters
 }
 
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedShapedTextRun {
+    pub font: Arc<FontFace>,
+    pub shaped: ShapedText,
+    pub offset_x: f32,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedShapedTextLine {
+    pub baseline: Point,
+    pub runs: Vec<PreparedShapedTextRun>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedShapedTextBox {
+    pub lines: Vec<PreparedShapedTextLine>,
+    pub metrics: TextMetrics,
+}
+
+/// Shapes and lays out a fallback-font text block once, for reuse by display lists.
+pub(crate) fn prepare_shaped_text_box(
+    family: &FontFamily,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    options: TextLayoutOptions,
+) -> Result<PreparedShapedTextBox, ShapingError> {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 {
+        return Err(ShapingError::InvalidPixelSize);
+    }
+    if text.is_empty() || family.is_empty()
+        || !options.line_spacing.is_finite() || options.line_spacing <= 0.0
+        || options.max_width.is_some_and(|width| !width.is_finite() || width <= 0.0)
+    {
+        return Ok(PreparedShapedTextBox { lines: Vec::new(), metrics: TextMetrics::default() });
+    }
+
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return Ok(PreparedShapedTextBox { lines: Vec::new(), metrics: TextMetrics::default() });
+    }
+    let mut text_lines = Vec::new();
+    for paragraph in text.split('\n') {
+        let Some(max_width) = options.max_width else {
+            text_lines.push(paragraph.to_owned());
+            continue;
+        };
+        let mut line = String::new();
+        for word in paragraph.split_whitespace() {
+            let word_width = measure_shaped_fallback_line(family, word, pixel_size);
+            let separator_width = if line.is_empty() { 0.0 } else {
+                measure_shaped_fallback_line(family, " ", pixel_size)
+            };
+            if !line.is_empty()
+                && measure_shaped_fallback_line(family, &line, pixel_size)
+                    + separator_width + word_width > max_width
+            {
+                text_lines.push(std::mem::take(&mut line));
+            }
+            if word_width <= max_width {
+                if !line.is_empty() { line.push(' '); }
+                line.push_str(word);
+            } else {
+                if !line.is_empty() { text_lines.push(std::mem::take(&mut line)); }
+                for cluster in fallback_text_clusters(word) {
+                    let candidate = format!("{line}{cluster}");
+                    if !line.is_empty()
+                        && measure_shaped_fallback_line(family, &candidate, pixel_size) > max_width
+                    {
+                        text_lines.push(std::mem::take(&mut line));
+                    }
+                    line.push_str(&cluster);
+                }
+            }
+        }
+        text_lines.push(line);
+    }
+
+    let widths: Vec<f32> = text_lines.iter()
+        .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
+        .collect();
+    let widest = widths.iter().copied().fold(0.0_f32, f32::max);
+    let alignment_width = options.max_width.unwrap_or(widest);
+    let line_step = line_height * options.line_spacing;
+    let mut lines = Vec::with_capacity(text_lines.len());
+
+    for (line_index, line) in text_lines.iter().enumerate() {
+        let alignment_offset = match options.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => ((alignment_width - widths[line_index]) * 0.5).max(0.0),
+            TextAlign::Right => (alignment_width - widths[line_index]).max(0.0),
+        };
+        let x = baseline.x as f32 + alignment_offset;
+        let y = baseline.y as f32 + line_index as f32 * line_step;
+        if !x.is_finite() || !y.is_finite()
+            || x < i32::MIN as f32 || x > i32::MAX as f32
+            || y < i32::MIN as f32 || y > i32::MAX as f32
+        {
+            continue;
+        }
+
+        let mut runs = Vec::new();
+        let mut current_run = String::new();
+        let mut current_face: Option<Arc<FontFace>> = None;
+        let mut pen_x = 0.0_f32;
+        let primary = Arc::clone(&family.faces[0]);
+        for character in line.chars() {
+            let selected = if is_combining_mark(character) {
+                current_face.as_ref()
+                    .filter(|face| face.has_glyph(character))
+                    .cloned()
+                    .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                    .unwrap_or_else(|| Arc::clone(&primary))
+            } else {
+                family.faces.iter().find(|face| face.has_glyph(character)).cloned()
+                    .unwrap_or_else(|| Arc::clone(&primary))
+            };
+            if current_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+                if let Some(face) = current_face.take() {
+                    let shaped = face.shape_text(&current_run, pixel_size)?;
+                    runs.push(PreparedShapedTextRun { font: face, offset_x: pen_x, shaped: shaped.clone() });
+                    pen_x += shaped.advance_x;
+                }
+                current_run.clear();
+            }
+            if current_face.is_none() { current_face = Some(selected); }
+            current_run.push(character);
+        }
+        if let Some(face) = current_face {
+            let shaped = face.shape_text(&current_run, pixel_size)?;
+            runs.push(PreparedShapedTextRun { font: face, offset_x: pen_x, shaped: shaped.clone() });
+        }
+        lines.push(PreparedShapedTextLine {
+            baseline: Point::new(x.round() as i32, y.round() as i32),
+            runs,
+        });
+    }
+
+    Ok(PreparedShapedTextBox {
+        lines,
+        metrics: TextMetrics {
+            width: widest,
+            height: line_step * text_lines.len() as f32,
+            line_count: text_lines.len() as u32,
+        },
+    })
+}
+
 /// Draws a shaped fallback-font text block with wrapping and per-line alignment.
 ///
 /// Words are kept intact where possible. Overlong words are split only at
