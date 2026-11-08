@@ -7,9 +7,9 @@ use std::collections::HashMap;
 
 use crate::{
     draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_tabs,
-    draw_text_input, ComboBoxState, TabsState, FontFace,
-    Framebuffer, InteractionEvents, LayoutItem, Point, Rect, StackLayout, TextInputOptions,
-    TextInputState, UiInteraction, UiTheme, WidgetState,
+    draw_text_input, ComboBoxState, FontFace, Framebuffer, InteractionEvents, LayoutItem, Point,
+    Rect, StackLayout, TabsState, TextInputOptions, TextInputState, UiInteraction, UiTheme,
+    WidgetState,
 };
 
 /// Stable caller-assigned identity for a component.
@@ -338,7 +338,12 @@ impl ComponentTree {
                 return Err(ComponentTreeError::DuplicateId(id));
             }
         }
-        collect_component_states(&component, &mut self.text_states, &mut self.combo_states, &mut self.tabs_states);
+        collect_component_states(
+            &component,
+            &mut self.text_states,
+            &mut self.combo_states,
+            &mut self.tabs_states,
+        );
         self.roots.push(component);
         self.reset_after_structure_change();
         Ok(())
@@ -359,7 +364,12 @@ impl ComponentTree {
         if self.find(parent).is_none() {
             return Err(ComponentTreeError::ParentNotFound(parent));
         }
-        collect_component_states(&child, &mut self.text_states, &mut self.combo_states, &mut self.tabs_states);
+        collect_component_states(
+            &child,
+            &mut self.text_states,
+            &mut self.combo_states,
+            &mut self.tabs_states,
+        );
         self.find_mut(parent)
             .expect("parent was checked above")
             .children
