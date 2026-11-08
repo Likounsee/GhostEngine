@@ -950,9 +950,16 @@ fn fallback_text_clusters(text: &str) -> Vec<String> {
     for character in text.chars() {
         let code = character as u32;
         let variation = (0xFE00..=0xFE0F).contains(&code) || (0xE0100..=0xE01EF).contains(&code);
+        // Emoji modifiers (skin tones) and tag characters are grapheme
+        // extenders too. Keeping them with their base prevents font fallback
+        // from splitting a single displayed emoji across separate runs.
+        let emoji_modifier = (0x1F3FB..=0x1F3FF).contains(&code);
+        let emoji_tag = (0xE0020..=0xE007F).contains(&code);
         let regional = (0x1F1E6..=0x1F1FF).contains(&code);
         let attach = is_combining_mark(character)
             || variation
+            || emoji_modifier
+            || emoji_tag
             || join_next
             || character == '\u{200D}'
             || (regional && regional_count % 2 == 1);
@@ -2427,6 +2434,11 @@ mod tests {
         );
         assert_eq!(super::fallback_text_clusters("👩‍💻x"), ["👩‍💻", "x"]);
         assert_eq!(super::fallback_text_clusters("🇫🇷!"), ["🇫🇷", "!"]);
+        assert_eq!(super::fallback_text_clusters("👍🏽!"), ["👍🏽", "!"]);
+        assert_eq!(
+            super::fallback_text_clusters("🏴\u{E0067}\u{E0062}\u{E007F}!"),
+            ["🏴\u{E0067}\u{E0062}\u{E007F}", "!"]
+        );
         assert_eq!(super::fallback_text_clusters("✈️x"), ["✈️", "x"]);
     }
 
