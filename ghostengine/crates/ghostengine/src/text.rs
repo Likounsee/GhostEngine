@@ -566,6 +566,55 @@ pub fn draw_text_bidi_clipped(
     }
 }
 
+fn fallback_face_for_cluster(
+    family: &FontFamily,
+    current_face: Option<&Arc<FontFace>>,
+    cluster: &str,
+    primary: &Arc<FontFace>,
+) -> Arc<FontFace> {
+    let characters = cluster.chars().collect::<Vec<_>>();
+    let base = characters
+        .iter()
+        .copied()
+        .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
+
+    if let Some(base) = base {
+        let marks_supported = |face: &&Arc<FontFace>| {
+            face.has_glyph(base)
+                && characters
+                    .iter()
+                    .copied()
+                    .filter(|character| is_combining_mark(*character))
+                    .all(|mark| face.has_glyph(mark))
+        };
+        family
+            .faces
+            .iter()
+            .find(marks_supported)
+            .or_else(|| family.faces.iter().find(|face| face.has_glyph(base)))
+            .cloned()
+            .unwrap_or_else(|| Arc::clone(primary))
+    } else {
+        let marks = characters
+            .iter()
+            .copied()
+            .filter(|character| is_combining_mark(*character))
+            .collect::<Vec<_>>();
+        current_face
+            .filter(|face| marks.iter().all(|mark| face.has_glyph(*mark)))
+            .cloned()
+            .or_else(|| {
+                family
+                    .faces
+                    .iter()
+                    .find(|face| marks.iter().all(|mark| face.has_glyph(*mark)))
+                    .cloned()
+            })
+            .or_else(|| current_face.cloned())
+            .unwrap_or_else(|| Arc::clone(primary))
+    }
+}
+
 /// Draws bidirectional OpenType text using an ordered font fallback family.
 ///
 /// Paragraph direction is resolved by Unicode bidi, each visual directional
@@ -626,34 +675,12 @@ pub fn draw_text_with_fallback_bidi_clipped(
                     continue;
                 }
 
-                let representative = cluster
-                    .chars()
-                    .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
-                let selected = if let Some(character) = representative {
-                    if is_combining_mark(character) {
-                        current_face
-                            .as_ref()
-                            .filter(|face| face.has_glyph(character))
-                            .cloned()
-                            .or_else(|| {
-                                family
-                                    .faces
-                                    .iter()
-                                    .find(|face| face.has_glyph(character))
-                                    .cloned()
-                            })
-                            .unwrap_or_else(|| Arc::clone(&primary))
-                    } else {
-                        family
-                            .faces
-                            .iter()
-                            .find(|face| face.has_glyph(character))
-                            .cloned()
-                            .unwrap_or_else(|| Arc::clone(&primary))
-                    }
-                } else {
-                    current_face.clone().unwrap_or_else(|| Arc::clone(&primary))
-                };
+                let selected = fallback_face_for_cluster(
+                    family,
+                    current_face.as_ref(),
+                    &cluster,
+                    &primary,
+                );
 
                 if current_face
                     .as_ref()
@@ -1098,34 +1125,12 @@ fn prepare_bidi_shaped_line(
                 continue;
             }
 
-            let representative = cluster
-                .chars()
-                .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
-            let selected = if let Some(character) = representative {
-                if is_combining_mark(character) {
-                    current_face
-                        .as_ref()
-                        .filter(|face| face.has_glyph(character))
-                        .cloned()
-                        .or_else(|| {
-                            family
-                                .faces
-                                .iter()
-                                .find(|face| face.has_glyph(character))
-                                .cloned()
-                        })
-                        .unwrap_or_else(|| Arc::clone(&primary))
-                } else {
-                    family
-                        .faces
-                        .iter()
-                        .find(|face| face.has_glyph(character))
-                        .cloned()
-                        .unwrap_or_else(|| Arc::clone(&primary))
-                }
-            } else {
-                current_face.clone().unwrap_or_else(|| Arc::clone(&primary))
-            };
+            let selected = fallback_face_for_cluster(
+                family,
+                current_face.as_ref(),
+                &cluster,
+                &primary,
+            );
 
             if current_face
                 .as_ref()
