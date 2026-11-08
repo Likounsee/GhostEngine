@@ -806,7 +806,7 @@ mod tests {
         input.move_right(false);
         assert_eq!(input.cursor(), 1);
         input.delete_forward();
-        assert_eq!(input.text(), format!("a{family}z").replace('a', ""));
+        assert_eq!(input.text(), "az");
 
         let mut combined = TextInputState::new("e\u{301}x");
         combined.set_cursor(1, false);
