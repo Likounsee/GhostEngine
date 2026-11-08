@@ -550,6 +550,7 @@ impl ComponentTree {
             self.combo_states.remove(&removed_id);
             self.tabs_states.remove(&removed_id);
             self.list_states.remove(&removed_id);
+            self.list_states.remove(&removed_id);
         }
         self.reset_after_structure_change();
         Some(removed)
