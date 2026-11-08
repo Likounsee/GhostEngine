@@ -28,3 +28,7 @@ softbuffer = { version = "0.4.8", optional = true }
 [[example]]
 name = "browser_frontend"
 required-features = ["window"]
+
+[[example]]
+name = "native_ui_demo"
+required-features = ["native-window"]
