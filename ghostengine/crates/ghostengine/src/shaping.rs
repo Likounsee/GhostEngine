@@ -237,6 +237,51 @@ mod tests {
     }
 
     #[test]
+    fn rtl_paragraph_returns_directional_runs_in_visual_order() {
+        // The paragraph starts RTL, but contains an embedded LTR phrase.
+        // Visual order must be RTL, LTR, RTL while every range still slices
+        // the original logical UTF-8 string without reversing its bytes.
+        let text = "אבג abc דהו";
+        let runs = super::resolve_bidi_runs(text);
+
+        assert_eq!(
+            runs.iter().map(|run| run.direction).collect::<Vec<_>>(),
+            [
+                TextDirection::RightToLeft,
+                TextDirection::LeftToRight,
+                TextDirection::RightToLeft,
+            ]
+        );
+
+        let slices = runs
+            .iter()
+            .map(|run| text.get(run.byte_range.clone()).expect("valid UTF-8 range"))
+            .collect::<Vec<_>>();
+        assert!(slices.iter().any(|slice| slice.contains("abc")));
+        assert!(slices.iter().any(|slice| slice.contains("אבג")));
+        assert!(slices.iter().any(|slice| slice.contains("דהו")));
+
+        // Visual reordering changes run order, never the byte order inside
+        // an individual logical run.
+        for (run, slice) in runs.iter().zip(slices) {
+            assert_eq!(
+                text.get(run.byte_range.clone()),
+                Some(slice),
+                "each visual run must retain its original logical slice"
+            );
+        }
+    }
+
+    #[test]
+    fn rtl_only_paragraph_is_reported_as_one_rtl_run() {
+        let text = "مرحبا بالعالم";
+        let runs = super::resolve_bidi_runs(text);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].direction, TextDirection::RightToLeft);
+        assert_eq!(text.get(runs[0].byte_range.clone()), Some(text));
+    }
+
+    #[test]
     fn empty_bidi_text_has_no_visual_runs() {
         assert!(super::resolve_bidi_runs("").is_empty());
     }
