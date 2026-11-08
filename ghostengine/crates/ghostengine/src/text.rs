@@ -354,8 +354,7 @@ pub fn draw_text_with_fallback_clipped(
             }
             _ => {
                 let current_face = previous.and_then(|(_, index)| family.faces.get(index));
-                let selected =
-                    fallback_face_for_cluster(family, current_face, &cluster, &primary);
+                let selected = fallback_face_for_cluster(family, current_face, &cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
