@@ -1,0 +1,28 @@
+name: Format GhostEngine sources
+
+on:
+  push:
+    branches: [GhostEngine]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: GhostEngine
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Apply rustfmt and commit if needed
+        working-directory: ghostengine
+        run: |
+          cargo fmt --all
+          if ! git -C .. diff --quiet; then
+            git -C .. config user.name "github-actions[bot]"
+            git -C .. config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C .. add ghostengine
+            git -C .. commit -m "Apply rustfmt to component keyboard API"
+            git -C .. push origin HEAD:GhostEngine
+          fi
