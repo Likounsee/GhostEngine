@@ -3,14 +3,11 @@
 //! This module does not create a GPU context. GhostEngine renders into its
 //! framebuffer and softbuffer copies those pixels to the native window.
 
-use crate::{window::InputState, Color, Framebuffer, FramebufferError, NativeClipboard, NativeInputAdapter};
-use softbuffer::{Context, Surface};
-use std::{
-    error::Error,
-    fmt,
-    num::NonZeroU32,
-    sync::Arc,
+use crate::{
+    window::InputState, Color, Framebuffer, FramebufferError, NativeClipboard, NativeInputAdapter,
 };
+use softbuffer::{Context, Surface};
+use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -144,8 +141,7 @@ where
         };
         let width = self.framebuffer.width();
         let height = self.framebuffer.height();
-        let (Some(width_nz), Some(height_nz)) =
-            (NonZeroU32::new(width), NonZeroU32::new(height))
+        let (Some(width_nz), Some(height_nz)) = (NonZeroU32::new(width), NonZeroU32::new(height))
         else {
             return Ok(());
         };
@@ -200,7 +196,11 @@ where
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        if self.window.as_ref().map_or(true, |window| window.id() != window_id) {
+        if self
+            .window
+            .as_ref()
+            .map_or(true, |window| window.id() != window_id)
+        {
             return;
         }
         self.input.process_window_event(&event);
@@ -219,9 +219,12 @@ where
                     event_loop.exit();
                 }
             }
-            WindowEvent::Focused(_) | WindowEvent::KeyboardInput { .. }
-            | WindowEvent::Ime(_) | WindowEvent::CursorMoved { .. }
-            | WindowEvent::CursorLeft { .. } | WindowEvent::MouseInput { .. } => {
+            WindowEvent::Focused(_)
+            | WindowEvent::KeyboardInput { .. }
+            | WindowEvent::Ime(_)
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::CursorLeft { .. }
+            | WindowEvent::MouseInput { .. } => {
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
