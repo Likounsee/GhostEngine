@@ -4,9 +4,7 @@
 //! interaction dispatch. Rendering remains explicit: applications can draw
 //! each returned rectangle with GhostEngine's existing CPU widget primitives.
 
-use crate::{
-    InteractionEvents, LayoutItem, Point, Rect, StackLayout, UiInteraction, WidgetState,
-};
+use crate::{InteractionEvents, LayoutItem, Point, Rect, StackLayout, UiInteraction, WidgetState};
 
 /// Stable caller-assigned identity for a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,19 +40,23 @@ impl UiComponent {
 
     #[must_use]
     pub fn button(id: ComponentId, label: impl Into<String>) -> Self {
-        Self::new(id, ComponentKind::Button { label: label.into() })
+        Self::new(
+            id,
+            ComponentKind::Button {
+                label: label.into(),
+            },
+        )
     }
 
     #[must_use]
-    pub fn checkbox(
-        id: ComponentId,
-        label: impl Into<String>,
-        checked: bool,
-    ) -> Self {
-        Self::new(id, ComponentKind::Checkbox {
-            label: label.into(),
-            checked,
-        })
+    pub fn checkbox(id: ComponentId, label: impl Into<String>, checked: bool) -> Self {
+        Self::new(
+            id,
+            ComponentKind::Checkbox {
+                label: label.into(),
+                checked,
+            },
+        )
     }
 
     #[must_use]
@@ -63,10 +65,13 @@ impl UiComponent {
         placeholder: impl Into<String>,
         value: impl Into<String>,
     ) -> Self {
-        Self::new(id, ComponentKind::TextInput {
-            placeholder: placeholder.into(),
-            value: value.into(),
-        })
+        Self::new(
+            id,
+            ComponentKind::TextInput {
+                placeholder: placeholder.into(),
+                value: value.into(),
+            },
+        )
     }
 
     #[must_use]
@@ -220,7 +225,9 @@ impl ComponentTree {
     }
 
     pub fn find_mut(&mut self, id: ComponentId) -> Option<&mut UiComponent> {
-        self.roots.iter_mut().find_map(|root| find_component_mut(root, id))
+        self.roots
+            .iter_mut()
+            .find_map(|root| find_component_mut(root, id))
     }
 
     /// Computes the full visible component tree in depth-first paint order.
@@ -230,7 +237,12 @@ impl ComponentTree {
         self.focusable_ids.clear();
         self.focusable_bounds.clear();
 
-        let roots: Vec<_> = self.roots.iter().filter(|node| node.visible).cloned().collect();
+        let roots: Vec<_> = self
+            .roots
+            .iter()
+            .filter(|node| node.visible)
+            .cloned()
+            .collect();
         let root_items: Vec<_> = roots.iter().map(|node| node.layout_item).collect();
         let root_rects = StackLayout::default().layout(bounds, &root_items);
         for (node, rect) in roots.iter().zip(root_rects) {
@@ -277,13 +289,9 @@ impl ComponentTree {
     ) -> ComponentEvents {
         self.layout(bounds);
         let enabled = vec![true; self.focusable_ids.len()];
-        let events = self.interaction.update(
-            pointer,
-            pressed,
-            released,
-            &enabled,
-            &self.focusable_bounds,
-        );
+        let events =
+            self.interaction
+                .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
         self.translate_events(events)
     }
 
@@ -318,7 +326,9 @@ impl ComponentTree {
 
     fn translate_events(&self, events: InteractionEvents) -> ComponentEvents {
         ComponentEvents {
-            activated: events.clicked.and_then(|index| self.focusable_ids.get(index).copied()),
+            activated: events
+                .clicked
+                .and_then(|index| self.focusable_ids.get(index).copied()),
             focus_changed: events
                 .focus_changed
                 .and_then(|index| self.focusable_ids.get(index).copied()),
@@ -330,7 +340,9 @@ fn find_component(node: &UiComponent, id: ComponentId) -> Option<&UiComponent> {
     if node.id == id {
         return Some(node);
     }
-    node.children.iter().find_map(|child| find_component(child, id))
+    node.children
+        .iter()
+        .find_map(|child| find_component(child, id))
 }
 
 fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut UiComponent> {
@@ -356,10 +368,8 @@ mod tests {
         )
         .with_layout_item(LayoutItem::flexible())
         .with_children(vec![
-            UiComponent::label(ComponentId(2), "Settings")
-                .with_layout_item(LayoutItem::fixed(12)),
-            UiComponent::button(ComponentId(3), "Apply")
-                .with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::label(ComponentId(2), "Settings").with_layout_item(LayoutItem::fixed(12)),
+            UiComponent::button(ComponentId(3), "Apply").with_layout_item(LayoutItem::fixed(20)),
             UiComponent::checkbox(ComponentId(4), "Enable", false)
                 .with_layout_item(LayoutItem::fixed(20)),
         ]);
@@ -408,11 +418,8 @@ mod tests {
 
     #[test]
     fn disabled_and_hidden_components_are_excluded_from_layout_and_tab_order() {
-        let root = UiComponent::panel(
-            ComponentId(10),
-            StackLayout::new(LayoutDirection::Vertical),
-        )
-        .with_children(vec![
+        let root = UiComponent::panel(ComponentId(10), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
             UiComponent::button(ComponentId(11), "Disabled")
                 .with_layout_item(LayoutItem::fixed(10))
                 .with_enabled(false),
@@ -428,7 +435,8 @@ mod tests {
         assert_eq!(placed[1].state, WidgetState::Disabled);
         assert_eq!(placed[2].id, ComponentId(13));
         assert_eq!(
-            tree.focus_next(Rect::new(0, 0, 40, 40), false).focus_changed,
+            tree.focus_next(Rect::new(0, 0, 40, 40), false)
+                .focus_changed,
             Some(ComponentId(13))
         );
     }
@@ -437,7 +445,10 @@ mod tests {
     fn component_values_can_be_updated_by_stable_id() {
         let mut tree = sample_tree();
         assert!(tree.find_mut(ComponentId(4)).unwrap().set_checked(true));
-        assert!(tree.find_mut(ComponentId(2)).unwrap().set_text("Preferences"));
+        assert!(tree
+            .find_mut(ComponentId(2))
+            .unwrap()
+            .set_text("Preferences"));
         assert!(matches!(
             tree.find(ComponentId(4)).unwrap().kind(),
             ComponentKind::Checkbox { checked: true, .. }
@@ -450,11 +461,8 @@ mod tests {
 
     #[test]
     fn hidden_children_do_not_consume_layout_space() {
-        let root = UiComponent::panel(
-            ComponentId(20),
-            StackLayout::new(LayoutDirection::Vertical),
-        )
-        .with_children(vec![
+        let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
             UiComponent::button(ComponentId(21), "Hidden")
                 .with_layout_item(LayoutItem::fixed(10))
                 .with_visible(false),
