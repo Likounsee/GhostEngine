@@ -34,8 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     )
     .with_layout_item(LayoutItem::flexible())
     .with_children(vec![
-        UiComponent::label(TITLE, "GhostEngine native UI")
-            .with_layout_item(LayoutItem::fixed(42)),
+        UiComponent::label(TITLE, "GhostEngine native UI").with_layout_item(LayoutItem::fixed(42)),
         UiComponent::label(
             ComponentId(6),
             "CPU-rendered components, native input, IME and system clipboard",
@@ -45,10 +44,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .with_layout_item(LayoutItem::fixed(52)),
         UiComponent::checkbox(ENABLED, "Enable this option", true)
             .with_layout_item(LayoutItem::fixed(42)),
-        UiComponent::button(ACTION, "Apply")
-            .with_layout_item(LayoutItem::fixed(48)),
-        UiComponent::label(STATUS, "Click the input, type, then try Ctrl+A / Ctrl+C / Ctrl+V.")
-            .with_layout_item(LayoutItem::flexible()),
+        UiComponent::button(ACTION, "Apply").with_layout_item(LayoutItem::fixed(48)),
+        UiComponent::label(
+            STATUS,
+            "Click the input, type, then try Ctrl+A / Ctrl+C / Ctrl+V.",
+        )
+        .with_layout_item(LayoutItem::flexible()),
     ]);
     let mut tree = ComponentTree::new(vec![panel]);
     let theme = UiTheme::default();
