@@ -487,6 +487,59 @@ fn draw_cached_glyph_clipped(
     }
 }
 
+/// Draws a shaped glyph run with a full affine transform and framebuffer clip.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_text_shaped_transformed_clipped(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    shaped: &ShapedText,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+    transform: crate::Transform2D,
+) -> TextMetrics {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 || shaped.glyphs.is_empty()
+        || !transform.is_finite()
+    {
+        return TextMetrics::default();
+    }
+    let Some(inverse) = transform.inverse() else {
+        return TextMetrics::default();
+    };
+    let mut pen_x = baseline.x as f32;
+    let mut pen_y = baseline.y as f32;
+    for shaped_glyph in &shaped.glyphs {
+        let Ok(glyph_index) = u16::try_from(shaped_glyph.glyph_id) else {
+            pen_x += shaped_glyph.x_advance;
+            pen_y -= shaped_glyph.y_advance;
+            continue;
+        };
+        let glyph = font.glyph_index(glyph_index, pixel_size);
+        let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
+        let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
+        if left.is_finite() && top.is_finite() {
+            draw_affine_glyph(
+                target,
+                &glyph,
+                left,
+                top,
+                color,
+                clip,
+                transform,
+                inverse,
+            );
+        }
+        pen_x += shaped_glyph.x_advance;
+        pen_y -= shaped_glyph.y_advance;
+    }
+    TextMetrics {
+        width: shaped.advance_x.abs(),
+        height: font.line_height(pixel_size),
+        line_count: 1,
+    }
+}
+
 /// Horizontal alignment used for each line in a constrained text run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TextAlign {
