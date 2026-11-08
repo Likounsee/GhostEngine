@@ -133,6 +133,21 @@ impl UiInteraction {
         }
     }
 
+    /// Activates the currently focused widget, for keyboard Enter/Space handling.
+    ///
+    /// The caller decides which physical keys map to activation and invokes this
+    /// method on the key-down edge to avoid repeated activation while held.
+    pub fn activate_focused(&self, enabled: &[bool], bounds: &[Rect]) -> InteractionEvents {
+        let clicked = self
+            .focus
+            .focused()
+            .filter(|index| is_enabled(*index, enabled) && *index < bounds.len());
+        InteractionEvents {
+            clicked,
+            focus_changed: None,
+        }
+    }
+
     /// Moves keyboard focus through enabled widgets in tab order.
     pub fn focus_next(&mut self, enabled: &[bool], reverse: bool) -> InteractionEvents {
         let previous = self.focus.focused();
@@ -312,6 +327,17 @@ mod tests {
             ui.focus_next(&[true, false, true], true).focus_changed,
             Some(2)
         );
+    }
+
+    #[test]
+    fn keyboard_activation_targets_only_the_focused_enabled_widget() {
+        let (_, bounds) = controls();
+        let mut ui = UiInteraction::new();
+        assert_eq!(ui.activate_focused(&[true, true, false], &bounds).clicked, None);
+        ui.focus_next(&[true, true, false], false);
+        assert_eq!(ui.activate_focused(&[true, true, false], &bounds).clicked, Some(0));
+        ui.focus_next(&[true, true, false], false);
+        assert_eq!(ui.activate_focused(&[true, false, false], &bounds).clicked, None);
     }
 
     #[test]
