@@ -223,6 +223,22 @@ mod tests {
     }
 
     #[test]
+    fn disabling_focused_widget_reports_reconciled_focus() {
+        let (_, bounds) = controls();
+        let mut ui = UiInteraction::new();
+        ui.update(Some(Point::new(2, 2)), true, false, &[true, true, false], &bounds);
+        let events = ui.update(
+            Some(Point::new(30, 30)),
+            false,
+            false,
+            &[false, true, false],
+            &bounds,
+        );
+        assert_eq!(events.focus_changed, Some(1));
+        assert_eq!(ui.focused(), Some(1));
+    }
+
+    #[test]
     fn tab_navigation_skips_disabled_controls_and_wraps() {
         let mut ui = UiInteraction::new();
         assert_eq!(ui.focus_next(&[true, false, true], false).focus_changed, Some(0));
