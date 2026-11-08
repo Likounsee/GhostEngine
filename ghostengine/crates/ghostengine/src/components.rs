@@ -234,7 +234,10 @@ impl UiComponent {
                     | ComponentKind::Checkbox { .. }
                     | ComponentKind::TextInput { .. }
                     | ComponentKind::ComboBox { .. }
-                    | ComponentKind::Tabs { .. }\n                    | ComponentKind::Switch { .. }\n                    | ComponentKind::RadioButton { .. }\n                    | ComponentKind::Slider { .. }
+                    | ComponentKind::Tabs { .. }
+                    | ComponentKind::Switch { .. }
+                    | ComponentKind::RadioButton { .. }
+                    | ComponentKind::Slider { .. }
             )
     }
 }
