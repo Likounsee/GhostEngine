@@ -550,7 +550,7 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::{key_to_character, pack_rgb, InputState, WindowError};
+    use super::{key_to_character, pack_rgb, ComponentTree, InputState, WindowError};
     use crate::Color;
     use minifb::Key;
 
