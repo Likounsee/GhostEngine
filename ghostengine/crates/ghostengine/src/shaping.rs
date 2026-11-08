@@ -196,6 +196,52 @@ mod tests {
     }
 
     #[test]
+    fn bidi_visual_runs_cover_each_utf8_character_exactly_once() {
+        // Include multibyte Latin, Hebrew, Arabic digits, punctuation and emoji.
+        // The resolver must return byte ranges, not character indices or reversed
+        // UTF-8 fragments, even when the visual order differs from logical order.
+        let text = "Café (שלום) ١٢٣ — 👩‍💻";
+        let runs = super::resolve_bidi_runs(text);
+        assert!(!runs.is_empty());
+
+        let mut coverage = vec![0_u8; text.len()];
+        for run in &runs {
+            assert!(run.byte_range.start < run.byte_range.end);
+            let slice = text
+                .get(run.byte_range.clone())
+                .expect("every bidi run must be on UTF-8 boundaries");
+            assert!(!slice.is_empty());
+            for byte in run.byte_range.clone() {
+                coverage[byte] = coverage[byte].saturating_add(1);
+            }
+        }
+
+        for (index, byte) in text.bytes().enumerate() {
+            assert_eq!(
+                coverage[index], 1,
+                "byte {index} ({byte:#04x}) must belong to exactly one visual run"
+            );
+        }
+    }
+
+    #[test]
+    fn bidi_visual_run_ranges_never_split_a_unicode_scalar() {
+        let text = "Aé אבג العربية 𐐷 Z";
+        for run in super::resolve_bidi_runs(text) {
+            let slice = text
+                .get(run.byte_range.clone())
+                .expect("bidi range must start and end at UTF-8 boundaries");
+            assert!(slice.chars().count() > 0);
+            assert!(run.byte_range.end <= text.len());
+        }
+    }
+
+    #[test]
+    fn empty_bidi_text_has_no_visual_runs() {
+        assert!(super::resolve_bidi_runs("").is_empty());
+    }
+
+    #[test]
     fn rejects_invalid_font_data() {
         assert_eq!(
             OpenTypeShaper::from_bytes(b"not a font").err(),
