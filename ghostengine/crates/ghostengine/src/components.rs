@@ -422,10 +422,10 @@ mod tests {
             .with_children(vec![
                 UiComponent::button(ComponentId(11), "Disabled")
                     .with_layout_item(LayoutItem::fixed(10))
-                .with_enabled(false),
+                    .with_enabled(false),
                 UiComponent::button(ComponentId(12), "Hidden")
                     .with_layout_item(LayoutItem::fixed(10))
-                .with_visible(false),
+                    .with_visible(false),
                 UiComponent::button(ComponentId(13), "Visible")
                     .with_layout_item(LayoutItem::fixed(10)),
             ]);
