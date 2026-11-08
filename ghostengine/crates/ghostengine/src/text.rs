@@ -1730,18 +1730,9 @@ mod tests {
             super::fallback_text_clusters("a\u{0301}b"),
             ["a\u{0301}", "b"]
         );
-        assert_eq!(
-            super::fallback_text_clusters("👩‍💻x"),
-            ["👩‍💻", "x"]
-        );
-        assert_eq!(
-            super::fallback_text_clusters("🇫🇷!"),
-            ["🇫🇷", "!"]
-        );
-        assert_eq!(
-            super::fallback_text_clusters("✈️x"),
-            ["✈️", "x"]
-        );
+        assert_eq!(super::fallback_text_clusters("👩‍💻x"), ["👩‍💻", "x"]);
+        assert_eq!(super::fallback_text_clusters("🇫🇷!"), ["🇫🇷", "!"]);
+        assert_eq!(super::fallback_text_clusters("✈️x"), ["✈️", "x"]);
     }
 
     #[test]
