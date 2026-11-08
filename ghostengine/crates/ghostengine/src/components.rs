@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    draw_button, draw_checkbox, draw_label_clipped, draw_panel, draw_text_input, FontFace,
+    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_tabs,
+    draw_text_input, ComboBoxState, TabsState, FontFace,
     Framebuffer, InteractionEvents, LayoutItem, Point, Rect, StackLayout, TextInputOptions,
     TextInputState, UiInteraction, UiTheme, WidgetState,
 };
@@ -23,6 +24,8 @@ pub enum ComponentKind {
     Checkbox { label: String, checked: bool },
     TextInput { placeholder: String, value: String },
     Label { text: String },
+    ComboBox { items: Vec<String> },
+    Tabs { labels: Vec<String> },
 }
 
 /// A retained component node. Child order is also layout and keyboard tab order.
@@ -82,6 +85,18 @@ impl UiComponent {
     #[must_use]
     pub fn label(id: ComponentId, text: impl Into<String>) -> Self {
         Self::new(id, ComponentKind::Label { text: text.into() })
+    }
+
+    /// Creates a keyboard- and pointer-operable combo box.
+    #[must_use]
+    pub fn combo_box(id: ComponentId, items: Vec<String>) -> Self {
+        Self::new(id, ComponentKind::ComboBox { items })
+    }
+
+    /// Creates a keyboard- and pointer-operable horizontal tab strip.
+    #[must_use]
+    pub fn tabs(id: ComponentId, labels: Vec<String>) -> Self {
+        Self::new(id, ComponentKind::Tabs { labels })
     }
 
     #[must_use]
@@ -195,6 +210,8 @@ impl UiComponent {
                 ComponentKind::Button { .. }
                     | ComponentKind::Checkbox { .. }
                     | ComponentKind::TextInput { .. }
+                    | ComponentKind::ComboBox { .. }
+                    | ComponentKind::Tabs { .. }
             )
     }
 }
@@ -207,6 +224,9 @@ pub enum ComponentKey {
     Space,
     ArrowLeft,
     ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Escape,
     WordLeft,
     WordRight,
     Home,
@@ -279,14 +299,18 @@ pub struct ComponentTree {
     focusable_bounds: Vec<Rect>,
     placed: Vec<PlacedComponent>,
     text_states: HashMap<ComponentId, TextInputState>,
+    combo_states: HashMap<ComponentId, ComboBoxState>,
+    tabs_states: HashMap<ComponentId, TabsState>,
 }
 
 impl ComponentTree {
     #[must_use]
     pub fn new(roots: Vec<UiComponent>) -> Self {
         let mut text_states = HashMap::new();
+        let mut combo_states = HashMap::new();
+        let mut tabs_states = HashMap::new();
         for root in &roots {
-            collect_text_states(root, &mut text_states);
+            collect_component_states(root, &mut text_states, &mut combo_states, &mut tabs_states);
         }
         Self {
             roots,
@@ -295,6 +319,8 @@ impl ComponentTree {
             focusable_bounds: Vec::new(),
             placed: Vec::new(),
             text_states,
+            combo_states,
+            tabs_states,
         }
     }
 
@@ -312,7 +338,7 @@ impl ComponentTree {
                 return Err(ComponentTreeError::DuplicateId(id));
             }
         }
-        collect_text_states(&component, &mut self.text_states);
+        collect_component_states(&component, &mut self.text_states, &mut self.combo_states, &mut self.tabs_states);
         self.roots.push(component);
         self.reset_after_structure_change();
         Ok(())
@@ -333,7 +359,7 @@ impl ComponentTree {
         if self.find(parent).is_none() {
             return Err(ComponentTreeError::ParentNotFound(parent));
         }
-        collect_text_states(&child, &mut self.text_states);
+        collect_component_states(&child, &mut self.text_states, &mut self.combo_states, &mut self.tabs_states);
         self.find_mut(parent)
             .expect("parent was checked above")
             .children
@@ -392,6 +418,8 @@ impl ComponentTree {
         let removed = remove_component(&mut self.roots, id)?;
         for removed_id in component_ids(&removed) {
             self.text_states.remove(&removed_id);
+            self.combo_states.remove(&removed_id);
+            self.tabs_states.remove(&removed_id);
         }
         self.reset_after_structure_change();
         Some(removed)
@@ -795,13 +823,24 @@ impl ComponentTree {
             ComponentKey::Tab => self.focus_next(bounds, shift),
             ComponentKey::Enter | ComponentKey::Space => {
                 if self.focused_text_input().is_some() {
-                    ComponentEvents::default()
-                } else {
-                    self.activate_focused(bounds)
+                    return ComponentEvents::default();
                 }
+                let Some(id) = self.focused_component() else {
+                    return ComponentEvents::default();
+                };
+                if let Some(component) = self.find(id) {
+                    if let ComponentKind::ComboBox { items } = component.kind() {
+                        self.combo_states.entry(id).or_default().toggle(items.len());
+                        return ComponentEvents::default();
+                    }
+                }
+                self.activate_focused(bounds)
             }
             ComponentKey::ArrowLeft
             | ComponentKey::ArrowRight
+            | ComponentKey::ArrowUp
+            | ComponentKey::ArrowDown
+            | ComponentKey::Escape
             | ComponentKey::WordLeft
             | ComponentKey::WordRight
             | ComponentKey::Home
