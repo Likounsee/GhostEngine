@@ -37,10 +37,10 @@ pub use rasterizer::{
     fill_rect_clipped, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
 };
-pub use shaping::{OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError, TextDirection};
+pub use shaping::{resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError, TextDirection};
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
 pub use text::{
-    draw_text, draw_text_box_clipped, draw_text_box_transformed_clipped,
+    draw_text, draw_text_bidi_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped,
     draw_text_box_with_fallback_shaped_clipped, draw_text_clipped, draw_text_shaped_clipped,
     draw_text_shaped_transformed_clipped, draw_text_transformed_clipped,
     draw_text_with_fallback_clipped, draw_text_with_fallback_shaped_clipped, measure_with_fallback,
