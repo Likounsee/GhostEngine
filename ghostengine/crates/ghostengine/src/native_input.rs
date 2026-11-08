@@ -173,6 +173,7 @@ fn apply_key_code(code: KeyCode, control: bool, shift: bool, input: &mut InputSt
         KeyCode::Home => input.home_pressed = true,
         KeyCode::End => input.end_pressed = true,
         KeyCode::Enter | KeyCode::NumpadEnter => input.enter_pressed = true,
+        KeyCode::Space => input.space_pressed = true,
         KeyCode::Tab => input.tab_pressed = true,
         KeyCode::KeyA if control => input.select_all_pressed = true,
         KeyCode::KeyC if control => input.copy_pressed = true,
