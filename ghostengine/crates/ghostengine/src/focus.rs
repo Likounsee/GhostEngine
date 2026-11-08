@@ -37,9 +37,9 @@ impl FocusManager {
     /// If the focused control is no longer available, focus moves to the first
     /// enabled control. An empty or fully disabled interface has no focus.
     pub fn reconcile(&mut self, enabled: &[bool]) {
-        if !self
+        if self
             .focused
-            .is_some_and(|index| enabled.get(index).copied().unwrap_or(false))
+            .is_some_and(|index| !enabled.get(index).copied().unwrap_or(false))
         {
             self.focused = enabled.iter().position(|is_enabled| *is_enabled);
         }
