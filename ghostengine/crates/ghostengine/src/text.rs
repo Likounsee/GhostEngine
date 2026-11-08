@@ -2384,8 +2384,7 @@ mod tests {
             "GPOS mark attachment should produce a positioned mark offset"
         );
 
-        let mut target =
-            crate::Framebuffer::new(96, 64, crate::Color::BLACK).expect("framebuffer");
+        let mut target = crate::Framebuffer::new(96, 64, crate::Color::BLACK).expect("framebuffer");
         super::draw_text_shaped_clipped(
             &mut target,
             &font,
