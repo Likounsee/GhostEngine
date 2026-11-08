@@ -234,6 +234,24 @@ pub enum TextInputEvent {
     CompositionCancel,
 }
 
+/// Errors returned by checked component-tree lifecycle operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentTreeError {
+    DuplicateId(ComponentId),
+    ParentNotFound(ComponentId),
+}
+
+impl std::fmt::Display for ComponentTreeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateId(id) => write!(formatter, "duplicate component ID {}", id.0),
+            Self::ParentNotFound(id) => write!(formatter, "parent component {} was not found", id.0),
+        }
+    }
+}
+
+impl std::error::Error for ComponentTreeError {}
+
 /// Retained component hierarchy with layout and interaction dispatch.
 #[derive(Debug, Clone, Default)]
 pub struct ComponentTree {
@@ -840,6 +858,52 @@ impl ComponentTree {
     }
 }
 
+fn validate_unique_ids(roots: &[UiComponent]) -> Result<(), ComponentTreeError> {
+    let mut seen = std::collections::HashSet::new();
+    for root in roots {
+        for id in component_ids(root) {
+            if !seen.insert(id) {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_subtree_ids(root: &UiComponent) -> Result<(), ComponentTreeError> {
+    let mut seen = std::collections::HashSet::new();
+    for id in component_ids(root) {
+        if !seen.insert(id) {
+            return Err(ComponentTreeError::DuplicateId(id));
+        }
+    }
+    Ok(())
+}
+
+fn component_ids(root: &UiComponent) -> Vec<ComponentId> {
+    fn visit(node: &UiComponent, ids: &mut Vec<ComponentId>) {
+        ids.push(node.id());
+        for child in node.children() {
+            visit(child, ids);
+        }
+    }
+    let mut ids = Vec::new();
+    visit(root, &mut ids);
+    ids
+}
+
+fn remove_component(nodes: &mut Vec<UiComponent>, id: ComponentId) -> Option<UiComponent> {
+    if let Some(index) = nodes.iter().position(|node| node.id() == id) {
+        return Some(nodes.remove(index));
+    }
+    for node in nodes {
+        if let Some(removed) = remove_component(&mut node.children, id) {
+            return Some(removed);
+        }
+    }
+    None
+}
+
 fn collect_text_states(node: &UiComponent, states: &mut HashMap<ComponentId, TextInputState>) {
     if let ComponentKind::TextInput { value, .. } = node.kind() {
         states.insert(node.id(), TextInputState::new(value.clone()));
@@ -889,6 +953,48 @@ mod tests {
                 .with_layout_item(LayoutItem::fixed(20)),
         ]);
         ComponentTree::new(vec![panel])
+    }
+
+    #[test]
+    fn checked_tree_rejects_duplicate_ids_across_descendants() {
+        let duplicate = UiComponent::panel(ComponentId(90), StackLayout::default())
+            .with_children(vec![UiComponent::label(ComponentId(90), "duplicate")]);
+        assert_eq!(
+            ComponentTree::try_new(vec![duplicate]).unwrap_err(),
+            super::ComponentTreeError::DuplicateId(ComponentId(90))
+        );
+    }
+
+    #[test]
+    fn component_lifecycle_adds_and_removes_subtrees_and_text_state() {
+        let mut tree = ComponentTree::try_new(vec![
+            UiComponent::panel(ComponentId(91), StackLayout::default()),
+        ])
+        .unwrap();
+        tree.add_child(
+            ComponentId(91),
+            UiComponent::text_input(ComponentId(92), "name", "hello"),
+        )
+        .unwrap();
+        assert!(tree.text_input_state(ComponentId(92)).is_some());
+        assert_eq!(
+            tree.add_root(UiComponent::label(ComponentId(92), "duplicate")),
+            Err(super::ComponentTreeError::DuplicateId(ComponentId(92)))
+        );
+        let removed = tree.remove(ComponentId(91)).unwrap();
+        assert_eq!(removed.id(), ComponentId(91));
+        assert!(tree.find(ComponentId(92)).is_none());
+        assert!(tree.text_input_state(ComponentId(92)).is_none());
+        assert!(tree.remove(ComponentId(91)).is_none());
+    }
+
+    #[test]
+    fn adding_child_to_missing_parent_returns_a_typed_error() {
+        let mut tree = ComponentTree::default();
+        assert_eq!(
+            tree.add_child(ComponentId(404), UiComponent::label(ComponentId(405), "x")),
+            Err(super::ComponentTreeError::ParentNotFound(ComponentId(404)))
+        );
     }
 
     #[test]
