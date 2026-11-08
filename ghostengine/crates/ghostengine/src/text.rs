@@ -635,10 +635,18 @@ pub fn draw_text_with_fallback_bidi_clipped(
                             .as_ref()
                             .filter(|face| face.has_glyph(character))
                             .cloned()
-                            .or_else(|| family.faces.iter().find(|face| face.has_glyph(character)).cloned())
+                            .or_else(|| {
+                                family
+                                    .faces
+                                    .iter()
+                                    .find(|face| face.has_glyph(character))
+                                    .cloned()
+                            })
                             .unwrap_or_else(|| Arc::clone(&primary))
                     } else {
-                        family.faces.iter()
+                        family
+                            .faces
+                            .iter()
                             .find(|face| face.has_glyph(character))
                             .cloned()
                             .unwrap_or_else(|| Arc::clone(&primary))
@@ -647,7 +655,10 @@ pub fn draw_text_with_fallback_bidi_clipped(
                     current_face.clone().unwrap_or_else(|| Arc::clone(&primary))
                 };
 
-                if current_face.as_ref().is_some_and(|face| !Arc::ptr_eq(face, &selected)) {
+                if current_face
+                    .as_ref()
+                    .is_some_and(|face| !Arc::ptr_eq(face, &selected))
+                {
                     if let Some(face) = current_face.take() {
                         segments.push(Segment::Glyphs(face, std::mem::take(&mut current_text)));
                     }
