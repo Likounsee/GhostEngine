@@ -13,6 +13,7 @@ pub mod layout;
 pub mod path;
 pub mod rasterizer;
 pub mod stroke;
+pub mod shaping;
 pub mod text;
 pub mod texture;
 pub mod transform;
@@ -37,6 +38,7 @@ pub use rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
 };
 pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
+pub use shaping::{OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError};
 pub use text::{
     draw_text, draw_text_box_clipped, draw_text_box_transformed_clipped, draw_text_clipped,
     draw_text_transformed_clipped, draw_text_with_fallback_clipped, measure_with_fallback,
