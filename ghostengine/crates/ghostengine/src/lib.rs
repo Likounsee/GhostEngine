@@ -25,7 +25,9 @@ pub mod ui;
 pub mod window;
 
 pub use color::Color;
-pub use components::{ComponentEvents, ComponentId, ComponentKind, ComponentTree, PlacedComponent, UiComponent};
+pub use components::{
+    ComponentEvents, ComponentId, ComponentKind, ComponentTree, PlacedComponent, UiComponent,
+};
 pub use composition::{compose_layers, Layer};
 pub use display_list::{DisplayList, RenderStats};
 pub use focus::FocusManager;
