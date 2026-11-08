@@ -206,7 +206,7 @@ pub struct PlacedComponent {
 }
 
 /// Component-level events emitted by pointer or keyboard interaction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ComponentEvents {
     pub activated: Option<ComponentId>,
     pub focus_changed: Option<ComponentId>,
