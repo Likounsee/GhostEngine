@@ -312,11 +312,14 @@ impl ComponentTree {
                 return Err(ComponentTreeError::DuplicateId(id));
             }
         }
-        let Some(parent_node) = self.find_mut(parent) else {
+        if self.find(parent).is_none() {
             return Err(ComponentTreeError::ParentNotFound(parent));
-        };
+        }
         collect_text_states(&child, &mut self.text_states);
-        parent_node.children.push(child);
+        self.find_mut(parent)
+            .expect("parent was checked above")
+            .children
+            .push(child);
         self.reset_after_structure_change();
         Ok(())
     }
@@ -959,10 +962,10 @@ mod tests {
     fn checked_tree_rejects_duplicate_ids_across_descendants() {
         let duplicate = UiComponent::panel(ComponentId(90), StackLayout::default())
             .with_children(vec![UiComponent::label(ComponentId(90), "duplicate")]);
-        assert_eq!(
-            ComponentTree::try_new(vec![duplicate]).unwrap_err(),
-            super::ComponentTreeError::DuplicateId(ComponentId(90))
-        );
+        assert!(matches!(
+            ComponentTree::try_new(vec![duplicate]),
+            Err(super::ComponentTreeError::DuplicateId(ComponentId(90)))
+        ));
     }
 
     #[test]
