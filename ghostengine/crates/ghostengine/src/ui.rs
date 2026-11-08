@@ -748,7 +748,9 @@ impl ListState {
         if row_height == 0 || !bounds.contains(pointer) {
             return false;
         }
-        let relative_y = pointer.y.saturating_sub(bounds.y);
+        // `contains` guarantees the pointer is inside the non-negative
+        // rectangle, so converting its y coordinate is safe here.
+        let relative_y = (pointer.y as u32) - bounds.y;
         let index = (u64::from(relative_y) + u64::from(scroll_offset)) / u64::from(row_height);
         if index >= item_count as u64 {
             return false;
