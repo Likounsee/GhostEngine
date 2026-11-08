@@ -596,11 +596,7 @@ fn fallback_face_for_cluster(
         family
             .faces
             .iter()
-            .find(|face| {
-                required
-                    .iter()
-                    .all(|character| face.has_glyph(*character))
-            })
+            .find(|face| required.iter().all(|character| face.has_glyph(*character)))
             .or_else(|| family.faces.iter().find(|face| face.has_glyph(base)))
             .cloned()
             .unwrap_or_else(|| Arc::clone(primary))
