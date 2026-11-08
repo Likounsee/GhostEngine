@@ -255,6 +255,8 @@ pub fn draw_text_with_fallback_clipped(
     let mut y = baseline.y;
     let mut previous: Option<(char, usize)> = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
+    let mut above_mark_offset = 0.0_f32;
+    let mut below_mark_offset = 0.0_f32;
     let space = family
         .font_for(' ')
         .unwrap_or(primary)
@@ -266,6 +268,8 @@ pub fn draw_text_with_fallback_clipped(
                 x = baseline.x as f32;
                 previous = None;
                 base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
                 let next_y = y as f32 + family.line_height(pixel_size);
                 if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
                     break;
@@ -276,6 +280,8 @@ pub fn draw_text_with_fallback_clipped(
                 x += tab_width;
                 previous = None;
                 base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
             }
             character => {
                 let face = family.font_for(character).unwrap_or(primary);
@@ -297,11 +303,24 @@ pub fn draw_text_with_fallback_clipped(
                 let mut glyph_top = y as f32 - glyph.ymin as f32 - glyph.height as f32;
                 if combining {
                     if let Some(anchor) = base_anchor {
-                        (glyph_left, glyph_top) =
-                            positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+                        let offset = if is_below_combining_mark(character) {
+                            below_mark_offset
+                        } else {
+                            above_mark_offset
+                        };
+                        (glyph_left, glyph_top) = positioned_mark_origin_stacked(
+                            character, glyph.width, glyph.height, anchor, offset,
+                        );
+                        if is_below_combining_mark(character) {
+                            below_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        } else {
+                            above_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        }
                     }
                 } else {
                     base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
+                    above_mark_offset = 0.0;
+                    below_mark_offset = 0.0;
                 }
                 let draw_x = glyph_left - glyph.xmin as f32;
                 let draw_y = glyph_top + glyph.ymin as f32 + glyph.height as f32;
@@ -558,6 +577,8 @@ pub fn draw_text_clipped(
     let origin_x = pen_x;
     let mut previous = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
+    let mut above_mark_offset = 0.0_f32;
+    let mut below_mark_offset = 0.0_f32;
     let mut max_width: f32 = 0.0;
     let mut line_count = 1_u32;
     let space_metrics = font.glyph(' ', pixel_size);
@@ -571,12 +592,16 @@ pub fn draw_text_clipped(
             line_count += 1;
             previous = None;
             base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
             continue;
         }
         if character == '\t' {
             pen_x += tab_width;
             previous = None;
             base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
             continue;
         }
 
@@ -591,8 +616,19 @@ pub fn draw_text_clipped(
         let combining = is_combining_mark(character);
         if combining {
             if let Some(anchor) = base_anchor {
-                (glyph_left, glyph_top) =
-                    positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+                let offset = if is_below_combining_mark(character) {
+                    below_mark_offset
+                        } else {
+                    above_mark_offset
+                        };
+                        (glyph_left, glyph_top) = positioned_mark_origin_stacked(
+                    character, glyph.width, glyph.height, anchor, offset,
+                        );
+                        if is_below_combining_mark(character) {
+                    below_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        } else {
+                    above_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        }
             }
         } else {
             base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
@@ -661,6 +697,8 @@ pub fn draw_text_transformed_clipped(
     let origin_x = pen_x;
     let mut previous = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
+    let mut above_mark_offset = 0.0_f32;
+    let mut below_mark_offset = 0.0_f32;
     let tab_width = (font.glyph(' ', pixel_size).advance_width * 4.0).max(pixel_size);
     for character in text.chars() {
         match character {
@@ -669,11 +707,15 @@ pub fn draw_text_transformed_clipped(
                 pen_y += line_height;
                 previous = None;
                 base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
             }
             '\t' => {
                 pen_x += tab_width;
                 previous = None;
                 base_anchor = None;
+            above_mark_offset = 0.0;
+            below_mark_offset = 0.0;
             }
             character => {
                 if !is_combining_mark(character) {
@@ -687,11 +729,24 @@ pub fn draw_text_transformed_clipped(
                 let combining = is_combining_mark(character);
                 if combining {
                     if let Some(anchor) = base_anchor {
-                        (left, top) =
-                            positioned_mark_origin(character, glyph.width, glyph.height, anchor);
+                        let offset = if is_below_combining_mark(character) {
+                            below_mark_offset
+                        } else {
+                            above_mark_offset
+                        };
+                        (left, top) = positioned_mark_origin_stacked(
+                            character, glyph.width, glyph.height, anchor, offset,
+                        );
+                        if is_below_combining_mark(character) {
+                            below_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        } else {
+                            above_mark_offset = next_mark_stack_offset(offset, glyph.height);
+                        }
                     }
                 } else {
                     base_anchor = Some((left, top, glyph.width, glyph.height));
+                    above_mark_offset = 0.0;
+                    below_mark_offset = 0.0;
                 }
                 draw_affine_glyph(
                     target,
@@ -912,14 +967,30 @@ fn positioned_mark_origin(
     mark_height: usize,
     base: (f32, f32, usize, usize),
 ) -> (f32, f32) {
+    positioned_mark_origin_stacked(character, mark_width, mark_height, base, 0.0)
+}
+
+/// Positions a mark while keeping earlier marks in the same stack visible.
+fn positioned_mark_origin_stacked(
+    character: char,
+    mark_width: usize,
+    mark_height: usize,
+    base: (f32, f32, usize, usize),
+    stack_offset: f32,
+) -> (f32, f32) {
     let (base_left, base_top, base_width, base_height) = base;
     let left = base_left + (base_width as f32 - mark_width as f32) * 0.5;
     let top = if is_below_combining_mark(character) {
-        base_top + base_height as f32 - 1.0
+        base_top + base_height as f32 - 1.0 + stack_offset
     } else {
-        base_top - mark_height as f32 + 1.0
+        base_top - mark_height as f32 + 1.0 - stack_offset
     };
     (left, top)
+}
+
+/// Adds one pixel of separation between vertically stacked marks.
+fn next_mark_stack_offset(current: f32, mark_height: usize) -> f32 {
+    current + mark_height as f32 + 1.0
 }
 
 fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
@@ -985,6 +1056,28 @@ mod tests {
         assert_eq!(origin, (12.5, 19.0));
         let below = super::positioned_mark_origin('\u{0327}', 3, 2, (10.0, 20.0, 8, 12));
         assert_eq!(below, (12.5, 31.0));
+    }
+
+    #[test]
+    fn multiple_combining_marks_stack_without_overlapping() {
+        let base = (10.0, 20.0, 8, 12);
+        let first_above = super::positioned_mark_origin_stacked(
+            '\u{0301}', 3, 2, base, 0.0,
+        );
+        let second_above = super::positioned_mark_origin_stacked(
+            '\u{0308}', 3, 2, base, super::next_mark_stack_offset(0.0, 2),
+        );
+        assert_eq!(first_above, (12.5, 19.0));
+        assert_eq!(second_above, (12.5, 16.0));
+
+        let first_below = super::positioned_mark_origin_stacked(
+            '\u{0327}', 3, 2, base, 0.0,
+        );
+        let second_below = super::positioned_mark_origin_stacked(
+            '\u{0328}', 3, 2, base, super::next_mark_stack_offset(0.0, 2),
+        );
+        assert_eq!(first_below, (12.5, 31.0));
+        assert_eq!(second_below, (12.5, 34.0));
     }
 
     #[test]
