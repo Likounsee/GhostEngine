@@ -26,9 +26,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let font = FontFace::from_bytes(&font_data)
         .map_err(|error| format!("Could not load font: {error}"))?;
 
-    let layout = StackLayout::new(LayoutDirection::Vertical)
-        .with_padding(Insets::all(28))
-        .with_gap(14);
     let panel = UiComponent::panel(
         ComponentId(0),
         StackLayout::new(LayoutDirection::Vertical)
@@ -62,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         HEIGHT,
         move |framebuffer, input, clipboard| {
             if input.escape_down {
-                return;
+                return false;
             }
 
             let bounds = Rect::new(0, 0, framebuffer.width(), framebuffer.height());
@@ -97,9 +94,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             framebuffer.clear(ghostengine::Color::rgb(239, 242, 248));
             tree.render(framebuffer, bounds, &font, 19.0, &theme);
+            true
         },
     )?;
-    let _ = layout;
     Ok(())
 }
 
