@@ -1153,8 +1153,7 @@ impl ComponentTree {
                 }
                 Some(ComponentKind::Slider {
                     min, max, value, ..
-                }) if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
-                {
+                }) if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight => {
                     let next = if key == ComponentKey::ArrowLeft {
                         value.saturating_sub(1).max(min)
                     } else {
