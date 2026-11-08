@@ -1,10 +1,13 @@
 //! Retained-mode component tree for application interfaces.
 //!
 //! The tree owns component identity, hierarchy, layout participation, and
-//! interaction dispatch. Rendering remains explicit: applications can draw
-//! each returned rectangle with GhostEngine's existing CPU widget primitives.
+//! interaction dispatch. Components render directly into GhostEngine's CPU framebuffer.
 
-use crate::{draw_button, draw_checkbox, draw_label_clipped, draw_panel, draw_text_input, FontFace, Framebuffer, InteractionEvents, LayoutItem, Point, Rect, StackLayout, TextInputOptions, TextInputState, UiInteraction, UiTheme, WidgetState};
+use crate::{
+    draw_button, draw_checkbox, draw_label_clipped, draw_panel, draw_text_input, FontFace,
+    Framebuffer, InteractionEvents, LayoutItem, Point, Rect, StackLayout, TextInputOptions,
+    TextInputState, UiInteraction, UiTheme, WidgetState,
+};
 
 /// Stable caller-assigned identity for a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -314,33 +317,86 @@ impl ComponentTree {
     }
 
     /// Paints all visible components into the supplied CPU framebuffer.
-    pub fn render(&mut self, target: &mut Framebuffer, bounds: Rect, font: &FontFace, pixel_size: f32, theme: &UiTheme) {
+    pub fn render(
+        &mut self,
+        target: &mut Framebuffer,
+        bounds: Rect,
+        font: &FontFace,
+        pixel_size: f32,
+        theme: &UiTheme,
+    ) {
         self.layout(bounds);
         let placements = self.placed.clone();
         let focused = self.interaction.focused();
         let focusable = self.focusable_ids.clone();
         for placement in placements {
-            let Some(component) = self.find(placement.id) else { continue };
+            let Some(component) = self.find(placement.id) else {
+                continue;
+            };
             match component.kind() {
                 ComponentKind::Panel => draw_panel(target, placement.bounds, 6, theme),
-                ComponentKind::Button { label } => draw_button(target, font, placement.bounds, label, pixel_size, placement.state, theme),
+                ComponentKind::Button { label } => draw_button(
+                    target,
+                    font,
+                    placement.bounds,
+                    label,
+                    pixel_size,
+                    placement.state,
+                    theme,
+                ),
                 ComponentKind::Checkbox { label, checked } => {
                     draw_checkbox(target, placement.bounds, *checked, placement.state, theme);
                     let x = placement.bounds.x.saturating_add(30);
-                    let baseline = i64::from(placement.bounds.y) + (i64::from(placement.bounds.height) + font.line_height(pixel_size).round() as i64) / 2;
+                    let baseline = i64::from(placement.bounds.y)
+                        + (i64::from(placement.bounds.height)
+                            + font.line_height(pixel_size).round() as i64)
+                            / 2;
                     if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(baseline)) {
-                        draw_label_clipped(target, font, label, Point::new(x, y), pixel_size, theme.text, placement.bounds);
+                        draw_label_clipped(
+                            target,
+                            font,
+                            label,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
                     }
                 }
                 ComponentKind::TextInput { placeholder, value } => {
                     let state = TextInputState::new(value.clone());
-                    let is_focused = focusable.iter().position(|id| *id == placement.id).is_some_and(|index| Some(index) == focused);
-                    draw_text_input(target, font, placement.bounds, &state, TextInputOptions { placeholder, pixel_size, focused: is_focused, theme });
+                    let is_focused = focusable
+                        .iter()
+                        .position(|id| *id == placement.id)
+                        .is_some_and(|index| Some(index) == focused);
+                    draw_text_input(
+                        target,
+                        font,
+                        placement.bounds,
+                        &state,
+                        TextInputOptions {
+                            placeholder,
+                            pixel_size,
+                            focused: is_focused,
+                            theme,
+                        },
+                    );
                 }
                 ComponentKind::Label { text } => {
-                    let baseline = i64::from(placement.bounds.y) + (font.line_height(pixel_size) * 0.78).round() as i64;
-                    if let (Ok(x), Ok(y)) = (i32::try_from(placement.bounds.x), i32::try_from(baseline)) {
-                        draw_label_clipped(target, font, text, Point::new(x, y), pixel_size, theme.text, placement.bounds);
+                    let baseline = i64::from(placement.bounds.y)
+                        + (font.line_height(pixel_size) * 0.78).round() as i64;
+                    if let (Ok(x), Ok(y)) =
+                        (i32::try_from(placement.bounds.x), i32::try_from(baseline))
+                    {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            text,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
                     }
                 }
             }
@@ -349,8 +405,12 @@ impl ComponentTree {
 
     /// Inserts text into a text input, replacing its current selection.
     pub fn insert_text(&mut self, id: ComponentId, text: &str) -> bool {
-        let Some(component) = self.find_mut(id) else { return false };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else { return false };
+        let Some(component) = self.find_mut(id) else {
+            return false;
+        };
+        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
+            return false;
+        };
         let mut state = TextInputState::new(value.clone());
         state.insert_text(text);
         *value = state.text().to_owned();
@@ -359,8 +419,12 @@ impl ComponentTree {
 
     /// Deletes the previous grapheme from a text input.
     pub fn backspace_text(&mut self, id: ComponentId) -> bool {
-        let Some(component) = self.find_mut(id) else { return false };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else { return false };
+        let Some(component) = self.find_mut(id) else {
+            return false;
+        };
+        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
+            return false;
+        };
         let mut state = TextInputState::new(value.clone());
         state.backspace();
         *value = state.text().to_owned();
@@ -369,8 +433,12 @@ impl ComponentTree {
 
     /// Deletes the next grapheme from a text input.
     pub fn delete_text(&mut self, id: ComponentId) -> bool {
-        let Some(component) = self.find_mut(id) else { return false };
-        let ComponentKind::TextInput { value, .. } = &mut component.kind else { return false };
+        let Some(component) = self.find_mut(id) else {
+            return false;
+        };
+        let ComponentKind::TextInput { value, .. } = &mut component.kind else {
+            return false;
+        };
         let mut state = TextInputState::new(value.clone());
         state.delete_forward();
         *value = state.text().to_owned();
