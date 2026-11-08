@@ -536,6 +536,47 @@ mod tests {
     }
 
     #[test]
+    fn checkbox_toggles_on_pointer_and_keyboard_activation() {
+        let bounds = Rect::new(10, 10, 100, 80);
+        let mut tree = sample_tree();
+        tree.update_pointer(bounds, Some(Point::new(20, 50)), true, false);
+        let events = tree.update_pointer(bounds, Some(Point::new(20, 50)), false, true);
+        assert_eq!(events.activated, Some(ComponentId(4)));
+        assert!(matches!(
+            tree.find(ComponentId(4)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: true, .. }
+        ));
+        tree.focus_next(bounds, false);
+        tree.focus_next(bounds, false);
+        tree.activate_focused(bounds);
+        assert!(matches!(
+            tree.find(ComponentId(4)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: false, .. }
+        ));
+    }
+
+    #[test]
+    fn text_input_editing_preserves_unicode_and_rejects_other_components() {
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            ComponentId(30),
+            "Type here",
+            "café",
+        )]);
+        assert!(tree.insert_text(ComponentId(30), "🙂"));
+        assert!(matches!(
+            tree.find(ComponentId(30)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "café🙂"
+        ));
+        assert!(tree.backspace_text(ComponentId(30)));
+        assert!(matches!(
+            tree.find(ComponentId(30)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "café"
+        ));
+        assert!(!tree.insert_text(ComponentId(999), "x"));
+        assert!(!tree.insert_text(ComponentId(30), "x") == false);
+    }
+
+    #[test]
     fn hidden_children_do_not_consume_layout_space() {
         let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
             .with_children(vec![
