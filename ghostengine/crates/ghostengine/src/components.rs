@@ -262,6 +262,65 @@ impl ComponentTree {
         }
     }
 
+    /// Builds a tree only when every component ID is unique.
+    pub fn try_new(roots: Vec<UiComponent>) -> Result<Self, ComponentTreeError> {
+        validate_unique_ids(&roots)?;
+        Ok(Self::new(roots))
+    }
+
+    /// Adds a new root component. IDs must be unique across the whole tree.
+    pub fn add_root(&mut self, component: UiComponent) -> Result<(), ComponentTreeError> {
+        validate_subtree_ids(&component)?;
+        for id in component_ids(&component) {
+            if self.find(id).is_some() {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+        collect_text_states(&component, &mut self.text_states);
+        self.roots.push(component);
+        self.reset_after_structure_change();
+        Ok(())
+    }
+
+    /// Adds a child to an existing parent, preserving the supplied child order.
+    pub fn add_child(
+        &mut self,
+        parent: ComponentId,
+        child: UiComponent,
+    ) -> Result<(), ComponentTreeError> {
+        validate_subtree_ids(&child)?;
+        for id in component_ids(&child) {
+            if self.find(id).is_some() {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+        let Some(parent_node) = self.find_mut(parent) else {
+            return Err(ComponentTreeError::ParentNotFound(parent));
+        };
+        collect_text_states(&child, &mut self.text_states);
+        parent_node.children.push(child);
+        self.reset_after_structure_change();
+        Ok(())
+    }
+
+    /// Removes a component and its entire descendant subtree.
+    /// Returns the removed node, or None when the ID does not exist.
+    pub fn remove(&mut self, id: ComponentId) -> Option<UiComponent> {
+        let removed = remove_component(&mut self.roots, id)?;
+        for removed_id in component_ids(&removed) {
+            self.text_states.remove(&removed_id);
+        }
+        self.reset_after_structure_change();
+        Some(removed)
+    }
+
+    fn reset_after_structure_change(&mut self) {
+        self.interaction.clear();
+        self.focusable_ids.clear();
+        self.focusable_bounds.clear();
+        self.placed.clear();
+    }
+
     #[must_use]
     pub fn roots(&self) -> &[UiComponent] {
         &self.roots
