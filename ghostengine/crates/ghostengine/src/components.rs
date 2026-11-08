@@ -245,7 +245,9 @@ impl std::fmt::Display for ComponentTreeError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DuplicateId(id) => write!(formatter, "duplicate component ID {}", id.0),
-            Self::ParentNotFound(id) => write!(formatter, "parent component {} was not found", id.0),
+            Self::ParentNotFound(id) => {
+                write!(formatter, "parent component {} was not found", id.0)
+            }
         }
     }
 }
@@ -970,9 +972,10 @@ mod tests {
 
     #[test]
     fn component_lifecycle_adds_and_removes_subtrees_and_text_state() {
-        let mut tree = ComponentTree::try_new(vec![
-            UiComponent::panel(ComponentId(91), StackLayout::default()),
-        ])
+        let mut tree = ComponentTree::try_new(vec![UiComponent::panel(
+            ComponentId(91),
+            StackLayout::default(),
+        )])
         .unwrap();
         tree.add_child(
             ComponentId(91),
