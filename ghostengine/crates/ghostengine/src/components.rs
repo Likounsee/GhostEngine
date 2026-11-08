@@ -161,6 +161,22 @@ impl UiComponent {
         }
     }
 
+    pub fn set_enabled(&mut self, enabled: bool) -> bool {
+        if self.enabled == enabled {
+            return false;
+        }
+        self.enabled = enabled;
+        true
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> bool {
+        if self.visible == visible {
+            return false;
+        }
+        self.visible = visible;
+        true
+    }
+
     pub fn set_text(&mut self, text: impl Into<String>) -> bool {
         let text = text.into();
         match &mut self.kind {
@@ -324,6 +340,50 @@ impl ComponentTree {
             .push(child);
         self.reset_after_structure_change();
         Ok(())
+    }
+
+    /// Changes whether a component can receive pointer or keyboard input.
+    /// Returns false when the ID is missing or the value is unchanged.
+    pub fn set_enabled(&mut self, id: ComponentId, enabled: bool) -> bool {
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_enabled(enabled));
+        if changed {
+            self.reset_after_structure_change();
+        }
+        changed
+    }
+
+    /// Changes component visibility. Hidden subtrees are omitted from layout and input.
+    /// Returns false when the ID is missing or the value is unchanged.
+    pub fn set_visible(&mut self, id: ComponentId, visible: bool) -> bool {
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_visible(visible));
+        if changed {
+            self.reset_after_structure_change();
+        }
+        changed
+    }
+
+    /// Updates a checkbox value by stable ID.
+    pub fn set_checked(&mut self, id: ComponentId, checked: bool) -> bool {
+        self.find_mut(id)
+            .is_some_and(|component| component.set_checked(checked))
+    }
+
+    /// Updates a label or text input by stable ID.
+    pub fn set_text(&mut self, id: ComponentId, text: impl Into<String>) -> bool {
+        let text = text.into();
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_text(text.clone()));
+        if changed {
+            if let Some(state) = self.text_states.get_mut(&id) {
+                state.set_text(text);
+            }
+        }
+        changed
     }
 
     /// Removes a component and its entire descendant subtree.
@@ -1084,6 +1144,60 @@ mod tests {
             tree.find(ComponentId(2)).unwrap().kind(),
             ComponentKind::Label { text } if text == "Preferences"
         ));
+    }
+
+    #[test]
+    fn runtime_enabled_and_visible_changes_reconcile_layout_and_focus() {
+        let bounds = Rect::new(0, 0, 100, 60);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::button(ComponentId(101), "First").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(102), "Second").with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(101))
+        );
+        assert!(tree.set_enabled(ComponentId(101), false));
+        assert_eq!(tree.focused_component(), None);
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(102))
+        );
+        assert!(tree.set_visible(ComponentId(102), false));
+        assert!(tree.layout(bounds).is_empty());
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, None);
+        assert!(!tree.set_visible(ComponentId(102), false));
+        assert!(!tree.set_enabled(ComponentId(999), true));
+    }
+
+    #[test]
+    fn tree_value_setters_update_checkbox_label_and_text_input_state() {
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::checkbox(ComponentId(103), "Enabled", false),
+            UiComponent::label(ComponentId(104), "Old"),
+            UiComponent::text_input(ComponentId(105), "Name", "before"),
+        ]);
+        assert!(tree.set_checked(ComponentId(103), true));
+        assert!(tree.set_text(ComponentId(104), "New"));
+        assert!(tree.set_text(ComponentId(105), "after"));
+        assert_eq!(
+            tree.text_input_state(ComponentId(105)).unwrap().text(),
+            "after"
+        );
+        assert!(matches!(
+            tree.find(ComponentId(103)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: true, .. }
+        ));
+        assert!(matches!(
+            tree.find(ComponentId(104)).unwrap().kind(),
+            ComponentKind::Label { text } if text == "New"
+        ));
+        assert!(matches!(
+            tree.find(ComponentId(105)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "after"
+        ));
+        assert!(!tree.set_checked(ComponentId(104), true));
+        assert!(!tree.set_text(ComponentId(999), "missing"));
     }
 
     #[test]
