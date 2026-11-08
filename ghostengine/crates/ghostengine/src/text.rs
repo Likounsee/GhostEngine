@@ -606,8 +606,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
     let mut max_width = 0.0_f32;
     let mut line_count = 0_u32;
 
-    for paragraph_with_break in text.split_inclusive('\\n') {
-        let paragraph = paragraph_with_break.strip_suffix('\\n').unwrap_or(paragraph_with_break);
+    for paragraph in text.split('\\n') {
         let mut pen_x = baseline.x as f32;
 
         for bidi_run in crate::shaping::resolve_bidi_runs(paragraph) {
