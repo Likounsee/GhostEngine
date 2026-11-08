@@ -934,16 +934,21 @@ impl ComponentTree {
                 let Some(id) = self.focused_component() else {
                     return ComponentEvents::default();
                 };
-                if let Some(component) = self.find(id) {
+                let combo_item_count = self.find(id).and_then(|component| {
                     if let ComponentKind::ComboBox { items } = component.kind() {
-                        let state = self.combo_states.entry(id).or_default();
-                        if state.is_open() {
-                            state.select_highlighted(items.len());
-                        } else {
-                            state.open(items.len());
-                        }
-                        return ComponentEvents::default();
+                        Some(items.len())
+                    } else {
+                        None
                     }
+                });
+                if let Some(item_count) = combo_item_count {
+                    let state = self.combo_states.entry(id).or_default();
+                    if state.is_open() {
+                        state.select_highlighted(item_count);
+                    } else {
+                        state.open(item_count);
+                    }
+                    return ComponentEvents::default();
                 }
                 self.activate_focused(bounds)
             }
