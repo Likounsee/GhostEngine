@@ -9,12 +9,12 @@ use crate::rasterizer::{
     draw_line, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
+use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
 use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped, FontFace,
     TextLayoutOptions,
 };
-use crate::shaping::{ShapedText, ShapingError};
 use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
