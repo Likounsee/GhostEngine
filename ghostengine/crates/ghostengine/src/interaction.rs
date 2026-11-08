@@ -78,6 +78,7 @@ impl UiInteraction {
         enabled: &[bool],
         bounds: &[Rect],
     ) -> InteractionEvents {
+        let previous_focus = self.focus.focused();
         self.focus.reconcile(enabled);
         if self.captured.is_some_and(|index| !is_enabled(index, enabled) || index >= bounds.len()) {
             self.captured = None;
@@ -85,7 +86,6 @@ impl UiInteraction {
 
         self.hovered = pointer.and_then(|point| hit_test(point, enabled, bounds));
 
-        let previous_focus = self.focus.focused();
         if pressed {
             self.captured = self.hovered;
             if let Some(index) = self.hovered {
