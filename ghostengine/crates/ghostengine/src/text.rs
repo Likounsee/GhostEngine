@@ -577,37 +577,42 @@ fn fallback_face_for_cluster(
         .iter()
         .copied()
         .find(|character| !is_combining_mark(*character) && *character != '\u{200D}');
+    // ZWJ, variation selectors and emoji tag characters are shaping controls,
+    // not standalone glyphs. Every other scalar in the grapheme should be
+    // covered by one face whenever possible (including skin-tone modifiers,
+    // regional indicators and all components of a joined emoji).
+    let required = characters
+        .iter()
+        .copied()
+        .filter(|character| {
+            let code = *character as u32;
+            *character != '\u{200D}'
+                && !(0xFE00..=0xFE0F).contains(&code)
+                && !(0xE0100..=0xE01EF).contains(&code)
+                && !(0xE0020..=0xE007F).contains(&code)
+        })
+        .collect::<Vec<_>>();
+    let supports_cluster = |face: &&Arc<FontFace>| {
+        required.iter().all(|character| face.has_glyph(*character))
+    };
 
     if let Some(base) = base {
-        let marks_supported = |face: &&Arc<FontFace>| {
-            face.has_glyph(base)
-                && characters
-                    .iter()
-                    .copied()
-                    .filter(|character| is_combining_mark(*character))
-                    .all(|mark| face.has_glyph(mark))
-        };
         family
             .faces
             .iter()
-            .find(marks_supported)
+            .find(supports_cluster)
             .or_else(|| family.faces.iter().find(|face| face.has_glyph(base)))
             .cloned()
             .unwrap_or_else(|| Arc::clone(primary))
     } else {
-        let marks = characters
-            .iter()
-            .copied()
-            .filter(|character| is_combining_mark(*character))
-            .collect::<Vec<_>>();
         current_face
-            .filter(|face| marks.iter().all(|mark| face.has_glyph(*mark)))
+            .filter(|face| required.iter().all(|character| face.has_glyph(*character)))
             .cloned()
             .or_else(|| {
                 family
                     .faces
                     .iter()
-                    .find(|face| marks.iter().all(|mark| face.has_glyph(*mark)))
+                    .find(|face| required.iter().all(|character| face.has_glyph(*character)))
                     .cloned()
             })
             .or_else(|| current_face.cloned())
