@@ -766,10 +766,7 @@ pub(crate) fn prepare_shaped_text_box(
 
     let line_height = family.line_height(pixel_size);
     if !line_height.is_finite() || line_height <= 0.0 {
-        return Ok(PreparedShapedTextBox {
-            lines: Vec::new(),
-            metrics: TextMetrics::default(),
-        });
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
     }
     let mut text_lines = Vec::new();
     for paragraph in text.split('\n') {
