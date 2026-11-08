@@ -273,14 +273,22 @@ impl ComponentTree {
         if input.left_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down { ComponentKey::WordLeft } else { ComponentKey::ArrowLeft },
+                if input.control_down {
+                    ComponentKey::WordLeft
+                } else {
+                    ComponentKey::ArrowLeft
+                },
                 input.shift_down,
             );
         }
         if input.right_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down { ComponentKey::WordRight } else { ComponentKey::ArrowRight },
+                if input.control_down {
+                    ComponentKey::WordRight
+                } else {
+                    ComponentKey::ArrowRight
+                },
                 input.shift_down,
             );
         }
@@ -293,14 +301,22 @@ impl ComponentTree {
         if input.backspace_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down { ComponentKey::DeleteWordBackward } else { ComponentKey::Backspace },
+                if input.control_down {
+                    ComponentKey::DeleteWordBackward
+                } else {
+                    ComponentKey::Backspace
+                },
                 input.shift_down,
             );
         }
         if input.delete_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down { ComponentKey::DeleteWordForward } else { ComponentKey::Delete },
+                if input.control_down {
+                    ComponentKey::DeleteWordForward
+                } else {
+                    ComponentKey::Delete
+                },
                 input.shift_down,
             );
         }
