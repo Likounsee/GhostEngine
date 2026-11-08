@@ -545,6 +545,7 @@ impl ComponentTree {
                     if popup.contains(point) {
                         let index = ((point.y as u32 - popup_top) / 28) as usize;
                         state.select(Some(index), items.len());
+                        state.close();
                         return ComponentEvents::default();
                     }
                 }
