@@ -936,7 +936,10 @@ pub fn draw_combo_box(
     let baseline = i64::from(bounds.y)
         + (i64::from(bounds.height) + font.line_height(pixel_size).round() as i64) / 2
         + (font.line_height(pixel_size) * 0.28).round() as i64;
-    if let (Ok(x), Ok(y)) = (i32::try_from(bounds.x.saturating_add(8)), i32::try_from(baseline)) {
+    if let (Ok(x), Ok(y)) = (
+        i32::try_from(bounds.x.saturating_add(8)),
+        i32::try_from(baseline),
+    ) {
         draw_text_clipped(
             target,
             font,
@@ -994,7 +997,9 @@ pub fn draw_tabs(
         let left = u64::from(bounds.x) + u64::from(bounds.width) * index as u64 / count;
         let right = u64::from(bounds.x) + u64::from(bounds.width) * (index as u64 + 1) / count;
         let Ok(x) = u32::try_from(left) else { continue };
-        let Ok(width) = u32::try_from(right.saturating_sub(left)) else { continue };
+        let Ok(width) = u32::try_from(right.saturating_sub(left)) else {
+            continue;
+        };
         if width == 0 {
             continue;
         }
