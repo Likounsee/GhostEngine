@@ -1060,7 +1060,6 @@ where
     output
 }
 
-
 /// Builds visual-order shaped runs for one bidi line, including font fallback.
 fn prepare_bidi_shaped_line(
     family: &FontFamily,
@@ -1177,11 +1176,7 @@ fn prepare_bidi_shaped_line(
     Ok(output)
 }
 
-fn measure_bidi_shaped_fallback_line(
-    family: &FontFamily,
-    line: &str,
-    pixel_size: f32,
-) -> f32 {
+fn measure_bidi_shaped_fallback_line(family: &FontFamily, line: &str, pixel_size: f32) -> f32 {
     prepare_bidi_shaped_line(family, line, pixel_size)
         .map(|runs| {
             runs.iter()
@@ -1224,9 +1219,7 @@ pub(crate) fn prepare_bidi_shaped_text_box(
             text_lines.extend(wrap_paragraph_preserving_whitespace(
                 paragraph,
                 max_width,
-                |candidate| {
-                    measure_bidi_shaped_fallback_line(family, candidate, pixel_size)
-                },
+                |candidate| measure_bidi_shaped_fallback_line(family, candidate, pixel_size),
             ));
         } else {
             text_lines.push(paragraph.to_owned());
@@ -1282,8 +1275,7 @@ pub fn draw_text_box_with_fallback_bidi_shaped_clipped(
     clip: Rect,
     options: TextLayoutOptions,
 ) -> TextMetrics {
-    let Ok(prepared) =
-        prepare_bidi_shaped_text_box(family, text, baseline, pixel_size, options)
+    let Ok(prepared) = prepare_bidi_shaped_text_box(family, text, baseline, pixel_size, options)
     else {
         return TextMetrics::default();
     };
