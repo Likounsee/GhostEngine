@@ -2297,7 +2297,7 @@ mod tests {
             .any(|pixel| *pixel != crate::Color::BLACK));
         assert!(target.pixels().iter().enumerate().all(|(index, pixel)| {
             let x = index % target.width() as usize;
-            (x >= 40 && x < 112) || *pixel == crate::Color::BLACK
+            (40..112).contains(&x) || *pixel == crate::Color::BLACK
         }));
     }
 
