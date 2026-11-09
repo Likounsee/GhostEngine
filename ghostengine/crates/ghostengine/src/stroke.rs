@@ -298,8 +298,10 @@ fn stroke_path_impl(
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                             let mut distance_squared = f32::INFINITY;
                             for segment in &segments {
-                                distance_squared =
-                                    distance_squared.min(segment.distance_squared(sample));
+                                if segment.may_cover(sample) {
+                                    distance_squared =
+                                        distance_squared.min(segment.distance_squared(sample));
+                                }
                             }
                             // A segment already covers this sample, so join geometry
                             // cannot increase its coverage.
@@ -321,7 +323,10 @@ fn stroke_path_impl(
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance_squared = f32::INFINITY;
                     for segment in &segments {
-                        distance_squared = distance_squared.min(segment.distance_squared(sample));
+                        if segment.may_cover(sample) {
+                            distance_squared =
+                                distance_squared.min(segment.distance_squared(sample));
+                        }
                     }
                     if distance_squared > radius_squared {
                         for join in &joins {
@@ -363,6 +368,10 @@ struct StrokeSegment {
     low: f32,
     high: f32,
     cap: StrokeCap,
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
 }
 
 impl StrokeSegment {
@@ -375,6 +384,13 @@ impl StrokeSegment {
         } else {
             0.0
         };
+        // A conservative axis-aligned bound avoids distance calculations for
+        // samples that cannot intersect this segment's stroked area.
+        let padding = if cap == StrokeCap::Square {
+            radius * 2.0
+        } else {
+            radius
+        };
         Self {
             a,
             dx,
@@ -383,7 +399,18 @@ impl StrokeSegment {
             low: if first { -extension } else { 0.0 },
             high: if last { 1.0 + extension } else { 1.0 },
             cap,
+            min_x: a.x.min(b.x) - padding,
+            min_y: a.y.min(b.y) - padding,
+            max_x: a.x.max(b.x) + padding,
+            max_y: a.y.max(b.y) + padding,
         }
+    }
+
+    fn may_cover(self, point: Vector) -> bool {
+        point.x >= self.min_x
+            && point.x <= self.max_x
+            && point.y >= self.min_y
+            && point.y <= self.max_y
     }
 
     fn distance_squared(self, point: Vector) -> f32 {
