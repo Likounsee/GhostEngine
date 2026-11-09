@@ -462,11 +462,14 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let (path_min_x, path_min_y, path_max_x, path_max_y) = contours
-        .iter()
-        .flat_map(|contour| contour.iter())
-        .fold(
-            (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+    let (path_min_x, path_min_y, path_max_x, path_max_y) =
+        contours.iter().flat_map(|contour| contour.iter()).fold(
+            (
+                f32::INFINITY,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+            ),
             |(min_x, min_y, max_x, max_y), point| {
                 (
                     min_x.min(point.x),
@@ -476,21 +479,13 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
                 )
             },
         );
-    let min_x = path_min_x
-        .floor()
-        .max(clip.x as f32)
-        .min(clip_right as f32) as u32;
+    let min_x = path_min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
     let min_y = path_min_y
         .floor()
         .max(clip.y as f32)
         .min(clip_bottom as f32) as u32;
-    let max_x = path_max_x
-        .ceil()
-        .max(clip.x as f32)
-        .min(clip_right as f32) as u32;
-    let max_y = path_max_y
-        .ceil()
-        .min(clip_bottom as f32) as u32;
+    let max_x = path_max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let max_y = path_max_y.ceil().min(clip_bottom as f32) as u32;
     if min_x >= max_x || min_y >= max_y {
         return Ok(());
     }
