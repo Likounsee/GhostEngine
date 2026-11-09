@@ -135,22 +135,26 @@ fn validate(p: Vector) -> Result<(), PathError> {
         Err(PathError::NonFiniteCoordinate)
     }
 }
-fn distance_to_line(p: Vector, a: Vector, b: Vector) -> f32 {
+fn distance_to_segment(p: Vector, a: Vector, b: Vector) -> f32 {
     let dx = b.x - a.x;
     let dy = b.y - a.y;
-    let length = dx.hypot(dy);
-    if length <= f32::EPSILON {
-        (p.x - a.x).hypot(p.y - a.y)
-    } else {
-        ((dy * p.x - dx * p.y + b.x * a.y - b.y * a.x).abs()) / length
+    let length_squared = dx * dx + dy * dy;
+    if length_squared <= f32::EPSILON {
+        return (p.x - a.x).hypot(p.y - a.y);
     }
+
+    let projection = (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared)
+        .clamp(0.0, 1.0);
+    let closest_x = a.x + projection * dx;
+    let closest_y = a.y + projection * dy;
+    (p.x - closest_x).hypot(p.y - closest_y)
 }
 fn midpoint(a: Vector, b: Vector) -> Vector {
     Vector::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
 }
 
 fn flatten_quad(a: Vector, c: Vector, b: Vector, tol: f32, depth: u8, out: &mut Vec<Vector>) {
-    if depth >= 16 || distance_to_line(c, a, b) <= tol {
+    if depth >= 16 || distance_to_segment(c, a, b) <= tol {
         out.push(b);
         return;
     }
@@ -169,7 +173,7 @@ fn flatten_cubic(
     depth: u8,
     out: &mut Vec<Vector>,
 ) {
-    if depth >= 16 || distance_to_line(c1, a, b).max(distance_to_line(c2, a, b)) <= tol {
+    if depth >= 16 || distance_to_segment(c1, a, b).max(distance_to_segment(c2, a, b)) <= tol {
         out.push(b);
         return;
     }
@@ -337,6 +341,33 @@ mod tests {
             *flat.subpaths[0].points.last().unwrap(),
             Vector::new(20.0, 0.0)
         );
+    }
+
+    #[test]
+    fn collinear_quadratic_control_point_beyond_chord_is_not_flattened_away() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .quadratic_to(Vector::new(20.0, 0.0), Vector::new(10.0, 0.0));
+
+        let flattened = path.flatten(0.25).unwrap();
+        let points = &flattened.subpaths[0].points;
+        assert!(points.len() > 2);
+        assert!(points.iter().any(|point| point.x > 10.0));
+    }
+
+    #[test]
+    fn collinear_cubic_control_points_beyond_chord_preserve_overshoot() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0)).cubic_to(
+            Vector::new(20.0, 0.0),
+            Vector::new(20.0, 0.0),
+            Vector::new(10.0, 0.0),
+        );
+
+        let flattened = path.flatten(0.25).unwrap();
+        let points = &flattened.subpaths[0].points;
+        assert!(points.len() > 2);
+        assert!(points.iter().any(|point| point.x > 10.0));
     }
 
     #[test]
