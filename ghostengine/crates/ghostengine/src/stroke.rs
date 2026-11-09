@@ -217,7 +217,14 @@ fn stroke_path_impl(
             max_x = max_x.max(p.x);
             max_y = max_y.max(p.y);
         }
-        let expand = radius + 1.0;
+        // Miter joins can extend well beyond the half-width of the stroke.
+        // Expand the candidate bounds by the configured miter limit so long,
+        // valid miters are not accidentally clipped before rasterization.
+        let expand = if style.join == StrokeJoin::Miter {
+            (radius * style.miter_limit).max(radius) + 1.0
+        } else {
+            radius + 1.0
+        };
         let left = (min_x - expand)
             .floor()
             .max(clip.x as f32)
@@ -712,6 +719,45 @@ mod tests {
         )
         .unwrap();
         assert_eq!(limited.pixels(), bevel.pixels());
+    }
+
+    #[test]
+    fn antialiased_miter_join_honors_style_and_limit() {
+        let path = corner_path();
+        let mut bevel = Framebuffer::new(20, 20, Color::BLACK).unwrap();
+        let mut miter = Framebuffer::new(20, 20, Color::BLACK).unwrap();
+        let mut limited = Framebuffer::new(20, 20, Color::BLACK).unwrap();
+
+        for (target, style) in [
+            (
+                &mut bevel,
+                StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel),
+            ),
+            (
+                &mut miter,
+                StrokeStyle::new(6.0).with_join(StrokeJoin::Miter),
+            ),
+            (
+                &mut limited,
+                StrokeStyle::new(6.0)
+                    .with_join(StrokeJoin::Miter)
+                    .with_miter_limit(1.0),
+            ),
+        ] {
+            super::stroke_path_aa(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                style,
+                Color::WHITE,
+                0.2,
+            )
+            .unwrap();
+        }
+
+        assert_ne!(miter.pixels(), bevel.pixels());
+        assert_eq!(limited.pixels(), bevel.pixels());
+        assert!(miter.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
     }
 
     #[test]
