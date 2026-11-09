@@ -73,33 +73,49 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
             continue;
         }
 
+        let destination_left = i64::from(layer.x).max(0);
+        let destination_right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
+            .min(i64::from(target.width()));
+        if destination_left >= destination_right {
+            continue;
+        }
+        let source_left = (destination_left - i64::from(layer.x)) as usize;
+        let source_right = source_left + (destination_right - destination_left) as usize;
+        let source_width = layer.framebuffer.width() as usize;
+
         for source_y in 0..layer.framebuffer.height() {
             let destination_y = i64::from(layer.y) + i64::from(source_y);
             if destination_y < 0 || destination_y >= i64::from(target.height()) {
                 continue;
             }
-            for source_x in 0..layer.framebuffer.width() {
-                let destination_x = i64::from(layer.x) + i64::from(source_x);
-                if destination_x < 0 || destination_x >= i64::from(target.width()) {
+
+            let source_start = source_y as usize * source_width + source_left;
+            let source_row = &layer.framebuffer.pixels()[source_start
+                ..source_y as usize * source_width + source_right];
+            let Some(destination_row) = target.row_mut(destination_y as u32) else {
+                continue;
+            };
+            let destination = &mut destination_row[destination_left as usize
+                ..destination_right as usize];
+
+            for (source, destination) in source_row.iter().zip(destination) {
+                if source.a == 0 {
                     continue;
                 }
-
-                let Some(mut source) = layer.framebuffer.get_pixel(source_x, source_y) else {
+                if layer.opacity == u8::MAX && source.a == u8::MAX {
+                    *destination = *source;
                     continue;
+                }
+                let alpha = if layer.opacity == u8::MAX {
+                    source.a
+                } else {
+                    ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
                 };
-                if source.a == 0 {
+                if alpha == 0 {
                     continue;
                 }
-                source.a = ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
-                if source.a == 0 {
-                    continue;
-                }
-
-                let x = destination_x as u32;
-                let y = destination_y as u32;
-                if let Some(background) = target.get_pixel(x, y) {
-                    target.set_pixel(x, y, source.blend_over(background));
-                }
+                let source = Color::rgba(source.r, source.g, source.b, alpha);
+                *destination = source.blend_over(*destination);
             }
         }
     }
