@@ -384,12 +384,23 @@ pub fn fill_rect_radial_gradient(
     if left >= right || top >= bottom {
         return;
     }
+    let inverse_radius = radius.recip();
     for y in top..bottom {
-        for x in left..right {
-            let dx = x as f32 + 0.5 - center.x;
-            let dy = y as f32 + 0.5 - center.y;
-            let position = (dx.hypot(dy) / radius).clamp(0.0, 1.0);
-            paint_gradient_pixel(target, x, y, gradient.sample(position));
+        let dy = y as f32 + 0.5 - center.y;
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for (offset, pixel) in row[left as usize..right as usize].iter_mut().enumerate() {
+            let dx = left as f32 + offset as f32 + 0.5 - center.x;
+            let position = dx.hypot(dy) * inverse_radius;
+            let color = gradient.sample(position.clamp(0.0, 1.0));
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
+            } else {
+                color.blend_over(*pixel)
+            };
         }
     }
 }
