@@ -321,8 +321,7 @@ fn stroke_path_impl(
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance_squared = f32::INFINITY;
                     for segment in &segments {
-                        distance_squared =
-                            distance_squared.min(segment.distance_squared(sample));
+                        distance_squared = distance_squared.min(segment.distance_squared(sample));
                     }
                     if distance_squared > radius_squared {
                         for join in &joins {
