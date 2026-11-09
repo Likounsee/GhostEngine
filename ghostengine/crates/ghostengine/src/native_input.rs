@@ -61,7 +61,9 @@ impl NativeInputAdapter {
                     MouseScrollDelta::LineDelta(_, y) => f64::from(*y) * 48.0,
                     MouseScrollDelta::PixelDelta(position) => position.y,
                 };
-                self.frame.scroll_delta_y = self.frame.scroll_delta_y
+                self.frame.scroll_delta_y = self
+                    .frame
+                    .scroll_delta_y
                     .saturating_add(clamp_coordinate(pixels));
             }
             WindowEvent::MouseInput {
