@@ -139,11 +139,13 @@ fn main() {
             }
         })
         .collect();
-    let texture = Texture::new(128, 128, texture_pixels)
-        .expect("benchmark texture should be valid");
+    let texture =
+        Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
 
-    let font = FontFace::from_bytes(include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf"))
-        .expect("bundled benchmark font should load");
+    let font = FontFace::from_bytes(include_bytes!(
+        "../tests/fixtures/NotoSansArabic[wdth,wght].ttf"
+    ))
+    .expect("bundled benchmark font should load");
     let theme = UiTheme::default();
     let text = "مرحبا GhostEngine — CPU benchmark";
 
@@ -152,18 +154,38 @@ fn main() {
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
-    println!("Build: {}", if cfg!(debug_assertions) { "debug (non-comparable)" } else { "release" });
+    println!(
+        "Build: {}",
+        if cfg!(debug_assertions) {
+            "debug (non-comparable)"
+        } else {
+            "release"
+        }
+    );
     println!();
 
     let rows = vec![
         measure("Rectangle fill + clipping", iterations, |target| {
-            ghostengine::rasterizer::fill_rect(target, Rect::new(24, 24, 420, 220), Color::rgb(45, 130, 220));
+            ghostengine::rasterizer::fill_rect(
+                target,
+                Rect::new(24, 24, 420, 220),
+                Color::rgb(45, 130, 220),
+            );
         }),
         measure("Rectangle alpha blend", iterations, |target| {
-            blend_rect(target, Rect::new(24, 24, 420, 220), Color::rgba(220, 90, 55, 150));
+            blend_rect(
+                target,
+                Rect::new(24, 24, 420, 220),
+                Color::rgba(220, 90, 55, 150),
+            );
         }),
         measure("Antialiased line", iterations, |target| {
-            ghostengine::rasterizer::draw_line_aa(target, Point::new(12, 12), Point::new(468, 258), Color::rgba(80, 210, 140, 230));
+            ghostengine::rasterizer::draw_line_aa(
+                target,
+                Point::new(12, 12),
+                Point::new(468, 258),
+                Color::rgba(80, 210, 140, 230),
+            );
         }),
         measure("Polygon fill (10 vertices)", iterations, |target| {
             ghostengine::rasterizer::fill_polygon(target, &polygon, Color::rgba(40, 170, 245, 210));
@@ -172,7 +194,13 @@ fn main() {
             fill_polygon_aa(target, &polygon, Color::rgba(40, 170, 245, 210));
         }),
         measure("Ellipse fill AA", iterations, |target| {
-            ghostengine::rasterizer::fill_ellipse_aa(target, Point::new(240, 135), 185, 105, Color::rgba(80, 190, 120, 220));
+            ghostengine::rasterizer::fill_ellipse_aa(
+                target,
+                Point::new(240, 135),
+                185,
+                105,
+                Color::rgba(80, 190, 120, 220),
+            );
         }),
         measure("Vector path fill", iterations, |target| {
             fill_path_even_odd(target, &path, Color::rgba(245, 130, 45, 220), 0.35)
@@ -183,39 +211,81 @@ fn main() {
                 .expect("benchmark path should be valid");
         }),
         measure("Vector path stroke", iterations, |target| {
-            stroke_path(target, &path, Transform2D::IDENTITY, StrokeStyle::new(7.0), Color::rgba(90, 220, 130, 230), 0.35)
-                .expect("benchmark stroke should be valid");
+            stroke_path(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(7.0),
+                Color::rgba(90, 220, 130, 230),
+                0.35,
+            )
+            .expect("benchmark stroke should be valid");
         }),
         measure("Vector path stroke AA", iterations, |target| {
-            stroke_path_aa(target, &path, Transform2D::IDENTITY, StrokeStyle::new(7.0), Color::rgba(90, 220, 130, 230), 0.35)
-                .expect("benchmark stroke should be valid");
+            stroke_path_aa(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(7.0),
+                Color::rgba(90, 220, 130, 230),
+                0.35,
+            )
+            .expect("benchmark stroke should be valid");
         }),
         measure("Linear gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_linear_gradient(
-                target, Rect::new(12, 12, 456, 246),
-                Vector::new(12.0, 12.0), Vector::new(468.0, 258.0), &gradient,
+                target,
+                Rect::new(12, 12, 456, 246),
+                Vector::new(12.0, 12.0),
+                Vector::new(468.0, 258.0),
+                &gradient,
             );
         }),
         measure("Radial gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_radial_gradient(
-                target, Rect::new(12, 12, 456, 246), Vector::new(240.0, 135.0), 190.0, &gradient,
+                target,
+                Rect::new(12, 12, 456, 246),
+                Vector::new(240.0, 135.0),
+                190.0,
+                &gradient,
             );
         }),
         measure("Texture nearest", iterations, |target| {
-            ghostengine::draw_texture(target, &texture, Rect::new(80, 35, 320, 200), TextureFilter::Nearest);
+            ghostengine::draw_texture(
+                target,
+                &texture,
+                Rect::new(80, 35, 320, 200),
+                TextureFilter::Nearest,
+            );
         }),
         measure("Texture bilinear", iterations, |target| {
-            ghostengine::draw_texture(target, &texture, Rect::new(80, 35, 320, 200), TextureFilter::Bilinear);
+            ghostengine::draw_texture(
+                target,
+                &texture,
+                Rect::new(80, 35, 320, 200),
+                TextureFilter::Bilinear,
+            );
         }),
         measure("Text rasterization (cached)", iterations, |target| {
             draw_text(target, &font, text, Point::new(18, 145), 28.0, Color::WHITE);
         }),
         measure("UI button + text", iterations, |target| {
-            ghostengine::draw_button(target, &font, Rect::new(110, 100, 260, 64), "مرحبا", 28.0, WidgetState::Hovered, &theme);
+            ghostengine::draw_button(
+                target,
+                &font,
+                Rect::new(110, 100, 260, 64),
+                "مرحبا",
+                28.0,
+                WidgetState::Hovered,
+                &theme,
+            );
         }),
     ];
 
-    println!("{:<30} {:>12} {:>14} {:>12}", "Workload", "Total (ms)", "ms/frame", "FPS");
+    println!(
+        "{:<30} {:>12} {:>14} {:>12}",
+        "Workload", "Total (ms)", "ms/frame", "FPS"
+    );
     println!("{}", "-".repeat(74));
     for row in &rows {
         println!(
@@ -243,7 +313,10 @@ fn main() {
         std::env::consts::ARCH,
         if cfg!(debug_assertions) { "debug" } else { "release" }
     );
-    report.push_str(&format!("{:<30} {:>12} {:>14} {:>12}\n", "Workload", "Total (ms)", "ms/frame", "FPS"));
+    report.push_str(&format!(
+        "{:<30} {:>12} {:>14} {:>12}\n",
+        "Workload", "Total (ms)", "ms/frame", "FPS"
+    ));
     report.push_str(&format!("{}\n", "-".repeat(74)));
 
     let mut csv = String::from("workload,iterations,total_ms,average_ms_per_frame,fps\n");
