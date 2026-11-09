@@ -227,10 +227,33 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     if left >= right || top >= bottom {
         return;
     }
+    // Source-dependent terms are constant for the entire rectangle. Compute
+    // them once instead of repeating the same conversions and multiplications
+    // for every destination pixel.
+    let source_alpha = u32::from(color.a);
+    let inverse_source_alpha = 255 - source_alpha;
+    let source_r = u32::from(color.r) * source_alpha * 255;
+    let source_g = u32::from(color.g) * source_alpha * 255;
+    let source_b = u32::from(color.b) * source_alpha * 255;
+
     for y in top..bottom {
         if let Some(row) = target.row_mut(y as u32) {
             for pixel in &mut row[left as usize..right as usize] {
-                *pixel = color.blend_over(*pixel);
+                let destination_alpha = u32::from(pixel.a);
+                let destination_weight = destination_alpha * inverse_source_alpha;
+                let alpha_numerator = source_alpha * 255 + destination_weight;
+                let blend_channel = |source: u32, destination: u8| -> u8 {
+                    let numerator = source
+                        + u32::from(destination) * destination_weight;
+                    ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
+                };
+
+                *pixel = Color::rgba(
+                    blend_channel(source_r, pixel.r),
+                    blend_channel(source_g, pixel.g),
+                    blend_channel(source_b, pixel.b),
+                    ((alpha_numerator + 127) / 255) as u8,
+                );
             }
         }
     }
