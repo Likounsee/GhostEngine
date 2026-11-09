@@ -921,22 +921,36 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         return;
     }
 
+    // Keep edges ordered by their first covered sub-scanline. The four
+    // vertical samples advance monotonically, so an active list avoids
+    // checking every polygon edge for every sample.
+    let mut edge_order = (0..edges.len()).collect::<Vec<_>>();
+    edge_order.sort_unstable_by(|&a, &b| edges[a].min_y.total_cmp(&edges[b].min_y));
+    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
     let row_width = (right - left) as usize;
     let mut coverage = vec![0_u8; row_width];
-    // Reuse one intersection buffer for every sub-scanline. Allocating a new
-    // Vec for each of the four vertical samples on every row is avoidable.
+    // Reuse one intersection buffer for every sub-scanline.
     let mut intersections = Vec::with_capacity(edges.len());
     for y in top..bottom {
         coverage.fill(0);
         for offset_y in OFFSETS {
             let sample_y = f64::from(y) + offset_y;
+            active_edges.retain(|&index| edges[index].max_y > sample_y);
+            while next_edge < edge_order.len()
+                && edges[edge_order[next_edge]].min_y <= sample_y
+            {
+                let index = edge_order[next_edge];
+                if edges[index].max_y > sample_y {
+                    active_edges.push(index);
+                }
+                next_edge += 1;
+            }
             intersections.clear();
             intersections.extend(
-                edges
+                active_edges
                     .iter()
-                    .copied()
-                    .filter(|edge| edge.crosses(sample_y))
-                    .map(|edge| edge.intersection_x(sample_y)),
+                    .map(|&index| edges[index].intersection_x(sample_y)),
             );
             intersections.sort_unstable_by(f64::total_cmp);
 
