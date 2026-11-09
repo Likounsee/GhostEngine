@@ -960,23 +960,27 @@ mod tests {
         let radius = 3.0;
         let radius_squared = radius * radius;
         let segments = [
-            super::StrokeSegment::new(
-                points[0], points[1], true, false, StrokeCap::Butt, radius,
-            ),
-            super::StrokeSegment::new(
-                points[1], points[2], false, false, StrokeCap::Butt, radius,
-            ),
-            super::StrokeSegment::new(
-                points[2], points[3], false, true, StrokeCap::Square, radius,
-            ),
+            super::StrokeSegment::new(points[0], points[1], true, false, StrokeCap::Butt, radius),
+            super::StrokeSegment::new(points[1], points[2], false, false, StrokeCap::Butt, radius),
+            super::StrokeSegment::new(points[2], points[3], false, true, StrokeCap::Square, radius),
         ];
         let joins = [
             super::PreparedJoin::new(
-                points[0], points[1], points[2], StrokeJoin::Miter, radius, 4.0,
+                points[0],
+                points[1],
+                points[2],
+                StrokeJoin::Miter,
+                radius,
+                4.0,
             )
             .unwrap(),
             super::PreparedJoin::new(
-                points[1], points[2], points[3], StrokeJoin::Miter, radius, 4.0,
+                points[1],
+                points[2],
+                points[3],
+                StrokeJoin::Miter,
+                radius,
+                4.0,
             )
             .unwrap(),
         ];
@@ -986,9 +990,7 @@ mod tests {
             let sample_bottom = y as f32 + 0.875;
             let row_segments = segments
                 .iter()
-                .filter(|segment| {
-                    segment.max_y >= sample_top && segment.min_y <= sample_bottom
-                })
+                .filter(|segment| segment.max_y >= sample_top && segment.min_y <= sample_bottom)
                 .collect::<Vec<_>>();
             let row_joins = joins
                 .iter()
