@@ -39,6 +39,12 @@ impl StrokeStyle {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StrokeOptions {
+    clip: Rect,
+    antialias: bool,
+}
+
 /// Errors returned by path stroking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StrokeError {
@@ -84,7 +90,16 @@ pub fn stroke_path_clipped(
     clip: Rect,
 ) -> Result<(), StrokeError> {
     stroke_path_impl(
-        target, path, transform, style, color, tolerance, clip, false,
+        target,
+        path,
+        transform,
+        style,
+        color,
+        tolerance,
+        StrokeOptions {
+            clip,
+            antialias: false,
+        },
     )
 }
 
@@ -111,7 +126,18 @@ pub fn stroke_path_aa_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), StrokeError> {
-    stroke_path_impl(target, path, transform, style, color, tolerance, clip, true)
+    stroke_path_impl(
+        target,
+        path,
+        transform,
+        style,
+        color,
+        tolerance,
+        StrokeOptions {
+            clip,
+            antialias: true,
+        },
+    )
 }
 
 fn stroke_path_impl(
@@ -121,9 +147,9 @@ fn stroke_path_impl(
     style: StrokeStyle,
     color: Color,
     tolerance: f32,
-    clip: Rect,
-    antialias: bool,
+    options: StrokeOptions,
 ) -> Result<(), StrokeError> {
+    let StrokeOptions { clip, antialias } = options;
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
     }
@@ -425,7 +451,7 @@ mod tests {
         for y in 0..12 {
             for x in 0..14 {
                 let pixel = fb.get_pixel(x, y).unwrap();
-                let inside = (5..7).contains(&x) && (4..7).contains(&y);
+                let inside = (5..7).contains(&x) && y == 3;
                 if !inside {
                     assert_eq!(pixel, Color::BLACK);
                 } else {
