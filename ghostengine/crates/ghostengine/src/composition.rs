@@ -174,6 +174,87 @@ mod tests {
     }
 
     #[test]
+    fn row_slice_composition_matches_reference_for_clipping_and_alpha() {
+        let mut layers = Vec::new();
+        for (index, (x, y, opacity, visible)) in [
+            (-2, -1, 255, true),
+            (2, 1, 137, true),
+            (5, 3, 0, true),
+            (-1, 4, 211, false),
+            (7, -2, 93, true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut layer = Layer::new(6, 5, Color::TRANSPARENT).unwrap();
+            layer.set_position(x, y);
+            layer.set_opacity(opacity);
+            layer.set_visible(visible);
+            for py in 0..5 {
+                for px in 0..6 {
+                    let seed = (index as u8)
+                        .wrapping_mul(47)
+                        .wrapping_add((py * 6 + px) as u8 * 19);
+                    let alpha = match (px + py + index as u32) % 4 {
+                        0 => 0,
+                        1 => 96,
+                        2 => 190,
+                        _ => 255,
+                    };
+                    layer.framebuffer_mut().set_pixel(
+                        px,
+                        py,
+                        Color::rgba(seed, seed.wrapping_add(71), seed.wrapping_add(149), alpha),
+                    );
+                }
+            }
+            layers.push(layer);
+        }
+
+        let initial = Color::rgba(17, 29, 43, 255);
+        let mut optimized = Framebuffer::new(8, 7, initial).unwrap();
+        let mut reference = optimized.clone();
+
+        for layer in &layers {
+            if !layer.visible || layer.opacity == 0 {
+                continue;
+            }
+            for source_y in 0..layer.framebuffer.height() {
+                for source_x in 0..layer.framebuffer.width() {
+                    let destination_x = i64::from(layer.x) + i64::from(source_x);
+                    let destination_y = i64::from(layer.y) + i64::from(source_y);
+                    if destination_x < 0
+                        || destination_y < 0
+                        || destination_x >= i64::from(reference.width())
+                        || destination_y >= i64::from(reference.height())
+                    {
+                        continue;
+                    }
+                    let Some(source) = layer.framebuffer.get_pixel(source_x, source_y) else {
+                        continue;
+                    };
+                    if source.a == 0 {
+                        continue;
+                    }
+                    let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
+                    if alpha == 0 {
+                        continue;
+                    }
+                    let source = Color::rgba(source.r, source.g, source.b, alpha);
+                    let x = destination_x as u32;
+                    let y = destination_y as u32;
+                    let destination = reference.get_pixel(x, y).unwrap();
+                    reference.set_pixel(x, y, source.blend_over(destination));
+                }
+            }
+        }
+
+        compose_layers(&mut optimized, &layers);
+
+        assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
     fn layer_opacity_zero_is_a_no_op() {
         let mut layer = Layer::new(1, 1, Color::RED).unwrap();
         layer.set_opacity(0);
