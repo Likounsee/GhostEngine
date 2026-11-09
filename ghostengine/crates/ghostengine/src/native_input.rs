@@ -24,6 +24,7 @@ pub struct NativeInputAdapter {
     frame: InputState,
     mouse_position: Option<Point>,
     left_mouse_down: bool,
+    right_mouse_down: bool,
     shift_down: bool,
     control_down: bool,
     alt_down: bool,
@@ -68,6 +69,15 @@ impl NativeInputAdapter {
             }
             WindowEvent::MouseInput {
                 state,
+                button: MouseButton::Right,
+                ..
+            } => {
+                let down = *state == ElementState::Pressed;
+                if down && !self.right_mouse_down { self.frame.right_mouse_pressed = true; }
+                self.right_mouse_down = down;
+            }
+            WindowEvent::MouseInput {
+                state,
                 button: MouseButton::Left,
                 ..
             } => {
@@ -106,6 +116,7 @@ impl NativeInputAdapter {
                 self.control_down = false;
                 self.alt_down = false;
                 self.escape_down = false;
+                if self.right_mouse_down { self.right_mouse_down = false; }
                 if self.left_mouse_down {
                     self.left_mouse_down = false;
                     self.frame.left_mouse_released = true;
@@ -124,6 +135,7 @@ impl NativeInputAdapter {
         let mut frame = mem::take(&mut self.frame);
         frame.mouse_position = self.mouse_position;
         frame.left_mouse_down = self.left_mouse_down;
+        frame.right_mouse_down = self.right_mouse_down;
         frame.shift_down = self.shift_down;
         frame.control_down = self.control_down;
         frame.alt_down = self.alt_down;
