@@ -243,8 +243,7 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
                 let destination_weight = destination_alpha * inverse_source_alpha;
                 let alpha_numerator = source_alpha * 255 + destination_weight;
                 let blend_channel = |source: u32, destination: u8| -> u8 {
-                    let numerator = source
-                        + u32::from(destination) * destination_weight;
+                    let numerator = source + u32::from(destination) * destination_weight;
                     ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
                 };
 
@@ -1926,7 +1925,11 @@ mod clipping_tests {
                 }
             }
 
-            super::blend_rect(&mut actual, Rect::new(0, 0, 5, backgrounds.len() as u32), source);
+            super::blend_rect(
+                &mut actual,
+                Rect::new(0, 0, 5, backgrounds.len() as u32),
+                source,
+            );
             assert_eq!(actual, expected, "source alpha {alpha}");
         }
     }
