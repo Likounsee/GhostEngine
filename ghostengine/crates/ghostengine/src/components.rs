@@ -357,6 +357,33 @@ pub struct PlacedComponent {
     pub state: WidgetState,
 }
 
+/// A selectable command displayed by a retained context menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextMenuItem {
+    pub action: u64,
+    pub label: String,
+    pub enabled: bool,
+}
+
+impl ContextMenuItem {
+    #[must_use]
+    pub fn new(action: u64, label: impl Into<String>) -> Self {
+        Self { action, label: label.into(), enabled: true }
+    }
+
+    #[must_use]
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContextMenuState {
+    position: Point,
+    selected: usize,
+}
+
 /// Component-level events emitted by pointer or keyboard interaction.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ComponentEvents {
@@ -364,6 +391,8 @@ pub struct ComponentEvents {
     pub focus_changed: Option<ComponentId>,
     /// Host clipboard operation requested by a keyboard shortcut.
     pub clipboard_action: Option<ClipboardAction>,
+    /// Application-defined action selected from a context menu.
+    pub context_menu_action: Option<u64>,
 }
 
 /// Clipboard operations are delegated to the host application/window system.
@@ -414,6 +443,8 @@ pub struct ComponentTree {
     combo_states: HashMap<ComponentId, ComboBoxState>,
     tabs_states: HashMap<ComponentId, TabsState>,
     list_states: HashMap<ComponentId, ListState>,
+    context_menu_items: Vec<ContextMenuItem>,
+    context_menu_state: Option<ContextMenuState>,
 }
 
 impl ComponentTree {
@@ -442,6 +473,8 @@ impl ComponentTree {
             combo_states,
             tabs_states,
             list_states,
+            context_menu_items: Vec::new(),
+            context_menu_state: None,
         }
     }
 
@@ -662,6 +695,19 @@ impl ComponentTree {
         released: bool,
     ) -> ComponentEvents {
         self.layout(bounds);
+        if released {
+            if let (Some(point), Some(menu)) = (pointer, self.context_menu_state) {
+                let popup = self.context_menu_bounds(bounds, menu);
+                if popup.contains(point) {
+                    let row = ((point.y - popup.y) as u32 / 28) as usize;
+                    let action = self.context_menu_items.get(row)
+                        .filter(|item| item.enabled).map(|item| item.action);
+                    self.context_menu_state = None;
+                    return ComponentEvents { context_menu_action: action, ..ComponentEvents::default() };
+                }
+                self.context_menu_state = None;
+            }
+        }
         let enabled = vec![true; self.focusable_ids.len()];
         // Popup rows live outside the combo box's layout rectangle, so route
         // their pointer releases before normal component hit testing.
@@ -787,6 +833,55 @@ impl ComponentTree {
             }
         }
         translated
+    }
+
+    /// Installs the commands shown when the user opens a context menu.
+    pub fn set_context_menu(&mut self, items: Vec<ContextMenuItem>) {
+        self.context_menu_items = items;
+        self.context_menu_state = None;
+    }
+
+    /// Opens the configured context menu at a pointer location.
+    pub fn open_context_menu_at(&mut self, position: Point) -> bool {
+        if self.context_menu_items.is_empty() { return false; }
+        let selected = self.context_menu_items.iter().position(|item| item.enabled).unwrap_or(0);
+        self.context_menu_state = Some(ContextMenuState { position, selected });
+        true
+    }
+
+    pub fn close_context_menu(&mut self) { self.context_menu_state = None; }
+
+    #[must_use]
+    pub fn context_menu_is_open(&self) -> bool { self.context_menu_state.is_some() }
+
+    fn context_menu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
+        let height = (self.context_menu_items.len() as u32).saturating_mul(28).max(1).min(bounds.height.max(1));
+        let width = 192_u32.min(bounds.width.max(1));
+        let max_x = bounds.x.saturating_add(bounds.width.saturating_sub(width)) as i64;
+        let max_y = bounds.y.saturating_add(bounds.height.saturating_sub(height)) as i64;
+        let x = (state.position.x as i64).clamp(bounds.x as i64, max_x);
+        let y = (state.position.y as i64).clamp(bounds.y as i64, max_y);
+        Rect::new(x as i32, y as i32, width, height)
+    }
+
+    fn render_context_menu(&self, target: &mut Framebuffer, bounds: Rect, font: &FontFace,
+        pixel_size: f32, theme: &UiTheme, state: ContextMenuState) {
+        let popup = self.context_menu_bounds(bounds, state);
+        draw_panel(target, popup, 4, theme);
+        for (index, item) in self.context_menu_items.iter().enumerate() {
+            let offset = (index as u32).saturating_mul(28);
+            let row = Rect::new(popup.x, popup.y.saturating_add(offset), popup.width,
+                28.min(popup.height.saturating_sub(offset)));
+            if row.height == 0 { continue; }
+            if index == state.selected && item.enabled { draw_panel(target, row, 2, theme); }
+            let baseline = i64::from(row.y)
+                + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78) / 2.0) as i64;
+            if let Ok(y) = i32::try_from(baseline) {
+                draw_label_clipped(target, font, &item.label,
+                    Point::new(row.x.saturating_add(10), y), pixel_size,
+                    if item.enabled { theme.text } else { theme.muted_text }, row);
+            }
+        }
     }
 
     /// Moves focus through visible enabled controls in depth-first tab order.
@@ -1057,6 +1152,9 @@ impl ComponentTree {
                     }
                 }
             }
+        }
+        if let Some(menu) = self.context_menu_state {
+            self.render_context_menu(target, bounds, font, pixel_size, theme, menu);
         }
     }
 
@@ -1343,6 +1441,30 @@ impl ComponentTree {
 
     /// Routes a discrete key to focus navigation, activation, or text editing.
     pub fn handle_key(&mut self, bounds: Rect, key: ComponentKey, shift: bool) -> ComponentEvents {
+        if let Some(mut menu) = self.context_menu_state {
+            match key {
+                ComponentKey::Escape => { self.context_menu_state = None; return ComponentEvents::default(); }
+                ComponentKey::ArrowDown | ComponentKey::ArrowUp => {
+                    let count = self.context_menu_items.len();
+                    if count > 0 {
+                        for _ in 0..count {
+                            menu.selected = if key == ComponentKey::ArrowDown { (menu.selected + 1) % count }
+                                else { (menu.selected + count - 1) % count };
+                            if self.context_menu_items[menu.selected].enabled { break; }
+                        }
+                        self.context_menu_state = Some(menu);
+                    }
+                    return ComponentEvents::default();
+                }
+                ComponentKey::Enter | ComponentKey::Space => {
+                    let action = self.context_menu_items.get(menu.selected)
+                        .filter(|item| item.enabled).map(|item| item.action);
+                    self.context_menu_state = None;
+                    return ComponentEvents { context_menu_action: action, ..ComponentEvents::default() };
+                }
+                _ => return ComponentEvents::default(),
+            }
+        }
         if let Some(id) = self.focused_component() {
             let kind = self.find(id).map(|component| component.kind().clone());
             match kind {
@@ -1578,6 +1700,7 @@ impl ComponentTree {
                 .focus_changed
                 .and_then(|index| self.focusable_ids.get(index).copied()),
             clipboard_action: None,
+            context_menu_action: None,
         }
     }
 }
