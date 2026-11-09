@@ -145,27 +145,6 @@ impl Texture {
     }
 }
 
-fn interpolate_premultiplied(left: Color, right: Color, amount: f32) -> Color {
-    let amount = amount.clamp(0.0, 1.0);
-    let alpha = f32::from(left.a) + (f32::from(right.a) - f32::from(left.a)) * amount;
-    if alpha <= f32::EPSILON {
-        return Color::TRANSPARENT;
-    }
-    let channel = |left_channel: u8, right_channel: u8| {
-        let left_value = f32::from(left_channel) * f32::from(left.a) / 255.0;
-        let right_value = f32::from(right_channel) * f32::from(right.a) / 255.0;
-        ((left_value + (right_value - left_value) * amount) * 255.0 / alpha)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    };
-    Color::rgba(
-        channel(left.r, right.r),
-        channel(left.g, right.g),
-        channel(left.b, right.b),
-        alpha.round().clamp(0.0, 255.0) as u8,
-    )
-}
-
 /// Draws a texture into a destination rectangle, scaling and alpha-compositing it.
 ///
 /// The destination is clipped to the framebuffer. A zero-sized destination draws
