@@ -326,13 +326,7 @@ pub fn fill_path_even_odd_aa(
     color: Color,
     tolerance: f32,
 ) -> Result<(), PathError> {
-    fill_transformed_path_even_odd_aa(
-        target,
-        path,
-        Transform2D::IDENTITY,
-        color,
-        tolerance,
-    )
+    fill_transformed_path_even_odd_aa(target, path, Transform2D::IDENTITY, color, tolerance)
 }
 
 /// Flattens, transforms and antialiases a path using the even-odd fill rule.
@@ -344,9 +338,7 @@ pub fn fill_transformed_path_even_odd_aa(
     tolerance: f32,
 ) -> Result<(), PathError> {
     let clip = Rect::new(0, 0, target.width(), target.height());
-    fill_transformed_path_even_odd_aa_clipped(
-        target, path, transform, color, tolerance, clip,
-    )
+    fill_transformed_path_even_odd_aa_clipped(target, path, transform, color, tolerance, clip)
 }
 
 /// Antialiased path fill restricted to a framebuffer-space viewport.
@@ -421,8 +413,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
                             let a = contour[index];
                             let b = contour[(index + 1) % contour.len()];
                             if (a.y > sample_y) != (b.y > sample_y) {
-                                let crossing_x =
-                                    a.x + (sample_y - a.y) * (b.x - a.x) / (b.y - a.y);
+                                let crossing_x = a.x + (sample_y - a.y) * (b.x - a.x) / (b.y - a.y);
                                 if sample_x < crossing_x {
                                     inside = !inside;
                                 }
@@ -449,7 +440,9 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
 
 #[cfg(test)]
 mod tests {
-    use super::{fill_path_even_odd, fill_path_even_odd_aa, fill_transformed_path_even_odd, Path, PathError};
+    use super::{
+        fill_path_even_odd, fill_path_even_odd_aa, fill_transformed_path_even_odd, Path, PathError,
+    };
     use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
 
     #[test]
