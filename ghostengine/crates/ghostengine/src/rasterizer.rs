@@ -2120,6 +2120,13 @@ mod rounded_fill_tests {
     }
 
     #[test]
+    fn tiny_rounded_rectangle_keeps_its_pixel_coverage() {
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        fill_rounded_rect(&mut target, Rect::new(0, 0, 2, 2), 1, Color::GREEN);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::GREEN));
+    }
+
+    #[test]
     fn rounded_rectangle_fill_ignores_empty_rectangles() {
         let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         fill_rounded_rect(&mut target, Rect::new(1, 1, 0, 3), 2, Color::GREEN);
@@ -2157,6 +2164,13 @@ mod rounded_outline_tests {
         draw_rect(&mut expected, rect, Color::RED);
         draw_rounded_rect(&mut actual, rect, 0, Color::RED);
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tiny_rounded_rectangle_outline_keeps_its_perimeter() {
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        draw_rounded_rect(&mut target, Rect::new(0, 0, 2, 2), 1, Color::BLUE);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLUE));
     }
 
     #[test]
