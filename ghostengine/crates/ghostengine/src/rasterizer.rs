@@ -687,6 +687,43 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PolygonEdge {
+    min_y: f64,
+    max_y: f64,
+    min_x: f64,
+    inverse_slope: f64,
+}
+
+impl PolygonEdge {
+    fn new(a: Point, b: Point) -> Option<Self> {
+        let (ax, ay) = (f64::from(a.x), f64::from(a.y));
+        let (bx, by) = (f64::from(b.x), f64::from(b.y));
+        if (ay - by).abs() <= f64::EPSILON {
+            return None;
+        }
+        let (min_x, min_y, max_y, upper_x) = if ay < by {
+            (ax, ay, by, bx)
+        } else {
+            (bx, by, ay, ax)
+        };
+        Some(Self {
+            min_y,
+            max_y,
+            min_x,
+            inverse_slope: (upper_x - min_x) / (max_y - min_y),
+        })
+    }
+
+    fn crosses(self, sample_y: f64) -> bool {
+        self.min_y <= sample_y && sample_y < self.max_y
+    }
+
+    fn intersection_x(self, sample_y: f64) -> f64 {
+        self.min_x + (sample_y - self.min_y) * self.inverse_slope
+    }
+}
+
 /// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
 pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
@@ -706,6 +743,13 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         return;
     }
 
+    let edges = (0..vertices.len())
+        .filter_map(|index| PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()]))
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return;
+    }
+
     for y in top..bottom {
         let Some(row) = target.row_mut(y) else {
             continue;
@@ -713,21 +757,18 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         for x in left..right {
             let mut covered = 0_u16;
             for offset_y in OFFSETS {
+                let sample_y = f64::from(y) + offset_y;
+                let active_edges = edges
+                    .iter()
+                    .copied()
+                    .filter(|edge| edge.crosses(sample_y))
+                    .collect::<Vec<_>>();
                 for offset_x in OFFSETS {
                     let sample_x = f64::from(x) + offset_x;
-                    let sample_y = f64::from(y) + offset_y;
                     let mut inside = false;
-                    for index in 0..vertices.len() {
-                        let a = vertices[index];
-                        let b = vertices[(index + 1) % vertices.len()];
-                        let ay = f64::from(a.y);
-                        let by = f64::from(b.y);
-                        if (ay > sample_y) != (by > sample_y) {
-                            let crossing_x = f64::from(a.x)
-                                + (sample_y - ay) * (f64::from(b.x) - f64::from(a.x)) / (by - ay);
-                            if sample_x < crossing_x {
-                                inside = !inside;
-                            }
+                    for edge in &active_edges {
+                        if sample_x < edge.intersection_x(sample_y) {
+                            inside = !inside;
                         }
                     }
                     covered += u16::from(inside);
