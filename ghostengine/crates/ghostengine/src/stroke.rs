@@ -16,11 +16,24 @@ pub enum StrokeCap {
     Round,
 }
 
-/// Stroke parameters. Joins are round in this first stable implementation.
+/// Shape used to connect adjacent stroked segments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrokeJoin {
+    /// Circular join matching the union of round segment ends.
+    Round,
+    /// Connects the outer edges with a straight bevel.
+    Bevel,
+    /// Extends the outer edges to their intersection, subject to the miter limit.
+    Miter,
+}
+
+/// Stroke parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StrokeStyle {
     pub width: f32,
     pub cap: StrokeCap,
+    pub join: StrokeJoin,
+    pub miter_limit: f32,
 }
 
 impl StrokeStyle {
@@ -29,12 +42,27 @@ impl StrokeStyle {
         Self {
             width,
             cap: StrokeCap::Butt,
+            join: StrokeJoin::Round,
+            miter_limit: 4.0,
         }
     }
 
     #[must_use]
     pub const fn with_cap(mut self, cap: StrokeCap) -> Self {
         self.cap = cap;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_join(mut self, join: StrokeJoin) -> Self {
+        self.join = join;
+        self
+    }
+
+    /// Sets the maximum miter length divided by the stroke radius.
+    #[must_use]
+    pub const fn with_miter_limit(mut self, limit: f32) -> Self {
+        self.miter_limit = limit;
         self
     }
 }
@@ -62,7 +90,7 @@ impl From<PathError> for StrokeError {
 /// Flattens and strokes a path using a transform and pixel-space stroke width.
 ///
 /// Width is measured after transformation. Curves use the supplied flattening
-/// tolerance. Open contours honor the selected cap; all joins are round.
+/// tolerance. Open contours honor the selected cap; joins honor the selected style.
 /// Pixels receive one source-over blend even when multiple segments overlap.
 pub fn stroke_path(
     target: &mut Framebuffer,
@@ -151,6 +179,10 @@ fn stroke_path_impl(
 ) -> Result<(), StrokeError> {
     let StrokeOptions { clip, antialias } = options;
     if !style.width.is_finite() || style.width <= 0.0 {
+
+        return Err(StrokeError::InvalidWidth);
+    }
+    if style.join == StrokeJoin::Miter && (!style.miter_limit.is_finite() || style.miter_limit < 1.0) {
         return Err(StrokeError::InvalidWidth);
     }
     if !transform.is_finite() {
@@ -227,9 +259,23 @@ fn stroke_path_impl(
                                 let b = contour.points[(i + 1) % contour.points.len()];
                                 let first = !contour.closed && i == 0;
                                 let last = !contour.closed && i + 1 == segment_count;
+                                let cap = if first || last { style.cap } else { StrokeCap::Butt };
                                 distance = distance.min(segment_distance(
-                                    sample, a, b, first, last, style.cap, radius,
+                                    sample, a, b, first, last, cap, radius,
                                 ));
+                            }
+                            if style.join != StrokeJoin::Round {
+                                for vertex_index in 0..join_count(&contour.points, contour.closed) {
+                                    let (previous, vertex, next) =
+                                        join_points(&contour.points, contour.closed, vertex_index);
+                                    if join_contains(
+                                        sample, previous, vertex, next, style.join, radius,
+                                        style.miter_limit,
+                                    ) {
+                                        distance = 0.0;
+                                        break;
+                                    }
+                                }
                             }
                             if distance <= radius {
                                 covered += 1;
@@ -245,9 +291,23 @@ fn stroke_path_impl(
                         let b = contour.points[(i + 1) % contour.points.len()];
                         let first = !contour.closed && i == 0;
                         let last = !contour.closed && i + 1 == segment_count;
+                        let cap = if first || last { style.cap } else { StrokeCap::Butt };
                         distance = distance.min(segment_distance(
-                            sample, a, b, first, last, style.cap, radius,
+                            sample, a, b, first, last, cap, radius,
                         ));
+                    }
+                    if style.join != StrokeJoin::Round {
+                        for vertex_index in 0..join_count(&contour.points, contour.closed) {
+                            let (previous, vertex, next) =
+                                join_points(&contour.points, contour.closed, vertex_index);
+                            if join_contains(
+                                sample, previous, vertex, next, style.join, radius,
+                                style.miter_limit,
+                            ) {
+                                distance = 0.0;
+                                break;
+                            }
+                        }
                     }
                     // Legacy pixel-center coverage keeps the existing stroke appearance.
                     (radius + 0.5 - distance).clamp(0.0, 1.0)
@@ -263,6 +323,95 @@ fn stroke_path_impl(
         }
     }
     Ok(())
+}
+
+fn join_count(points: &[Vector], closed: bool) -> usize {
+    if closed { points.len() } else { points.len().saturating_sub(2) }
+}
+
+fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector, Vector) {
+    if closed {
+        let vertex_index = index % points.len();
+        (
+            points[(vertex_index + points.len() - 1) % points.len()],
+            points[vertex_index],
+            points[(vertex_index + 1) % points.len()],
+        )
+    } else {
+        (points[index], points[index + 1], points[index + 2])
+    }
+}
+
+fn join_contains(
+    sample: Vector,
+    previous: Vector,
+    vertex: Vector,
+    next: Vector,
+    join: StrokeJoin,
+    radius: f32,
+    miter_limit: f32,
+) -> bool {
+    let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
+    let outgoing = Vector::new(next.x - vertex.x, next.y - vertex.y);
+    let in_length = incoming.x.hypot(incoming.y);
+    let out_length = outgoing.x.hypot(outgoing.y);
+    if in_length <= f32::EPSILON || out_length <= f32::EPSILON {
+        return false;
+    }
+    let incoming = Vector::new(incoming.x / in_length, incoming.y / in_length);
+    let outgoing = Vector::new(outgoing.x / out_length, outgoing.y / out_length);
+    let cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    if cross.abs() <= 1.0e-5 {
+        return false;
+    }
+    let side = if cross > 0.0 { -1.0 } else { 1.0 };
+    let normal_in = Vector::new(-incoming.y * side, incoming.x * side);
+    let normal_out = Vector::new(-outgoing.y * side, outgoing.x * side);
+    let outer_in = Vector::new(
+        vertex.x + normal_in.x * radius,
+        vertex.y + normal_in.y * radius,
+    );
+    let outer_out = Vector::new(
+        vertex.x + normal_out.x * radius,
+        vertex.y + normal_out.y * radius,
+    );
+    if point_in_triangle(sample, vertex, outer_in, outer_out) {
+        return true;
+    }
+    if join != StrokeJoin::Miter {
+        return false;
+    }
+    let bisector = Vector::new(normal_in.x + normal_out.x, normal_in.y + normal_out.y);
+    let bisector_length = bisector.x.hypot(bisector.y);
+    if bisector_length <= f32::EPSILON {
+        return false;
+    }
+    let bisector = Vector::new(bisector.x / bisector_length, bisector.y / bisector_length);
+    let denominator = bisector.x * normal_out.x + bisector.y * normal_out.y;
+    if denominator <= 1.0e-5 {
+        return false;
+    }
+    let miter_length = radius / denominator;
+    if !miter_length.is_finite() || miter_length > radius * miter_limit {
+        return false;
+    }
+    let miter = Vector::new(
+        vertex.x + bisector.x * miter_length,
+        vertex.y + bisector.y * miter_length,
+    );
+    point_in_triangle(sample, outer_in, miter, outer_out)
+}
+
+fn point_in_triangle(point: Vector, a: Vector, b: Vector, c: Vector) -> bool {
+    let cross = |p1: Vector, p2: Vector, p3: Vector| {
+        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+    };
+    let d1 = cross(a, b, point);
+    let d2 = cross(b, c, point);
+    let d3 = cross(c, a, point);
+    let has_negative = d1 < -1.0e-5 || d2 < -1.0e-5 || d3 < -1.0e-5;
+    let has_positive = d1 > 1.0e-5 || d2 > 1.0e-5 || d3 > 1.0e-5;
+    !(has_negative && has_positive)
 }
 
 fn segment_distance(
@@ -304,7 +453,7 @@ fn segment_distance(
 
 #[cfg(test)]
 mod tests {
-    use super::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
+    use super::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle};
     use crate::{Color, Framebuffer, Path, Rect, Transform2D, Vector};
 
     fn line() -> Path {
@@ -460,6 +609,60 @@ mod tests {
             }
         }
         assert!(fb.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 128));
+    }
+
+    fn corner_path() -> Path {
+        let mut path = Path::new();
+        path.move_to(Vector::new(3.0, 10.0))
+            .line_to(Vector::new(10.0, 10.0))
+            .line_to(Vector::new(10.0, 3.0));
+        path
+    }
+
+    #[test]
+    fn bevel_join_fills_outer_corner_without_round_bulge() {
+        let mut fb = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        stroke_path(
+            &mut fb,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel),
+            Color::WHITE,
+            0.2,
+        ).unwrap();
+        assert!(fb.get_pixel(12, 12).unwrap() == Color::BLACK);
+        assert!(fb.get_pixel(10, 12).unwrap() == Color::WHITE);
+    }
+
+    #[test]
+    fn miter_join_extends_outer_corner_when_within_limit() {
+        let mut bevel = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        let mut miter = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        stroke_path(
+            &mut bevel, &corner_path(), Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel), Color::WHITE, 0.2,
+        ).unwrap();
+        stroke_path(
+            &mut miter, &corner_path(), Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Miter), Color::WHITE, 0.2,
+        ).unwrap();
+        assert!(miter.get_pixel(12, 12).unwrap() != bevel.get_pixel(12, 12).unwrap());
+    }
+
+    #[test]
+    fn miter_join_falls_back_to_bevel_when_limit_is_exceeded() {
+        let mut bevel = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        let mut limited = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        stroke_path(
+            &mut bevel, &corner_path(), Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel), Color::WHITE, 0.2,
+        ).unwrap();
+        stroke_path(
+            &mut limited, &corner_path(), Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Miter).with_miter_limit(1.0),
+            Color::WHITE, 0.2,
+        ).unwrap();
+        assert_eq!(limited.pixels(), bevel.pixels());
     }
 
     #[test]
