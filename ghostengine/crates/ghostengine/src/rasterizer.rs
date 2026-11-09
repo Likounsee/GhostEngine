@@ -989,24 +989,7 @@ pub fn fill_ellipse_aa(
         return;
     }
 
-    const SAMPLES: [(f64, f64); 16] = [
-        (0.125, 0.125),
-        (0.375, 0.125),
-        (0.625, 0.125),
-        (0.875, 0.125),
-        (0.125, 0.375),
-        (0.375, 0.375),
-        (0.625, 0.375),
-        (0.875, 0.375),
-        (0.125, 0.625),
-        (0.375, 0.625),
-        (0.625, 0.625),
-        (0.875, 0.625),
-        (0.125, 0.875),
-        (0.375, 0.875),
-        (0.625, 0.875),
-        (0.875, 0.875),
-    ];
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
     let rx = f64::from(radius_x);
@@ -1019,19 +1002,26 @@ pub fn fill_ellipse_aa(
         return;
     }
 
+    let inverse_rx = rx.recip();
+    let inverse_ry = ry.recip();
     for y in top..bottom {
+        let normalized_y = SAMPLE_OFFSETS.map(|offset| (f64::from(y) + offset - cy) * inverse_ry);
+        let normalized_y_squared = normalized_y.map(|value| value * value);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in left..right {
-            let covered = SAMPLES
-                .iter()
-                .filter(|&&(offset_x, offset_y)| {
-                    let dx = (f64::from(x) + offset_x - cx) / rx;
-                    let dy = (f64::from(y) + offset_y - cy) / ry;
-                    dx * dx + dy * dy <= 1.0
-                })
-                .count();
+            let normalized_x =
+                SAMPLE_OFFSETS.map(|offset| (f64::from(x) + offset - cx) * inverse_rx);
+            let mut covered = 0_u32;
+            for dx in normalized_x {
+                let dx_squared = dx * dx;
+                for dy_squared in normalized_y_squared {
+                    if dx_squared + dy_squared <= 1.0 {
+                        covered += 1;
+                    }
+                }
+            }
             if covered == 0 {
                 continue;
             }
