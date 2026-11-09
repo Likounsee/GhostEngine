@@ -33,10 +33,6 @@ impl FillEdge {
         })
     }
 
-    fn crosses(self, sample_y: f32) -> bool {
-        self.min_y <= sample_y && sample_y < self.max_y
-    }
-
     fn x_at(self, sample_y: f32) -> f32 {
         self.min_x + (sample_y - self.min_y) * self.inverse_slope
     }
