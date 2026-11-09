@@ -3,9 +3,9 @@ use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ghostengine::{
-    blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa,
-    stroke_path, stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Path,
-    Point, Rect, StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
+    stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Path, Point, Rect,
+    StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 480;
@@ -123,10 +123,20 @@ fn main() {
         .close();
 
     let gradient = Gradient::new(vec![
-        GradientStop { position: 0.0, color: Color::rgb(35, 110, 230) },
-        GradientStop { position: 0.5, color: Color::rgb(50, 210, 160) },
-        GradientStop { position: 1.0, color: Color::rgb(245, 130, 45) },
-    ]).expect("benchmark gradient should be valid");
+        GradientStop {
+            position: 0.0,
+            color: Color::rgb(35, 110, 230),
+        },
+        GradientStop {
+            position: 0.5,
+            color: Color::rgb(50, 210, 160),
+        },
+        GradientStop {
+            position: 1.0,
+            color: Color::rgb(245, 130, 45),
+        },
+    ])
+    .expect("benchmark gradient should be valid");
 
     let texture_pixels = (0..128 * 128)
         .map(|index| {
