@@ -2978,24 +2978,34 @@ mod tests {
 
     #[test]
     fn context_menu_shortcuts_find_commands_at_arbitrary_submenu_depth() {
-        let nested = ContextMenuItem::new(905, "Export")
-            .with_submenu(vec![ContextMenuItem::new(906, "As archive").with_submenu(vec![
-                ContextMenuItem::new(907, "Compressed")
-                    .with_shortcut(ContextMenuShortcut::new('e').with_control(true)),
-            ])]);
+        let nested = ContextMenuItem::new(905, "Export").with_submenu(vec![ContextMenuItem::new(
+            906,
+            "As archive",
+        )
+        .with_submenu(vec![ContextMenuItem::new(907, "Compressed")
+            .with_shortcut(ContextMenuShortcut::new('e').with_control(true))])]);
         let mut tree = ComponentTree::new(Vec::new());
         tree.set_context_menu(vec![nested]);
 
-        let events = tree.activate_context_menu_shortcut('e', true, false, false).unwrap();
+        let events = tree
+            .activate_context_menu_shortcut('e', true, false, false)
+            .unwrap();
         assert_eq!(events.context_menu_action, Some(907));
     }
 
     #[test]
     fn context_menu_item_label_includes_shortcut_and_submenu_indicator() {
         let item = ContextMenuItem::new(908, "Save")
-            .with_shortcut(ContextMenuShortcut::new('s').with_control(true).with_shift(true))
+            .with_shortcut(
+                ContextMenuShortcut::new('s')
+                    .with_control(true)
+                    .with_shift(true),
+            )
             .with_submenu(vec![ContextMenuItem::new(909, "More")]);
-        assert_eq!(super::format_context_menu_item_label(&item), "Save  >    Ctrl+Shift+S");
+        assert_eq!(
+            super::format_context_menu_item_label(&item),
+            "Save  >    Ctrl+Shift+S"
+        );
     }
 
     #[test]
