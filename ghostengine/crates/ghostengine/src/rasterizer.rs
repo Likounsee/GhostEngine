@@ -1067,8 +1067,10 @@ pub fn draw_ellipse(
         radius_x,
         radius_y,
         |y, left, right| {
-            target.set_pixel(left as u32, y, color);
-            target.set_pixel(right as u32, y, color);
+            if let Some(row) = target.row_mut(y) {
+                row[left as usize] = color;
+                row[right as usize] = color;
+            }
         },
     );
 }
@@ -1089,8 +1091,8 @@ pub fn fill_ellipse(
         radius_x,
         radius_y,
         |y, left, right| {
-            for x in left..=right {
-                target.set_pixel(x as u32, y, color);
+            if let Some(row) = target.row_mut(y) {
+                row[left as usize..=right as usize].fill(color);
             }
         },
     );
