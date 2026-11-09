@@ -302,11 +302,14 @@ pub fn fill_transformed_path_even_odd_clipped(
             }
         }
         intersections.sort_by(f32::total_cmp);
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for pair in intersections.chunks_exact(2) {
             let left = ((pair[0] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
             let right = ((pair[1] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
-            for x in left..right {
-                target.set_pixel(x, y, color);
+            if left < right {
+                row[left as usize..right as usize].fill(color);
             }
         }
     }
