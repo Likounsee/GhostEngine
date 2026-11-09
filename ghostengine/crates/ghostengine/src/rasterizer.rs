@@ -328,14 +328,6 @@ fn interpolate_color(left: Color, right: Color, amount: f32) -> Color {
     )
 }
 
-fn paint_gradient_pixel(target: &mut Framebuffer, x: u32, y: u32, color: Color) {
-    if color.a == 255 {
-        target.set_pixel(x, y, color);
-    } else {
-        blend_pixel(target, Point::new(x as i32, y as i32), color);
-    }
-}
-
 /// Fills a clipped rectangle with a linear gradient between two floating-point points.
 /// Sampling occurs at pixel centers. A zero-length axis samples the first color throughout.
 pub fn fill_rect_linear_gradient(
