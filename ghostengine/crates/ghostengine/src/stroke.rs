@@ -301,9 +301,7 @@ fn stroke_path_impl(
             // cannot contribute to any of its 4x4 coverage samples.
             let sample_top = y as f32 + 0.125;
             let sample_bottom = y as f32 + 0.875;
-            while next_segment < segments.len()
-                && segments[next_segment].min_y <= sample_bottom
-            {
+            while next_segment < segments.len() && segments[next_segment].min_y <= sample_bottom {
                 row_segments.push(segments[next_segment]);
                 next_segment += 1;
             }
