@@ -760,7 +760,12 @@ mod tests {
 
         assert_ne!(miter.pixels(), bevel.pixels());
         assert_eq!(limited.pixels(), bevel.pixels());
-        assert!(miter.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(
+            miter
+                .pixels()
+                .iter()
+                .any(|pixel| pixel.r > 0 && pixel.r < 255)
+        );
     }
 
     #[test]
