@@ -170,8 +170,35 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
         return;
     }
     for y in top..bottom {
-        for x in left..right {
-            target.set_pixel(x as u32, y as u32, color);
+        if let Some(row) = target.row_mut(y as u32) {
+            row[left as usize..right as usize].fill(color);
+        }
+    }
+}
+
+/// Alpha-composites a clipped rectangle over the framebuffer.
+///
+/// Fully opaque colors use the fast row-fill path; transparent colors are a no-op.
+pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
+    if color.a == 0 {
+        return;
+    }
+    if color.a == 255 {
+        fill_rect(target, rect, color);
+        return;
+    }
+    let left = u64::from(rect.x).min(u64::from(target.width()));
+    let top = u64::from(rect.y).min(u64::from(target.height()));
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width()));
+    let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height()));
+    if left >= right || top >= bottom {
+        return;
+    }
+    for y in top..bottom {
+        if let Some(row) = target.row_mut(y as u32) {
+            for pixel in &mut row[left as usize..right as usize] {
+                *pixel = color.blend_over(*pixel);
+            }
         }
     }
 }
@@ -1344,6 +1371,21 @@ mod tests {
     }
 }
 
+/// Alpha-composites only the intersection of a rectangle, clip region, and framebuffer.
+pub fn blend_rect_clipped(
+    target: &mut Framebuffer,
+    rect: Rect,
+    clip: Rect,
+    color: Color,
+) {
+    let Some(visible) = rect.intersection(clip).and_then(|intersection| {
+        intersection.intersection(Rect::new(0, 0, target.width(), target.height()))
+    }) else {
+        return;
+    };
+    blend_rect(target, visible, color);
+}
+
 /// Fills only the intersection of a rectangle, a clip region, and the framebuffer.
 /// The clip is expressed in framebuffer coordinates and uses half-open bounds.
 pub fn fill_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
@@ -1359,6 +1401,41 @@ pub fn fill_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color
 mod clipping_tests {
     use super::fill_rect_clipped;
     use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn alpha_blended_rectangle_composites_every_visible_pixel() {
+        let mut target = Framebuffer::new(4, 3, Color::BLUE).unwrap();
+        super::blend_rect(&mut target, Rect::new(1, 1, 2, 2), Color::rgba(255, 0, 0, 128));
+        assert_eq!(target.get_pixel(0, 1), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::rgb(128, 0, 127)));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(128, 0, 127)));
+        assert_eq!(target.get_pixel(3, 2), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn alpha_blended_rectangle_respects_clip_and_transparent_noop() {
+        let mut target = Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        super::blend_rect_clipped(
+            &mut target,
+            Rect::new(0, 0, 4, 3),
+            Rect::new(1, 1, 2, 1),
+            Color::rgba(0, 255, 0, 128),
+        );
+        super::blend_rect(&mut target, Rect::new(0, 0, 4, 3), Color::TRANSPARENT);
+        assert_eq!(target.get_pixel(0, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::rgba(0, 128, 0, 255)));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::rgba(0, 128, 0, 255)));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn opaque_blended_rectangle_matches_fast_fill() {
+        let mut blended = Framebuffer::new(3, 2, Color::BLUE).unwrap();
+        let mut filled = blended.clone();
+        super::blend_rect(&mut blended, Rect::new(1, 0, 2, 2), Color::RED);
+        super::fill_rect(&mut filled, Rect::new(1, 0, 2, 2), Color::RED);
+        assert_eq!(blended, filled);
+    }
 
     #[test]
     fn clipped_fill_respects_both_shape_and_viewport() {
