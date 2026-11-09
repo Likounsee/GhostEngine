@@ -493,12 +493,45 @@ fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector
 }
 
 #[derive(Debug, Clone, Copy)]
+struct PreparedTriangle {
+    // Precomputed edge equations: cross(edge, point - origin).
+    edges: [(f32, f32, f32); 3],
+}
+
+impl PreparedTriangle {
+    fn new(vertices: [Vector; 3]) -> Self {
+        let edges = core::array::from_fn(|index| {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            (dy * a.x - dx * a.y, dx, -dy)
+        });
+        Self { edges }
+    }
+
+    fn contains(self, point: Vector) -> bool {
+        let mut has_negative = false;
+        let mut has_positive = false;
+        for (constant, x, y) in self.edges {
+            let cross = constant + x * point.y + y * point.x;
+            has_negative |= cross < -1.0e-5;
+            has_positive |= cross > 1.0e-5;
+            if has_negative && has_positive {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct PreparedJoin {
     vertex: Vector,
     radius: f32,
     round: bool,
-    bevel: [Vector; 3],
-    miter: Option<[Vector; 3]>,
+    bevel: PreparedTriangle,
+    miter: Option<PreparedTriangle>,
     min_y: f32,
     max_y: f32,
 }
@@ -517,7 +550,7 @@ impl PreparedJoin {
                 vertex,
                 radius,
                 round: true,
-                bevel: [vertex; 3],
+                bevel: PreparedTriangle::new([vertex; 3]),
                 miter: None,
                 min_y: vertex.y - radius,
                 max_y: vertex.y + radius,
@@ -547,7 +580,8 @@ impl PreparedJoin {
             vertex.x + normal_out.x * radius,
             vertex.y + normal_out.y * radius,
         );
-        let bevel = [vertex, outer_in, outer_out];
+        let bevel_vertices = [vertex, outer_in, outer_out];
+        let bevel = PreparedTriangle::new(bevel_vertices);
         let miter = if join == StrokeJoin::Miter {
             let bisector = Vector::new(normal_in.x + normal_out.x, normal_in.y + normal_out.y);
             let bisector_length = bisector.x.hypot(bisector.y);
@@ -568,26 +602,24 @@ impl PreparedJoin {
                             vertex.x + bisector.x * miter_length,
                             vertex.y + bisector.y * miter_length,
                         );
-                        Some([outer_in, miter, outer_out])
+                        Some(PreparedTriangle::new([outer_in, miter, outer_out]))
                     }
                 }
             }
         } else {
             None
         };
-        let mut min_y = bevel
+        let mut min_y = bevel_vertices
             .iter()
             .map(|point| point.y)
             .fold(f32::INFINITY, f32::min);
-        let mut max_y = bevel
+        let mut max_y = bevel_vertices
             .iter()
             .map(|point| point.y)
             .fold(f32::NEG_INFINITY, f32::max);
         if let Some(triangle) = miter {
-            for point in triangle {
-                min_y = min_y.min(point.y);
-                max_y = max_y.max(point.y);
-            }
+            // The miter triangle stays inside the contour scan region, which
+            // is expanded by the configured miter limit.
         }
         Some(Self {
             vertex,
@@ -606,23 +638,9 @@ impl PreparedJoin {
             let dy = sample.y - self.vertex.y;
             return dx * dx + dy * dy <= self.radius * self.radius;
         }
-        point_in_triangle(sample, self.bevel[0], self.bevel[1], self.bevel[2])
-            || self.miter.is_some_and(|triangle| {
-                point_in_triangle(sample, triangle[0], triangle[1], triangle[2])
-            })
+        self.bevel.contains(sample)
+            || self.miter.is_some_and(|triangle| triangle.contains(sample))
     }
-}
-
-fn point_in_triangle(point: Vector, a: Vector, b: Vector, c: Vector) -> bool {
-    let cross = |p1: Vector, p2: Vector, p3: Vector| {
-        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
-    };
-    let d1 = cross(a, b, point);
-    let d2 = cross(b, c, point);
-    let d3 = cross(c, a, point);
-    let has_negative = d1 < -1.0e-5 || d2 < -1.0e-5 || d3 < -1.0e-5;
-    let has_positive = d1 > 1.0e-5 || d2 > 1.0e-5 || d3 > 1.0e-5;
-    !(has_negative && has_positive)
 }
 
 #[cfg(test)]
