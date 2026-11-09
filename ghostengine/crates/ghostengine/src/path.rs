@@ -438,6 +438,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
         .iter()
         .flat_map(|contour| contour.iter().map(|point| point.y))
         .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
         .min(clip_bottom as f32) as u32;
     if min_x >= max_x || min_y >= max_y {
         return Ok(());
