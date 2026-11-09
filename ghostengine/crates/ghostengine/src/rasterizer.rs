@@ -301,16 +301,12 @@ fn interpolate_color(left: Color, right: Color, amount: f32) -> Color {
     )
 }
 
-#[inline]
-fn composite_gradient_pixel(destination: &mut Color, source: Color) {
-    if source.a == 0 {
-        return;
-    }
-    *destination = if source.a == u8::MAX {
-        source
+fn paint_gradient_pixel(target: &mut Framebuffer, x: u32, y: u32, color: Color) {
+    if color.a == 255 {
+        target.set_pixel(x, y, color);
     } else {
-        source.blend_over(*destination)
-    };
+        blend_pixel(target, Point::new(x as i32, y as i32), color);
+    }
 }
 
 /// Fills a clipped rectangle with a linear gradient between two floating-point points.
@@ -337,20 +333,15 @@ pub fn fill_rect_linear_gradient(
         return;
     }
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
-        let row = &mut row[left as usize..right as usize];
-        let sample_y = y as f32 + 0.5 - start.y;
-        for (offset, pixel) in row.iter_mut().enumerate() {
-            let x = left + offset as u32;
+        for x in left..right {
             let position = if length_squared <= f32::EPSILON {
                 0.0
             } else {
-                (((x as f32 + 0.5 - start.x) * dx + sample_y * dy) / length_squared)
+                (((x as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
+                    / length_squared)
                     .clamp(0.0, 1.0)
             };
-            composite_gradient_pixel(pixel, gradient.sample(position));
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
         }
     }
 }
@@ -376,16 +367,11 @@ pub fn fill_rect_radial_gradient(
         return;
     }
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
-        let row = &mut row[left as usize..right as usize];
-        let dy = y as f32 + 0.5 - center.y;
-        for (offset, pixel) in row.iter_mut().enumerate() {
-            let x = left + offset as u32;
+        for x in left..right {
             let dx = x as f32 + 0.5 - center.x;
+            let dy = y as f32 + 0.5 - center.y;
             let position = (dx.hypot(dy) / radius).clamp(0.0, 1.0);
-            composite_gradient_pixel(pixel, gradient.sample(position));
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
         }
     }
 }
@@ -433,9 +419,6 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
     let length_squared = dx * dx + dy * dy;
     let mut visible = false;
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
         for x in left..right {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
@@ -448,7 +431,7 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
                 (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
                     .clamp(0.0, 1.0)
             };
-            composite_gradient_pixel(&mut row[x as usize], gradient.sample(position));
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
         }
     }
     visible
@@ -493,9 +476,6 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
     };
     let mut visible = false;
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
         for x in left..right {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
@@ -504,7 +484,7 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
             visible = true;
             let position =
                 ((local.x - center.x).hypot(local.y - center.y) / radius).clamp(0.0, 1.0);
-            composite_gradient_pixel(&mut row[x as usize], gradient.sample(position));
+            paint_gradient_pixel(target, x, y, gradient.sample(position));
         }
     }
     visible
@@ -727,7 +707,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
         for pair in intersections.chunks_exact(2) {
             let first = (pair[0] - 0.5).ceil().max(0.0) as u32;
             let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target_width);
-            let start = first.min(target.width());
+            let start = first.min(target_width);
             if start < end {
                 row[start as usize..end as usize].fill(color);
             }
