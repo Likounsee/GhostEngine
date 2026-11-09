@@ -789,6 +789,58 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     }
 }
 
+
+/// Fills a rounded rectangle using clipped horizontal scanline spans.
+///
+/// The radius is clamped to half the smaller dimension. A zero radius is
+/// equivalent to a regular rectangle fill.
+pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 {
+        fill_rect(target, rect, color);
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width) - 1;
+    let bottom = top + i64::from(rect.height) - 1;
+    let radius = i64::from(radius);
+    let left_center = left + radius;
+    let right_center = right - radius;
+    let top_center = top + radius;
+    let bottom_center = bottom - radius;
+    let first_y = top.max(0);
+    let last_y = bottom.min(i64::from(target.height()) - 1);
+    if first_y > last_y {
+        return;
+    }
+
+    let radius_squared = (radius as u128) * (radius as u128);
+    let framebuffer_right = i64::from(target.width()) - 1;
+    for y in first_y..=last_y {
+        let dy = if y < top_center {
+            top_center - y
+        } else if y > bottom_center {
+            y - bottom_center
+        } else {
+            0
+        };
+        let extent = integer_sqrt(radius_squared - (dy as u128) * (dy as u128)) as i64;
+        let first_x = (left_center - extent).max(0);
+        let last_x = (right_center + extent).min(framebuffer_right);
+        if first_x > last_x {
+            continue;
+        }
+        if let Some(row) = target.row_mut(y as u32) {
+            row[first_x as usize..=last_x as usize].fill(color);
+        }
+    }
+}
+
 fn fill_circle_clipped(
     target: &mut Framebuffer,
     center: Point,
@@ -2110,6 +2162,52 @@ mod clipping_tests {
             Color::WHITE,
         );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+}
+
+
+#[cfg(test)]
+mod rounded_fill_tests {
+    use super::{fill_rect, fill_rounded_rect};
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn rounded_rectangle_fill_covers_interior_and_leaves_corners_clear() {
+        let mut target = Framebuffer::new(10, 8, Color::BLACK).unwrap();
+        fill_rounded_rect(&mut target, Rect::new(1, 1, 8, 6), 2, Color::WHITE);
+
+        assert_eq!(target.get_pixel(3, 1), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(8, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(0, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn zero_radius_rounded_fill_matches_rectangle_fill() {
+        let mut expected = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let rect = Rect::new(1, 1, 7, 5);
+        fill_rect(&mut expected, rect, Color::RED);
+        fill_rounded_rect(&mut actual, rect, 0, Color::RED);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn rounded_rectangle_fill_clips_to_framebuffer() {
+        let mut target = Framebuffer::new(5, 4, Color::BLACK).unwrap();
+        fill_rounded_rect(&mut target, Rect::new(3, 1, 8, 5), 2, Color::BLUE);
+        assert_eq!(target.get_pixel(4, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_fill_ignores_empty_rectangles() {
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        fill_rounded_rect(&mut target, Rect::new(1, 1, 0, 3), 2, Color::GREEN);
+        fill_rounded_rect(&mut target, Rect::new(1, 1, 3, 0), 2, Color::GREEN);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 }
 
