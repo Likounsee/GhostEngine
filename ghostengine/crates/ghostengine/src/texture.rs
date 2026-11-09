@@ -444,6 +444,40 @@ mod tests {
     }
 
     #[test]
+    fn untransformed_fast_path_matches_identity_transform_with_clipping() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 5, 3);
+        let clip = Rect::new(2, 0, 3, 4);
+
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut fast = Framebuffer::new(7, 5, Color::rgb(12, 24, 36)).unwrap();
+            let mut transformed = fast.clone();
+            draw_texture_clipped(&mut fast, &texture, destination, filter, clip);
+            draw_texture_transformed_clipped(
+                &mut transformed,
+                &texture,
+                destination,
+                crate::Transform2D::IDENTITY,
+                filter,
+                clip,
+            );
+            assert_eq!(fast.pixels(), transformed.pixels(), "filter: {filter:?}");
+        }
+    }
+
+    #[test]
     fn affine_texture_transform_supports_rotation_and_sampling() {
         let texture = two_color_texture();
         let transform = crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)
