@@ -705,6 +705,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     }
     let max_y = (max_y as u32).min(target.height() - 1);
     let mut intersections = Vec::with_capacity(vertices.len());
+    let target_width = target.width();
 
     for y in min_y..=max_y {
         intersections.clear();
@@ -725,7 +726,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
         };
         for pair in intersections.chunks_exact(2) {
             let first = (pair[0] - 0.5).ceil().max(0.0) as u32;
-            let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
+            let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target_width);
             let start = first.min(target.width());
             if start < end {
                 row[start as usize..end as usize].fill(color);
