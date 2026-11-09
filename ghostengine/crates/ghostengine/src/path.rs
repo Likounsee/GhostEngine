@@ -524,6 +524,24 @@ mod tests {
     use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
 
     #[test]
+    fn prepared_fill_edges_use_half_open_scanline_intervals() {
+        let forward = super::FillEdge::new(Vector::new(2.0, 1.0), Vector::new(6.0, 5.0))
+            .expect("non-horizontal edge");
+        let reverse = super::FillEdge::new(Vector::new(6.0, 5.0), Vector::new(2.0, 1.0))
+            .expect("reversed non-horizontal edge");
+
+        for edge in [forward, reverse] {
+            assert!(!edge.crosses(0.999));
+            assert!(edge.crosses(1.0));
+            assert!(edge.crosses(3.0));
+            assert!(!edge.crosses(5.0));
+            assert!((edge.x_at(3.0) - 4.0).abs() < f32::EPSILON);
+        }
+
+        assert!(super::FillEdge::new(Vector::new(1.0, 2.0), Vector::new(5.0, 2.0)).is_none());
+    }
+
+    #[test]
     fn quadratic_and_cubic_curves_flatten_to_multiple_segments() {
         let mut p = Path::new();
         p.move_to(Vector::new(0.0, 0.0))
