@@ -32,3 +32,6 @@ required-features = ["window"]
 [[example]]
 name = "native_ui_demo"
 required-features = ["native-window"]
+
+[[example]]
+name = "cpu_raster_bench"
