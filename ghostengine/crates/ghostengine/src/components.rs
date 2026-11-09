@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use crate::rasterizer::fill_rect;
 use crate::{
     draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
     draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
@@ -699,6 +700,16 @@ impl ComponentTree {
         released: bool,
     ) -> ComponentEvents {
         self.layout(bounds);
+        if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
+            let popup = self.context_menu_bounds(bounds, menu);
+            if popup.contains(point) {
+                let row = ((point.y - popup.y) as u32 / 28) as usize;
+                if self.context_menu_items.get(row).is_some_and(|item| item.enabled) {
+                    menu.selected = row;
+                    self.context_menu_state = Some(menu);
+                }
+            }
+        }
         if released {
             if let (Some(point), Some(menu)) = (pointer, self.context_menu_state) {
                 let popup = self.context_menu_bounds(bounds, menu);
@@ -912,7 +923,7 @@ impl ComponentTree {
                 continue;
             }
             if index == state.selected && item.enabled {
-                draw_panel(target, row, 2, theme);
+                fill_rect(target, row, theme.accent_hover);
             }
             let baseline = i64::from(row.y)
                 + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78) / 2.0)
