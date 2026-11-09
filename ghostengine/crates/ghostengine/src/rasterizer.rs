@@ -1039,7 +1039,7 @@ fn integer_sqrt(value: u128) -> u128 {
 mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon,
-        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon,
+        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon, fill_polygon_aa,
         fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
@@ -1218,6 +1218,59 @@ mod tests {
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
         assert_eq!(image.get_pixel(1, 4), Some(Color::GREEN));
         assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_polygon_blends_partial_edge_coverage() {
+        let mut image = target(8, 8);
+        fill_polygon_aa(
+            &mut image,
+            &[Point::new(1, 1), Point::new(6, 2), Point::new(3, 6)],
+            Color::WHITE,
+        );
+        let pixels = (0..8)
+            .flat_map(|y| (0..8).map(move |x| (x, y)))
+            .filter_map(|(x, y)| image.get_pixel(x, y))
+            .collect::<Vec<_>>();
+        assert!(pixels.iter().any(|pixel| pixel.a > 0 && pixel.a < 255));
+        assert!(pixels.iter().any(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn antialiased_polygon_is_clipped_and_respects_source_alpha() {
+        let mut image = target(4, 4);
+        fill_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-4, -4),
+                Point::new(3, -4),
+                Point::new(3, 3),
+                Point::new(-4, 3),
+            ],
+            Color::rgba(255, 0, 0, 128),
+        );
+        assert_eq!(image.get_pixel(3, 3), Some(Color::BLACK));
+        assert!(image.get_pixel(0, 0).unwrap().r > 0);
+        assert!(image.get_pixel(0, 0).unwrap().r < 255);
+    }
+
+    #[test]
+    fn antialiased_polygon_uses_even_odd_fill_for_concave_shapes() {
+        let mut image = target(8, 8);
+        fill_polygon_aa(
+            &mut image,
+            &[
+                Point::new(1, 1),
+                Point::new(6, 1),
+                Point::new(6, 3),
+                Point::new(3, 3),
+                Point::new(3, 6),
+                Point::new(1, 6),
+            ],
+            Color::WHITE,
+        );
+        assert_eq!(image.get_pixel(2, 4), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(5, 5), Some(Color::BLACK));
     }
 
     #[test]
