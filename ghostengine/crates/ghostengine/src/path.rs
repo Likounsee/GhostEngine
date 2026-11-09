@@ -188,7 +188,14 @@ fn midpoint(a: Vector, b: Vector) -> Vector {
     Vector::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
 }
 
-fn flatten_quad(\n    a: Vector,\n    c: Vector,\n    b: Vector,\n    tolerance_squared: f32,\n    depth: u8,\n    out: &mut Vec<Vector>,\n) {
+fn flatten_quad(
+    a: Vector,
+    c: Vector,
+    b: Vector,
+    tolerance_squared: f32,
+    depth: u8,
+    out: &mut Vec<Vector>,
+) {
     if depth >= 16 || distance_to_segment_squared(c, a, b) <= tolerance_squared {
         out.push(b);
         return;
