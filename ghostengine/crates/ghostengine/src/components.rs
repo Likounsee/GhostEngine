@@ -1837,6 +1837,39 @@ mod tests {
     }
 
     #[test]
+    fn context_menu_opens_navigates_and_activates_enabled_commands() {
+        use super::ContextMenuItem;
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(10, "Open"),
+            ContextMenuItem::new(11, "Unavailable").with_enabled(false),
+            ContextMenuItem::new(12, "Delete"),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(20, 20)));
+        assert!(tree.context_menu_is_open());
+        tree.handle_key(Rect::new(0, 0, 200, 120), ComponentKey::ArrowDown, false);
+        let events = tree.handle_key(Rect::new(0, 0, 200, 120), ComponentKey::Enter, false);
+        assert_eq!(events.context_menu_action, Some(12));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_pointer_selects_command_and_outside_click_dismisses() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 240, 160);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![ContextMenuItem::new(21, "Copy"), ContextMenuItem::new(22, "Paste")]);
+        assert!(tree.open_context_menu_at(Point::new(12, 12)));
+        let events = tree.update_pointer(bounds, Some(Point::new(30, 44)), false, true);
+        assert_eq!(events.context_menu_action, Some(22));
+        assert!(!tree.context_menu_is_open());
+
+        tree.open_context_menu_at(Point::new(12, 12));
+        tree.update_pointer(bounds, Some(Point::new(220, 140)), false, true);
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
     fn checked_tree_rejects_duplicate_ids_across_descendants() {
         let duplicate = UiComponent::panel(ComponentId(90), StackLayout::default())
             .with_children(vec![UiComponent::label(ComponentId(90), "duplicate")]);
