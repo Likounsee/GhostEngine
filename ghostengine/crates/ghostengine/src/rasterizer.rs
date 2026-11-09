@@ -821,7 +821,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     // Activate only edges crossing the current scanline. Sorting by their
     // first covered y avoids revisiting every polygon edge on every row.
     edges.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
-    let mut active_edges = Vec::with_capacity(edges.len());
+    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
     let mut next_edge = 0;
     let mut intersections = Vec::with_capacity(edges.len());
     let target_width = target.width();
