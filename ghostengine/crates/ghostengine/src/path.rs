@@ -204,7 +204,7 @@ fn flatten_cubic(
     c1: Vector,
     c2: Vector,
     b: Vector,
-    tol: f32,
+    tolerance_squared: f32,
     depth: u8,
     out: &mut Vec<Vector>,
 ) {
