@@ -555,12 +555,7 @@ mod tests {
 
     #[test]
     fn active_edge_fill_matches_full_scan_for_complex_clipped_contours() {
-        fn reference_full_scan(
-            target: &mut Framebuffer,
-            path: &Path,
-            color: Color,
-            clip: Rect,
-        ) {
+        fn reference_full_scan(target: &mut Framebuffer, path: &Path, color: Color, clip: Rect) {
             let flattened = path.flatten(0.2).unwrap();
             let clip = clip
                 .intersection(Rect::new(0, 0, target.width(), target.height()))
@@ -592,10 +587,8 @@ mod tests {
 
                 let row = target.row_mut(y).unwrap();
                 for pair in intersections.chunks_exact(2) {
-                    let left = ((pair[0] - 0.5).ceil().max(clip.x as f32) as u32)
-                        .min(clip_right);
-                    let right = ((pair[1] - 0.5).ceil().max(clip.x as f32) as u32)
-                        .min(clip_right);
+                    let left = ((pair[0] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
+                    let right = ((pair[1] - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
                     if left < right {
                         row[left as usize..right as usize].fill(color);
                     }
