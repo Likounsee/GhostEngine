@@ -259,23 +259,22 @@ impl Gradient {
         // every covered pixel. Avoid a general binary search for these small,
         // strictly increasing stop arrays while preserving duplicate-stop
         // hard-edge semantics through the general path below.
-        let (left, right) = if self.stops.len() == 2
-            && self.stops[0].position < self.stops[1].position
-        {
-            (self.stops[0], self.stops[1])
-        } else if self.stops.len() == 3
-            && self.stops[0].position < self.stops[1].position
-            && self.stops[1].position < self.stops[2].position
-        {
-            if position < self.stops[1].position {
+        let (left, right) =
+            if self.stops.len() == 2 && self.stops[0].position < self.stops[1].position {
                 (self.stops[0], self.stops[1])
+            } else if self.stops.len() == 3
+                && self.stops[0].position < self.stops[1].position
+                && self.stops[1].position < self.stops[2].position
+            {
+                if position < self.stops[1].position {
+                    (self.stops[0], self.stops[1])
+                } else {
+                    (self.stops[1], self.stops[2])
+                }
             } else {
-                (self.stops[1], self.stops[2])
-            }
-        } else {
-            let upper = self.stops.partition_point(|stop| stop.position <= position);
-            (self.stops[upper - 1], self.stops[upper])
-        };
+                let upper = self.stops.partition_point(|stop| stop.position <= position);
+                (self.stops[upper - 1], self.stops[upper])
+            };
         let span = right.position - left.position;
         if span <= f32::EPSILON {
             return right.color;
