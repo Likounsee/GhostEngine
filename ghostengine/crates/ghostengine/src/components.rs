@@ -802,11 +802,17 @@ impl ComponentTree {
                 let popup = self.nested_submenu_bounds(bounds, menu, depth);
                 if popup.contains(point) {
                     let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
-                    if self.context_menu_items_at_depth(menu, depth).and_then(|items| items.get(row)).is_some_and(|item| item.enabled) {
-                        menu.submenu_path[depth - 1] = row;
-                        menu.submenu_depth = depth;
-                        menu.submenu_open = true;
-                        menu.submenu_selected = menu.submenu_path[0];
+                    if let Some(item) = Self::context_menu_items_at_depth(&self.active_context_menu_items, menu, depth).and_then(|items| items.get(row)) {
+                        if item.enabled {
+                            menu.submenu_path[depth - 1] = row;
+                            menu.submenu_depth = depth;
+                            if !item.submenu.is_empty() && depth < menu.submenu_path.len() {
+                                menu.submenu_path[depth] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                                menu.submenu_depth = depth + 1;
+                            }
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                        }
                     }
                     hit = true;
                     break;
@@ -842,8 +848,8 @@ impl ComponentTree {
                             if item.enabled && !item.submenu.is_empty() && depth < menu.submenu_path.len() {
                                 let mut next = menu;
                                 next.submenu_path[depth - 1] = row;
-                                next.submenu_depth = depth + 1;
                                 next.submenu_path[depth] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                                next.submenu_depth = depth + 1;
                                 next.submenu_open = true;
                                 self.context_menu_state = Some(next);
                                 return ComponentEvents::default();
@@ -1136,11 +1142,11 @@ impl ComponentTree {
     }
 
     fn context_menu_items_at_depth(
-        &self,
+        root_items: &[ContextMenuItem],
         state: ContextMenuState,
         depth: usize,
     ) -> Option<&[ContextMenuItem]> {
-        let mut items = self.active_context_menu_items.as_slice();
+        let mut items = root_items;
         for level in 0..depth {
             let selected = if level == 0 { state.selected } else { *state.submenu_path.get(level - 1)? };
             items = &items.get(selected)?.submenu;
@@ -1154,10 +1160,10 @@ impl ComponentTree {
 
     fn nested_submenu_bounds(&self, bounds: Rect, state: ContextMenuState, depth: usize) -> Rect {
         if depth == 0 { return self.context_menu_bounds(bounds, state); }
-        let Some(parent_items) = self.context_menu_items_at_depth(state, depth - 1) else { return Rect::default(); };
+        let Some(parent_items) = Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth - 1) else { return Rect::default(); };
         let parent_index = self.context_menu_selected_at_depth(state, depth - 1);
         let Some(parent_item) = parent_items.get(parent_index) else { return Rect::default(); };
-        let Some(items) = self.context_menu_items_at_depth(state, depth) else { return Rect::default(); };
+        let Some(items) = Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth) else { return Rect::default(); };
         if items.is_empty() || parent_item.submenu.is_empty() { return Rect::default(); }
         let parent_popup = self.nested_submenu_bounds(bounds, state, depth - 1);
         let height = (items.len() as u32).saturating_mul(28).max(1).min(bounds.height.max(1));
