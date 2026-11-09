@@ -292,9 +292,11 @@ fn stroke_path_impl(
             let sample_top = y as f32 + 0.125;
             let sample_bottom = y as f32 + 0.875;
             row_segments.clear();
-            row_segments.extend(segments.iter().filter(|segment| {
-                segment.max_y >= sample_top && segment.min_y <= sample_bottom
-            }));
+            row_segments.extend(
+                segments.iter().filter(|segment| {
+                    segment.max_y >= sample_top && segment.min_y <= sample_bottom
+                }),
+            );
             if row_segments.is_empty() && joins.is_empty() {
                 continue;
             }
