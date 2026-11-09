@@ -1068,13 +1068,52 @@ impl ComponentTree {
 
     /// Updates the pixel scroll offset of a retained list view.
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
-        let Some(ComponentKind::ListView { scroll_offset, .. }) =
-            self.find_mut(id).map(|component| &mut component.kind)
+        let Some((scroll_offset, items_len, row_height)) =
+            self.find_mut(id).and_then(|component| match &mut component.kind {
+                ComponentKind::ListView { items, row_height, scroll_offset } =>
+                    Some((scroll_offset, items.len(), *row_height)),
+                _ => None,
+            })
         else {
             return false;
         };
-        *scroll_offset = offset;
+        let viewport_height = self.placed.iter()
+            .find(|placement| placement.id == id)
+            .map_or(u32::MAX, |placement| placement.bounds.height);
+        let content_height = (items_len as u32).saturating_mul(row_height);
+        *scroll_offset = offset.min(content_height.saturating_sub(viewport_height));
         true
+    }
+
+    /// Scrolls the list view beneath the pointer by a pixel delta.
+    /// Positive deltas move the content down toward later rows.
+    pub fn scroll_list_view_at(&mut self, pointer: Point, delta_y: i32) -> bool {
+        if delta_y == 0 {
+            return false;
+        }
+        let Some(placement) = self.placed.iter().rev()
+            .find(|placement| placement.bounds.contains(pointer))
+            .copied()
+        else {
+            return false;
+        };
+        let Some((current, max_offset)) = self.find(placement.id).and_then(|component| {
+            match component.kind() {
+                ComponentKind::ListView { items, row_height, scroll_offset } => {
+                    let content_height = (items.len() as u32).saturating_mul(*row_height);
+                    Some((*scroll_offset, content_height.saturating_sub(placement.bounds.height)))
+                }
+                _ => None,
+            }
+        }) else {
+            return false;
+        };
+        let next = if delta_y > 0 {
+            current.saturating_add(delta_y as u32).min(max_offset)
+        } else {
+            current.saturating_sub(delta_y.unsigned_abs())
+        };
+        self.set_list_view_scroll(placement.id, next)
     }
 
     /// Returns the selected item index of a combo box.
