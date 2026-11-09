@@ -611,7 +611,7 @@ mod tests {
             .close();
         let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         fill_path_even_odd_aa(&mut fb, &path, Color::WHITE, 0.2).unwrap();
-        assert!(fb.pixels().iter().any(|pixel| pixel.a > 0 && pixel.a < 255));
+        assert!(fb.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert!(fb.pixels().contains(&Color::WHITE));
     }
 
