@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use ghostengine::{
     blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
     stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Path, Point, Rect,
-    StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState, Layer,
 };
 
 const WIDTH: u32 = 480;
@@ -152,6 +152,15 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
 
+    let mut background_layer =
+        Layer::new(400, 220, Color::rgba(35, 90, 155, 255)).expect("benchmark layer should allocate");
+    background_layer.set_position(30, 25);
+    let mut foreground_layer =
+        Layer::new(320, 180, Color::rgba(225, 95, 45, 190)).expect("benchmark layer should allocate");
+    foreground_layer.set_position(90, 55);
+    foreground_layer.set_opacity(210);
+    let layers = [background_layer, foreground_layer];
+
     let font = FontFace::from_bytes(include_bytes!(
         "../tests/fixtures/NotoSansArabic[wdth,wght].ttf"
     ))
@@ -275,6 +284,9 @@ fn main() {
                 Rect::new(80, 35, 320, 200),
                 TextureFilter::Bilinear,
             );
+        }),
+        measure("Layer composition (2 layers)", iterations, |target| {
+            ghostengine::compose_layers(target, &layers);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
             draw_text(target, &font, text, Point::new(18, 145), 28.0, Color::WHITE);
