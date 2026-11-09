@@ -389,7 +389,7 @@ mod tests {
         .unwrap();
         for y in 0..12 {
             for x in 0..14 {
-                let inside = (5..7).contains(&x) && y == 3;
+                let inside = (5..7).contains(&x) && (4..7).contains(&y);
                 assert_eq!(fb.get_pixel(x, y) != Some(Color::BLACK), inside);
             }
         }
