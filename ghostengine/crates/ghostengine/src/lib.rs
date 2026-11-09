@@ -64,7 +64,10 @@ pub use shaping::{
     resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError,
     TextDirection,
 };
-pub use stroke::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeStyle};
+pub use stroke::{
+    stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_clipped, StrokeCap,
+    StrokeError, StrokeStyle,
+};
 pub use text::{
     draw_text, draw_text_bidi_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped,
     draw_text_box_with_fallback_bidi_shaped_clipped, draw_text_box_with_fallback_shaped_clipped,
