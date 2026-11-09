@@ -239,6 +239,30 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     for y in top..bottom {
         if let Some(row) = target.row_mut(y as u32) {
             for pixel in &mut row[left as usize..right as usize] {
+                // Transparent destinations need no channel arithmetic: the
+                // straight-alpha source color is preserved exactly.
+                if pixel.a == 0 {
+                    *pixel = color;
+                    continue;
+                }
+
+                // Opaque destinations stay opaque, so source-over reduces to
+                // three rounded 8-bit channel interpolations.
+                if pixel.a == 255 {
+                    let blend_channel = |source: u8, destination: u8| -> u8 {
+                        ((u32::from(source) * source_alpha
+                            + u32::from(destination) * inverse_source_alpha
+                            + 127)
+                            / 255) as u8
+                    };
+                    *pixel = Color::rgb(
+                        blend_channel(color.r, pixel.r),
+                        blend_channel(color.g, pixel.g),
+                        blend_channel(color.b, pixel.b),
+                    );
+                    continue;
+                }
+
                 let destination_alpha = u32::from(pixel.a);
                 let destination_weight = destination_alpha * inverse_source_alpha;
                 let alpha_numerator = source_alpha * 255 + destination_weight;
