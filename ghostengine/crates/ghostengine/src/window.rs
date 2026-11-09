@@ -45,6 +45,8 @@ pub struct InputState {
     pub left_mouse_pressed: bool,
     /// True only on the frame the left mouse button transitions to up.
     pub left_mouse_released: bool,
+    /// Vertical wheel movement in pixels; positive values scroll toward later rows.
+    pub scroll_delta_y: i32,
     /// True while either Shift key is held.
     pub shift_down: bool,
     /// True while either Control key is held.
@@ -188,7 +190,11 @@ impl WindowSurface {
         let (left_mouse_pressed, left_mouse_released) =
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
+        let scroll_delta_y = self.window.get_scroll_wheel()
+            .map(|(_, y)| (y * 48.0).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32)
+            .unwrap_or(0);
         let mut input = InputState {
+            scroll_delta_y,
             mouse_position,
             left_mouse_down,
             left_mouse_pressed,
@@ -262,6 +268,11 @@ impl ComponentTree {
             input.left_mouse_pressed,
             input.left_mouse_released,
         );
+        if input.scroll_delta_y != 0 {
+            if let Some(pointer) = input.mouse_position {
+                self.scroll_list_view_at(pointer, input.scroll_delta_y);
+            }
+        }
 
         if input.tab_pressed {
             let next = self.handle_key(bounds, ComponentKey::Tab, input.shift_down);
