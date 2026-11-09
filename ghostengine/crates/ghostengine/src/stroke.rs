@@ -688,9 +688,14 @@ mod tests {
         let mut bevel = Framebuffer::new(16, 16, Color::BLACK).unwrap();
         let mut limited = Framebuffer::new(16, 16, Color::BLACK).unwrap();
         stroke_path(
-            &mut bevel, &corner_path(), Transform2D::IDENTITY,
-            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel), Color::WHITE, 0.2,
-        ).unwrap();
+            &mut bevel,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         stroke_path(
             &mut limited,
             &corner_path(),
