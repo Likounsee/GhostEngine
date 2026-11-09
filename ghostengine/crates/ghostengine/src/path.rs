@@ -466,13 +466,27 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     let width = (max_x - min_x) as usize;
     let mut coverage = vec![0_u8; width];
     let mut intersections = Vec::with_capacity(edges.len());
+    // Samples advance monotonically from top to bottom, so retain only
+    // edges that can still intersect the current subpixel scanline.
+    let mut edges = edges;
+    edges.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
+    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
 
     for y in min_y..max_y {
         coverage.fill(0);
         for offset_y in OFFSETS {
             let sample_y = y as f32 + offset_y;
+            while next_edge < edges.len() && edges[next_edge].min_y <= sample_y {
+                let edge = edges[next_edge];
+                if edge.max_y > sample_y {
+                    active_edges.push(edge);
+                }
+                next_edge += 1;
+            }
+            active_edges.retain(|edge| edge.max_y > sample_y);
             intersections.clear();
-            for &edge in &edges {
+            for &edge in &active_edges {
                 if edge.crosses(sample_y) {
                     intersections.push(edge.x_at(sample_y));
                 }
