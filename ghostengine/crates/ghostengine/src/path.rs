@@ -11,6 +11,37 @@ enum Command {
     Close,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FillEdge {
+    min_y: f32,
+    max_y: f32,
+    min_x: f32,
+    inverse_slope: f32,
+}
+
+impl FillEdge {
+    fn new(a: Vector, b: Vector) -> Option<Self> {
+        if (a.y - b.y).abs() <= f32::EPSILON {
+            return None;
+        }
+        let (lower, upper) = if a.y < b.y { (a, b) } else { (b, a) };
+        Some(Self {
+            min_y: lower.y,
+            max_y: upper.y,
+            min_x: lower.x,
+            inverse_slope: (upper.x - lower.x) / (upper.y - lower.y),
+        })
+    }
+
+    fn crosses(self, sample_y: f32) -> bool {
+        self.min_y <= sample_y && sample_y < self.max_y
+    }
+
+    fn x_at(self, sample_y: f32) -> f32 {
+        self.min_x + (sample_y - self.min_y) * self.inverse_slope
+    }
+}
+
 /// A vector path made of line, quadratic Bézier and cubic Bézier segments.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Path {
@@ -367,6 +398,20 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
         return Ok(());
     }
 
+    // Convert contour edges once. Supersampling then reuses each edge's
+    // vertical range and inverse slope instead of rebuilding intersections.
+    let edges = contours
+        .iter()
+        .flat_map(|contour| {
+            (0..contour.len()).filter_map(move |index| {
+                FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
+            })
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return Ok(());
+    }
+
     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
     let min_x = contours
         .iter()
@@ -408,16 +453,9 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
                     let sample_x = x as f32 + offset_x;
                     let sample_y = y as f32 + offset_y;
                     let mut inside = false;
-                    for contour in &contours {
-                        for index in 0..contour.len() {
-                            let a = contour[index];
-                            let b = contour[(index + 1) % contour.len()];
-                            if (a.y > sample_y) != (b.y > sample_y) {
-                                let crossing_x = a.x + (sample_y - a.y) * (b.x - a.x) / (b.y - a.y);
-                                if sample_x < crossing_x {
-                                    inside = !inside;
-                                }
-                            }
+                    for &edge in &edges {
+                        if edge.crosses(sample_y) && sample_x < edge.x_at(sample_y) {
+                            inside = !inside;
                         }
                     }
                     covered += u16::from(inside);
