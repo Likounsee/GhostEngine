@@ -239,6 +239,9 @@ pub fn draw_texture_transformed_clipped(
     let local_bottom = local_top + destination.height as f32;
     let mut visible = false;
     for y in first_y..end_y {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for x in first_x..end_x {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if local.x < local_left
@@ -256,11 +259,11 @@ pub fn draw_texture_transformed_clipped(
                 TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
                 TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
             };
-            if color.a == 0 {
-                continue;
-            }
-            if let Some(background) = target.get_pixel(x, y) {
-                target.set_pixel(x, y, color.blend_over(background));
+            if color.a == 255 {
+                row[x as usize] = color;
+            } else if color.a > 0 {
+                let index = x as usize;
+                row[index] = color.blend_over(row[index]);
             }
         }
     }
