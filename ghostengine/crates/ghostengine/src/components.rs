@@ -703,7 +703,7 @@ impl ComponentTree {
         if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
             let popup = self.context_menu_bounds(bounds, menu);
             if popup.contains(point) {
-                let row = ((point.y - popup.y) as u32 / 28) as usize;
+                let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
                 if self
                     .context_menu_items
                     .get(row)
@@ -901,7 +901,7 @@ impl ComponentTree {
             .saturating_add(bounds.height.saturating_sub(height)) as i64;
         let x = (state.position.x as i64).clamp(bounds.x as i64, max_x);
         let y = (state.position.y as i64).clamp(bounds.y as i64, max_y);
-        Rect::new(x as i32, y as i32, width, height)
+        Rect::new(x as u32, y as u32, width, height)
     }
 
     fn render_context_menu(
@@ -932,12 +932,15 @@ impl ComponentTree {
             let baseline = i64::from(row.y)
                 + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78) / 2.0)
                     as i64;
-            if let Ok(y) = i32::try_from(baseline) {
+            if let (Ok(x), Ok(y)) = (
+                i32::try_from(row.x.saturating_add(10)),
+                i32::try_from(baseline),
+            ) {
                 draw_label_clipped(
                     target,
                     font,
                     &item.label,
-                    Point::new(row.x.saturating_add(10), y),
+                    Point::new(x, y),
                     pixel_size,
                     if item.enabled {
                         theme.text
