@@ -720,11 +720,15 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
             }
         }
         intersections.sort_by(f64::total_cmp);
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for pair in intersections.chunks_exact(2) {
             let first = (pair[0] - 0.5).ceil().max(0.0) as u32;
             let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target.width());
-            for x in first.min(target.width())..end {
-                target.set_pixel(x, y, color);
+            let start = first.min(target.width());
+            if start < end {
+                row[start as usize..end as usize].fill(color);
             }
         }
     }
