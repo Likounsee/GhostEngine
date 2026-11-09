@@ -272,7 +272,18 @@ fn stroke_path_impl(
             })
             .collect::<Vec<_>>();
         let joins = (0..join_count(&contour.points, contour.closed))
-            .map(|index| join_points(&contour.points, contour.closed, index))
+            .filter_map(|index| {
+                let (previous, vertex, next) =
+                    join_points(&contour.points, contour.closed, index);
+                PreparedJoin::new(
+                    previous,
+                    vertex,
+                    next,
+                    style.join,
+                    radius,
+                    style.miter_limit,
+                )
+            })
             .collect::<Vec<_>>();
         for y in top..bottom {
             let Some(row) = target.row_mut(y) else {
@@ -289,16 +300,8 @@ fn stroke_path_impl(
                             for segment in &segments {
                                 distance = distance.min(segment.distance(sample));
                             }
-                            for &(previous, vertex, next) in &joins {
-                                if join_contains(
-                                    sample,
-                                    previous,
-                                    vertex,
-                                    next,
-                                    style.join,
-                                    radius,
-                                    style.miter_limit,
-                                ) {
+                            for join in &joins {
+                                if join.contains(sample) {
                                     distance = 0.0;
                                     break;
                                 }
@@ -315,16 +318,8 @@ fn stroke_path_impl(
                     for segment in &segments {
                         distance = distance.min(segment.distance(sample));
                     }
-                    for &(previous, vertex, next) in &joins {
-                        if join_contains(
-                            sample,
-                            previous,
-                            vertex,
-                            next,
-                            style.join,
-                            radius,
-                            style.miter_limit,
-                        ) {
+                    for join in &joins {
+                        if join.contains(sample) {
                             distance = 0.0;
                             break;
                         }
@@ -423,67 +418,103 @@ fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector
     }
 }
 
-fn join_contains(
-    sample: Vector,
-    previous: Vector,
+#[derive(Debug, Clone, Copy)]
+struct PreparedJoin {
     vertex: Vector,
-    next: Vector,
-    join: StrokeJoin,
     radius: f32,
-    miter_limit: f32,
-) -> bool {
-    if join == StrokeJoin::Round {
-        return (sample.x - vertex.x).hypot(sample.y - vertex.y) <= radius;
+    round: bool,
+    bevel: [Vector; 3],
+    miter: Option<[Vector; 3]>,
+}
+
+impl PreparedJoin {
+    fn new(
+        previous: Vector,
+        vertex: Vector,
+        next: Vector,
+        join: StrokeJoin,
+        radius: f32,
+        miter_limit: f32,
+    ) -> Option<Self> {
+        if join == StrokeJoin::Round {
+            return Some(Self {
+                vertex,
+                radius,
+                round: true,
+                bevel: [vertex; 3],
+                miter: None,
+            });
+        }
+        let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
+        let outgoing = Vector::new(next.x - vertex.x, next.y - vertex.y);
+        let in_length = incoming.x.hypot(incoming.y);
+        let out_length = outgoing.x.hypot(outgoing.y);
+        if in_length <= f32::EPSILON || out_length <= f32::EPSILON {
+            return None;
+        }
+        let incoming = Vector::new(incoming.x / in_length, incoming.y / in_length);
+        let outgoing = Vector::new(outgoing.x / out_length, outgoing.y / out_length);
+        let cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+        if cross.abs() <= 1.0e-5 {
+            return None;
+        }
+        let side = if cross > 0.0 { -1.0 } else { 1.0 };
+        let normal_in = Vector::new(-incoming.y * side, incoming.x * side);
+        let normal_out = Vector::new(-outgoing.y * side, outgoing.x * side);
+        let outer_in = Vector::new(
+            vertex.x + normal_in.x * radius,
+            vertex.y + normal_in.y * radius,
+        );
+        let outer_out = Vector::new(
+            vertex.x + normal_out.x * radius,
+            vertex.y + normal_out.y * radius,
+        );
+        let bevel = [vertex, outer_in, outer_out];
+        let miter = if join == StrokeJoin::Miter {
+            let bisector = Vector::new(normal_in.x + normal_out.x, normal_in.y + normal_out.y);
+            let bisector_length = bisector.x.hypot(bisector.y);
+            if bisector_length <= f32::EPSILON {
+                None
+            } else {
+                let bisector =
+                    Vector::new(bisector.x / bisector_length, bisector.y / bisector_length);
+                let denominator = bisector.x * normal_out.x + bisector.y * normal_out.y;
+                if denominator <= 1.0e-5 {
+                    None
+                } else {
+                    let miter_length = radius / denominator;
+                    if !miter_length.is_finite() || miter_length > radius * miter_limit {
+                        None
+                    } else {
+                        let miter = Vector::new(
+                            vertex.x + bisector.x * miter_length,
+                            vertex.y + bisector.y * miter_length,
+                        );
+                        Some([outer_in, miter, outer_out])
+                    }
+                }
+            }
+        } else {
+            None
+        };
+        Some(Self {
+            vertex,
+            radius,
+            round: false,
+            bevel,
+            miter,
+        })
     }
-    let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
-    let outgoing = Vector::new(next.x - vertex.x, next.y - vertex.y);
-    let in_length = incoming.x.hypot(incoming.y);
-    let out_length = outgoing.x.hypot(outgoing.y);
-    if in_length <= f32::EPSILON || out_length <= f32::EPSILON {
-        return false;
+
+    fn contains(self, sample: Vector) -> bool {
+        if self.round {
+            return (sample.x - self.vertex.x).hypot(sample.y - self.vertex.y) <= self.radius;
+        }
+        point_in_triangle(sample, self.bevel[0], self.bevel[1], self.bevel[2])
+            || self
+                .miter
+                .is_some_and(|triangle| point_in_triangle(sample, triangle[0], triangle[1], triangle[2]))
     }
-    let incoming = Vector::new(incoming.x / in_length, incoming.y / in_length);
-    let outgoing = Vector::new(outgoing.x / out_length, outgoing.y / out_length);
-    let cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
-    if cross.abs() <= 1.0e-5 {
-        return false;
-    }
-    let side = if cross > 0.0 { -1.0 } else { 1.0 };
-    let normal_in = Vector::new(-incoming.y * side, incoming.x * side);
-    let normal_out = Vector::new(-outgoing.y * side, outgoing.x * side);
-    let outer_in = Vector::new(
-        vertex.x + normal_in.x * radius,
-        vertex.y + normal_in.y * radius,
-    );
-    let outer_out = Vector::new(
-        vertex.x + normal_out.x * radius,
-        vertex.y + normal_out.y * radius,
-    );
-    if point_in_triangle(sample, vertex, outer_in, outer_out) {
-        return true;
-    }
-    if join != StrokeJoin::Miter {
-        return false;
-    }
-    let bisector = Vector::new(normal_in.x + normal_out.x, normal_in.y + normal_out.y);
-    let bisector_length = bisector.x.hypot(bisector.y);
-    if bisector_length <= f32::EPSILON {
-        return false;
-    }
-    let bisector = Vector::new(bisector.x / bisector_length, bisector.y / bisector_length);
-    let denominator = bisector.x * normal_out.x + bisector.y * normal_out.y;
-    if denominator <= 1.0e-5 {
-        return false;
-    }
-    let miter_length = radius / denominator;
-    if !miter_length.is_finite() || miter_length > radius * miter_limit {
-        return false;
-    }
-    let miter = Vector::new(
-        vertex.x + bisector.x * miter_length,
-        vertex.y + bisector.y * miter_length,
-    );
-    point_in_triangle(sample, outer_in, miter, outer_out)
 }
 
 fn point_in_triangle(point: Vector, a: Vector, b: Vector, c: Vector) -> bool {
