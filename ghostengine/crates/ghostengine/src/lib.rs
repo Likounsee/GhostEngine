@@ -66,7 +66,7 @@ pub use shaping::{
 };
 pub use stroke::{
     stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_clipped, StrokeCap,
-    StrokeError, StrokeStyle,
+    StrokeError, StrokeJoin, StrokeStyle,
 };
 pub use text::{
     draw_text, draw_text_bidi_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped,
