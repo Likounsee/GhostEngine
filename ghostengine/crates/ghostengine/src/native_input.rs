@@ -14,7 +14,7 @@ use crate::{window::InputState, ClipboardAction, Point, TextInputEvent};
 use arboard::Clipboard;
 use std::{error::Error, fmt, mem};
 use winit::{
-    event::{ElementState, Ime, MouseButton, WindowEvent},
+    event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
     keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
 };
 
@@ -55,6 +55,14 @@ impl NativeInputAdapter {
             }
             WindowEvent::CursorLeft { .. } => {
                 self.mouse_position = None;
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let pixels = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => f64::from(*y) * 48.0,
+                    MouseScrollDelta::PixelDelta(position) => position.y,
+                };
+                self.frame.scroll_delta_y = self.frame.scroll_delta_y
+                    .saturating_add(clamp_coordinate(pixels));
             }
             WindowEvent::MouseInput {
                 state,
