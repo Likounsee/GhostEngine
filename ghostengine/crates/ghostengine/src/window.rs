@@ -190,7 +190,9 @@ impl WindowSurface {
         let (left_mouse_pressed, left_mouse_released) =
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
-        let scroll_delta_y = self.window.get_scroll_wheel()
+        let scroll_delta_y = self
+            .window
+            .get_scroll_wheel()
             .map(|(_, y)| (y * 48.0).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32)
             .unwrap_or(0);
         let mut input = InputState {
