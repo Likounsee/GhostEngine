@@ -354,6 +354,30 @@ mod tests {
     }
 
     #[test]
+    fn texture_blending_skips_transparent_texels_and_replaces_opaque_ones() {
+        let texture = Texture::new(
+            3,
+            1,
+            vec![
+                Color::TRANSPARENT,
+                Color::rgba(255, 0, 0, 128),
+                Color::GREEN,
+            ],
+        )
+        .unwrap();
+        let mut target = Framebuffer::new(3, 1, Color::BLUE).unwrap();
+        draw_texture(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 3, 1),
+            TextureFilter::Nearest,
+        );
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(128, 0, 127)));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::GREEN));
+    }
+
+    #[test]
     fn clipped_texture_preserves_original_sampling_and_viewport() {
         let texture = two_color_texture();
         let mut target = Framebuffer::new(6, 2, Color::BLACK).unwrap();
