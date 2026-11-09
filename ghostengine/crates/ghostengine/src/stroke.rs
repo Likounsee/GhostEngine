@@ -407,10 +407,13 @@ mod tests {
 
     #[test]
     fn antialiased_stroke_respects_clip_and_source_alpha() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(3.0, 5.25))
+            .line_to(Vector::new(9.0, 5.25));
         let mut fb = Framebuffer::new(14, 12, Color::BLACK).unwrap();
         super::stroke_path_aa_clipped(
             &mut fb,
-            &line(),
+            &path,
             Transform2D::IDENTITY,
             StrokeStyle::new(4.0).with_cap(StrokeCap::Round),
             Color::rgba(255, 0, 0, 128),
