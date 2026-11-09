@@ -284,26 +284,35 @@ fn stroke_path_impl(
                 )
             })
             .collect::<Vec<_>>();
+        // Sort geometry once so each scanline only visits segments and joins
+        // whose vertical bounds are currently active, rather than rescanning
+        // the complete contour for every row.
+        let mut segments = segments;
+        segments.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
+        let mut joins = joins;
+        joins.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
         let radius_squared = radius * radius;
         let mut row_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         let mut row_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
+        let mut next_segment = 0;
+        let mut next_join = 0;
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
             let sample_top = y as f32 + 0.125;
             let sample_bottom = y as f32 + 0.875;
-            row_segments.clear();
-            row_segments.extend(
-                segments.iter().filter(|segment| {
-                    segment.max_y >= sample_top && segment.min_y <= sample_bottom
-                }),
-            );
-            row_joins.clear();
-            row_joins.extend(
-                joins
-                    .iter()
-                    .filter(|join| join.max_y >= sample_top && join.min_y <= sample_bottom),
-            );
+            while next_segment < segments.len()
+                && segments[next_segment].min_y <= sample_bottom
+            {
+                row_segments.push(segments[next_segment]);
+                next_segment += 1;
+            }
+            row_segments.retain(|segment| segment.max_y >= sample_top);
+            while next_join < joins.len() && joins[next_join].min_y <= sample_bottom {
+                row_joins.push(joins[next_join]);
+                next_join += 1;
+            }
+            row_joins.retain(|join| join.max_y >= sample_top);
             if row_segments.is_empty() && row_joins.is_empty() {
                 continue;
             }
