@@ -806,12 +806,7 @@ mod tests {
 
     #[test]
     fn antialiased_active_edge_fill_matches_full_scan_reference() {
-        fn reference_full_scan(
-            target: &mut Framebuffer,
-            path: &Path,
-            color: Color,
-            clip: Rect,
-        ) {
+        fn reference_full_scan(target: &mut Framebuffer, path: &Path, color: Color, clip: Rect) {
             const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
             let flattened = path.flatten(0.2).unwrap();
             let clip = clip
@@ -829,10 +824,7 @@ mod tests {
                 .iter()
                 .flat_map(|contour| {
                     (0..contour.len()).filter_map(move |index| {
-                        super::FillEdge::new(
-                            contour[index],
-                            contour[(index + 1) % contour.len()],
-                        )
+                        super::FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
                     })
                 })
                 .collect::<Vec<_>>();
