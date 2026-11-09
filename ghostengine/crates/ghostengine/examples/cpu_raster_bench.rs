@@ -99,5 +99,4 @@ fn main() {
         )
         .expect("benchmark stroke should be valid");
     });
-
 }
