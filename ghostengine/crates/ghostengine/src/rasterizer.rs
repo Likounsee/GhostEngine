@@ -723,8 +723,8 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                         let ay = f64::from(a.y);
                         let by = f64::from(b.y);
                         if (ay > sample_y) != (by > sample_y) {
-                            let crossing_x =
-                                f64::from(a.x) + (sample_y - ay) * (f64::from(b.x) - f64::from(a.x)) / (by - ay);
+                            let crossing_x = f64::from(a.x)
+                                + (sample_y - ay) * (f64::from(b.x) - f64::from(a.x)) / (by - ay);
                             if sample_x < crossing_x {
                                 inside = !inside;
                             }
