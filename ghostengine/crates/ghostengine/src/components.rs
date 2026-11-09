@@ -703,7 +703,8 @@ impl ComponentTree {
         if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
             let popup = self.context_menu_bounds(bounds, menu);
             if popup.contains(point) {
-                let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
+                let row =
+                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
                 if self
                     .context_menu_items
                     .get(row)
