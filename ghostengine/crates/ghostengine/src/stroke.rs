@@ -286,6 +286,7 @@ fn stroke_path_impl(
             .collect::<Vec<_>>();
         let radius_squared = radius * radius;
         let mut row_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
+        let mut row_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
@@ -297,7 +298,13 @@ fn stroke_path_impl(
                     segment.max_y >= sample_top && segment.min_y <= sample_bottom
                 }),
             );
-            if row_segments.is_empty() && joins.is_empty() {
+            row_joins.clear();
+            row_joins.extend(
+                joins.iter().filter(|join| {
+                    join.max_y >= sample_top && join.min_y <= sample_bottom
+                }),
+            );
+            if row_segments.is_empty() && row_joins.is_empty() {
                 continue;
             }
             let Some(row) = target.row_mut(y) else {
@@ -320,7 +327,7 @@ fn stroke_path_impl(
                             // A segment already covers this sample, so join geometry
                             // cannot increase its coverage.
                             if distance_squared > radius_squared {
-                                for join in &joins {
+                                for join in &row_joins {
                                     if join.contains(sample) {
                                         distance_squared = 0.0;
                                         break;
@@ -479,6 +486,8 @@ struct PreparedJoin {
     round: bool,
     bevel: [Vector; 3],
     miter: Option<[Vector; 3]>,
+    min_y: f32,
+    max_y: f32,
 }
 
 impl PreparedJoin {
@@ -497,6 +506,8 @@ impl PreparedJoin {
                 round: true,
                 bevel: [vertex; 3],
                 miter: None,
+                min_y: vertex.y - radius,
+                max_y: vertex.y + radius,
             });
         }
         let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
@@ -551,12 +562,28 @@ impl PreparedJoin {
         } else {
             None
         };
+        let mut min_y = bevel
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::INFINITY, f32::min);
+        let mut max_y = bevel
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        if let Some(triangle) = miter {
+            for point in triangle {
+                min_y = min_y.min(point.y);
+                max_y = max_y.max(point.y);
+            }
+        }
         Some(Self {
             vertex,
             radius,
             round: false,
             bevel,
             miter,
+            min_y,
+            max_y,
         })
     }
 
