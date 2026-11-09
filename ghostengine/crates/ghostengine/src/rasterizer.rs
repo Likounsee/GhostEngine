@@ -676,7 +676,62 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
-/// Fills a rounded rectangle with clipped horizontal scanline spans.
+/// Returns the inclusive horizontal pixel span for one rounded-rectangle scanline.
+///
+/// Geometry is evaluated at pixel centers in doubled integer coordinates,
+/// avoiding floating-point drift and preserving very small rounded rectangles.
+fn rounded_rect_scanline_span(rect: Rect, radius: u32, y: i64) -> Option<(i64, i64)> {
+    if rect.width == 0 || rect.height == 0 {
+        return None;
+    }
+
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 {
+        return Some((i64::from(rect.x), i64::from(rect.x) + i64::from(rect.width) - 1));
+    }
+
+    let left = i64::from(rect.x);
+    let right = left + i64::from(rect.width) - 1;
+    let top = i64::from(rect.y);
+    let bottom = top + i64::from(rect.height) - 1;
+    if y < top || y > bottom {
+        return None;
+    }
+
+    let radius_twice = i64::from(radius) * 2;
+    let radius_squared = (radius_twice as u128) * (radius_twice as u128);
+    let pixel_center_y = y * 2 + 1;
+    let top_center = top * 2 + radius_twice;
+    let bottom_center = (bottom + 1) * 2 - radius_twice;
+    let dy = if pixel_center_y < top_center {
+        top_center - pixel_center_y
+    } else if pixel_center_y > bottom_center {
+        pixel_center_y - bottom_center
+    } else {
+        0
+    };
+    let dy_squared = (dy as u128) * (dy as u128);
+    if dy_squared > radius_squared {
+        return None;
+    }
+
+    let extent = integer_sqrt(radius_squared - dy_squared) as i64;
+    let left_center = left * 2 + radius_twice;
+    let right_center = (right + 1) * 2 - radius_twice;
+    let left_boundary = left_center - extent;
+    let right_boundary = right_center + extent;
+
+    // Pixel centers are at 2*x+1. Convert the continuous boundaries to
+    // inclusive integer pixel coordinates, then clamp to the rectangle.
+    let first_x = (left_boundary - 1).div_euclid(2)
+        + i64::from((left_boundary - 1).rem_euclid(2) != 0);
+    let last_x = (right_boundary - 1).div_euclid(2);
+    let first_x = first_x.max(left);
+    let last_x = last_x.min(right);
+    (first_x <= last_x).then_some((first_x, last_x))
+}
+
+/// Fills a rounded rectangle using clipped horizontal scanline spans.
 ///
 /// The radius is clamped to half the smaller dimension. A zero radius is
 /// equivalent to a regular rectangle fill.
@@ -684,40 +739,20 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
-    let radius = radius.min(rect.width / 2).min(rect.height / 2);
-    if radius == 0 {
-        fill_rect(target, rect, color);
-        return;
-    }
-
-    let left = i64::from(rect.x);
-    let top = i64::from(rect.y);
-    let right = left + i64::from(rect.width) - 1;
-    let bottom = top + i64::from(rect.height) - 1;
-    let radius = i64::from(radius);
-    let left_center = left + radius;
-    let right_center = right - radius;
-    let top_center = top + radius;
-    let bottom_center = bottom - radius;
-    let first_y = top.max(0);
-    let last_y = bottom.min(i64::from(target.height()) - 1);
+    let first_y = i64::from(rect.y).max(0);
+    let last_y = (i64::from(rect.y) + i64::from(rect.height) - 1)
+        .min(i64::from(target.height()) - 1);
     if first_y > last_y {
         return;
     }
 
-    let radius_squared = (radius as u128) * (radius as u128);
     let framebuffer_right = i64::from(target.width()) - 1;
     for y in first_y..=last_y {
-        let dy = if y < top_center {
-            top_center - y
-        } else if y > bottom_center {
-            y - bottom_center
-        } else {
-            0
+        let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
+            continue;
         };
-        let extent = integer_sqrt(radius_squared - (dy as u128) * (dy as u128)) as i64;
-        let first_x = (left_center - extent).max(0);
-        let last_x = (right_center + extent).min(framebuffer_right);
+        let first_x = first_x.max(0);
+        let last_x = last_x.min(framebuffer_right);
         if first_x > last_x {
             continue;
         }
@@ -736,39 +771,20 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
-    let radius = radius.min(rect.width / 2).min(rect.height / 2);
-    if radius == 0 {
-        draw_rect(target, rect, color);
-        return;
-    }
-
-    let left = i64::from(rect.x);
-    let top = i64::from(rect.y);
-    let right = left + i64::from(rect.width) - 1;
-    let bottom = top + i64::from(rect.height) - 1;
-    let radius = i64::from(radius);
-    let left_center = left + radius;
-    let right_center = right - radius;
-    let top_center = top + radius;
-    let bottom_center = bottom - radius;
-    let first_y = top.max(0);
-    let last_y = bottom.min(i64::from(target.height()) - 1);
+    let first_y = i64::from(rect.y).max(0);
+    let last_y = (i64::from(rect.y) + i64::from(rect.height) - 1)
+        .min(i64::from(target.height()) - 1);
     if first_y > last_y {
         return;
     }
 
-    let radius_squared = (radius as u128) * (radius as u128);
+    let framebuffer_right = i64::from(target.width()) - 1;
     for y in first_y..=last_y {
-        let dy = if y < top_center {
-            top_center - y
-        } else if y > bottom_center {
-            y - bottom_center
-        } else {
-            0
+        let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
+            continue;
         };
-        let extent = integer_sqrt(radius_squared - (dy as u128) * (dy as u128)) as i64;
-        let first_x = (left_center - extent).max(0);
-        let last_x = (right_center + extent).min(i64::from(target.width()) - 1);
+        let first_x = first_x.max(0);
+        let last_x = last_x.min(framebuffer_right);
         if first_x > last_x {
             continue;
         }
