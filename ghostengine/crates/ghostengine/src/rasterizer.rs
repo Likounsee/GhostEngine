@@ -1232,7 +1232,7 @@ mod tests {
             .flat_map(|y| (0..8).map(move |x| (x, y)))
             .filter_map(|(x, y)| image.get_pixel(x, y))
             .collect::<Vec<_>>();
-        assert!(pixels.iter().any(|pixel| pixel.a > 0 && pixel.a < 255));
+        assert!(pixels.iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert!(pixels.contains(&Color::WHITE));
     }
 
