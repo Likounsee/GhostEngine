@@ -805,6 +805,148 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_active_edge_fill_matches_full_scan_reference() {
+        fn reference_full_scan(
+            target: &mut Framebuffer,
+            path: &Path,
+            color: Color,
+            clip: Rect,
+        ) {
+            const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+            let flattened = path.flatten(0.2).unwrap();
+            let clip = clip
+                .intersection(Rect::new(0, 0, target.width(), target.height()))
+                .unwrap();
+            let clip_right = clip.x.saturating_add(clip.width);
+            let clip_bottom = clip.y.saturating_add(clip.height);
+            let contours: Vec<&[Vector]> = flattened
+                .subpaths
+                .iter()
+                .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+                .map(|subpath| subpath.points.as_slice())
+                .collect();
+            let edges = contours
+                .iter()
+                .flat_map(|contour| {
+                    (0..contour.len()).filter_map(move |index| {
+                        super::FillEdge::new(
+                            contour[index],
+                            contour[(index + 1) % contour.len()],
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            let min_x = contours
+                .iter()
+                .flat_map(|contour| contour.iter().map(|point| point.x))
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .max(clip.x as f32)
+                .min(clip_right as f32) as u32;
+            let max_x = contours
+                .iter()
+                .flat_map(|contour| contour.iter().map(|point| point.x))
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .max(clip.x as f32)
+                .min(clip_right as f32) as u32;
+            let min_y = contours
+                .iter()
+                .flat_map(|contour| contour.iter().map(|point| point.y))
+                .fold(f32::INFINITY, f32::min)
+                .floor()
+                .max(clip.y as f32)
+                .min(clip_bottom as f32) as u32;
+            let max_y = contours
+                .iter()
+                .flat_map(|contour| contour.iter().map(|point| point.y))
+                .fold(f32::NEG_INFINITY, f32::max)
+                .ceil()
+                .min(clip_bottom as f32) as u32;
+
+            for y in min_y..max_y {
+                let mut row_coverage = vec![0_u8; (max_x - min_x) as usize];
+                for offset_y in OFFSETS {
+                    let sample_y = y as f32 + offset_y;
+                    let mut intersections = edges
+                        .iter()
+                        .filter(|edge| edge.crosses(sample_y))
+                        .map(|edge| edge.x_at(sample_y))
+                        .collect::<Vec<_>>();
+                    intersections.sort_by(f32::total_cmp);
+                    for pair in intersections.chunks_exact(2) {
+                        for x in min_x..max_x {
+                            let mut count = 0_u8;
+                            for offset_x in OFFSETS {
+                                let sample_x = x as f32 + offset_x;
+                                if pair[0] <= sample_x && sample_x < pair[1] {
+                                    count += 1;
+                                }
+                            }
+                            row_coverage[(x - min_x) as usize] += count;
+                        }
+                    }
+                }
+
+                let row = target.row_mut(y).unwrap();
+                for (offset, &covered) in row_coverage.iter().enumerate() {
+                    if covered == 0 {
+                        continue;
+                    }
+                    let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+                    if alpha == 0 {
+                        continue;
+                    }
+                    let source = Color::rgba(color.r, color.g, color.b, alpha);
+                    let index = min_x as usize + offset;
+                    row[index] = if alpha == u8::MAX {
+                        source
+                    } else {
+                        source.blend_over(row[index])
+                    };
+                }
+            }
+        }
+
+        let mut path = Path::new();
+        path.move_to(Vector::new(-2.4, 0.6))
+            .line_to(Vector::new(13.2, 1.1))
+            .line_to(Vector::new(12.4, 5.0))
+            .line_to(Vector::new(7.1, 4.6))
+            .line_to(Vector::new(6.7, 10.8))
+            .line_to(Vector::new(-1.8, 9.7))
+            .close();
+        path.move_to(Vector::new(1.2, 2.8))
+            .line_to(Vector::new(5.1, 2.5))
+            .line_to(Vector::new(5.4, 7.9))
+            .line_to(Vector::new(1.0, 8.1))
+            .close();
+        path.move_to(Vector::new(9.8, 6.2))
+            .line_to(Vector::new(16.1, 8.4))
+            .line_to(Vector::new(11.8, 13.1))
+            .close();
+
+        let clip = Rect::new(1, 1, 11, 10);
+        let background = Color::rgba(18, 27, 39, 255);
+        let color = Color::rgba(40, 190, 230, 173);
+        let mut optimized = Framebuffer::new(14, 12, background).unwrap();
+        let mut reference = Framebuffer::new(14, 12, background).unwrap();
+
+        super::fill_transformed_path_even_odd_aa_clipped(
+            &mut optimized,
+            &path,
+            Transform2D::IDENTITY,
+            color,
+            0.2,
+            clip,
+        )
+        .unwrap();
+        reference_full_scan(&mut reference, &path, color, clip);
+
+        assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
     fn antialiased_path_blends_partial_edge_coverage() {
         let mut path = Path::new();
         path.move_to(Vector::new(1.25, 1.25))
