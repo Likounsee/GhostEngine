@@ -169,8 +169,13 @@ impl NativeInputAdapter {
         }
 
         if let Key::Character(value) = &event.logical_key {
-            if let Some(character) = value.chars().find(|character| character.is_ascii_alphanumeric()) {
-                self.frame.shortcut_keys.push(character.to_ascii_lowercase());
+            if let Some(character) = value
+                .chars()
+                .find(|character| character.is_ascii_alphanumeric())
+            {
+                self.frame
+                    .shortcut_keys
+                    .push(character.to_ascii_lowercase());
             }
         }
 

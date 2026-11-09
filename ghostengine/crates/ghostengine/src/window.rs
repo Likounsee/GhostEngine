@@ -282,7 +282,10 @@ impl ComponentTree {
         let mut shortcut_events = ComponentEvents::default();
         for key in &input.shortcut_keys {
             if let Some(next) = self.activate_context_menu_shortcut(
-                *key, input.control_down, input.alt_down, input.shift_down,
+                *key,
+                input.control_down,
+                input.alt_down,
+                input.shift_down,
             ) {
                 merge_component_events(&mut shortcut_events, next);
                 break;

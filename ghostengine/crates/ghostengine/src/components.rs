@@ -370,17 +370,29 @@ pub struct ContextMenuShortcut {
 impl ContextMenuShortcut {
     #[must_use]
     pub fn new(key: char) -> Self {
-        Self { key: key.to_ascii_lowercase(), ..Self::default() }
+        Self {
+            key: key.to_ascii_lowercase(),
+            ..Self::default()
+        }
     }
 
     #[must_use]
-    pub fn with_control(mut self, enabled: bool) -> Self { self.control = enabled; self }
+    pub fn with_control(mut self, enabled: bool) -> Self {
+        self.control = enabled;
+        self
+    }
 
     #[must_use]
-    pub fn with_alt(mut self, enabled: bool) -> Self { self.alt = enabled; self }
+    pub fn with_alt(mut self, enabled: bool) -> Self {
+        self.alt = enabled;
+        self
+    }
 
     #[must_use]
-    pub fn with_shift(mut self, enabled: bool) -> Self { self.shift = enabled; self }
+    pub fn with_shift(mut self, enabled: bool) -> Self {
+        self.shift = enabled;
+        self
+    }
 }
 
 /// A selectable command displayed by a retained context menu.
@@ -1055,18 +1067,22 @@ impl ComponentTree {
             (&self.context_menu_items, None)
         };
         let matches = |item: &ContextMenuItem| {
-            item.enabled && item.shortcut.is_some_and(|shortcut| {
-                shortcut.key.eq_ignore_ascii_case(&key)
-                    && shortcut.control == control
-                    && shortcut.alt == alt
-                    && shortcut.shift == shift
-            })
+            item.enabled
+                && item.shortcut.is_some_and(|shortcut| {
+                    shortcut.key.eq_ignore_ascii_case(&key)
+                        && shortcut.control == control
+                        && shortcut.alt == alt
+                        && shortcut.shift == shift
+                })
         };
         let action = items.iter().find_map(|item| {
             if matches(item) && item.submenu.is_empty() {
                 Some(item.action)
             } else {
-                item.submenu.iter().find(|child| matches(child)).map(|child| child.action)
+                item.submenu
+                    .iter()
+                    .find(|child| matches(child))
+                    .map(|child| child.action)
             }
         })?;
         self.context_menu_state = None;
@@ -2914,14 +2930,21 @@ mod tests {
 
     #[test]
     fn context_menu_shortcuts_match_modifiers_and_activate_submenu_commands() {
-        let child = ContextMenuItem::new(902, "Save as")
-            .with_shortcut(ContextMenuShortcut::new('s').with_control(true).with_shift(true));
+        let child = ContextMenuItem::new(902, "Save as").with_shortcut(
+            ContextMenuShortcut::new('s')
+                .with_control(true)
+                .with_shift(true),
+        );
         let parent = ContextMenuItem::new(901, "File").with_submenu(vec![child]);
         let mut tree = ComponentTree::new(Vec::new());
         tree.set_context_menu(vec![parent]);
 
-        assert!(tree.activate_context_menu_shortcut('s', true, false, false).is_none());
-        let events = tree.activate_context_menu_shortcut('S', true, false, true).unwrap();
+        assert!(tree
+            .activate_context_menu_shortcut('s', true, false, false)
+            .is_none());
+        let events = tree
+            .activate_context_menu_shortcut('S', true, false, true)
+            .unwrap();
         assert_eq!(events.context_menu_action, Some(902));
         assert_eq!(events.context_menu_target, None);
         assert!(!tree.context_menu_is_open());
@@ -2934,7 +2957,9 @@ mod tests {
             .with_enabled(false);
         let mut tree = ComponentTree::new(Vec::new());
         tree.set_context_menu(vec![item]);
-        assert!(tree.activate_context_menu_shortcut('u', true, false, false).is_none());
+        assert!(tree
+            .activate_context_menu_shortcut('u', true, false, false)
+            .is_none());
     }
 
     #[test]
