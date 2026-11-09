@@ -723,8 +723,8 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                         let ay = f64::from(a.y);
                         let by = f64::from(b.y);
                         if (ay > sample_y) != (by > sample_y) {
-                            let crossing_x = f64::from(a.x)
-                                + (sample_y - ay) * f64::from(b.x - a.x) / (by - ay);
+                            let crossing_x =
+                                f64::from(a.x) + (sample_y - ay) * f64::from(b.x - a.x) / (by - ay);
                             if sample_x < crossing_x {
                                 inside = !inside;
                             }
@@ -1039,8 +1039,8 @@ fn integer_sqrt(value: u128) -> u128 {
 mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon,
-        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon, fill_polygon_aa,
-        fill_rect, fill_rounded_rect, fill_triangle,
+        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon,
+        fill_polygon_aa, fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
