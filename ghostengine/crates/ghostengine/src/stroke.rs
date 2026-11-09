@@ -284,6 +284,7 @@ fn stroke_path_impl(
                 )
             })
             .collect::<Vec<_>>();
+        let radius_squared = radius * radius;
         for y in top..bottom {
             let Some(row) = target.row_mut(y) else {
                 continue;
@@ -295,17 +296,22 @@ fn stroke_path_impl(
                     for offset_y in OFFSETS {
                         for offset_x in OFFSETS {
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
-                            let mut distance = f32::INFINITY;
+                            let mut distance_squared = f32::INFINITY;
                             for segment in &segments {
-                                distance = distance.min(segment.distance(sample));
+                                distance_squared =
+                                    distance_squared.min(segment.distance_squared(sample));
                             }
-                            for join in &joins {
-                                if join.contains(sample) {
-                                    distance = 0.0;
-                                    break;
+                            // A segment already covers this sample, so join geometry
+                            // cannot increase its coverage.
+                            if distance_squared > radius_squared {
+                                for join in &joins {
+                                    if join.contains(sample) {
+                                        distance_squared = 0.0;
+                                        break;
+                                    }
                                 }
                             }
-                            if distance <= radius {
+                            if distance_squared <= radius_squared {
                                 covered += 1;
                             }
                         }
@@ -313,17 +319,22 @@ fn stroke_path_impl(
                     f32::from(covered) / 16.0
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
-                    let mut distance = f32::INFINITY;
+                    let mut distance_squared = f32::INFINITY;
                     for segment in &segments {
-                        distance = distance.min(segment.distance(sample));
+                        distance_squared =
+                            distance_squared.min(segment.distance_squared(sample));
                     }
-                    for join in &joins {
-                        if join.contains(sample) {
-                            distance = 0.0;
-                            break;
+                    if distance_squared > radius_squared {
+                        for join in &joins {
+                            if join.contains(sample) {
+                                distance_squared = 0.0;
+                                break;
+                            }
                         }
                     }
-                    // Legacy pixel-center coverage keeps the existing stroke appearance.
+                    // Preserve the legacy pixel-center coverage while delaying the
+                    // square root until after the nearest segment has been selected.
+                    let distance = distance_squared.sqrt();
                     (radius + 0.5 - distance).clamp(0.0, 1.0)
                 };
                 let alpha = (f32::from(color.a) * coverage).round() as u8;
@@ -376,9 +387,11 @@ impl StrokeSegment {
         }
     }
 
-    fn distance(self, point: Vector) -> f32 {
+    fn distance_squared(self, point: Vector) -> f32 {
         if self.length_squared <= f32::EPSILON {
-            return (point.x - self.a.x).hypot(point.y - self.a.y);
+            let dx = point.x - self.a.x;
+            let dy = point.y - self.a.y;
+            return dx * dx + dy * dy;
         }
         let mut t =
             ((point.x - self.a.x) * self.dx + (point.y - self.a.y) * self.dy) / self.length_squared;
@@ -392,7 +405,9 @@ impl StrokeSegment {
         }
         let nearest_x = self.a.x + t * self.dx;
         let nearest_y = self.a.y + t * self.dy;
-        (point.x - nearest_x).hypot(point.y - nearest_y)
+        let dx = point.x - nearest_x;
+        let dy = point.y - nearest_y;
+        dx * dx + dy * dy
     }
 }
 
@@ -507,7 +522,9 @@ impl PreparedJoin {
 
     fn contains(self, sample: Vector) -> bool {
         if self.round {
-            return (sample.x - self.vertex.x).hypot(sample.y - self.vertex.y) <= self.radius;
+            let dx = sample.x - self.vertex.x;
+            let dy = sample.y - self.vertex.y;
+            return dx * dx + dy * dy <= self.radius * self.radius;
         }
         point_in_triangle(sample, self.bevel[0], self.bevel[1], self.bevel[2])
             || self.miter.is_some_and(|triangle| {
