@@ -407,6 +407,9 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
     if next.context_menu_action.is_some() {
         target.context_menu_action = next.context_menu_action;
     }
+    if next.context_menu_target.is_some() {
+        target.context_menu_target = next.context_menu_target;
+    }
 }
 
 /// Resolves the edge events for a button sampled once per frame.

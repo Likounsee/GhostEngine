@@ -1977,6 +1977,26 @@ mod tests {
     }
 
     #[test]
+    fn component_context_menu_targets_the_hit_component() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(10, 10, 100, 80);
+        let mut tree = sample_tree();
+        assert!(!tree.set_context_menu_for(
+            ComponentId(999),
+            vec![ContextMenuItem::new(31, "Missing")],
+        ));
+        assert!(tree.set_context_menu_for(
+            ComponentId(3),
+            vec![ContextMenuItem::new(32, "Inspect")],
+        ));
+        assert!(tree.open_context_menu_for_at(bounds, Point::new(20, 30)));
+        let events = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(events.context_menu_action, Some(32));
+        assert_eq!(events.context_menu_target, Some(ComponentId(3)));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
     fn context_menu_opens_navigates_and_activates_enabled_commands() {
         use super::ContextMenuItem;
         let mut tree = ComponentTree::default();
