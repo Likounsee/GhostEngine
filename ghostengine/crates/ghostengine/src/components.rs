@@ -2298,6 +2298,50 @@ mod tests {
     }
 
     #[test]
+    fn context_menu_keyboard_navigation_supports_three_nested_levels() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(50, "File").with_submenu(vec![
+                ContextMenuItem::new(51, "Export").with_submenu(vec![
+                    ContextMenuItem::new(52, "PNG"),
+                    ContextMenuItem::new(53, "SVG"),
+                ]),
+            ]),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        let event = tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(event.context_menu_action, None);
+        let event = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(event.context_menu_action, Some(53));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_pointer_navigation_opens_and_activates_nested_submenus() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(60, "File").with_submenu(vec![
+                ContextMenuItem::new(61, "Export").with_submenu(vec![
+                    ContextMenuItem::new(62, "PNG"),
+                    ContextMenuItem::new(63, "SVG"),
+                ]),
+            ]),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.update_pointer(bounds, Some(Point::new(20, 20)), false, false);
+        tree.update_pointer(bounds, Some(Point::new(210, 20)), false, false);
+        let event = tree.update_pointer(bounds, Some(Point::new(410, 20)), false, true);
+        assert_eq!(event.context_menu_action, Some(62));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
     fn context_menu_opens_navigates_and_activates_enabled_commands() {
         use super::ContextMenuItem;
         let mut tree = ComponentTree::default();
