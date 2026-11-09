@@ -386,6 +386,7 @@ struct StrokeSegment {
     dx: f32,
     dy: f32,
     length_squared: f32,
+    inverse_length_squared: f32,
     low: f32,
     high: f32,
     cap: StrokeCap,
@@ -417,6 +418,11 @@ impl StrokeSegment {
             dx,
             dy,
             length_squared,
+            inverse_length_squared: if length_squared > f32::EPSILON {
+                length_squared.recip()
+            } else {
+                0.0
+            },
             low: if first { -extension } else { 0.0 },
             high: if last { 1.0 + extension } else { 1.0 },
             cap,
@@ -440,8 +446,8 @@ impl StrokeSegment {
             let dy = point.y - self.a.y;
             return dx * dx + dy * dy;
         }
-        let mut t =
-            ((point.x - self.a.x) * self.dx + (point.y - self.a.y) * self.dy) / self.length_squared;
+        let mut t = ((point.x - self.a.x) * self.dx + (point.y - self.a.y) * self.dy)
+            * self.inverse_length_squared;
         if self.cap == StrokeCap::Butt && !(0.0..=1.0).contains(&t) {
             return f32::INFINITY;
         }
