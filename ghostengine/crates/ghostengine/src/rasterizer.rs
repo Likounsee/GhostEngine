@@ -761,9 +761,9 @@ pub fn fill_circle(target: &mut Framebuffer, center: Point, radius: u32, color: 
 }
 
 /// Fills an ellipse with 4x4 supersampled edge coverage and source-over blending.
-////
-//// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
-//// line along the remaining axis; a point-sized ellipse draws one pixel.
+///
+/// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
+/// line along the remaining axis; a point-sized ellipse draws one pixel.
 pub fn fill_ellipse_aa(
     target: &mut Framebuffer,
     center: Point,
