@@ -28,6 +28,15 @@ impl Color {
     /// Composites this foreground color over a background using source-over alpha.
     #[must_use]
     pub fn blend_over(self, background: Self) -> Self {
+        // These two cases dominate opaque drawing and transparent overlays.
+        // They are exact source-over results and avoid channel arithmetic/division.
+        if self.a == 0 {
+            return background;
+        }
+        if self.a == u8::MAX {
+            return self;
+        }
+
         let source_alpha = u32::from(self.a);
         let destination_alpha = u32::from(background.a);
         let inverse_source_alpha = 255 - source_alpha;
