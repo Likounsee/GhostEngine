@@ -86,6 +86,19 @@ impl Framebuffer {
         self.pixel_index(x, y).map(|index| self.pixels[index])
     }
 
+    /// Returns a mutable slice for one framebuffer row.
+    ///
+    /// This crate-private primitive lets rasterizers write contiguous spans without
+    /// repeating per-pixel coordinate checks.
+    pub(crate) fn row_mut(&mut self, y: u32) -> Option<&mut [Color]> {
+        if y >= self.height {
+            return None;
+        }
+        let width = self.width as usize;
+        let start = (y as usize).checked_mul(width)?;
+        self.pixels.get_mut(start..start.checked_add(width)?)
+    }
+
     fn pixel_index(&self, x: u32, y: u32) -> Option<usize> {
         if x >= self.width || y >= self.height {
             return None;
