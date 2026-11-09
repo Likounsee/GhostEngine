@@ -285,39 +285,32 @@ fn stroke_path_impl(
             })
             .collect::<Vec<_>>();
         let radius_squared = radius * radius;
-        // Index segments by the pixel columns touched by their conservative
-        // horizontal bounds. The inner supersampling loop then visits only
-        // nearby segments instead of scanning every segment on the scanline.
-        let mut column_segments = vec![Vec::<usize>::new(); (right - left) as usize];
-        for (segment_index, segment) in segments.iter().enumerate() {
-            let first_column = ((segment.min_x.floor() as i64) - i64::from(left) - 1)
-                .clamp(0, i64::from(right - left)) as usize;
-            let end_column = ((segment.max_x.ceil() as i64) - i64::from(left) + 2)
-                .clamp(0, i64::from(right - left)) as usize;
-            for column in first_column..end_column {
-                column_segments[column].push(segment_index);
-            }
-        }
+        let mut row_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         let mut row_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top..bottom {
-            // Joins are still culled by scanline; segment candidates are
-            // selected independently for each column below.
+            // A segment whose vertical bounds do not overlap this pixel row
+            // cannot contribute to any of its 4x4 coverage samples.
             let sample_top = y as f32 + 0.125;
             let sample_bottom = y as f32 + 0.875;
+            row_segments.clear();
+            row_segments.extend(
+                segments.iter().filter(|segment| {
+                    segment.max_y >= sample_top && segment.min_y <= sample_bottom
+                }),
+            );
             row_joins.clear();
             row_joins.extend(
                 joins
                     .iter()
                     .filter(|join| join.max_y >= sample_top && join.min_y <= sample_bottom),
             );
+            if row_segments.is_empty() && row_joins.is_empty() {
+                continue;
+            }
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
             for x in left..right {
-                let candidates = &column_segments[(x - left) as usize];
-                if candidates.is_empty() && row_joins.is_empty() {
-                    continue;
-                }
                 let coverage = if antialias {
                     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
                     let mut covered = 0_u16;
@@ -325,8 +318,7 @@ fn stroke_path_impl(
                         for offset_x in OFFSETS {
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                             let mut distance_squared = f32::INFINITY;
-                            for &segment_index in candidates {
-                                let segment = segments[segment_index];
+                            for segment in &row_segments {
                                 if segment.may_cover(sample) {
                                     distance_squared =
                                         distance_squared.min(segment.distance_squared(sample));
@@ -351,8 +343,7 @@ fn stroke_path_impl(
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance_squared = f32::INFINITY;
-                    for &segment_index in candidates {
-                        let segment = segments[segment_index];
+                    for segment in &row_segments {
                         if segment.may_cover(sample) {
                             distance_squared =
                                 distance_squared.min(segment.distance_squared(sample));
