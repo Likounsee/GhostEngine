@@ -236,7 +236,8 @@ mod tests {
                     if source.a == 0 {
                         continue;
                     }
-                    let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
+                    let alpha =
+                        ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
                     if alpha == 0 {
                         continue;
                     }
