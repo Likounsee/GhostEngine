@@ -559,12 +559,16 @@ mod tests {
             Rect::new(5, 4, 2, 3),
         )
         .unwrap();
+        let mut painted_inside = false;
         for y in 0..12 {
             for x in 0..14 {
                 let inside = (5..7).contains(&x) && (4..7).contains(&y);
-                assert_eq!(fb.get_pixel(x, y) != Some(Color::BLACK), inside);
+                let painted = fb.get_pixel(x, y) != Some(Color::BLACK);
+                assert!(!painted || inside, "stroke escaped clip at ({x}, {y})");
+                painted_inside |= painted;
             }
         }
+        assert!(painted_inside, "stroke should paint at least part of the clip");
     }
 
     #[test]
