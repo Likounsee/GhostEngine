@@ -775,8 +775,8 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         return;
     }
     let first_y = i64::from(rect.y).max(0);
-    let last_y = (i64::from(rect.y) + i64::from(rect.height) - 1)
-        .min(i64::from(target.height()) - 1);
+    let last_y =
+        (i64::from(rect.y) + i64::from(rect.height) - 1).min(i64::from(target.height()) - 1);
     if first_y > last_y {
         return;
     }
