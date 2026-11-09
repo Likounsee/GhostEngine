@@ -773,7 +773,11 @@ mod tests {
 
     #[test]
     fn antialiased_miter_join_honors_style_and_limit() {
-        let path = corner_path();
+        // Fractional geometry ensures the miter edge crosses the supersample grid.
+        let mut path = Path::new();
+        path.move_to(Vector::new(3.25, 10.25))
+            .line_to(Vector::new(10.25, 10.25))
+            .line_to(Vector::new(10.25, 3.25));
         let mut bevel = Framebuffer::new(20, 20, Color::BLACK).unwrap();
         let mut miter = Framebuffer::new(20, 20, Color::BLACK).unwrap();
         let mut limited = Framebuffer::new(20, 20, Color::BLACK).unwrap();
