@@ -50,8 +50,10 @@ pub use geometry::{Point, Rect, Vector};
 pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use path::{
-    fill_path_even_odd, fill_path_even_odd_clipped, fill_transformed_path_even_odd,
-    fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
+    fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
+    fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
+    fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
+    FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{
     blend_rect, blend_rect_clipped, fill_circle_aa, fill_ellipse_aa, fill_polygon_aa,
