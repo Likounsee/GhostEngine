@@ -45,6 +45,8 @@ pub struct InputState {
     pub left_mouse_pressed: bool,
     /// True only on the frame the left mouse button transitions to up.
     pub left_mouse_released: bool,
+    pub right_mouse_down: bool,
+    pub right_mouse_pressed: bool,
     /// Vertical wheel movement in pixels; positive values scroll toward later rows.
     pub scroll_delta_y: i32,
     /// True while either Shift key is held.
@@ -83,6 +85,7 @@ pub struct WindowSurface {
     height: u32,
     presentation_buffer: Vec<u32>,
     previous_left_mouse_down: bool,
+    previous_right_mouse_down: bool,
 }
 
 impl WindowSurface {
@@ -190,6 +193,9 @@ impl WindowSurface {
         let (left_mouse_pressed, left_mouse_released) =
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
+        let right_mouse_down = self.window.get_mouse_down(MouseButton::Right);
+        let (right_mouse_pressed, _) = button_transition(self.previous_right_mouse_down, right_mouse_down);
+        self.previous_right_mouse_down = right_mouse_down;
         let scroll_delta_y = self
             .window
             .get_scroll_wheel()
@@ -201,6 +207,8 @@ impl WindowSurface {
             left_mouse_down,
             left_mouse_pressed,
             left_mouse_released,
+            right_mouse_down,
+            right_mouse_pressed,
             shift_down: self.window.is_key_down(Key::LeftShift)
                 || self.window.is_key_down(Key::RightShift),
             control_down: self.window.is_key_down(Key::LeftCtrl)
@@ -264,6 +272,9 @@ impl WindowSurface {
 /// key mapping; it is not an AZERTY/QWERTY layout implementation.
 impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
+        if input.right_mouse_pressed {
+            if let Some(pointer) = input.mouse_position { self.open_context_menu_at(pointer); }
+        }
         let mut events = self.update_pointer(
             bounds,
             input.mouse_position,
@@ -276,6 +287,10 @@ impl ComponentTree {
             }
         }
 
+        if input.escape_down && self.context_menu_is_open() {
+            let next = self.handle_key(bounds, ComponentKey::Escape, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
         if input.tab_pressed {
             let next = self.handle_key(bounds, ComponentKey::Tab, input.shift_down);
             merge_component_events(&mut events, next);
