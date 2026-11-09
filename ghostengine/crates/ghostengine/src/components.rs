@@ -2235,7 +2235,13 @@ mod tests {
         let bounds = Rect::new(0, 0, 100, 64);
         let mut tree = ComponentTree::new(vec![UiComponent::list_view(
             id,
-            vec!["One".into(), "Two".into(), "Three".into(), "Four".into()],
+            vec![
+                "One".into(),
+                "Two".into(),
+                "Three".into(),
+                "Four".into(),
+                "Five".into(),
+            ],
             16,
         )
         .with_layout_item(LayoutItem::fixed(64))]);
