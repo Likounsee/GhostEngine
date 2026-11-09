@@ -950,6 +950,74 @@ mod tests {
     }
 
     #[test]
+    fn scanline_culling_preserves_segment_and_join_coverage() {
+        let points = [
+            Vector::new(2.0, 14.0),
+            Vector::new(9.0, 5.0),
+            Vector::new(14.0, 14.0),
+            Vector::new(17.0, 3.0),
+        ];
+        let radius = 3.0;
+        let radius_squared = radius * radius;
+        let segments = [
+            super::StrokeSegment::new(
+                points[0], points[1], true, false, StrokeCap::Butt, radius,
+            ),
+            super::StrokeSegment::new(
+                points[1], points[2], false, false, StrokeCap::Butt, radius,
+            ),
+            super::StrokeSegment::new(
+                points[2], points[3], false, true, StrokeCap::Square, radius,
+            ),
+        ];
+        let joins = [
+            super::PreparedJoin::new(
+                points[0], points[1], points[2], StrokeJoin::Miter, radius, 4.0,
+            )
+            .unwrap(),
+            super::PreparedJoin::new(
+                points[1], points[2], points[3], StrokeJoin::Miter, radius, 4.0,
+            )
+            .unwrap(),
+        ];
+
+        for y in 0..20 {
+            let sample_top = y as f32 + 0.125;
+            let sample_bottom = y as f32 + 0.875;
+            let row_segments = segments
+                .iter()
+                .filter(|segment| {
+                    segment.max_y >= sample_top && segment.min_y <= sample_bottom
+                })
+                .collect::<Vec<_>>();
+            let row_joins = joins
+                .iter()
+                .filter(|join| join.max_y >= sample_top && join.min_y <= sample_bottom)
+                .collect::<Vec<_>>();
+
+            for x in 0..20 {
+                for offset_y in [0.125, 0.375, 0.625, 0.875, 0.5] {
+                    let sample = Vector::new(x as f32 + 0.5, y as f32 + offset_y);
+                    let expected = segments
+                        .iter()
+                        .any(|segment| segment.distance_squared(sample) <= radius_squared)
+                        || joins.iter().any(|join| join.contains(sample));
+                    let actual = row_segments.iter().any(|segment| {
+                        segment.may_cover(sample)
+                            && segment.distance_squared(sample) <= radius_squared
+                    }) || row_joins.iter().any(|join| join.contains(sample));
+
+                    assert_eq!(
+                        actual, expected,
+                        "scanline culling changed coverage at ({}, {})",
+                        sample.x, sample.y
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn invalid_width_is_rejected() {
         let mut fb = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         assert_eq!(
