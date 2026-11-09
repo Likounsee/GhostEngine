@@ -802,7 +802,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     // Convert vertices and discard horizontal edges once. Scan conversion
     // then works on compact f64 edge records without repeated indexing,
     // modulo operations, or integer-to-float conversions on every row.
-    let edges = (0..vertices.len())
+    let mut edges = (0..vertices.len())
         .filter_map(|index| {
             let a = vertices[index];
             let b = vertices[(index + 1) % vertices.len()];
@@ -812,23 +812,34 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
                 f64::from(b.x),
                 f64::from(b.y),
             );
-            (ay != by).then_some((ax, ay, bx, by))
+            (ay != by).then_some((ay.min(by), ay.max(by), ax, ay, bx, by))
         })
         .collect::<Vec<_>>();
     if edges.is_empty() {
         return;
     }
+    // Activate only edges crossing the current scanline. Sorting by their
+    // first covered y avoids revisiting every polygon edge on every row.
+    edges.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
+    let mut active_edges = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
     let mut intersections = Vec::with_capacity(edges.len());
     let target_width = target.width();
 
     for y in min_y..=max_y {
         intersections.clear();
         let scan_y = f64::from(y) + 0.5;
-        for &(ax, ay, bx, by) in &edges {
-            if (ay <= scan_y && scan_y < by) || (by <= scan_y && scan_y < ay) {
-                let t = (scan_y - ay) / (by - ay);
-                intersections.push(ax + t * (bx - ax));
+        active_edges.retain(|&index| edges[index].1 > scan_y);
+        while next_edge < edges.len() && edges[next_edge].0 <= scan_y {
+            if edges[next_edge].1 > scan_y {
+                active_edges.push(next_edge);
             }
+            next_edge += 1;
+        }
+        for &index in &active_edges {
+            let (_, _, ax, ay, bx, by) = edges[index];
+            let t = (scan_y - ay) / (by - ay);
+            intersections.push(ax + t * (bx - ax));
         }
         intersections.sort_unstable_by(f64::total_cmp);
         let Some(row) = target.row_mut(y) else {
