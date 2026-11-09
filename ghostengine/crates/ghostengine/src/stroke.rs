@@ -273,8 +273,7 @@ fn stroke_path_impl(
             .collect::<Vec<_>>();
         let joins = (0..join_count(&contour.points, contour.closed))
             .filter_map(|index| {
-                let (previous, vertex, next) =
-                    join_points(&contour.points, contour.closed, index);
+                let (previous, vertex, next) = join_points(&contour.points, contour.closed, index);
                 PreparedJoin::new(
                     previous,
                     vertex,
@@ -511,9 +510,9 @@ impl PreparedJoin {
             return (sample.x - self.vertex.x).hypot(sample.y - self.vertex.y) <= self.radius;
         }
         point_in_triangle(sample, self.bevel[0], self.bevel[1], self.bevel[2])
-            || self
-                .miter
-                .is_some_and(|triangle| point_in_triangle(sample, triangle[0], triangle[1], triangle[2]))
+            || self.miter.is_some_and(|triangle| {
+                point_in_triangle(sample, triangle[0], triangle[1], triangle[2])
+            })
     }
 }
 
