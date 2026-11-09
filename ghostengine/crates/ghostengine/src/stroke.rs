@@ -575,7 +575,10 @@ mod tests {
                 painted_inside |= painted;
             }
         }
-        assert!(painted_inside, "stroke should paint at least part of the clip");
+        assert!(
+            painted_inside,
+            "stroke should paint at least part of the clip"
+        );
     }
 
     #[test]
