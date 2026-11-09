@@ -319,6 +319,134 @@ pub fn fill_transformed_path_even_odd_clipped(
     Ok(())
 }
 
+/// Fills a path with 4x4 supersampled edge coverage and source-over blending.
+pub fn fill_path_even_odd_aa(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    fill_transformed_path_even_odd_aa(
+        target,
+        path,
+        Transform2D::IDENTITY,
+        color,
+        tolerance,
+    )
+}
+
+/// Flattens, transforms and antialiases a path using the even-odd fill rule.
+pub fn fill_transformed_path_even_odd_aa(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    fill_transformed_path_even_odd_aa_clipped(
+        target, path, transform, color, tolerance, clip,
+    )
+}
+
+/// Antialiased path fill restricted to a framebuffer-space viewport.
+pub fn fill_transformed_path_even_odd_aa_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return Ok(());
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
+    let contours: Vec<&[Vector]> = flattened
+        .subpaths
+        .iter()
+        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+        .map(|subpath| subpath.points.as_slice())
+        .collect();
+    if contours.is_empty() {
+        return Ok(());
+    }
+
+    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+    let min_x = contours
+        .iter()
+        .flat_map(|contour| contour.iter().map(|point| point.x))
+        .fold(f32::INFINITY, f32::min)
+        .floor()
+        .max(clip.x as f32)
+        .min(clip.x.saturating_add(clip.width) as f32) as u32;
+    let min_y = contours
+        .iter()
+        .flat_map(|contour| contour.iter().map(|point| point.y))
+        .fold(f32::INFINITY, f32::min)
+        .floor()
+        .max(clip.y as f32)
+        .min(clip.y.saturating_add(clip.height) as f32) as u32;
+    let max_x = contours
+        .iter()
+        .flat_map(|contour| contour.iter().map(|point| point.x))
+        .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
+        .max(clip.x as f32)
+        .min(clip.x.saturating_add(clip.width) as f32) as u32;
+    let max_y = contours
+        .iter()
+        .flat_map(|contour| contour.iter().map(|point| point.y))
+        .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
+        .max(clip.y as f32)
+        .min(clip.y.saturating_add(clip.height) as f32) as u32;
+
+    for y in min_y..max_y {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in min_x..max_x {
+            let mut covered = 0_u16;
+            for offset_y in OFFSETS {
+                for offset_x in OFFSETS {
+                    let sample_x = x as f32 + offset_x;
+                    let sample_y = y as f32 + offset_y;
+                    let mut inside = false;
+                    for contour in &contours {
+                        for index in 0..contour.len() {
+                            let a = contour[index];
+                            let b = contour[(index + 1) % contour.len()];
+                            if (a.y > sample_y) != (b.y > sample_y) {
+                                let crossing_x =
+                                    a.x + (sample_y - a.y) * (b.x - a.x) / (b.y - a.y);
+                                if sample_x < crossing_x {
+                                    inside = !inside;
+                                }
+                            }
+                        }
+                    }
+                    covered += u16::from(inside);
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{fill_path_even_odd, fill_transformed_path_even_odd, Path, PathError};
