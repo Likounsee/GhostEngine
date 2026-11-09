@@ -1079,7 +1079,7 @@ impl ComponentTree {
         };
         let viewport_height = self.placed.iter()
             .find(|placement| placement.id == id)
-            .map_or(u32::MAX, |placement| placement.bounds.height);
+            .map_or(0, |placement| placement.bounds.height);
         let content_height = (items_len as u32).saturating_mul(row_height);
         *scroll_offset = offset.min(content_height.saturating_sub(viewport_height));
         true
@@ -2235,6 +2235,36 @@ mod tests {
         tree.update_pointer(bounds, Some(Point::new(10, 8)), true, false);
         tree.update_pointer(bounds, Some(Point::new(10, 8)), false, true);
         assert_eq!(tree.list_view_selected(id), Some(1));
+    }
+
+    #[test]
+    fn retained_list_view_scrolls_under_pointer_and_clamps_to_content() {
+        let id = ComponentId(136);
+        let bounds = Rect::new(0, 0, 100, 48);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..10).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(48))]);
+        tree.layout(bounds);
+
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), 32));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 32, .. }
+        ));
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), -16));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, .. }
+        ));
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), i32::MAX));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 112, .. }
+        ));
+        assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
     }
 
     #[test]
