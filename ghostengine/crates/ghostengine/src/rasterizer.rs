@@ -145,13 +145,19 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
                 return;
             }
             let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
-            if alpha > 0 {
-                blend_pixel(
-                    target,
-                    Point::new(px as i32, py as i32),
-                    Color::rgba(color.r, color.g, color.b, alpha),
-                );
+            if alpha == 0 {
+                return;
             }
+            let Some(row) = target.row_mut(py as u32) else {
+                return;
+            };
+            let pixel = &mut row[px as usize];
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            *pixel = if alpha == u8::MAX {
+                source
+            } else {
+                source.blend_over(*pixel)
+            };
         };
         plot(target, x, lower as i64, lower_coverage);
         plot(target, x, lower as i64 + 1, upper_coverage);
