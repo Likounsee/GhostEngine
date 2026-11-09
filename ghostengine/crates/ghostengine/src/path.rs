@@ -143,8 +143,7 @@ fn distance_to_segment(p: Vector, a: Vector, b: Vector) -> f32 {
         return (p.x - a.x).hypot(p.y - a.y);
     }
 
-    let projection = (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared)
-        .clamp(0.0, 1.0);
+    let projection = (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared).clamp(0.0, 1.0);
     let closest_x = a.x + projection * dx;
     let closest_y = a.y + projection * dy;
     (p.x - closest_x).hypot(p.y - closest_y)
