@@ -193,7 +193,7 @@ impl WindowSurface {
         let scroll_delta_y = self
             .window
             .get_scroll_wheel()
-            .map(|(_, y)| (y * 48.0).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32)
+            .map(|(_, y)| (-y * 48.0).round().clamp(i32::MIN as f32, i32::MAX as f32) as i32)
             .unwrap_or(0);
         let mut input = InputState {
             scroll_delta_y,
