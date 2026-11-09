@@ -1069,15 +1069,21 @@ impl ComponentTree {
     /// Updates the pixel scroll offset of a retained list view.
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
         let Some((scroll_offset, items_len, row_height)) =
-            self.find_mut(id).and_then(|component| match &mut component.kind {
-                ComponentKind::ListView { items, row_height, scroll_offset } =>
-                    Some((scroll_offset, items.len(), *row_height)),
-                _ => None,
-            })
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => Some((scroll_offset, items.len(), *row_height)),
+                    _ => None,
+                })
         else {
             return false;
         };
-        let viewport_height = self.placed.iter()
+        let viewport_height = self
+            .placed
+            .iter()
             .find(|placement| placement.id == id)
             .map_or(0, |placement| placement.bounds.height);
         let content_height = (items_len as u32).saturating_mul(row_height);
@@ -1091,21 +1097,32 @@ impl ComponentTree {
         if delta_y == 0 {
             return false;
         }
-        let Some(placement) = self.placed.iter().rev()
+        let Some(placement) = self
+            .placed
+            .iter()
+            .rev()
             .find(|placement| placement.bounds.contains(pointer))
             .copied()
         else {
             return false;
         };
-        let Some((current, max_offset)) = self.find(placement.id).and_then(|component| {
-            match component.kind() {
-                ComponentKind::ListView { items, row_height, scroll_offset } => {
-                    let content_height = (items.len() as u32).saturating_mul(*row_height);
-                    Some((*scroll_offset, content_height.saturating_sub(placement.bounds.height)))
-                }
-                _ => None,
-            }
-        }) else {
+        let Some((current, max_offset)) =
+            self.find(placement.id)
+                .and_then(|component| match component.kind() {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => {
+                        let content_height = (items.len() as u32).saturating_mul(*row_height);
+                        Some((
+                            *scroll_offset,
+                            content_height.saturating_sub(placement.bounds.height),
+                        ))
+                    }
+                    _ => None,
+                })
+        else {
             return false;
         };
         let next = if delta_y > 0 {
@@ -2252,17 +2269,26 @@ mod tests {
         assert!(tree.scroll_list_view_at(Point::new(10, 20), 32));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 32, .. }
+            ComponentKind::ListView {
+                scroll_offset: 32,
+                ..
+            }
         ));
         assert!(tree.scroll_list_view_at(Point::new(10, 20), -16));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 16, .. }
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
         ));
         assert!(tree.scroll_list_view_at(Point::new(10, 20), i32::MAX));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 112, .. }
+            ComponentKind::ListView {
+                scroll_offset: 112,
+                ..
+            }
         ));
         assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
     }
