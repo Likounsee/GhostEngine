@@ -366,7 +366,7 @@ pub fn fill_transformed_path_even_odd_clipped(
     // Keep only edges that cross the current scanline. Sorting once by
     // their lower endpoint avoids revisiting every edge on sparse rows.
     let mut edges = edges;
-    edges.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
+    edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
     let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
     let mut next_edge = 0;
     let mut intersections = Vec::with_capacity(edges.len());
@@ -384,7 +384,7 @@ pub fn fill_transformed_path_even_odd_clipped(
         for &edge in &active_edges {
             intersections.push(edge.x_at(scan));
         }
-        intersections.sort_by(f32::total_cmp);
+        intersections.sort_unstable_by(f32::total_cmp);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
