@@ -799,23 +799,38 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
         return;
     }
     let max_y = (max_y as u32).min(target.height() - 1);
-    let mut intersections = Vec::with_capacity(vertices.len());
+    // Convert vertices and discard horizontal edges once. Scan conversion
+    // then works on compact f64 edge records without repeated indexing,
+    // modulo operations, or integer-to-float conversions on every row.
+    let edges = (0..vertices.len())
+        .filter_map(|index| {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let (ax, ay, bx, by) = (
+                f64::from(a.x),
+                f64::from(a.y),
+                f64::from(b.x),
+                f64::from(b.y),
+            );
+            (ay != by).then_some((ax, ay, bx, by))
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return;
+    }
+    let mut intersections = Vec::with_capacity(edges.len());
     let target_width = target.width();
 
     for y in min_y..=max_y {
         intersections.clear();
         let scan_y = f64::from(y) + 0.5;
-        for index in 0..vertices.len() {
-            let a = vertices[index];
-            let b = vertices[(index + 1) % vertices.len()];
-            let ay = f64::from(a.y);
-            let by = f64::from(b.y);
+        for &(ax, ay, bx, by) in &edges {
             if (ay <= scan_y && scan_y < by) || (by <= scan_y && scan_y < ay) {
                 let t = (scan_y - ay) / (by - ay);
-                intersections.push(f64::from(a.x) + t * (f64::from(b.x) - f64::from(a.x)));
+                intersections.push(ax + t * (bx - ax));
             }
         }
-        intersections.sort_by(f64::total_cmp);
+        intersections.sort_unstable_by(f64::total_cmp);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
