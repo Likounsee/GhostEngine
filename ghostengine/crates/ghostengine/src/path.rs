@@ -375,12 +375,12 @@ pub fn fill_transformed_path_even_odd_clipped(
         let scan = y as f32 + 0.5;
         while next_edge < edges.len() && edges[next_edge].min_y <= scan {
             let edge = edges[next_edge];
-            if edge.max_y > scan {
+            if edge.crosses(scan) {
                 active_edges.push(edge);
             }
             next_edge += 1;
         }
-        active_edges.retain(|edge| edge.max_y > scan);
+        active_edges.retain(|edge| edge.crosses(scan));
         for &edge in &active_edges {
             intersections.push(edge.x_at(scan));
         }
@@ -506,12 +506,12 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
             let sample_y = y as f32 + offset_y;
             while next_edge < edges.len() && edges[next_edge].min_y <= sample_y {
                 let edge = edges[next_edge];
-                if edge.max_y > sample_y {
+                if edge.crosses(sample_y) {
                     active_edges.push(edge);
                 }
                 next_edge += 1;
             }
-            active_edges.retain(|edge| edge.max_y > sample_y);
+            active_edges.retain(|edge| edge.crosses(sample_y));
             intersections.clear();
             for &edge in &active_edges {
                 intersections.push(edge.x_at(sample_y));
