@@ -554,6 +554,94 @@ mod tests {
     }
 
     #[test]
+    fn active_edge_fill_matches_full_scan_for_complex_clipped_contours() {
+        fn reference_full_scan(
+            target: &mut Framebuffer,
+            path: &Path,
+            color: Color,
+            clip: Rect,
+        ) {
+            let flattened = path.flatten(0.2).unwrap();
+            let clip = clip
+                .intersection(Rect::new(0, 0, target.width(), target.height()))
+                .unwrap();
+            let clip_right = clip.x.saturating_add(clip.width);
+            let clip_bottom = clip.y.saturating_add(clip.height);
+            let edges = flattened
+                .subpaths
+                .iter()
+                .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+                .flat_map(|subpath| {
+                    (0..subpath.points.len()).filter_map(move |index| {
+                        super::FillEdge::new(
+                            subpath.points[index],
+                            subpath.points[(index + 1) % subpath.points.len()],
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            for y in clip.y..clip_bottom {
+                let scan = y as f32 + 0.5;
+                let mut intersections = edges
+                    .iter()
+                    .filter(|edge| edge.crosses(scan))
+                    .map(|edge| edge.x_at(scan))
+                    .collect::<Vec<_>>();
+                intersections.sort_by(f32::total_cmp);
+
+                let row = target.row_mut(y).unwrap();
+                for pair in intersections.chunks_exact(2) {
+                    let left = ((pair[0] - 0.5).ceil().max(clip.x as f32) as u32)
+                        .min(clip_right);
+                    let right = ((pair[1] - 0.5).ceil().max(clip.x as f32) as u32)
+                        .min(clip_right);
+                    if left < right {
+                        row[left as usize..right as usize].fill(color);
+                    }
+                }
+            }
+        }
+
+        let mut path = Path::new();
+        // A concave contour partially outside the framebuffer.
+        path.move_to(Vector::new(-3.0, 1.0))
+            .line_to(Vector::new(13.0, 1.0))
+            .line_to(Vector::new(13.0, 4.0))
+            .line_to(Vector::new(7.0, 4.0))
+            .line_to(Vector::new(7.0, 10.0))
+            .line_to(Vector::new(-3.0, 10.0))
+            .close();
+        // A nested contour creates a hole.
+        path.move_to(Vector::new(1.0, 3.0))
+            .line_to(Vector::new(5.0, 3.0))
+            .line_to(Vector::new(5.0, 8.0))
+            .line_to(Vector::new(1.0, 8.0))
+            .close();
+        // A separate sloped contour exercises edges entering/leaving scanlines.
+        path.move_to(Vector::new(10.0, 6.0))
+            .line_to(Vector::new(16.0, 8.0))
+            .line_to(Vector::new(12.0, 13.0))
+            .close();
+
+        let clip = Rect::new(2, 2, 10, 9);
+        let mut optimized = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        let mut reference = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+
+        super::fill_path_even_odd_clipped(
+            &mut optimized,
+            &path,
+            Color::rgba(30, 120, 220, 255),
+            0.2,
+            clip,
+        )
+        .unwrap();
+        reference_full_scan(&mut reference, &path, Color::rgba(30, 120, 220, 255), clip);
+
+        assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
     fn quadratic_and_cubic_curves_flatten_to_multiple_segments() {
         let mut p = Path::new();
         p.move_to(Vector::new(0.0, 0.0))
