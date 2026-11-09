@@ -1522,7 +1522,10 @@ impl ComponentTree {
                         .filter(|item| item.enabled)
                         .map(|item| item.action);
                     self.context_menu_state = None;
-                    return ComponentEvents { context_menu_action: action, ..ComponentEvents::default() };
+                    return ComponentEvents {
+                        context_menu_action: action,
+                        ..ComponentEvents::default()
+                    };
                 }
                 _ => return ComponentEvents::default(),
             }
