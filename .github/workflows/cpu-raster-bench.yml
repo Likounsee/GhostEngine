@@ -1,0 +1,29 @@
+name: CPU raster benchmarks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - GhostEngine
+    paths:
+      - "ghostengine/crates/ghostengine/src/**"
+      - "ghostengine/crates/ghostengine/examples/cpu_raster_bench.rs"
+      - "ghostengine/crates/ghostengine/Cargo.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Release CPU raster benchmark (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run CPU raster benchmark
+        working-directory: ghostengine
+        run: cargo run --release -p ghostengine --example cpu_raster_bench -- 100
