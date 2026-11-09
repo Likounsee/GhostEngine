@@ -906,9 +906,8 @@ impl ComponentTree {
                 if !handled {
                     let root = self.context_menu_bounds(bounds, menu);
                     if root.contains(point) {
-                        let row =
-                            (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28)
-                                as usize;
+                        let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28)
+                            as usize;
                         if let Some(item) = self.active_context_menu_items.get(row) {
                             if item.enabled && !item.submenu.is_empty() {
                                 let mut next = menu;
@@ -1217,12 +1216,7 @@ impl ComponentTree {
         }
     }
 
-    fn nested_submenu_bounds(
-        &self,
-        bounds: Rect,
-        state: ContextMenuState,
-        depth: usize,
-    ) -> Rect {
+    fn nested_submenu_bounds(&self, bounds: Rect, state: ContextMenuState, depth: usize) -> Rect {
         if depth == 0 {
             return self.context_menu_bounds(bounds, state);
         }
@@ -1330,11 +1324,9 @@ impl ComponentTree {
         }
 
         for depth in 1..=state.submenu_depth {
-            let Some(items) = Self::context_menu_items_at_depth(
-                &self.active_context_menu_items,
-                state,
-                depth,
-            ) else {
+            let Some(items) =
+                Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth)
+            else {
                 continue;
             };
             let submenu = self.nested_submenu_bounds(bounds, state, depth);
@@ -1942,12 +1934,9 @@ impl ComponentTree {
         if let Some(mut menu) = self.context_menu_state {
             let depth = menu.submenu_depth;
             let selected = self.context_menu_selected_at_depth(menu, depth);
-            let current_items = Self::context_menu_items_at_depth(
-                &self.active_context_menu_items,
-                menu,
-                depth,
-            )
-            .unwrap_or(&[]);
+            let current_items =
+                Self::context_menu_items_at_depth(&self.active_context_menu_items, menu, depth)
+                    .unwrap_or(&[]);
             match key {
                 ComponentKey::Escape => {
                     self.context_menu_state = None;
@@ -2468,14 +2457,12 @@ mod tests {
         use super::ContextMenuItem;
         let bounds = Rect::new(0, 0, 600, 240);
         let mut tree = ComponentTree::default();
-        tree.set_context_menu(vec![
-            ContextMenuItem::new(50, "File").with_submenu(vec![
-                ContextMenuItem::new(51, "Export").with_submenu(vec![
-                    ContextMenuItem::new(52, "PNG"),
-                    ContextMenuItem::new(53, "SVG"),
-                ]),
+        tree.set_context_menu(vec![ContextMenuItem::new(50, "File").with_submenu(vec![
+            ContextMenuItem::new(51, "Export").with_submenu(vec![
+                ContextMenuItem::new(52, "PNG"),
+                ContextMenuItem::new(53, "SVG"),
             ]),
-        ]);
+        ])]);
         assert!(tree.open_context_menu_at(Point::new(10, 10)));
         tree.handle_key(bounds, ComponentKey::ArrowRight, false);
         tree.handle_key(bounds, ComponentKey::ArrowRight, false);
@@ -2491,14 +2478,12 @@ mod tests {
         use super::ContextMenuItem;
         let bounds = Rect::new(0, 0, 600, 240);
         let mut tree = ComponentTree::default();
-        tree.set_context_menu(vec![
-            ContextMenuItem::new(60, "File").with_submenu(vec![
-                ContextMenuItem::new(61, "Export").with_submenu(vec![
-                    ContextMenuItem::new(62, "PNG"),
-                    ContextMenuItem::new(63, "SVG"),
-                ]),
+        tree.set_context_menu(vec![ContextMenuItem::new(60, "File").with_submenu(vec![
+            ContextMenuItem::new(61, "Export").with_submenu(vec![
+                ContextMenuItem::new(62, "PNG"),
+                ContextMenuItem::new(63, "SVG"),
             ]),
-        ]);
+        ])]);
         assert!(tree.open_context_menu_at(Point::new(10, 10)));
         tree.update_pointer(bounds, Some(Point::new(20, 20)), false, false);
         tree.update_pointer(bounds, Some(Point::new(210, 20)), false, false);
