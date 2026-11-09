@@ -704,7 +704,11 @@ impl ComponentTree {
             let popup = self.context_menu_bounds(bounds, menu);
             if popup.contains(point) {
                 let row = ((point.y - popup.y) as u32 / 28) as usize;
-                if self.context_menu_items.get(row).is_some_and(|item| item.enabled) {
+                if self
+                    .context_menu_items
+                    .get(row)
+                    .is_some_and(|item| item.enabled)
+                {
                     menu.selected = row;
                     self.context_menu_state = Some(menu);
                 }
