@@ -208,7 +208,10 @@ fn flatten_cubic(
     depth: u8,
     out: &mut Vec<Vector>,
 ) {
-    if depth >= 16 || distance_to_segment_squared(c1, a, b).max(distance_to_segment_squared(c2, a, b)) <= tolerance_squared {
+    if depth >= 16
+        || distance_to_segment_squared(c1, a, b).max(distance_to_segment_squared(c2, a, b))
+            <= tolerance_squared
+    {
         out.push(b);
         return;
     }
