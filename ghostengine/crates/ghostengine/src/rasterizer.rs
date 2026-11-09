@@ -751,22 +751,26 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     }
 
     for y in top..bottom {
+        let active_edges = OFFSETS.map(|offset_y| {
+            let sample_y = f64::from(y) + offset_y;
+            edges
+                .iter()
+                .copied()
+                .filter(|edge| edge.crosses(sample_y))
+                .collect::<Vec<_>>()
+        });
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in left..right {
             let mut covered = 0_u16;
-            for offset_y in OFFSETS {
+            for (sample_index, offset_y) in OFFSETS.iter().copied().enumerate() {
                 let sample_y = f64::from(y) + offset_y;
-                let active_edges = edges
-                    .iter()
-                    .copied()
-                    .filter(|edge| edge.crosses(sample_y))
-                    .collect::<Vec<_>>();
+                let sample_edges = &active_edges[sample_index];
                 for offset_x in OFFSETS {
                     let sample_x = f64::from(x) + offset_x;
                     let mut inside = false;
-                    for edge in &active_edges {
+                    for edge in sample_edges {
                         if sample_x < edge.intersection_x(sample_y) {
                             inside = !inside;
                         }
