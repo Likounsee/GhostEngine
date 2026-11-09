@@ -300,9 +300,9 @@ fn stroke_path_impl(
             );
             row_joins.clear();
             row_joins.extend(
-                joins.iter().filter(|join| {
-                    join.max_y >= sample_top && join.min_y <= sample_bottom
-                }),
+                joins
+                    .iter()
+                    .filter(|join| join.max_y >= sample_top && join.min_y <= sample_bottom),
             );
             if row_segments.is_empty() && row_joins.is_empty() {
                 continue;
