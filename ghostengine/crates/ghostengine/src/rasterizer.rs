@@ -937,9 +937,7 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         for offset_y in OFFSETS {
             let sample_y = f64::from(y) + offset_y;
             active_edges.retain(|&index| edges[index].max_y > sample_y);
-            while next_edge < edge_order.len()
-                && edges[edge_order[next_edge]].min_y <= sample_y
-            {
+            while next_edge < edge_order.len() && edges[edge_order[next_edge]].min_y <= sample_y {
                 let index = edge_order[next_edge];
                 if edges[index].max_y > sample_y {
                     active_edges.push(index);
