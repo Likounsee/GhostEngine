@@ -797,9 +797,7 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             for x in left..right {
                 for offset_x in OFFSETS {
                     let sample_x = f64::from(x) + offset_x;
-                    while crossing < intersections.len()
-                        && intersections[crossing] <= sample_x
-                    {
+                    while crossing < intersections.len() && intersections[crossing] <= sample_x {
                         crossing += 1;
                         inside = !inside;
                     }
