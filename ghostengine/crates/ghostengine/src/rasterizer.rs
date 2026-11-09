@@ -687,6 +687,66 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     }
 }
 
+/// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
+pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let min_x = vertices.iter().map(|point| point.x).min().unwrap();
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap();
+    let max_x = vertices.iter().map(|point| point.x).max().unwrap();
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    let left = (i64::from(min_x) - 1).max(0) as u32;
+    let top = (i64::from(min_y) - 1).max(0) as u32;
+    let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
+    let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u16;
+            for offset_y in OFFSETS {
+                for offset_x in OFFSETS {
+                    let sample_x = f64::from(x) + offset_x;
+                    let sample_y = f64::from(y) + offset_y;
+                    let mut inside = false;
+                    for index in 0..vertices.len() {
+                        let a = vertices[index];
+                        let b = vertices[(index + 1) % vertices.len()];
+                        let ay = f64::from(a.y);
+                        let by = f64::from(b.y);
+                        if (ay > sample_y) != (by > sample_y) {
+                            let crossing_x = f64::from(a.x)
+                                + (sample_y - ay) * f64::from(b.x - a.x) / (by - ay);
+                            if sample_x < crossing_x {
+                                inside = !inside;
+                            }
+                        }
+                    }
+                    covered += u16::from(inside);
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
 /// Fills a triangle using integer edge functions, pixel-center sampling and
 /// the top-left rule. Degenerate triangles draw nothing; vertex order is free.
 pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
