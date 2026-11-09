@@ -496,7 +496,9 @@ fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector
 struct PreparedTriangle {
     // Precomputed edge equations: cross(edge, point - origin).
     edges: [(f32, f32, f32); 3],
+    min_x: f32,
     min_y: f32,
+    max_x: f32,
     max_y: f32,
 }
 
@@ -509,22 +511,39 @@ impl PreparedTriangle {
             let dy = b.y - a.y;
             (dy * a.x - dx * a.y, dx, -dy)
         });
+        let min_x = vertices
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::INFINITY, f32::min);
         let min_y = vertices
             .iter()
             .map(|point| point.y)
             .fold(f32::INFINITY, f32::min);
+        let max_x = vertices
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::NEG_INFINITY, f32::max);
         let max_y = vertices
             .iter()
             .map(|point| point.y)
             .fold(f32::NEG_INFINITY, f32::max);
         Self {
             edges,
+            min_x,
             min_y,
+            max_x,
             max_y,
         }
     }
 
     fn contains(self, point: Vector) -> bool {
+        if point.x < self.min_x
+            || point.x > self.max_x
+            || point.y < self.min_y
+            || point.y > self.max_y
+        {
+            return false;
+        }
         let mut has_negative = false;
         let mut has_positive = false;
         for (constant, x, y) in self.edges {
