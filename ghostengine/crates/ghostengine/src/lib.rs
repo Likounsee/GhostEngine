@@ -54,7 +54,7 @@ pub use path::{
     fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{
-    fill_rect_clipped, fill_transformed_rect_linear_gradient_clipped,
+    blend_rect, blend_rect_clipped, fill_rect_clipped, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
 };
 pub use shaping::{
