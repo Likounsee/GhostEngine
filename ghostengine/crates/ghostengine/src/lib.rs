@@ -38,8 +38,8 @@ pub use native_window::{NativeWindowError, NativeWindowSurface};
 
 pub use color::Color;
 pub use components::{
-    ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree, ContextMenuItem,
-    ComponentTreeError, PlacedComponent, TextInputEvent, UiComponent,
+    ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
+    ComponentTreeError, ContextMenuItem, PlacedComponent, TextInputEvent, UiComponent,
 };
 pub use composition::{compose_layers, Layer};
 pub use display_list::{DisplayList, RenderStats};
