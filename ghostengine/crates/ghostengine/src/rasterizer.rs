@@ -1790,6 +1790,39 @@ mod clipping_tests {
     use crate::{Color, Framebuffer, Rect};
 
     #[test]
+    fn opaque_axis_aligned_aa_lines_match_integer_line_coverage() {
+        let mut expected = Framebuffer::new(8, 6, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        super::draw_line(
+            &mut expected,
+            crate::Point::new(1, 2),
+            crate::Point::new(6, 2),
+            Color::WHITE,
+        );
+        super::draw_line_aa(
+            &mut actual,
+            crate::Point::new(1, 2),
+            crate::Point::new(6, 2),
+            Color::WHITE,
+        );
+        assert_eq!(actual, expected);
+
+        super::draw_line(
+            &mut expected,
+            crate::Point::new(4, 1),
+            crate::Point::new(4, 5),
+            Color::RED,
+        );
+        super::draw_line_aa(
+            &mut actual,
+            crate::Point::new(4, 1),
+            crate::Point::new(4, 5),
+            Color::RED,
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn axis_aligned_lines_use_exact_inclusive_endpoints_in_both_directions() {
         let mut target = Framebuffer::new(6, 5, Color::BLACK).unwrap();
         super::draw_line(
