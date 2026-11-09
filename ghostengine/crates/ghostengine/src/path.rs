@@ -134,7 +134,7 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_quad(start, control, end, tolerance, 0, &mut contour.points);
+                    flatten_quad(start, control, end, tolerance_squared, 0, &mut contour.points);
                 }
                 Command::CubicTo(c1, c2, end) => {
                     validate(c1)?;
@@ -147,7 +147,7 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_cubic(start, c1, c2, end, tolerance, 0, &mut contour.points);
+                    flatten_cubic(start, c1, c2, end, tolerance_squared, 0, &mut contour.points);
                 }
                 Command::Close => {
                     let index = current.ok_or(PathError::MissingCurrentPoint)?;
@@ -188,7 +188,7 @@ fn midpoint(a: Vector, b: Vector) -> Vector {
     Vector::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
 }
 
-fn flatten_quad(a: Vector, c: Vector, b: Vector, tol: f32, depth: u8, out: &mut Vec<Vector>) {
+fn flatten_quad(\n    a: Vector,\n    c: Vector,\n    b: Vector,\n    tolerance_squared: f32,\n    depth: u8,\n    out: &mut Vec<Vector>,\n) {
     if depth >= 16 || distance_to_segment_squared(c, a, b) <= tolerance_squared {
         out.push(b);
         return;
@@ -196,8 +196,8 @@ fn flatten_quad(a: Vector, c: Vector, b: Vector, tol: f32, depth: u8, out: &mut 
     let ac = midpoint(a, c);
     let cb = midpoint(c, b);
     let m = midpoint(ac, cb);
-    flatten_quad(a, ac, m, tol, depth + 1, out);
-    flatten_quad(m, cb, b, tol, depth + 1, out);
+    flatten_quad(a, ac, m, tolerance_squared, depth + 1, out);
+    flatten_quad(m, cb, b, tolerance_squared, depth + 1, out);
 }
 fn flatten_cubic(
     a: Vector,
@@ -218,8 +218,8 @@ fn flatten_cubic(
     let a2 = midpoint(a1, c);
     let b1 = midpoint(c, b2);
     let m = midpoint(a2, b1);
-    flatten_cubic(a, a1, a2, m, tol, depth + 1, out);
-    flatten_cubic(m, b1, b2, b, tol, depth + 1, out);
+    flatten_cubic(a, a1, a2, m, tolerance_squared, depth + 1, out);
+    flatten_cubic(m, b1, b2, b, tolerance_squared, depth + 1, out);
 }
 
 /// Transforms flattened geometry without changing the source path.
