@@ -38,7 +38,7 @@ pub use native_window::{NativeWindowError, NativeWindowSurface};
 
 pub use color::Color;
 pub use components::{
-    ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
+    ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree, ContextMenuItem,
     ComponentTreeError, PlacedComponent, TextInputEvent, UiComponent,
 };
 pub use composition::{compose_layers, Layer};
