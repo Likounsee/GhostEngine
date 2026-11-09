@@ -449,7 +449,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
 
 #[cfg(test)]
 mod tests {
-    use super::{fill_path_even_odd, fill_transformed_path_even_odd, Path, PathError};
+    use super::{fill_path_even_odd, fill_path_even_odd_aa, fill_transformed_path_even_odd, Path, PathError};
     use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
 
     #[test]
@@ -607,4 +607,65 @@ mod tests {
         assert_eq!(p.flatten(0.1), Err(PathError::NonFiniteCoordinate));
         assert_eq!(Path::new().flatten(0.0), Err(PathError::InvalidTolerance));
     }
+
+    #[test]
+    fn antialiased_path_blends_partial_edge_coverage() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.25, 1.25))
+            .line_to(Vector::new(6.25, 1.25))
+            .line_to(Vector::new(6.25, 6.25))
+            .line_to(Vector::new(1.25, 6.25))
+            .close();
+        let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        fill_path_even_odd_aa(&mut fb, &path, Color::WHITE, 0.2).unwrap();
+        assert!(fb.pixels().iter().any(|pixel| pixel.a > 0 && pixel.a < 255));
+        assert!(fb.pixels().contains(&Color::WHITE));
+    }
+
+    #[test]
+    fn antialiased_path_preserves_even_odd_holes_and_source_alpha() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(8.0, 0.0))
+            .line_to(Vector::new(8.0, 8.0))
+            .line_to(Vector::new(0.0, 8.0))
+            .close();
+        path.move_to(Vector::new(2.0, 2.0))
+            .line_to(Vector::new(6.0, 2.0))
+            .line_to(Vector::new(6.0, 6.0))
+            .line_to(Vector::new(2.0, 6.0))
+            .close();
+        let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        fill_path_even_odd_aa(&mut fb, &path, Color::rgba(0, 255, 0, 128), 0.2).unwrap();
+        assert_eq!(fb.get_pixel(3, 3), Some(Color::BLACK));
+        assert!(fb.get_pixel(1, 1).unwrap().g > 0);
+        assert!(fb.get_pixel(1, 1).unwrap().g < 255);
+    }
+
+    #[test]
+    fn antialiased_path_respects_clip_viewport() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(8.0, 0.0))
+            .line_to(Vector::new(8.0, 8.0))
+            .line_to(Vector::new(0.0, 8.0))
+            .close();
+        let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        super::fill_transformed_path_even_odd_aa_clipped(
+            &mut fb,
+            &path,
+            Transform2D::IDENTITY,
+            Color::RED,
+            0.2,
+            Rect::new(2, 3, 2, 2),
+        )
+        .unwrap();
+        for y in 0..8 {
+            for x in 0..8 {
+                let inside = (2..4).contains(&x) && (3..5).contains(&y);
+                assert_eq!(fb.get_pixel(x, y) != Some(Color::BLACK), inside);
+            }
+        }
+    }
+
 }
