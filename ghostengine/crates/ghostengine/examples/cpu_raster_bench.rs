@@ -76,7 +76,14 @@ fn main() {
     println!("GhostEngine CPU raster benchmark");
     println!("resolution: {WIDTH}x{HEIGHT} | iterations: {iterations}");
     println!("warm-up: 3 frames per workload");
-    println!("build: {}", if cfg!(debug_assertions) { "debug" } else { "release" });
+    println!(
+        "build: {}",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
     println!();
 
     measure("polygon AA (10 vertices)", iterations, |target| {
