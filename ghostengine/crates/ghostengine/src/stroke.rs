@@ -285,7 +285,19 @@ fn stroke_path_impl(
             })
             .collect::<Vec<_>>();
         let radius_squared = radius * radius;
+        let mut row_segments = Vec::with_capacity(segments.len());
         for y in top..bottom {
+            // A segment whose vertical bounds do not overlap this pixel row
+            // cannot contribute to any of its 4x4 coverage samples.
+            let sample_top = y as f32 + 0.125;
+            let sample_bottom = y as f32 + 0.875;
+            row_segments.clear();
+            row_segments.extend(segments.iter().filter(|segment| {
+                segment.max_y >= sample_top && segment.min_y <= sample_bottom
+            }));
+            if row_segments.is_empty() && joins.is_empty() {
+                continue;
+            }
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
@@ -297,7 +309,7 @@ fn stroke_path_impl(
                         for offset_x in OFFSETS {
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                             let mut distance_squared = f32::INFINITY;
-                            for segment in &segments {
+                            for segment in &row_segments {
                                 if segment.may_cover(sample) {
                                     distance_squared =
                                         distance_squared.min(segment.distance_squared(sample));
