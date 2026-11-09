@@ -687,7 +687,10 @@ fn rounded_rect_scanline_span(rect: Rect, radius: u32, y: i64) -> Option<(i64, i
 
     let radius = radius.min(rect.width / 2).min(rect.height / 2);
     if radius == 0 {
-        return Some((i64::from(rect.x), i64::from(rect.x) + i64::from(rect.width) - 1));
+        return Some((
+            i64::from(rect.x),
+            i64::from(rect.x) + i64::from(rect.width) - 1,
+        ));
     }
 
     let left = i64::from(rect.x);
@@ -723,8 +726,8 @@ fn rounded_rect_scanline_span(rect: Rect, radius: u32, y: i64) -> Option<(i64, i
 
     // Pixel centers are at 2*x+1. Convert the continuous boundaries to
     // inclusive integer pixel coordinates, then clamp to the rectangle.
-    let first_x = (left_boundary - 1).div_euclid(2)
-        + i64::from((left_boundary - 1).rem_euclid(2) != 0);
+    let first_x =
+        (left_boundary - 1).div_euclid(2) + i64::from((left_boundary - 1).rem_euclid(2) != 0);
     let last_x = (right_boundary - 1).div_euclid(2);
     let first_x = first_x.max(left);
     let last_x = last_x.min(right);
@@ -740,8 +743,8 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         return;
     }
     let first_y = i64::from(rect.y).max(0);
-    let last_y = (i64::from(rect.y) + i64::from(rect.height) - 1)
-        .min(i64::from(target.height()) - 1);
+    let last_y =
+        (i64::from(rect.y) + i64::from(rect.height) - 1).min(i64::from(target.height()) - 1);
     if first_y > last_y {
         return;
     }
