@@ -730,8 +730,10 @@ impl ComponentTree {
             let root = self.context_menu_bounds(bounds, menu);
             let submenu = self.submenu_bounds(bounds, menu);
             if menu.submenu_open && submenu.contains(point) {
-                let row =
-                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(submenu.y) / 28) as usize;
+                let row = (u32::try_from(point.y)
+                    .unwrap_or(0)
+                    .saturating_sub(submenu.y)
+                    / 28) as usize;
                 if self.active_context_menu_items[menu.selected]
                     .submenu
                     .get(row)
@@ -761,8 +763,10 @@ impl ComponentTree {
                 let root = self.context_menu_bounds(bounds, menu);
                 let submenu = self.submenu_bounds(bounds, menu);
                 if menu.submenu_open && submenu.contains(point) {
-                    let row =
-                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(submenu.y) / 28) as usize;
+                    let row = (u32::try_from(point.y)
+                        .unwrap_or(0)
+                        .saturating_sub(submenu.y)
+                        / 28) as usize;
                     let action = self.active_context_menu_items[menu.selected]
                         .submenu
                         .get(row)
@@ -1742,7 +1746,9 @@ impl ComponentTree {
                 }
                 ComponentKey::ArrowRight => {
                     if self.active_context_menu_items[menu.selected].enabled
-                        && !self.active_context_menu_items[menu.selected].submenu.is_empty()
+                        && !self.active_context_menu_items[menu.selected]
+                            .submenu
+                            .is_empty()
                     {
                         menu.submenu_open = true;
                         menu.submenu_selected = self.active_context_menu_items[menu.selected]
