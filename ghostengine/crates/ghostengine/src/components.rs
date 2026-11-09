@@ -387,6 +387,7 @@ impl ContextMenuItem {
 struct ContextMenuState {
     position: Point,
     selected: usize,
+    target: Option<ComponentId>,
 }
 
 /// Component-level events emitted by pointer or keyboard interaction.
@@ -398,6 +399,8 @@ pub struct ComponentEvents {
     pub clipboard_action: Option<ClipboardAction>,
     /// Application-defined action selected from a context menu.
     pub context_menu_action: Option<u64>,
+    /// Component on which the context menu was opened, when applicable.
+    pub context_menu_target: Option<ComponentId>,
 }
 
 /// Clipboard operations are delegated to the host application/window system.
@@ -449,6 +452,8 @@ pub struct ComponentTree {
     tabs_states: HashMap<ComponentId, TabsState>,
     list_states: HashMap<ComponentId, ListState>,
     context_menu_items: Vec<ContextMenuItem>,
+    active_context_menu_items: Vec<ContextMenuItem>,
+    component_context_menus: HashMap<ComponentId, Vec<ContextMenuItem>>,
     context_menu_state: Option<ContextMenuState>,
 }
 
@@ -479,6 +484,8 @@ impl ComponentTree {
             tabs_states,
             list_states,
             context_menu_items: Vec::new(),
+            active_context_menu_items: Vec::new(),
+            component_context_menus: HashMap::new(),
             context_menu_state: None,
         }
     }
@@ -706,7 +713,7 @@ impl ComponentTree {
                 let row =
                     (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
                 if self
-                    .context_menu_items
+                    .active_context_menu_items
                     .get(row)
                     .is_some_and(|item| item.enabled)
                 {
@@ -722,13 +729,14 @@ impl ComponentTree {
                     let row =
                         (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
                     let action = self
-                        .context_menu_items
+                        .active_context_menu_items
                         .get(row)
                         .filter(|item| item.enabled)
                         .map(|item| item.action);
                     self.context_menu_state = None;
                     return ComponentEvents {
                         context_menu_action: action,
+                        context_menu_target: menu.target,
                         ..ComponentEvents::default()
                     };
                 }
@@ -862,23 +870,69 @@ impl ComponentTree {
         translated
     }
 
-    /// Installs the commands shown when the user opens a context menu.
+    /// Installs the fallback menu used when no component-specific menu is configured.
     pub fn set_context_menu(&mut self, items: Vec<ContextMenuItem>) {
         self.context_menu_items = items;
         self.context_menu_state = None;
     }
 
-    /// Opens the configured context menu at a pointer location.
-    pub fn open_context_menu_at(&mut self, position: Point) -> bool {
-        if self.context_menu_items.is_empty() {
+    /// Associates a menu with one component. Returns false when the ID is unknown.
+    pub fn set_context_menu_for(
+        &mut self,
+        id: ComponentId,
+        items: Vec<ContextMenuItem>,
+    ) -> bool {
+        if self.find(id).is_none() {
             return false;
         }
-        let selected = self
-            .context_menu_items
+        if items.is_empty() {
+            self.component_context_menus.remove(&id);
+        } else {
+            self.component_context_menus.insert(id, items);
+        }
+        true
+    }
+
+    /// Opens the fallback menu at a pointer location.
+    pub fn open_context_menu_at(&mut self, position: Point) -> bool {
+        self.open_context_menu_items_at(position, self.context_menu_items.clone(), None)
+    }
+
+    /// Opens the menu associated with the topmost component under the pointer.
+    /// Falls back to the global menu when that component has no associated menu.
+    pub fn open_context_menu_for_at(&mut self, bounds: Rect, position: Point) -> bool {
+        self.layout(bounds);
+        let target = self
+            .placed
             .iter()
-            .position(|item| item.enabled)
-            .unwrap_or(0);
-        self.context_menu_state = Some(ContextMenuState { position, selected });
+            .rev()
+            .find(|placed| placed.bounds.contains(position))
+            .map(|placed| placed.id);
+        let items = target
+            .and_then(|id| self.component_context_menus.get(&id).cloned().map(|items| (id, items)));
+        if let Some((id, items)) = items {
+            self.open_context_menu_items_at(position, items, Some(id))
+        } else {
+            self.open_context_menu_items_at(position, self.context_menu_items.clone(), target)
+        }
+    }
+
+    fn open_context_menu_items_at(
+        &mut self,
+        position: Point,
+        items: Vec<ContextMenuItem>,
+        target: Option<ComponentId>,
+    ) -> bool {
+        if items.is_empty() {
+            return false;
+        }
+        let selected = items.iter().position(|item| item.enabled).unwrap_or(0);
+        self.active_context_menu_items = items;
+        self.context_menu_state = Some(ContextMenuState {
+            position,
+            selected,
+            target,
+        });
         true
     }
 
@@ -892,7 +946,7 @@ impl ComponentTree {
     }
 
     fn context_menu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
-        let height = (self.context_menu_items.len() as u32)
+        let height = (self.active_context_menu_items.len() as u32)
             .saturating_mul(28)
             .max(1)
             .min(bounds.height.max(1));
@@ -917,7 +971,7 @@ impl ComponentTree {
     ) {
         let popup = self.context_menu_bounds(bounds, state);
         draw_panel(target, popup, 4, theme);
-        for (index, item) in self.context_menu_items.iter().enumerate() {
+        for (index, item) in self.active_context_menu_items.iter().enumerate() {
             let offset = (index as u32).saturating_mul(28);
             let row = Rect::new(
                 popup.x,
@@ -1519,7 +1573,7 @@ impl ComponentTree {
                     return ComponentEvents::default();
                 }
                 ComponentKey::ArrowDown | ComponentKey::ArrowUp => {
-                    let count = self.context_menu_items.len();
+                    let count = self.active_context_menu_items.len();
                     if count > 0 {
                         for _ in 0..count {
                             menu.selected = if key == ComponentKey::ArrowDown {
@@ -1527,7 +1581,7 @@ impl ComponentTree {
                             } else {
                                 (menu.selected + count - 1) % count
                             };
-                            if self.context_menu_items[menu.selected].enabled {
+                            if self.active_context_menu_items[menu.selected].enabled {
                                 break;
                             }
                         }
@@ -1537,13 +1591,14 @@ impl ComponentTree {
                 }
                 ComponentKey::Enter | ComponentKey::Space => {
                     let action = self
-                        .context_menu_items
+                        .active_context_menu_items
                         .get(menu.selected)
                         .filter(|item| item.enabled)
                         .map(|item| item.action);
                     self.context_menu_state = None;
                     return ComponentEvents {
                         context_menu_action: action,
+                        context_menu_target: menu.target,
                         ..ComponentEvents::default()
                     };
                 }

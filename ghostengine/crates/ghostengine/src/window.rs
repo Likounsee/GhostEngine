@@ -276,7 +276,7 @@ impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
         if input.right_mouse_pressed {
             if let Some(pointer) = input.mouse_position {
-                self.open_context_menu_at(pointer);
+                self.open_context_menu_for_at(bounds, pointer);
             }
         }
         let mut events = self.update_pointer(
