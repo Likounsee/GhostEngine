@@ -361,7 +361,7 @@ mod tests {
         .unwrap();
         for y in 0..12 {
             for x in 0..14 {
-                let inside = (5..7).contains(&x) && (4..7).contains(&y);
+                let inside = (5..7).contains(&x) && y == 3;
                 assert_eq!(fb.get_pixel(x, y) != Some(Color::BLACK), inside);
             }
         }
@@ -413,7 +413,7 @@ mod tests {
             StrokeStyle::new(4.0).with_cap(StrokeCap::Round),
             Color::rgba(255, 0, 0, 128),
             0.2,
-            Rect::new(5, 4, 2, 3),
+            Rect::new(5, 3, 2, 1),
         )
         .unwrap();
 
