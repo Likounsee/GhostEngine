@@ -104,6 +104,7 @@ impl Path {
         if !tolerance.is_finite() || tolerance <= 0.0 {
             return Err(PathError::InvalidTolerance);
         }
+        let tolerance_squared = tolerance * tolerance;
         let mut result = FlattenedPath::default();
         let mut current: Option<usize> = None;
         for command in &self.commands {
@@ -166,25 +167,29 @@ fn validate(p: Vector) -> Result<(), PathError> {
         Err(PathError::NonFiniteCoordinate)
     }
 }
-fn distance_to_segment(p: Vector, a: Vector, b: Vector) -> f32 {
+fn distance_to_segment_squared(p: Vector, a: Vector, b: Vector) -> f32 {
     let dx = b.x - a.x;
     let dy = b.y - a.y;
     let length_squared = dx * dx + dy * dy;
     if length_squared <= f32::EPSILON {
-        return (p.x - a.x).hypot(p.y - a.y);
+        let offset_x = p.x - a.x;
+        let offset_y = p.y - a.y;
+        return offset_x * offset_x + offset_y * offset_y;
     }
 
     let projection = (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared).clamp(0.0, 1.0);
     let closest_x = a.x + projection * dx;
     let closest_y = a.y + projection * dy;
-    (p.x - closest_x).hypot(p.y - closest_y)
+    let offset_x = p.x - closest_x;
+    let offset_y = p.y - closest_y;
+    offset_x * offset_x + offset_y * offset_y
 }
 fn midpoint(a: Vector, b: Vector) -> Vector {
     Vector::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
 }
 
 fn flatten_quad(a: Vector, c: Vector, b: Vector, tol: f32, depth: u8, out: &mut Vec<Vector>) {
-    if depth >= 16 || distance_to_segment(c, a, b) <= tol {
+    if depth >= 16 || distance_to_segment_squared(c, a, b) <= tolerance_squared {
         out.push(b);
         return;
     }
@@ -203,7 +208,7 @@ fn flatten_cubic(
     depth: u8,
     out: &mut Vec<Vector>,
 ) {
-    if depth >= 16 || distance_to_segment(c1, a, b).max(distance_to_segment(c2, a, b)) <= tol {
+    if depth >= 16 || distance_to_segment_squared(c1, a, b).max(distance_to_segment_squared(c2, a, b)) <= tolerance_squared {
         out.push(b);
         return;
     }
