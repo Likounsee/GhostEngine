@@ -256,7 +256,11 @@ fn stroke_path_impl(
             .map(|i| {
                 let first = !contour.closed && i == 0;
                 let last = !contour.closed && i + 1 == segment_count;
-                let cap = if first || last { style.cap } else { StrokeCap::Butt };
+                let cap = if first || last {
+                    style.cap
+                } else {
+                    StrokeCap::Butt
+                };
                 StrokeSegment::new(
                     contour.points[i],
                     contour.points[(i + 1) % contour.points.len()],
@@ -382,9 +386,8 @@ impl StrokeSegment {
         if self.length_squared <= f32::EPSILON {
             return (point.x - self.a.x).hypot(point.y - self.a.y);
         }
-        let mut t = ((point.x - self.a.x) * self.dx
-            + (point.y - self.a.y) * self.dy)
-            / self.length_squared;
+        let mut t =
+            ((point.x - self.a.x) * self.dx + (point.y - self.a.y) * self.dy) / self.length_squared;
         if self.cap == StrokeCap::Butt && !(0.0..=1.0).contains(&t) {
             return f32::INFINITY;
         }
