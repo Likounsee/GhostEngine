@@ -179,7 +179,6 @@ fn stroke_path_impl(
 ) -> Result<(), StrokeError> {
     let StrokeOptions { clip, antialias } = options;
     if !style.width.is_finite() || style.width <= 0.0 {
-
         return Err(StrokeError::InvalidWidth);
     }
     if style.join == StrokeJoin::Miter
@@ -664,13 +663,23 @@ mod tests {
         let mut bevel = Framebuffer::new(16, 16, Color::BLACK).unwrap();
         let mut miter = Framebuffer::new(16, 16, Color::BLACK).unwrap();
         stroke_path(
-            &mut bevel, &corner_path(), Transform2D::IDENTITY,
-            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel), Color::WHITE, 0.2,
-        ).unwrap();
+            &mut bevel,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         stroke_path(
-            &mut miter, &corner_path(), Transform2D::IDENTITY,
-            StrokeStyle::new(6.0).with_join(StrokeJoin::Miter), Color::WHITE, 0.2,
-        ).unwrap();
+            &mut miter,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Miter),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         assert!(miter.get_pixel(12, 12).unwrap() != bevel.get_pixel(12, 12).unwrap());
     }
 
@@ -683,10 +692,16 @@ mod tests {
             StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel), Color::WHITE, 0.2,
         ).unwrap();
         stroke_path(
-            &mut limited, &corner_path(), Transform2D::IDENTITY,
-            StrokeStyle::new(6.0).with_join(StrokeJoin::Miter).with_miter_limit(1.0),
-            Color::WHITE, 0.2,
-        ).unwrap();
+            &mut limited,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0)
+                .with_join(StrokeJoin::Miter)
+                .with_miter_limit(1.0),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
         assert_eq!(limited.pixels(), bevel.pixels());
     }
 
