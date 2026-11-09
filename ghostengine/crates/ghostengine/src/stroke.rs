@@ -496,6 +496,8 @@ fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector
 struct PreparedTriangle {
     // Precomputed edge equations: cross(edge, point - origin).
     edges: [(f32, f32, f32); 3],
+    min_y: f32,
+    max_y: f32,
 }
 
 impl PreparedTriangle {
@@ -507,7 +509,9 @@ impl PreparedTriangle {
             let dy = b.y - a.y;
             (dy * a.x - dx * a.y, dx, -dy)
         });
-        Self { edges }
+        let min_y = vertices.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+        let max_y = vertices.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+        Self { edges, min_y, max_y }
     }
 
     fn contains(self, point: Vector) -> bool {
@@ -609,17 +613,11 @@ impl PreparedJoin {
         } else {
             None
         };
-        let mut min_y = bevel_vertices
-            .iter()
-            .map(|point| point.y)
-            .fold(f32::INFINITY, f32::min);
-        let mut max_y = bevel_vertices
-            .iter()
-            .map(|point| point.y)
-            .fold(f32::NEG_INFINITY, f32::max);
+        let mut min_y = bevel.min_y;
+        let mut max_y = bevel.max_y;
         if let Some(triangle) = miter {
-            // The miter triangle stays inside the contour scan region, which
-            // is expanded by the configured miter limit.
+            min_y = min_y.min(triangle.min_y);
+            max_y = max_y.max(triangle.max_y);
         }
         Some(Self {
             vertex,
