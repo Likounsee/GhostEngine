@@ -144,6 +144,9 @@ pub fn stroke_path_clipped(
             contour.points.len() - 1
         };
         for y in top..bottom {
+            let Some(row) = target.row_mut(y) else {
+                continue;
+            };
             for x in left..right {
                 let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                 let mut distance = f32::INFINITY;
@@ -163,9 +166,8 @@ pub fn stroke_path_clipped(
                     continue;
                 }
                 let src = Color::rgba(color.r, color.g, color.b, alpha);
-                if let Some(dst) = target.get_pixel(x, y) {
-                    target.set_pixel(x, y, src.blend_over(dst));
-                }
+                let index = x as usize;
+                row[index] = src.blend_over(row[index]);
             }
         }
     }
