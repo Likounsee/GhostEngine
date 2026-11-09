@@ -398,8 +398,6 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
         return Ok(());
     }
 
-    // Convert contour edges once. Supersampling then reuses each edge's
-    // vertical range and inverse slope instead of rebuilding intersections.
     let edges = contours
         .iter()
         .flat_map(|contour| {
@@ -413,64 +411,98 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     }
 
     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
     let min_x = contours
         .iter()
         .flat_map(|contour| contour.iter().map(|point| point.x))
         .fold(f32::INFINITY, f32::min)
         .floor()
         .max(clip.x as f32)
-        .min(clip.x.saturating_add(clip.width) as f32) as u32;
+        .min(clip_right as f32) as u32;
     let min_y = contours
         .iter()
         .flat_map(|contour| contour.iter().map(|point| point.y))
         .fold(f32::INFINITY, f32::min)
         .floor()
         .max(clip.y as f32)
-        .min(clip.y.saturating_add(clip.height) as f32) as u32;
+        .min(clip_bottom as f32) as u32;
     let max_x = contours
         .iter()
         .flat_map(|contour| contour.iter().map(|point| point.x))
         .fold(f32::NEG_INFINITY, f32::max)
         .ceil()
         .max(clip.x as f32)
-        .min(clip.x.saturating_add(clip.width) as f32) as u32;
+        .min(clip_right as f32) as u32;
     let max_y = contours
         .iter()
         .flat_map(|contour| contour.iter().map(|point| point.y))
         .fold(f32::NEG_INFINITY, f32::max)
-        .ceil()
-        .max(clip.y as f32)
-        .min(clip.y.saturating_add(clip.height) as f32) as u32;
+        .min(clip_bottom as f32) as u32;
+    if min_x >= max_x || min_y >= max_y {
+        return Ok(());
+    }
+
+    let width = (max_x - min_x) as usize;
+    let mut coverage = vec![0_u8; width];
+    let mut intersections = Vec::with_capacity(edges.len());
 
     for y in min_y..max_y {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
+            let sample_y = y as f32 + offset_y;
+            intersections.clear();
+            for &edge in &edges {
+                if edge.crosses(sample_y) {
+                    intersections.push(edge.x_at(sample_y));
+                }
+            }
+            intersections.sort_by(f32::total_cmp);
+
+            // Convert each even-odd span into horizontal subpixel coverage.
+            // This avoids testing every edge for every individual sample.
+            for pair in intersections.chunks_exact(2) {
+                let left = pair[0];
+                let right = pair[1];
+                let span_start = ((left - 0.875).floor() as i64)
+                    .max(i64::from(min_x))
+                    .min(i64::from(max_x)) as u32;
+                let span_end = ((right - 0.125).ceil() as i64)
+                    .max(i64::from(min_x))
+                    .min(i64::from(max_x)) as u32;
+                for x in span_start..span_end {
+                    let mut horizontal_samples = 0_u8;
+                    for offset_x in OFFSETS {
+                        let sample_x = x as f32 + offset_x;
+                        if left <= sample_x && sample_x < right {
+                            horizontal_samples += 1;
+                        }
+                    }
+                    if horizontal_samples != 0 {
+                        coverage[(x - min_x) as usize] += horizontal_samples;
+                    }
+                }
+            }
+        }
+
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in min_x..max_x {
-            let mut covered = 0_u16;
-            for offset_y in OFFSETS {
-                for offset_x in OFFSETS {
-                    let sample_x = x as f32 + offset_x;
-                    let sample_y = y as f32 + offset_y;
-                    let mut inside = false;
-                    for &edge in &edges {
-                        if edge.crosses(sample_y) && sample_x < edge.x_at(sample_y) {
-                            inside = !inside;
-                        }
-                    }
-                    covered += u16::from(inside);
-                }
-            }
+        for (offset, &covered) in coverage.iter().enumerate() {
             if covered == 0 {
                 continue;
             }
-            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
             if alpha == 0 {
                 continue;
             }
             let source = Color::rgba(color.r, color.g, color.b, alpha);
-            let index = x as usize;
-            row[index] = source.blend_over(row[index]);
+            let index = (min_x as usize) + offset;
+            row[index] = if alpha == u8::MAX {
+                source
+            } else {
+                source.blend_over(row[index])
+            };
         }
     }
     Ok(())
