@@ -622,6 +622,13 @@ impl ComponentTree {
             self.combo_states.remove(&removed_id);
             self.tabs_states.remove(&removed_id);
             self.list_states.remove(&removed_id);
+            self.component_context_menus.remove(&removed_id);
+            if self
+                .context_menu_state
+                .is_some_and(|menu| menu.target == Some(removed_id))
+            {
+                self.close_context_menu();
+            }
         }
         self.reset_after_structure_change();
         Some(removed)
@@ -1841,6 +1848,7 @@ impl ComponentTree {
                 .and_then(|index| self.focusable_ids.get(index).copied()),
             clipboard_action: None,
             context_menu_action: None,
+            context_menu_target: None,
         }
     }
 }
