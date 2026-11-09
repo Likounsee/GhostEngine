@@ -83,7 +83,9 @@ pub fn stroke_path_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), StrokeError> {
-    stroke_path_impl(target, path, transform, style, color, tolerance, clip, false)
+    stroke_path_impl(
+        target, path, transform, style, color, tolerance, clip, false,
+    )
 }
 
 /// Strokes a path with 4x4 supersampled edge coverage.
