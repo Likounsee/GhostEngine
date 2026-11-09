@@ -790,10 +790,22 @@ pub fn fill_ellipse_aa(
     }
 
     const SAMPLES: [(f64, f64); 16] = [
-        (0.125, 0.125), (0.375, 0.125), (0.625, 0.125), (0.875, 0.125),
-        (0.125, 0.375), (0.375, 0.375), (0.625, 0.375), (0.875, 0.375),
-        (0.125, 0.625), (0.375, 0.625), (0.625, 0.625), (0.875, 0.625),
-        (0.125, 0.875), (0.375, 0.875), (0.625, 0.875), (0.875, 0.875),
+        (0.125, 0.125),
+        (0.375, 0.125),
+        (0.625, 0.125),
+        (0.875, 0.125),
+        (0.125, 0.375),
+        (0.375, 0.375),
+        (0.625, 0.375),
+        (0.875, 0.375),
+        (0.125, 0.625),
+        (0.375, 0.625),
+        (0.625, 0.625),
+        (0.875, 0.625),
+        (0.125, 0.875),
+        (0.375, 0.875),
+        (0.625, 0.875),
+        (0.875, 0.875),
     ];
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -967,8 +979,8 @@ fn integer_sqrt(value: u128) -> u128 {
 mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon,
-        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon, fill_rect, fill_rounded_rect,
-        fill_triangle,
+        draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon,
+        fill_rect, fill_rounded_rect, fill_triangle,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
@@ -1153,7 +1165,10 @@ mod tests {
         let mut image = target(13, 11);
         fill_ellipse_aa(&mut image, Point::new(6, 5), 4, 3, Color::WHITE);
         assert_eq!(image.get_pixel(6, 5), Some(Color::WHITE));
-        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
     }
 
