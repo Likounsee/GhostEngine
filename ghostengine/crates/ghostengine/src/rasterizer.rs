@@ -34,6 +34,26 @@ pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Colo
         return;
     };
 
+    // Axis-aligned lines are common in UI and 2D scenes. Use contiguous
+    // framebuffer writes instead of stepping through Bresenham one pixel at a time.
+    if y0 == y1 {
+        let left = x0.min(x1) as usize;
+        let right = x0.max(x1) as usize;
+        if let Some(row) = target.row_mut(y0 as u32) {
+            row[left..=right].fill(color);
+        }
+        return;
+    }
+    if x0 == x1 {
+        let x = x0 as usize;
+        for y in y0.min(y1)..=y0.max(y1) {
+            if let Some(row) = target.row_mut(y as u32) {
+                row[x] = color;
+            }
+        }
+        return;
+    }
+
     // Canonical endpoint order makes Bresenham's tie-breaking independent
     // of the order in which the caller supplied the segment.
     if (x0, y0) > (x1, y1) {
