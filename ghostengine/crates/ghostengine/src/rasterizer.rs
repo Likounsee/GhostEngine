@@ -332,16 +332,34 @@ pub fn fill_rect_linear_gradient(
     if left >= right || top >= bottom {
         return;
     }
+    let inverse_length_squared = if length_squared <= f32::EPSILON {
+        0.0
+    } else {
+        length_squared.recip()
+    };
+    let horizontal_step = dx * inverse_length_squared;
     for y in top..bottom {
-        for x in left..right {
-            let position = if length_squared <= f32::EPSILON {
-                0.0
+        let row_position = if inverse_length_squared == 0.0 {
+            0.0
+        } else {
+            (((left as f32 + 0.5 - start.x) * dx
+                + (y as f32 + 0.5 - start.y) * dy)
+                * inverse_length_squared)
+        };
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        let mut position = row_position;
+        for pixel in &mut row[left as usize..right as usize] {
+            let color = gradient.sample(position.clamp(0.0, 1.0));
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
             } else {
-                (((x as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
-                    / length_squared)
-                    .clamp(0.0, 1.0)
+                color.blend_over(*pixel)
             };
-            paint_gradient_pixel(target, x, y, gradient.sample(position));
+            position += horizontal_step;
         }
     }
 }
