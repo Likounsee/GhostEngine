@@ -897,17 +897,22 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
 
     let row_width = (right - left) as usize;
     let mut coverage = vec![0_u8; row_width];
+    // Reuse one intersection buffer for every sub-scanline. Allocating a new
+    // Vec for each of the four vertical samples on every row is avoidable.
+    let mut intersections = Vec::with_capacity(edges.len());
     for y in top..bottom {
         coverage.fill(0);
         for offset_y in OFFSETS {
             let sample_y = f64::from(y) + offset_y;
-            let mut intersections = edges
-                .iter()
-                .copied()
-                .filter(|edge| edge.crosses(sample_y))
-                .map(|edge| edge.intersection_x(sample_y))
-                .collect::<Vec<_>>();
-            intersections.sort_by(f64::total_cmp);
+            intersections.clear();
+            intersections.extend(
+                edges
+                    .iter()
+                    .copied()
+                    .filter(|edge| edge.crosses(sample_y))
+                    .map(|edge| edge.intersection_x(sample_y)),
+            );
+            intersections.sort_unstable_by(f64::total_cmp);
 
             // Samples are visited from left to right, so advance through the
             // sorted crossings once instead of binary-searching for every
