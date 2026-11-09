@@ -338,7 +338,12 @@ fn stroke_path_impl(
                 }
                 let src = Color::rgba(color.r, color.g, color.b, alpha);
                 let index = x as usize;
-                row[index] = src.blend_over(row[index]);
+                // Opaque coverage needs no source-over arithmetic.
+                row[index] = if alpha == u8::MAX {
+                    src
+                } else {
+                    src.blend_over(row[index])
+                };
             }
         }
     }
