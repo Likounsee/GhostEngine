@@ -509,9 +509,19 @@ impl PreparedTriangle {
             let dy = b.y - a.y;
             (dy * a.x - dx * a.y, dx, -dy)
         });
-        let min_y = vertices.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-        let max_y = vertices.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
-        Self { edges, min_y, max_y }
+        let min_y = vertices
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::INFINITY, f32::min);
+        let max_y = vertices
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        Self {
+            edges,
+            min_y,
+            max_y,
+        }
     }
 
     fn contains(self, point: Vector) -> bool {
@@ -636,8 +646,7 @@ impl PreparedJoin {
             let dy = sample.y - self.vertex.y;
             return dx * dx + dy * dy <= self.radius * self.radius;
         }
-        self.bevel.contains(sample)
-            || self.miter.is_some_and(|triangle| triangle.contains(sample))
+        self.bevel.contains(sample) || self.miter.is_some_and(|triangle| triangle.contains(sample))
     }
 }
 
