@@ -250,6 +250,26 @@ fn stroke_path_impl(
         } else {
             contour.points.len() - 1
         };
+        // Prepare segment vectors and cap projections once per contour instead
+        // of rebuilding them for every pixel and every antialiasing sample.
+        let segments = (0..segment_count)
+            .map(|i| {
+                let first = !contour.closed && i == 0;
+                let last = !contour.closed && i + 1 == segment_count;
+                let cap = if first || last { style.cap } else { StrokeCap::Butt };
+                StrokeSegment::new(
+                    contour.points[i],
+                    contour.points[(i + 1) % contour.points.len()],
+                    first,
+                    last,
+                    cap,
+                    radius,
+                )
+            })
+            .collect::<Vec<_>>();
+        let joins = (0..join_count(&contour.points, contour.closed))
+            .map(|index| join_points(&contour.points, contour.closed, index))
+            .collect::<Vec<_>>();
         for y in top..bottom {
             let Some(row) = target.row_mut(y) else {
                 continue;
@@ -262,22 +282,10 @@ fn stroke_path_impl(
                         for offset_x in OFFSETS {
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                             let mut distance = f32::INFINITY;
-                            for i in 0..segment_count {
-                                let a = contour.points[i];
-                                let b = contour.points[(i + 1) % contour.points.len()];
-                                let first = !contour.closed && i == 0;
-                                let last = !contour.closed && i + 1 == segment_count;
-                                let cap = if first || last {
-                                    style.cap
-                                } else {
-                                    StrokeCap::Butt
-                                };
-                                distance = distance
-                                    .min(segment_distance(sample, a, b, first, last, cap, radius));
+                            for segment in &segments {
+                                distance = distance.min(segment.distance(sample));
                             }
-                            for vertex_index in 0..join_count(&contour.points, contour.closed) {
-                                let (previous, vertex, next) =
-                                    join_points(&contour.points, contour.closed, vertex_index);
+                            for &(previous, vertex, next) in &joins {
                                 if join_contains(
                                     sample,
                                     previous,
@@ -300,22 +308,10 @@ fn stroke_path_impl(
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance = f32::INFINITY;
-                    for i in 0..segment_count {
-                        let a = contour.points[i];
-                        let b = contour.points[(i + 1) % contour.points.len()];
-                        let first = !contour.closed && i == 0;
-                        let last = !contour.closed && i + 1 == segment_count;
-                        let cap = if first || last {
-                            style.cap
-                        } else {
-                            StrokeCap::Butt
-                        };
-                        distance =
-                            distance.min(segment_distance(sample, a, b, first, last, cap, radius));
+                    for segment in &segments {
+                        distance = distance.min(segment.distance(sample));
                     }
-                    for vertex_index in 0..join_count(&contour.points, contour.closed) {
-                        let (previous, vertex, next) =
-                            join_points(&contour.points, contour.closed, vertex_index);
+                    for &(previous, vertex, next) in &joins {
                         if join_contains(
                             sample,
                             previous,
@@ -348,6 +344,59 @@ fn stroke_path_impl(
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StrokeSegment {
+    a: Vector,
+    dx: f32,
+    dy: f32,
+    length_squared: f32,
+    low: f32,
+    high: f32,
+    cap: StrokeCap,
+}
+
+impl StrokeSegment {
+    fn new(a: Vector, b: Vector, first: bool, last: bool, cap: StrokeCap, radius: f32) -> Self {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let length_squared = dx * dx + dy * dy;
+        let extension = if cap == StrokeCap::Square && length_squared > f32::EPSILON {
+            radius / length_squared.sqrt()
+        } else {
+            0.0
+        };
+        Self {
+            a,
+            dx,
+            dy,
+            length_squared,
+            low: if first { -extension } else { 0.0 },
+            high: if last { 1.0 + extension } else { 1.0 },
+            cap,
+        }
+    }
+
+    fn distance(self, point: Vector) -> f32 {
+        if self.length_squared <= f32::EPSILON {
+            return (point.x - self.a.x).hypot(point.y - self.a.y);
+        }
+        let mut t = ((point.x - self.a.x) * self.dx
+            + (point.y - self.a.y) * self.dy)
+            / self.length_squared;
+        if self.cap == StrokeCap::Butt && !(0.0..=1.0).contains(&t) {
+            return f32::INFINITY;
+        }
+        if self.cap == StrokeCap::Round {
+            t = t.clamp(0.0, 1.0);
+        } else {
+            t = t.clamp(self.low, self.high);
+        }
+        let nearest_x = self.a.x + t * self.dx;
+        let nearest_y = self.a.y + t * self.dy;
+        (point.x - nearest_x).hypot(point.y - nearest_y)
+    }
 }
 
 fn join_count(points: &[Vector], closed: bool) -> usize {
@@ -444,45 +493,6 @@ fn point_in_triangle(point: Vector, a: Vector, b: Vector, c: Vector) -> bool {
     let has_negative = d1 < -1.0e-5 || d2 < -1.0e-5 || d3 < -1.0e-5;
     let has_positive = d1 > 1.0e-5 || d2 > 1.0e-5 || d3 > 1.0e-5;
     !(has_negative && has_positive)
-}
-
-fn segment_distance(
-    p: Vector,
-    a: Vector,
-    b: Vector,
-    first: bool,
-    last: bool,
-    cap: StrokeCap,
-    radius: f32,
-) -> f32 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let length_squared = dx * dx + dy * dy;
-    if length_squared <= f32::EPSILON {
-        return (p.x - a.x).hypot(p.y - a.y);
-    }
-    let length = length_squared.sqrt();
-    let mut t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared;
-    let extension = if cap == StrokeCap::Square {
-        radius / length
-    } else {
-        0.0
-    };
-    let low = if first { -extension } else { 0.0 };
-    let high = if last { 1.0 + extension } else { 1.0 };
-    // Butt caps must stay flat at every segment boundary, including
-    // internal vertices. Join geometry is added separately below.
-    if cap == StrokeCap::Butt && !(0.0..=1.0).contains(&t) {
-        return f32::INFINITY;
-    }
-    if cap == StrokeCap::Round {
-        t = t.clamp(0.0, 1.0);
-    } else {
-        t = t.clamp(low, high);
-    }
-    let nearest_x = a.x + t * dx;
-    let nearest_y = a.y + t * dy;
-    (p.x - nearest_x).hypot(p.y - nearest_y)
 }
 
 #[cfg(test)]
