@@ -877,11 +877,7 @@ impl ComponentTree {
     }
 
     /// Associates a menu with one component. Returns false when the ID is unknown.
-    pub fn set_context_menu_for(
-        &mut self,
-        id: ComponentId,
-        items: Vec<ContextMenuItem>,
-    ) -> bool {
+    pub fn set_context_menu_for(&mut self, id: ComponentId, items: Vec<ContextMenuItem>) -> bool {
         if self.find(id).is_none() {
             return false;
         }
@@ -908,8 +904,12 @@ impl ComponentTree {
             .rev()
             .find(|placed| placed.bounds.contains(position))
             .map(|placed| placed.id);
-        let items = target
-            .and_then(|id| self.component_context_menus.get(&id).cloned().map(|items| (id, items)));
+        let items = target.and_then(|id| {
+            self.component_context_menus
+                .get(&id)
+                .cloned()
+                .map(|items| (id, items))
+        });
         if let Some((id, items)) = items {
             self.open_context_menu_items_at(position, items, Some(id))
         } else {
@@ -1981,14 +1981,11 @@ mod tests {
         use super::ContextMenuItem;
         let bounds = Rect::new(10, 10, 100, 80);
         let mut tree = sample_tree();
-        assert!(!tree.set_context_menu_for(
-            ComponentId(999),
-            vec![ContextMenuItem::new(31, "Missing")],
-        ));
-        assert!(tree.set_context_menu_for(
-            ComponentId(3),
-            vec![ContextMenuItem::new(32, "Inspect")],
-        ));
+        assert!(!tree
+            .set_context_menu_for(ComponentId(999), vec![ContextMenuItem::new(31, "Missing")],));
+        assert!(
+            tree.set_context_menu_for(ComponentId(3), vec![ContextMenuItem::new(32, "Inspect")],)
+        );
         assert!(tree.open_context_menu_for_at(bounds, Point::new(20, 30)));
         let events = tree.handle_key(bounds, ComponentKey::Enter, false);
         assert_eq!(events.context_menu_action, Some(32));
