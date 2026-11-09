@@ -54,8 +54,9 @@ pub use path::{
     fill_transformed_path_even_odd_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{
-    blend_rect, blend_rect_clipped, fill_rect_clipped, fill_transformed_rect_linear_gradient_clipped,
-    fill_transformed_rect_radial_gradient_clipped, Gradient, GradientError, GradientStop,
+    blend_rect, blend_rect_clipped, fill_rect_clipped,
+    fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
+    Gradient, GradientError, GradientStop,
 };
 pub use shaping::{
     resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError,
