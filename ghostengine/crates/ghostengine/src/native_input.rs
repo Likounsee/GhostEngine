@@ -73,7 +73,9 @@ impl NativeInputAdapter {
                 ..
             } => {
                 let down = *state == ElementState::Pressed;
-                if down && !self.right_mouse_down { self.frame.right_mouse_pressed = true; }
+                if down && !self.right_mouse_down {
+                    self.frame.right_mouse_pressed = true;
+                }
                 self.right_mouse_down = down;
             }
             WindowEvent::MouseInput {
@@ -116,7 +118,9 @@ impl NativeInputAdapter {
                 self.control_down = false;
                 self.alt_down = false;
                 self.escape_down = false;
-                if self.right_mouse_down { self.right_mouse_down = false; }
+                if self.right_mouse_down {
+                    self.right_mouse_down = false;
+                }
                 if self.left_mouse_down {
                     self.left_mouse_down = false;
                     self.frame.left_mouse_released = true;
