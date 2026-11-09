@@ -498,6 +498,27 @@ impl std::fmt::Display for ComponentTreeError {
 
 impl std::error::Error for ComponentTreeError {}
 
+fn format_context_menu_item_label(item: &ContextMenuItem) -> String {
+    let mut label = item.label.clone();
+    if !item.submenu.is_empty() {
+        label.push_str("  >");
+    }
+    if let Some(shortcut) = item.shortcut {
+        label.push_str("    ");
+        if shortcut.control {
+            label.push_str("Ctrl+");
+        }
+        if shortcut.alt {
+            label.push_str("Alt+");
+        }
+        if shortcut.shift {
+            label.push_str("Shift+");
+        }
+        label.push(shortcut.key.to_ascii_uppercase());
+    }
+    label
+}
+
 /// Retained component hierarchy with layout and interaction dispatch.
 #[derive(Debug, Clone, Default)]
 pub struct ComponentTree {
@@ -1075,16 +1096,25 @@ impl ComponentTree {
                         && shortcut.shift == shift
                 })
         };
-        let action = items.iter().find_map(|item| {
-            if matches(item) && item.submenu.is_empty() {
-                Some(item.action)
-            } else {
-                item.submenu
-                    .iter()
-                    .find(|child| matches(child))
-                    .map(|child| child.action)
+        fn find_action(
+            items: &[ContextMenuItem],
+            matches: &impl Fn(&ContextMenuItem) -> bool,
+        ) -> Option<u64> {
+            for item in items {
+                if !item.enabled {
+                    continue;
+                }
+                if item.submenu.is_empty() && matches(item) {
+                    return Some(item.action);
+                }
+                if let Some(action) = find_action(&item.submenu, matches) {
+                    return Some(action);
+                }
             }
-        })?;
+            None
+        }
+
+        let action = find_action(items, &matches)?;
         self.context_menu_state = None;
         Some(ComponentEvents {
             context_menu_action: Some(action),
@@ -1163,11 +1193,7 @@ impl ComponentTree {
                 i32::try_from(row.x.saturating_add(10)),
                 i32::try_from(baseline),
             ) {
-                let label = if item.submenu.is_empty() {
-                    item.label.clone()
-                } else {
-                    format!("{}  >", item.label)
-                };
+                let label = format_context_menu_item_label(item);
                 draw_label_clipped(
                     target,
                     font,
@@ -1214,7 +1240,7 @@ impl ComponentTree {
                             draw_label_clipped(
                                 target,
                                 font,
-                                &child.label,
+                                &format_context_menu_item_label(child),
                                 Point::new(x, y),
                                 pixel_size,
                                 if child.enabled {
@@ -2948,6 +2974,28 @@ mod tests {
         assert_eq!(events.context_menu_action, Some(902));
         assert_eq!(events.context_menu_target, None);
         assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_shortcuts_find_commands_at_arbitrary_submenu_depth() {
+        let nested = ContextMenuItem::new(905, "Export")
+            .with_submenu(vec![ContextMenuItem::new(906, "As archive").with_submenu(vec![
+                ContextMenuItem::new(907, "Compressed")
+                    .with_shortcut(ContextMenuShortcut::new('e').with_control(true)),
+            ])]);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![nested]);
+
+        let events = tree.activate_context_menu_shortcut('e', true, false, false).unwrap();
+        assert_eq!(events.context_menu_action, Some(907));
+    }
+
+    #[test]
+    fn context_menu_item_label_includes_shortcut_and_submenu_indicator() {
+        let item = ContextMenuItem::new(908, "Save")
+            .with_shortcut(ContextMenuShortcut::new('s').with_control(true).with_shift(true))
+            .with_submenu(vec![ContextMenuItem::new(909, "More")]);
+        assert_eq!(super::format_context_menu_item_label(&item), "Save  >    Ctrl+Shift+S");
     }
 
     #[test]
