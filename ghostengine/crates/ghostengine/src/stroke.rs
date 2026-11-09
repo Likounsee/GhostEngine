@@ -83,6 +83,45 @@ pub fn stroke_path_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), StrokeError> {
+    stroke_path_impl(target, path, transform, style, color, tolerance, clip, false)
+}
+
+/// Strokes a path with 4x4 supersampled edge coverage.
+pub fn stroke_path_aa(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), StrokeError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    stroke_path_aa_clipped(target, path, transform, style, color, tolerance, clip)
+}
+
+/// Antialiased path stroke restricted to a framebuffer-space viewport.
+pub fn stroke_path_aa_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), StrokeError> {
+    stroke_path_impl(target, path, transform, style, color, tolerance, clip, true)
+}
+
+fn stroke_path_impl(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+    antialias: bool,
+) -> Result<(), StrokeError> {
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
     }
@@ -148,19 +187,43 @@ pub fn stroke_path_clipped(
                 continue;
             };
             for x in left..right {
-                let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
-                let mut distance = f32::INFINITY;
-                for i in 0..segment_count {
-                    let a = contour.points[i];
-                    let b = contour.points[(i + 1) % contour.points.len()];
-                    let first = !contour.closed && i == 0;
-                    let last = !contour.closed && i + 1 == segment_count;
-                    distance = distance.min(segment_distance(
-                        sample, a, b, first, last, style.cap, radius,
-                    ));
-                }
-                // Round joins are the union of the round segment ends.
-                let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
+                let coverage = if antialias {
+                    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+                    let mut covered = 0_u16;
+                    for offset_y in OFFSETS {
+                        for offset_x in OFFSETS {
+                            let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
+                            let mut distance = f32::INFINITY;
+                            for i in 0..segment_count {
+                                let a = contour.points[i];
+                                let b = contour.points[(i + 1) % contour.points.len()];
+                                let first = !contour.closed && i == 0;
+                                let last = !contour.closed && i + 1 == segment_count;
+                                distance = distance.min(segment_distance(
+                                    sample, a, b, first, last, style.cap, radius,
+                                ));
+                            }
+                            if distance <= radius {
+                                covered += 1;
+                            }
+                        }
+                    }
+                    f32::from(covered) / 16.0
+                } else {
+                    let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
+                    let mut distance = f32::INFINITY;
+                    for i in 0..segment_count {
+                        let a = contour.points[i];
+                        let b = contour.points[(i + 1) % contour.points.len()];
+                        let first = !contour.closed && i == 0;
+                        let last = !contour.closed && i + 1 == segment_count;
+                        distance = distance.min(segment_distance(
+                            sample, a, b, first, last, style.cap, radius,
+                        ));
+                    }
+                    // Legacy pixel-center coverage keeps the existing stroke appearance.
+                    (radius + 0.5 - distance).clamp(0.0, 1.0)
+                };
                 let alpha = (f32::from(color.a) * coverage).round() as u8;
                 if alpha == 0 {
                     continue;
@@ -318,6 +381,54 @@ mod tests {
         )
         .unwrap();
         assert!(fb.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_stroke_blends_partial_edge_coverage() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(2.0, 3.25))
+            .line_to(Vector::new(10.0, 3.25));
+        let mut fb = Framebuffer::new(14, 9, Color::BLACK).unwrap();
+        super::stroke_path_aa(
+            &mut fb,
+            &path,
+            Transform2D::IDENTITY,
+            StrokeStyle::new(2.0),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
+
+        assert!(fb.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(fb.pixels().contains(&Color::WHITE));
+    }
+
+    #[test]
+    fn antialiased_stroke_respects_clip_and_source_alpha() {
+        let mut fb = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        super::stroke_path_aa_clipped(
+            &mut fb,
+            &line(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(4.0).with_cap(StrokeCap::Round),
+            Color::rgba(255, 0, 0, 128),
+            0.2,
+            Rect::new(5, 4, 2, 3),
+        )
+        .unwrap();
+
+        for y in 0..12 {
+            for x in 0..14 {
+                let pixel = fb.get_pixel(x, y).unwrap();
+                let inside = (5..7).contains(&x) && (4..7).contains(&y);
+                if !inside {
+                    assert_eq!(pixel, Color::BLACK);
+                } else {
+                    assert!(pixel.r <= 128);
+                }
+            }
+        }
+        assert!(fb.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 128));
     }
 
     #[test]
