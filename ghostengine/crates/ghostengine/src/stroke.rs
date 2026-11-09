@@ -667,7 +667,7 @@ mod tests {
             0.2,
         )
         .unwrap();
-        assert_eq!(fb.get_pixel(12, 12), Some(Color::WHITE));
+        assert_eq!(fb.get_pixel(12, 11), Some(Color::WHITE));
     }
 
     #[test]
