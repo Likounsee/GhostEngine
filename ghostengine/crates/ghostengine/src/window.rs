@@ -195,7 +195,8 @@ impl WindowSurface {
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
         let right_mouse_down = self.window.get_mouse_down(MouseButton::Right);
-        let (right_mouse_pressed, _) = button_transition(self.previous_right_mouse_down, right_mouse_down);
+        let (right_mouse_pressed, _) =
+            button_transition(self.previous_right_mouse_down, right_mouse_down);
         self.previous_right_mouse_down = right_mouse_down;
         let scroll_delta_y = self
             .window
@@ -274,7 +275,9 @@ impl WindowSurface {
 impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
         if input.right_mouse_pressed {
-            if let Some(pointer) = input.mouse_position { self.open_context_menu_at(pointer); }
+            if let Some(pointer) = input.mouse_position {
+                self.open_context_menu_at(pointer);
+            }
         }
         let mut events = self.update_pointer(
             bounds,
