@@ -1,5 +1,5 @@
 use std::hint::black_box;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ghostengine::{
     fill_path_even_odd_aa, fill_polygon_aa, stroke_path_aa, Color, Framebuffer, Path, Point,
@@ -100,5 +100,4 @@ fn main() {
         .expect("benchmark stroke should be valid");
     });
 
-    let _minimum_duration = Duration::from_nanos(1);
 }
