@@ -465,7 +465,9 @@ fn segment_distance(
     };
     let low = if first { -extension } else { 0.0 };
     let high = if last { 1.0 + extension } else { 1.0 };
-    if cap == StrokeCap::Butt && ((first && t < 0.0) || (last && t > 1.0)) {
+    // Butt caps must stay flat at every segment boundary, including
+    // internal vertices. Join geometry is added separately below.
+    if cap == StrokeCap::Butt && !(0.0..=1.0).contains(&t) {
         return f32::INFINITY;
     }
     if cap == StrokeCap::Round {
@@ -683,6 +685,7 @@ mod tests {
         )
         .unwrap();
         assert!(fb.get_pixel(12, 12).unwrap() == Color::BLACK);
+        assert!(fb.get_pixel(12, 11).unwrap() == Color::BLACK);
         assert!(fb.get_pixel(10, 12).unwrap() == Color::WHITE);
     }
 
