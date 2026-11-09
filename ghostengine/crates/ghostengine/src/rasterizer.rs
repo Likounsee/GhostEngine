@@ -775,8 +775,11 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         return;
     }
 
+    let row_width = (right - left) as usize;
+    let mut coverage = vec![0_u8; row_width];
     for y in top..bottom {
-        let scanline_intersections = OFFSETS.map(|offset_y| {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
             let sample_y = f64::from(y) + offset_y;
             let mut intersections = edges
                 .iter()
@@ -785,32 +788,44 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                 .map(|edge| edge.intersection_x(sample_y))
                 .collect::<Vec<_>>();
             intersections.sort_by(f64::total_cmp);
-            intersections
-        });
+
+            // Samples are visited from left to right, so advance through the
+            // sorted crossings once instead of binary-searching for every
+            // horizontal subpixel sample.
+            let mut crossing = 0;
+            let mut inside = false;
+            for x in left..right {
+                for offset_x in OFFSETS {
+                    let sample_x = f64::from(x) + offset_x;
+                    while crossing < intersections.len()
+                        && intersections[crossing] <= sample_x
+                    {
+                        crossing += 1;
+                        inside = !inside;
+                    }
+                    if inside {
+                        coverage[(x - left) as usize] += 1;
+                    }
+                }
+            }
+        }
+
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in left..right {
-            let mut covered = 0_u16;
-            for intersections in &scanline_intersections {
-                for offset_x in OFFSETS {
-                    let sample_x = f64::from(x) + offset_x;
-                    let first_after =
-                        intersections.partition_point(|crossing| *crossing <= sample_x);
-                    let inside = (intersections.len() - first_after) % 2 == 1;
-                    covered += u16::from(inside);
-                }
-            }
+        for (pixel, covered) in row[left as usize..right as usize]
+            .iter_mut()
+            .zip(coverage.iter().copied())
+        {
             if covered == 0 {
                 continue;
             }
-            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
             if alpha == 0 {
                 continue;
             }
             let source = Color::rgba(color.r, color.g, color.b, alpha);
-            let index = x as usize;
-            row[index] = source.blend_over(row[index]);
+            *pixel = source.blend_over(*pixel);
         }
     }
 }
