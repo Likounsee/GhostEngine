@@ -42,7 +42,7 @@ fn main() {
     let iterations = std::env::args()
         .nth(1)
         .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(20)
+        .unwrap_or(100)
         .clamp(1, 10_000);
 
     let polygon = [
