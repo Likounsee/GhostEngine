@@ -676,7 +676,6 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
-/// Fills a rounded rectangle; radius is clamped to half its smaller dimension.
 /// Fills a rounded rectangle with clipped horizontal scanline spans.
 ///
 /// The radius is clamped to half the smaller dimension. A zero radius is
@@ -776,42 +775,6 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         if let Some(row) = target.row_mut(y as u32) {
             row[first_x as usize] = color;
             row[last_x as usize] = color;
-        }
-    }
-}
-
-fn fill_circle_clipped(
-    target: &mut Framebuffer,
-    center: Point,
-    radius: u32,
-    clip: Rect,
-    color: Color,
-) {
-    if target.width() == 0 || target.height() == 0 {
-        return;
-    }
-    let radius = i64::from(radius);
-    let cx = i64::from(center.x);
-    let cy = i64::from(center.y);
-    let left = i64::from(clip.x).max(0);
-    let top = i64::from(clip.y).max(0);
-    let right = (i64::from(clip.x) + i64::from(clip.width) - 1).min(i64::from(target.width()) - 1);
-    let bottom =
-        (i64::from(clip.y) + i64::from(clip.height) - 1).min(i64::from(target.height()) - 1);
-    let first_y = (cy - radius).max(top);
-    let last_y = (cy + radius).min(bottom);
-    if left > right || first_y > last_y {
-        return;
-    }
-
-    let radius_squared = (radius as u128) * (radius as u128);
-    for y in first_y..=last_y {
-        let dy = (y - cy).unsigned_abs() as u128;
-        let extent = integer_sqrt(radius_squared - dy * dy) as i64;
-        let first_x = (cx - extent).max(left);
-        let last_x = (cx + extent).min(right);
-        for x in first_x..=last_x {
-            target.set_pixel(x as u32, y as u32, color);
         }
     }
 }
