@@ -865,6 +865,9 @@ pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, col
 
     for y in min_y..=max_y {
         let py = i128::from(y) * 2 + 1;
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for x in min_x..=max_x {
             let px = i128::from(x) * 2 + 1;
             let e0 = edge_doubled(ax, ay, bx, by, px, py);
@@ -874,7 +877,7 @@ pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, col
                 && (e1 > 0 || (e1 == 0 && tl_bc))
                 && (e2 > 0 || (e2 == 0 && tl_ca))
             {
-                target.set_pixel(x, y, color);
+                row[x as usize] = color;
             }
         }
     }
