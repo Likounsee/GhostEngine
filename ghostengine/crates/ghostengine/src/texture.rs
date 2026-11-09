@@ -204,9 +204,7 @@ pub fn draw_texture_clipped(
             let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
             let color = match filter {
                 TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
-                TextureFilter::Bilinear => {
-                    texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
-                }
+                TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
             };
             let index = x as usize;
             if color.a == 255 {
