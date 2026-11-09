@@ -2106,7 +2106,6 @@ mod clipping_tests {
     }
 }
 
-
 #[cfg(test)]
 mod rounded_fill_tests {
     use super::{fill_rect, fill_rounded_rect};
