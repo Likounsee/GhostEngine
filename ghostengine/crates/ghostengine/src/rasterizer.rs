@@ -1372,12 +1372,7 @@ mod tests {
 }
 
 /// Alpha-composites only the intersection of a rectangle, clip region, and framebuffer.
-pub fn blend_rect_clipped(
-    target: &mut Framebuffer,
-    rect: Rect,
-    clip: Rect,
-    color: Color,
-) {
+pub fn blend_rect_clipped(target: &mut Framebuffer, rect: Rect, clip: Rect, color: Color) {
     let Some(visible) = rect.intersection(clip).and_then(|intersection| {
         intersection.intersection(Rect::new(0, 0, target.width(), target.height()))
     }) else {
@@ -1405,7 +1400,11 @@ mod clipping_tests {
     #[test]
     fn alpha_blended_rectangle_composites_every_visible_pixel() {
         let mut target = Framebuffer::new(4, 3, Color::BLUE).unwrap();
-        super::blend_rect(&mut target, Rect::new(1, 1, 2, 2), Color::rgba(255, 0, 0, 128));
+        super::blend_rect(
+            &mut target,
+            Rect::new(1, 1, 2, 2),
+            Color::rgba(255, 0, 0, 128),
+        );
         assert_eq!(target.get_pixel(0, 1), Some(Color::BLUE));
         assert_eq!(target.get_pixel(1, 1), Some(Color::rgb(128, 0, 127)));
         assert_eq!(target.get_pixel(2, 2), Some(Color::rgb(128, 0, 127)));
