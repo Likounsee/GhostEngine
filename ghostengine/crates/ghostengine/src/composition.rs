@@ -90,13 +90,13 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
             }
 
             let source_start = source_y as usize * source_width + source_left;
-            let source_row = &layer.framebuffer.pixels()[source_start
-                ..source_y as usize * source_width + source_right];
+            let source_row = &layer.framebuffer.pixels()
+                [source_start..source_y as usize * source_width + source_right];
             let Some(destination_row) = target.row_mut(destination_y as u32) else {
                 continue;
             };
-            let destination = &mut destination_row[destination_left as usize
-                ..destination_right as usize];
+            let destination =
+                &mut destination_row[destination_left as usize..destination_right as usize];
 
             for (source, destination) in source_row.iter().zip(destination) {
                 if source.a == 0 {
