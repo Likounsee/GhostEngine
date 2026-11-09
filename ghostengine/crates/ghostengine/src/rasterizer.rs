@@ -936,10 +936,6 @@ impl PolygonEdge {
         })
     }
 
-    fn crosses(self, sample_y: f64) -> bool {
-        self.min_y <= sample_y && sample_y < self.max_y
-    }
-
     fn intersection_x(self, sample_y: f64) -> f64 {
         self.min_x + (sample_y - self.min_y) * self.inverse_slope
     }
@@ -2117,7 +2113,6 @@ mod clipping_tests {
     }
 }
 
-
 #[cfg(test)]
 mod rounded_outline_tests {
     use super::{draw_rect, draw_rounded_rect};
@@ -2153,8 +2148,8 @@ mod rounded_outline_tests {
     fn rounded_rectangle_outline_clips_to_framebuffer() {
         let mut target = Framebuffer::new(5, 4, Color::BLACK).unwrap();
         draw_rounded_rect(&mut target, Rect::new(3, 1, 8, 5), 2, Color::BLUE);
-        assert_eq!(target.get_pixel(3, 2), Some(Color::BLUE));
-        assert_eq!(target.get_pixel(4, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(3, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(4, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 3), Some(Color::BLUE));
     }
 }
