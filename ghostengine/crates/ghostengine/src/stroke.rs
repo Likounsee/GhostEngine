@@ -285,7 +285,7 @@ fn stroke_path_impl(
             })
             .collect::<Vec<_>>();
         let radius_squared = radius * radius;
-        let mut row_segments = Vec::with_capacity(segments.len());
+        let mut row_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
