@@ -55,6 +55,11 @@ pub enum ComponentKind {
         max: u32,
         value: u32,
     },
+    ListView {
+        items: Vec<String>,
+        row_height: u32,
+        scroll_offset: u32,
+    },
 }
 
 /// A retained component node. Child order is also layout and keyboard tab order.
@@ -486,6 +491,7 @@ impl ComponentTree {
             &mut self.text_states,
             &mut self.combo_states,
             &mut self.tabs_states,
+            &mut self.list_states,
         );
         self.find_mut(parent)
             .expect("parent was checked above")
