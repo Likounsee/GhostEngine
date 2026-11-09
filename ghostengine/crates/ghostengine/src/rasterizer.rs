@@ -1783,6 +1783,22 @@ mod clipping_tests {
     use crate::{Color, Framebuffer, Rect};
 
     #[test]
+    fn axis_aligned_lines_use_exact_inclusive_endpoints_in_both_directions() {
+        let mut target = Framebuffer::new(6, 5, Color::BLACK).unwrap();
+        super::draw_line(&mut target, crate::Point::new(4, 2), crate::Point::new(1, 2), Color::RED);
+        super::draw_line(&mut target, crate::Point::new(3, 4), crate::Point::new(3, 1), Color::BLUE);
+
+        for x in 1..=4 {
+            assert_eq!(target.get_pixel(x, 2), Some(Color::RED));
+        }
+        for y in 1..=4 {
+            assert_eq!(target.get_pixel(3, y), Some(Color::BLUE));
+        }
+        assert_eq!(target.get_pixel(0, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(5, 2), Some(Color::BLACK));
+    }
+
+    #[test]
     fn alpha_blended_rectangle_composites_every_visible_pixel() {
         let mut target = Framebuffer::new(4, 3, Color::BLUE).unwrap();
         super::blend_rect(
