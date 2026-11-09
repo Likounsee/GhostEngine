@@ -446,6 +446,8 @@ struct ContextMenuState {
     selected: usize,
     submenu_selected: usize,
     submenu_open: bool,
+    submenu_path: [usize; 8],
+    submenu_depth: usize,
     target: Option<ComponentId>,
 }
 
@@ -795,80 +797,88 @@ impl ComponentTree {
     ) -> ComponentEvents {
         self.layout(bounds);
         if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
-            let root = self.context_menu_bounds(bounds, menu);
-            let submenu = self.submenu_bounds(bounds, menu);
-            if menu.submenu_open && submenu.contains(point) {
-                let row = (u32::try_from(point.y)
-                    .unwrap_or(0)
-                    .saturating_sub(submenu.y)
-                    / 28) as usize;
-                if self.active_context_menu_items[menu.selected]
-                    .submenu
-                    .get(row)
-                    .is_some_and(|item| item.enabled)
-                {
-                    menu.submenu_selected = row;
+            let mut hit = false;
+            for depth in (1..=menu.submenu_depth).rev() {
+                let popup = self.nested_submenu_bounds(bounds, menu, depth);
+                if popup.contains(point) {
+                    let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
+                    if self.context_menu_items_at_depth(menu, depth).and_then(|items| items.get(row)).is_some_and(|item| item.enabled) {
+                        menu.submenu_path[depth - 1] = row;
+                        menu.submenu_depth = depth;
+                        menu.submenu_open = true;
+                        menu.submenu_selected = menu.submenu_path[0];
+                    }
+                    hit = true;
+                    break;
                 }
-            } else if root.contains(point) {
-                let row =
-                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
-                if let Some(item) = self.active_context_menu_items.get(row) {
-                    if item.enabled {
-                        if menu.selected != row {
+            }
+            if !hit {
+                let root = self.context_menu_bounds(bounds, menu);
+                if root.contains(point) {
+                    let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
+                    if let Some(item) = self.active_context_menu_items.get(row) {
+                        if item.enabled {
+                            menu.selected = row;
+                            menu.submenu_depth = usize::from(!item.submenu.is_empty());
+                            menu.submenu_open = menu.submenu_depth > 0;
+                            menu.submenu_path = [0; 8];
                             menu.submenu_selected = 0;
                         }
-                        menu.selected = row;
-                        menu.submenu_open = !item.submenu.is_empty();
                     }
+                    hit = true;
                 }
-            } else if !menu.submenu_open || !submenu.contains(point) {
-                menu.submenu_open = false;
             }
+            if !hit { menu.submenu_depth = 0; menu.submenu_open = false; }
             self.context_menu_state = Some(menu);
         }
         if released {
             if let (Some(point), Some(menu)) = (pointer, self.context_menu_state) {
-                let root = self.context_menu_bounds(bounds, menu);
-                let submenu = self.submenu_bounds(bounds, menu);
-                if menu.submenu_open && submenu.contains(point) {
-                    let row = (u32::try_from(point.y)
-                        .unwrap_or(0)
-                        .saturating_sub(submenu.y)
-                        / 28) as usize;
-                    let action = self.active_context_menu_items[menu.selected]
-                        .submenu
-                        .get(row)
-                        .filter(|item| item.enabled && item.submenu.is_empty())
-                        .map(|item| item.action);
-                    self.context_menu_state = None;
-                    return ComponentEvents {
-                        context_menu_action: action,
-                        context_menu_target: menu.target,
-                        ..ComponentEvents::default()
-                    };
-                }
-                if root.contains(point) {
-                    let row =
-                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
-                    if let Some(item) = self.active_context_menu_items.get(row) {
-                        if item.enabled && !item.submenu.is_empty() {
-                            let mut next = menu;
-                            next.selected = row;
-                            next.submenu_selected = 0;
-                            next.submenu_open = true;
-                            self.context_menu_state = Some(next);
-                            return ComponentEvents::default();
+                let mut handled = false;
+                for depth in (1..=menu.submenu_depth).rev() {
+                    let popup = self.nested_submenu_bounds(bounds, menu, depth);
+                    if popup.contains(point) {
+                        let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
+                        if let Some(item) = self.context_menu_items_at_depth(menu, depth).and_then(|items| items.get(row)) {
+                            if item.enabled && !item.submenu.is_empty() && depth < menu.submenu_path.len() {
+                                let mut next = menu;
+                                next.submenu_path[depth - 1] = row;
+                                next.submenu_depth = depth + 1;
+                                next.submenu_path[depth] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                                next.submenu_open = true;
+                                self.context_menu_state = Some(next);
+                                return ComponentEvents::default();
+                            }
+                            let action = (item.enabled && item.submenu.is_empty()).then_some(item.action);
+                            self.context_menu_state = None;
+                            return ComponentEvents { context_menu_action: action, context_menu_target: menu.target, ..ComponentEvents::default() };
                         }
-                        let action = item.enabled.then_some(item.action);
-                        self.context_menu_state = None;
-                        return ComponentEvents {
-                            context_menu_action: action,
-                            context_menu_target: menu.target,
-                            ..ComponentEvents::default()
-                        };
+                        handled = true;
+                        break;
                     }
                 }
-                self.context_menu_state = None;
+                if !handled {
+                    let root = self.context_menu_bounds(bounds, menu);
+                    if root.contains(point) {
+                        let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
+                        if let Some(item) = self.active_context_menu_items.get(row) {
+                            if item.enabled && !item.submenu.is_empty() {
+                                let mut next = menu;
+                                next.selected = row;
+                                next.submenu_path = [0; 8];
+                                next.submenu_path[0] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                                next.submenu_depth = 1;
+                                next.submenu_open = true;
+                                next.submenu_selected = next.submenu_path[0];
+                                self.context_menu_state = Some(next);
+                                return ComponentEvents::default();
+                            }
+                            let action = item.enabled.then_some(item.action);
+                            self.context_menu_state = None;
+                            return ComponentEvents { context_menu_action: action, context_menu_target: menu.target, ..ComponentEvents::default() };
+                        }
+                    }
+                    self.context_menu_state = None;
+                }
             }
         }
         let enabled = vec![true; self.focusable_ids.len()];
@@ -1061,6 +1071,8 @@ impl ComponentTree {
             selected,
             submenu_selected: 0,
             submenu_open: false,
+            submenu_path: [0; 8],
+            submenu_depth: 0,
             target,
         });
         true
@@ -1123,6 +1135,41 @@ impl ComponentTree {
         })
     }
 
+    fn context_menu_items_at_depth(
+        &self,
+        state: ContextMenuState,
+        depth: usize,
+    ) -> Option<&[ContextMenuItem]> {
+        let mut items = self.active_context_menu_items.as_slice();
+        for level in 0..depth {
+            let selected = if level == 0 { state.selected } else { *state.submenu_path.get(level - 1)? };
+            items = &items.get(selected)?.submenu;
+        }
+        Some(items)
+    }
+
+    fn context_menu_selected_at_depth(&self, state: ContextMenuState, depth: usize) -> usize {
+        if depth == 0 { state.selected } else { state.submenu_path.get(depth - 1).copied().unwrap_or(0) }
+    }
+
+    fn nested_submenu_bounds(&self, bounds: Rect, state: ContextMenuState, depth: usize) -> Rect {
+        if depth == 0 { return self.context_menu_bounds(bounds, state); }
+        let Some(parent_items) = self.context_menu_items_at_depth(state, depth - 1) else { return Rect::default(); };
+        let parent_index = self.context_menu_selected_at_depth(state, depth - 1);
+        let Some(parent_item) = parent_items.get(parent_index) else { return Rect::default(); };
+        let Some(items) = self.context_menu_items_at_depth(state, depth) else { return Rect::default(); };
+        if items.is_empty() || parent_item.submenu.is_empty() { return Rect::default(); }
+        let parent_popup = self.nested_submenu_bounds(bounds, state, depth - 1);
+        let height = (items.len() as u32).saturating_mul(28).max(1).min(bounds.height.max(1));
+        let width = 192_u32.min(bounds.width.max(1));
+        let right = parent_popup.x.saturating_add(parent_popup.width);
+        let x = if right.saturating_add(width) <= bounds.x.saturating_add(bounds.width) { right } else { parent_popup.x.saturating_sub(width) };
+        let row_y = parent_popup.y.saturating_add((parent_index as u32).saturating_mul(28));
+        let max_y = bounds.y.saturating_add(bounds.height.saturating_sub(height)) as i64;
+        let y = (row_y as i64).clamp(bounds.y as i64, max_y);
+        Rect::new(x, y as u32, width, height)
+    }
+
     fn context_menu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
         let height = (self.active_context_menu_items.len() as u32)
             .saturating_mul(28)
@@ -1139,26 +1186,7 @@ impl ComponentTree {
     }
 
     fn submenu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
-        let Some(item) = self.active_context_menu_items.get(state.selected) else {
-            return Rect::default();
-        };
-        let height = (item.submenu.len() as u32)
-            .saturating_mul(28)
-            .max(1)
-            .min(bounds.height.max(1));
-        let width = 192_u32.min(bounds.width.max(1));
-        let root = self.context_menu_bounds(bounds, state);
-        let right = root.x.saturating_add(root.width);
-        let x = if right.saturating_add(width) <= bounds.x.saturating_add(bounds.width) {
-            right
-        } else {
-            root.x.saturating_sub(width)
-        };
-        let max_y = bounds
-            .y
-            .saturating_add(bounds.height.saturating_sub(height)) as i64;
-        let y = (root.y as i64).clamp(bounds.y as i64, max_y);
-        Rect::new(x, y as u32, width, height)
+        self.nested_submenu_bounds(bounds, state, 1)
     }
 
     fn render_context_menu(
@@ -1210,48 +1238,21 @@ impl ComponentTree {
             }
         }
 
-        if state.submenu_open {
-            if let Some(item) = self.active_context_menu_items.get(state.selected) {
-                if !item.submenu.is_empty() {
-                    let submenu = self.submenu_bounds(bounds, state);
-                    draw_panel(target, submenu, 4, theme);
-                    for (index, child) in item.submenu.iter().enumerate() {
-                        let offset = (index as u32).saturating_mul(28);
-                        let row = Rect::new(
-                            submenu.x,
-                            submenu.y.saturating_add(offset),
-                            submenu.width,
-                            28.min(submenu.height.saturating_sub(offset)),
-                        );
-                        if row.height == 0 {
-                            continue;
-                        }
-                        if index == state.submenu_selected && child.enabled {
-                            fill_rect(target, row, theme.accent_hover);
-                        }
-                        let baseline = i64::from(row.y)
-                            + ((f64::from(row.height)
-                                + f64::from(font.line_height(pixel_size)) * 0.78)
-                                / 2.0) as i64;
-                        if let (Ok(x), Ok(y)) = (
-                            i32::try_from(row.x.saturating_add(10)),
-                            i32::try_from(baseline),
-                        ) {
-                            draw_label_clipped(
-                                target,
-                                font,
-                                &format_context_menu_item_label(child),
-                                Point::new(x, y),
-                                pixel_size,
-                                if child.enabled {
-                                    theme.text
-                                } else {
-                                    theme.muted_text
-                                },
-                                row,
-                            );
-                        }
-                    }
+        for depth in 1..=state.submenu_depth {
+            let Some(items) = self.context_menu_items_at_depth(state, depth) else { continue; };
+            let submenu = self.nested_submenu_bounds(bounds, state, depth);
+            if submenu.width == 0 || submenu.height == 0 { continue; }
+            draw_panel(target, submenu, 4, theme);
+            let selected = self.context_menu_selected_at_depth(state, depth);
+            for (index, child) in items.iter().enumerate() {
+                let offset = (index as u32).saturating_mul(28);
+                let row = Rect::new(submenu.x, submenu.y.saturating_add(offset), submenu.width, 28.min(submenu.height.saturating_sub(offset)));
+                if row.height == 0 { continue; }
+                if index == selected && child.enabled { fill_rect(target, row, theme.accent_hover); }
+                let baseline = i64::from(row.y) + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78) / 2.0) as i64;
+                if let (Ok(x), Ok(y)) = (i32::try_from(row.x.saturating_add(10)), i32::try_from(baseline)) {
+                    draw_label_clipped(target, font, &format_context_menu_item_label(child), Point::new(x, y), pixel_size,
+                        if child.enabled { theme.text } else { theme.muted_text }, row);
                 }
             }
         }
@@ -1815,100 +1816,58 @@ impl ComponentTree {
     /// Routes a discrete key to focus navigation, activation, or text editing.
     pub fn handle_key(&mut self, bounds: Rect, key: ComponentKey, shift: bool) -> ComponentEvents {
         if let Some(mut menu) = self.context_menu_state {
+            let depth = menu.submenu_depth;
+            let selected = self.context_menu_selected_at_depth(menu, depth);
+            let current_items = self.context_menu_items_at_depth(menu, depth).unwrap_or(&[]);
             match key {
-                ComponentKey::Escape => {
-                    self.context_menu_state = None;
-                    return ComponentEvents::default();
-                }
+                ComponentKey::Escape => { self.context_menu_state = None; return ComponentEvents::default(); }
                 ComponentKey::ArrowDown | ComponentKey::ArrowUp => {
-                    if menu.submenu_open {
-                        let count = self.active_context_menu_items[menu.selected].submenu.len();
-                        if count > 0 {
-                            for _ in 0..count {
-                                menu.submenu_selected = if key == ComponentKey::ArrowDown {
-                                    (menu.submenu_selected + 1) % count
-                                } else {
-                                    (menu.submenu_selected + count - 1) % count
-                                };
-                                if self.active_context_menu_items[menu.selected].submenu
-                                    [menu.submenu_selected]
-                                    .enabled
-                                {
-                                    break;
-                                }
-                            }
+                    let count = current_items.len();
+                    if count > 0 {
+                        let mut next = selected;
+                        for _ in 0..count {
+                            next = if key == ComponentKey::ArrowDown { (next + 1) % count } else { (next + count - 1) % count };
+                            if current_items[next].enabled { break; }
                         }
-                    } else {
-                        let count = self.active_context_menu_items.len();
-                        if count > 0 {
-                            for _ in 0..count {
-                                menu.selected = if key == ComponentKey::ArrowDown {
-                                    (menu.selected + 1) % count
-                                } else {
-                                    (menu.selected + count - 1) % count
-                                };
-                                if self.active_context_menu_items[menu.selected].enabled {
-                                    break;
-                                }
-                            }
-                        }
+                        if depth == 0 { menu.selected = next; menu.submenu_depth = 0; menu.submenu_open = false; }
+                        else { menu.submenu_path[depth - 1] = next; menu.submenu_depth = depth; menu.submenu_selected = menu.submenu_path[0]; menu.submenu_open = true; }
                     }
                     self.context_menu_state = Some(menu);
                     return ComponentEvents::default();
                 }
                 ComponentKey::ArrowRight => {
-                    if self.active_context_menu_items[menu.selected].enabled
-                        && !self.active_context_menu_items[menu.selected]
-                            .submenu
-                            .is_empty()
-                    {
-                        menu.submenu_open = true;
-                        menu.submenu_selected = self.active_context_menu_items[menu.selected]
-                            .submenu
-                            .iter()
-                            .position(|item| item.enabled)
-                            .unwrap_or(0);
-                        self.context_menu_state = Some(menu);
+                    if let Some(item) = current_items.get(selected) {
+                        if item.enabled && !item.submenu.is_empty() && depth < menu.submenu_path.len() {
+                            menu.submenu_path[depth] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                            menu.submenu_depth = depth + 1;
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                        }
                     }
+                    self.context_menu_state = Some(menu);
                     return ComponentEvents::default();
                 }
                 ComponentKey::ArrowLeft => {
-                    menu.submenu_open = false;
+                    if depth > 0 { menu.submenu_depth = depth - 1; menu.submenu_open = menu.submenu_depth > 0; menu.submenu_selected = if menu.submenu_depth > 0 { menu.submenu_path[0] } else { 0 }; }
                     self.context_menu_state = Some(menu);
                     return ComponentEvents::default();
                 }
                 ComponentKey::Enter | ComponentKey::Space => {
-                    if menu.submenu_open {
-                        let action = self.active_context_menu_items[menu.selected]
-                            .submenu
-                            .get(menu.submenu_selected)
-                            .filter(|item| item.enabled && item.submenu.is_empty())
-                            .map(|item| item.action);
+                    if let Some(item) = current_items.get(selected) {
+                        if item.enabled && !item.submenu.is_empty() && depth < menu.submenu_path.len() {
+                            menu.submenu_path[depth] = item.submenu.iter().position(|child| child.enabled).unwrap_or(0);
+                            menu.submenu_depth = depth + 1;
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                            self.context_menu_state = Some(menu);
+                            return ComponentEvents::default();
+                        }
+                        let action = item.enabled.then_some(item.action);
                         self.context_menu_state = None;
-                        return ComponentEvents {
-                            context_menu_action: action,
-                            context_menu_target: menu.target,
-                            ..ComponentEvents::default()
-                        };
+                        return ComponentEvents { context_menu_action: action, context_menu_target: menu.target, ..ComponentEvents::default() };
                     }
-                    let item = &self.active_context_menu_items[menu.selected];
-                    if item.enabled && !item.submenu.is_empty() {
-                        menu.submenu_open = true;
-                        menu.submenu_selected = item
-                            .submenu
-                            .iter()
-                            .position(|child| child.enabled)
-                            .unwrap_or(0);
-                        self.context_menu_state = Some(menu);
-                        return ComponentEvents::default();
-                    }
-                    let action = item.enabled.then_some(item.action);
                     self.context_menu_state = None;
-                    return ComponentEvents {
-                        context_menu_action: action,
-                        context_menu_target: menu.target,
-                        ..ComponentEvents::default()
-                    };
+                    return ComponentEvents::default();
                 }
                 _ => return ComponentEvents::default(),
             }
