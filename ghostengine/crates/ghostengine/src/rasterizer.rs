@@ -2116,3 +2116,45 @@ mod clipping_tests {
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
     }
 }
+
+
+#[cfg(test)]
+mod rounded_outline_tests {
+    use super::{draw_rect, draw_rounded_rect};
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn rounded_rectangle_outline_draws_only_the_perimeter() {
+        let mut target = Framebuffer::new(10, 8, Color::BLACK).unwrap();
+        draw_rounded_rect(&mut target, Rect::new(1, 1, 8, 6), 2, Color::WHITE);
+
+        assert_eq!(target.get_pixel(3, 1), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(6, 1), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(1, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(8, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(3, 6), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(6, 6), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(0, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn zero_radius_rounded_outline_matches_rectangle_outline() {
+        let mut expected = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let rect = Rect::new(1, 1, 7, 5);
+        draw_rect(&mut expected, rect, Color::RED);
+        draw_rounded_rect(&mut actual, rect, 0, Color::RED);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn rounded_rectangle_outline_clips_to_framebuffer() {
+        let mut target = Framebuffer::new(5, 4, Color::BLACK).unwrap();
+        draw_rounded_rect(&mut target, Rect::new(3, 1, 8, 5), 2, Color::BLUE);
+        assert_eq!(target.get_pixel(3, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(4, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::BLUE));
+    }
+}
