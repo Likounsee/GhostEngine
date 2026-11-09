@@ -728,7 +728,6 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     }
 }
 
-
 /// Draws the outline of a rounded rectangle with clipped scanline endpoints.
 ///
 /// The radius is clamped to half the smaller dimension. Unlike drawing four
@@ -780,7 +779,6 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         }
     }
 }
-
 
 fn fill_circle_clipped(
     target: &mut Framebuffer,
