@@ -619,6 +619,36 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_caps_keep_butt_flat_and_extend_round_and_square() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(4.25, 5.25))
+            .line_to(Vector::new(10.25, 5.25));
+        let mut butt = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+        let mut round = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+        let mut square = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+
+        for (target, cap) in [
+            (&mut butt, StrokeCap::Butt),
+            (&mut round, StrokeCap::Round),
+            (&mut square, StrokeCap::Square),
+        ] {
+            super::stroke_path_aa(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(4.0).with_cap(cap),
+                Color::WHITE,
+                0.2,
+            )
+            .unwrap();
+        }
+
+        assert_eq!(butt.get_pixel(3, 5), Some(Color::BLACK));
+        assert!(round.get_pixel(3, 5).unwrap().r > 0);
+        assert!(square.get_pixel(3, 5).unwrap().r > 0);
+    }
+
+    #[test]
     fn antialiased_stroke_respects_clip_and_source_alpha() {
         let mut path = Path::new();
         path.move_to(Vector::new(3.0, 5.25))
