@@ -192,14 +192,51 @@ pub fn draw_texture_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
-    draw_texture_transformed_clipped(
-        target,
-        texture,
-        destination,
-        Transform2D::IDENTITY,
-        filter,
-        clip,
-    );
+    if destination.width == 0 || destination.height == 0 {
+        return;
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return;
+    };
+
+    // The common untransformed case does not need matrix inversion, corner
+    // transforms, or a per-pixel inverse transform. Keep source coordinates
+    // relative to the original destination so clipping never shifts sampling.
+    let destination_right = u64::from(destination.x) + u64::from(destination.width);
+    let destination_bottom = u64::from(destination.y) + u64::from(destination.height);
+    let clip_right = u64::from(clip.x) + u64::from(clip.width);
+    let clip_bottom = u64::from(clip.y) + u64::from(clip.height);
+    let first_x = u64::from(destination.x).max(u64::from(clip.x));
+    let first_y = u64::from(destination.y).max(u64::from(clip.y));
+    let end_x = destination_right.min(clip_right);
+    let end_y = destination_bottom.min(clip_bottom);
+    if first_x >= end_x || first_y >= end_y {
+        return;
+    }
+
+    let source_x_scale = texture.width as f32 / destination.width as f32;
+    let source_y_scale = texture.height as f32 / destination.height as f32;
+    for y in first_y..end_y {
+        let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
+        let Some(row) = target.row_mut(y as u32) else {
+            continue;
+        };
+        for x in first_x..end_x {
+            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+            let color = match filter {
+                TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
+                TextureFilter::Bilinear => {
+                    texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
+                }
+            };
+            let index = x as usize;
+            if color.a == 255 {
+                row[index] = color;
+            } else if color.a > 0 {
+                row[index] = color.blend_over(row[index]);
+            }
+        }
+    }
 }
 
 /// Draws a texture through an affine transform while preserving source sampling.
