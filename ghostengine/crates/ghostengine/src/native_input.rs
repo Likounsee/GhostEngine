@@ -168,6 +168,12 @@ impl NativeInputAdapter {
             return;
         }
 
+        if let Key::Character(value) = &event.logical_key {
+            if let Some(character) = value.chars().find(|character| character.is_ascii_alphanumeric()) {
+                self.frame.shortcut_keys.push(character.to_ascii_lowercase());
+            }
+        }
+
         // Some platform keyboard backends can report an unidentified physical
         // key while still providing its semantic meaning. Prefer the physical
         // mapping above, but retain editing/navigation through the logical key.

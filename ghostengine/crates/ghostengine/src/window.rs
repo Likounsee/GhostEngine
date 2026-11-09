@@ -57,6 +57,8 @@ pub struct InputState {
     pub alt_down: bool,
     /// Committed or composing text delivered by a platform text service.
     pub text_events: Vec<TextInputEvent>,
+    /// Printable key identities captured for configurable command shortcuts.
+    pub shortcut_keys: Vec<char>,
     /// Legacy printable-key fallback for the minifb adapter (limited layout support).
     pub pressed_characters: Vec<char>,
     pub backspace_pressed: bool,
@@ -222,6 +224,9 @@ impl WindowSurface {
         };
 
         for key in pressed {
+            if let Some(character) = key_to_character(key, input.shift_down) {
+                input.shortcut_keys.push(character.to_ascii_lowercase());
+            }
             match key {
                 Key::Backspace => input.backspace_pressed = true,
                 Key::Delete => input.delete_pressed = true,
@@ -274,17 +279,28 @@ impl WindowSurface {
 /// key mapping; it is not an AZERTY/QWERTY layout implementation.
 impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
+        let mut shortcut_events = ComponentEvents::default();
+        for key in &input.shortcut_keys {
+            if let Some(next) = self.activate_context_menu_shortcut(
+                *key, input.control_down, input.alt_down, input.shift_down,
+            ) {
+                merge_component_events(&mut shortcut_events, next);
+                break;
+            }
+        }
         if input.right_mouse_pressed {
             if let Some(pointer) = input.mouse_position {
                 self.open_context_menu_for_at(bounds, pointer);
             }
         }
-        let mut events = self.update_pointer(
+        let mut events = shortcut_events;
+        let pointer_events = self.update_pointer(
             bounds,
             input.mouse_position,
             input.left_mouse_pressed,
             input.left_mouse_released,
         );
+        merge_component_events(&mut events, pointer_events);
         if input.scroll_delta_y != 0 {
             if let Some(pointer) = input.mouse_position {
                 self.scroll_list_view_at(pointer, input.scroll_delta_y);

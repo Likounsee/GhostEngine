@@ -358,12 +358,39 @@ pub struct PlacedComponent {
     pub state: WidgetState,
 }
 
+/// Keyboard modifiers required to activate a context-menu command shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ContextMenuShortcut {
+    pub key: char,
+    pub control: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+impl ContextMenuShortcut {
+    #[must_use]
+    pub fn new(key: char) -> Self {
+        Self { key: key.to_ascii_lowercase(), ..Self::default() }
+    }
+
+    #[must_use]
+    pub fn with_control(mut self, enabled: bool) -> Self { self.control = enabled; self }
+
+    #[must_use]
+    pub fn with_alt(mut self, enabled: bool) -> Self { self.alt = enabled; self }
+
+    #[must_use]
+    pub fn with_shift(mut self, enabled: bool) -> Self { self.shift = enabled; self }
+}
+
 /// A selectable command displayed by a retained context menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextMenuItem {
     pub action: u64,
     pub label: String,
     pub enabled: bool,
+    /// Optional configurable keyboard shortcut for this command.
+    pub shortcut: Option<ContextMenuShortcut>,
     /// Child commands displayed in a submenu instead of activating this item.
     pub submenu: Vec<ContextMenuItem>,
 }
@@ -375,6 +402,7 @@ impl ContextMenuItem {
             action,
             label: label.into(),
             enabled: true,
+            shortcut: None,
             submenu: Vec::new(),
         }
     }
@@ -382,6 +410,13 @@ impl ContextMenuItem {
     #[must_use]
     pub fn with_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    /// Assigns a keyboard shortcut to this command.
+    #[must_use]
+    pub fn with_shortcut(mut self, shortcut: ContextMenuShortcut) -> Self {
+        self.shortcut = Some(shortcut);
         self
     }
 
@@ -1005,6 +1040,41 @@ impl ComponentTree {
     #[must_use]
     pub fn context_menu_is_open(&self) -> bool {
         self.context_menu_state.is_some()
+    }
+
+    pub(crate) fn activate_context_menu_shortcut(
+        &mut self,
+        key: char,
+        control: bool,
+        alt: bool,
+        shift: bool,
+    ) -> Option<ComponentEvents> {
+        let (items, target) = if let Some(state) = self.context_menu_state {
+            (&self.active_context_menu_items, state.target)
+        } else {
+            (&self.context_menu_items, None)
+        };
+        let matches = |item: &ContextMenuItem| {
+            item.enabled && item.shortcut.is_some_and(|shortcut| {
+                shortcut.key.eq_ignore_ascii_case(&key)
+                    && shortcut.control == control
+                    && shortcut.alt == alt
+                    && shortcut.shift == shift
+            })
+        };
+        let action = items.iter().find_map(|item| {
+            if matches(item) && item.submenu.is_empty() {
+                Some(item.action)
+            } else {
+                item.submenu.iter().find(|child| matches(child)).map(|child| child.action)
+            }
+        })?;
+        self.context_menu_state = None;
+        Some(ComponentEvents {
+            context_menu_action: Some(action),
+            context_menu_target: target,
+            ..ComponentEvents::default()
+        })
     }
 
     fn context_menu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
@@ -2152,7 +2222,8 @@ fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut Ui
 #[cfg(test)]
 mod tests {
     use super::{
-        ComponentId, ComponentKey, ComponentKind, ComponentTree, TextInputEvent, UiComponent,
+        ComponentId, ComponentKey, ComponentKind, ComponentTree, ContextMenuItem,
+        ContextMenuShortcut, TextInputEvent, UiComponent,
     };
     use crate::{Insets, LayoutDirection, LayoutItem, Point, Rect, StackLayout, WidgetState};
 
@@ -2839,6 +2910,31 @@ mod tests {
             }
         ));
         assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
+    }
+
+    #[test]
+    fn context_menu_shortcuts_match_modifiers_and_activate_submenu_commands() {
+        let child = ContextMenuItem::new(902, "Save as")
+            .with_shortcut(ContextMenuShortcut::new('s').with_control(true).with_shift(true));
+        let parent = ContextMenuItem::new(901, "File").with_submenu(vec![child]);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![parent]);
+
+        assert!(tree.activate_context_menu_shortcut('s', true, false, false).is_none());
+        let events = tree.activate_context_menu_shortcut('S', true, false, true).unwrap();
+        assert_eq!(events.context_menu_action, Some(902));
+        assert_eq!(events.context_menu_target, None);
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn disabled_context_menu_shortcuts_do_not_activate() {
+        let item = ContextMenuItem::new(903, "Unavailable")
+            .with_shortcut(ContextMenuShortcut::new('u').with_control(true))
+            .with_enabled(false);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![item]);
+        assert!(tree.activate_context_menu_shortcut('u', true, false, false).is_none());
     }
 
     #[test]
