@@ -364,6 +364,8 @@ pub struct ContextMenuItem {
     pub action: u64,
     pub label: String,
     pub enabled: bool,
+    /// Child commands displayed in a submenu instead of activating this item.
+    pub submenu: Vec<ContextMenuItem>,
 }
 
 impl ContextMenuItem {
@@ -373,6 +375,7 @@ impl ContextMenuItem {
             action,
             label: label.into(),
             enabled: true,
+            submenu: Vec::new(),
         }
     }
 
@@ -381,12 +384,21 @@ impl ContextMenuItem {
         self.enabled = enabled;
         self
     }
+
+    /// Adds commands opened as a submenu when this item is selected.
+    #[must_use]
+    pub fn with_submenu(mut self, items: Vec<ContextMenuItem>) -> Self {
+        self.submenu = items;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ContextMenuState {
     position: Point,
     selected: usize,
+    submenu_selected: usize,
+    submenu_open: bool,
     target: Option<ComponentId>,
 }
 
@@ -715,30 +727,46 @@ impl ComponentTree {
     ) -> ComponentEvents {
         self.layout(bounds);
         if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
-            let popup = self.context_menu_bounds(bounds, menu);
-            if popup.contains(point) {
+            let root = self.context_menu_bounds(bounds, menu);
+            let submenu = self.submenu_bounds(bounds, menu);
+            if menu.submenu_open && submenu.contains(point) {
                 let row =
-                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
-                if self
-                    .active_context_menu_items
+                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(submenu.y) / 28) as usize;
+                if self.active_context_menu_items[menu.selected]
+                    .submenu
                     .get(row)
                     .is_some_and(|item| item.enabled)
                 {
-                    menu.selected = row;
-                    self.context_menu_state = Some(menu);
+                    menu.submenu_selected = row;
                 }
+            } else if root.contains(point) {
+                let row =
+                    (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
+                if let Some(item) = self.active_context_menu_items.get(row) {
+                    if item.enabled {
+                        if menu.selected != row {
+                            menu.submenu_selected = 0;
+                        }
+                        menu.selected = row;
+                        menu.submenu_open = !item.submenu.is_empty();
+                    }
+                }
+            } else if !menu.submenu_open || !submenu.contains(point) {
+                menu.submenu_open = false;
             }
+            self.context_menu_state = Some(menu);
         }
         if released {
             if let (Some(point), Some(menu)) = (pointer, self.context_menu_state) {
-                let popup = self.context_menu_bounds(bounds, menu);
-                if popup.contains(point) {
+                let root = self.context_menu_bounds(bounds, menu);
+                let submenu = self.submenu_bounds(bounds, menu);
+                if menu.submenu_open && submenu.contains(point) {
                     let row =
-                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
-                    let action = self
-                        .active_context_menu_items
+                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(submenu.y) / 28) as usize;
+                    let action = self.active_context_menu_items[menu.selected]
+                        .submenu
                         .get(row)
-                        .filter(|item| item.enabled)
+                        .filter(|item| item.enabled && item.submenu.is_empty())
                         .map(|item| item.action);
                     self.context_menu_state = None;
                     return ComponentEvents {
@@ -746,6 +774,27 @@ impl ComponentTree {
                         context_menu_target: menu.target,
                         ..ComponentEvents::default()
                     };
+                }
+                if root.contains(point) {
+                    let row =
+                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
+                    if let Some(item) = self.active_context_menu_items.get(row) {
+                        if item.enabled && !item.submenu.is_empty() {
+                            let mut next = menu;
+                            next.selected = row;
+                            next.submenu_selected = 0;
+                            next.submenu_open = true;
+                            self.context_menu_state = Some(next);
+                            return ComponentEvents::default();
+                        }
+                        let action = item.enabled.then_some(item.action);
+                        self.context_menu_state = None;
+                        return ComponentEvents {
+                            context_menu_action: action,
+                            context_menu_target: menu.target,
+                            ..ComponentEvents::default()
+                        };
+                    }
                 }
                 self.context_menu_state = None;
             }
@@ -938,6 +987,8 @@ impl ComponentTree {
         self.context_menu_state = Some(ContextMenuState {
             position,
             selected,
+            submenu_selected: 0,
+            submenu_open: false,
             target,
         });
         true
@@ -965,6 +1016,29 @@ impl ComponentTree {
         let x = (state.position.x as i64).clamp(bounds.x as i64, max_x);
         let y = (state.position.y as i64).clamp(bounds.y as i64, max_y);
         Rect::new(x as u32, y as u32, width, height)
+    }
+
+    fn submenu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
+        let Some(item) = self.active_context_menu_items.get(state.selected) else {
+            return Rect::default();
+        };
+        let height = (item.submenu.len() as u32)
+            .saturating_mul(28)
+            .max(1)
+            .min(bounds.height.max(1));
+        let width = 192_u32.min(bounds.width.max(1));
+        let root = self.context_menu_bounds(bounds, state);
+        let right = root.x.saturating_add(root.width);
+        let x = if right.saturating_add(width) <= bounds.x.saturating_add(bounds.width) {
+            right
+        } else {
+            root.x.saturating_sub(width)
+        };
+        let max_y = bounds
+            .y
+            .saturating_add(bounds.height.saturating_sub(height)) as i64;
+        let y = (root.y as i64).clamp(bounds.y as i64, max_y);
+        Rect::new(x, y as u32, width, height)
     }
 
     fn render_context_menu(
@@ -999,10 +1073,15 @@ impl ComponentTree {
                 i32::try_from(row.x.saturating_add(10)),
                 i32::try_from(baseline),
             ) {
+                let label = if item.submenu.is_empty() {
+                    item.label.clone()
+                } else {
+                    format!("{}  >", item.label)
+                };
                 draw_label_clipped(
                     target,
                     font,
-                    &item.label,
+                    &label,
                     Point::new(x, y),
                     pixel_size,
                     if item.enabled {
@@ -1012,6 +1091,52 @@ impl ComponentTree {
                     },
                     row,
                 );
+            }
+        }
+
+        if state.submenu_open {
+            if let Some(item) = self.active_context_menu_items.get(state.selected) {
+                if !item.submenu.is_empty() {
+                    let submenu = self.submenu_bounds(bounds, state);
+                    draw_panel(target, submenu, 4, theme);
+                    for (index, child) in item.submenu.iter().enumerate() {
+                        let offset = (index as u32).saturating_mul(28);
+                        let row = Rect::new(
+                            submenu.x,
+                            submenu.y.saturating_add(offset),
+                            submenu.width,
+                            28.min(submenu.height.saturating_sub(offset)),
+                        );
+                        if row.height == 0 {
+                            continue;
+                        }
+                        if index == state.submenu_selected && child.enabled {
+                            fill_rect(target, row, theme.accent_hover);
+                        }
+                        let baseline = i64::from(row.y)
+                            + ((f64::from(row.height)
+                                + f64::from(font.line_height(pixel_size)) * 0.78)
+                                / 2.0) as i64;
+                        if let (Ok(x), Ok(y)) = (
+                            i32::try_from(row.x.saturating_add(10)),
+                            i32::try_from(baseline),
+                        ) {
+                            draw_label_clipped(
+                                target,
+                                font,
+                                &child.label,
+                                Point::new(x, y),
+                                pixel_size,
+                                if child.enabled {
+                                    theme.text
+                                } else {
+                                    theme.muted_text
+                                },
+                                row,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -1580,28 +1705,86 @@ impl ComponentTree {
                     return ComponentEvents::default();
                 }
                 ComponentKey::ArrowDown | ComponentKey::ArrowUp => {
-                    let count = self.active_context_menu_items.len();
-                    if count > 0 {
-                        for _ in 0..count {
-                            menu.selected = if key == ComponentKey::ArrowDown {
-                                (menu.selected + 1) % count
-                            } else {
-                                (menu.selected + count - 1) % count
-                            };
-                            if self.active_context_menu_items[menu.selected].enabled {
-                                break;
+                    if menu.submenu_open {
+                        let count = self.active_context_menu_items[menu.selected].submenu.len();
+                        if count > 0 {
+                            for _ in 0..count {
+                                menu.submenu_selected = if key == ComponentKey::ArrowDown {
+                                    (menu.submenu_selected + 1) % count
+                                } else {
+                                    (menu.submenu_selected + count - 1) % count
+                                };
+                                if self.active_context_menu_items[menu.selected].submenu
+                                    [menu.submenu_selected]
+                                    .enabled
+                                {
+                                    break;
+                                }
                             }
                         }
+                    } else {
+                        let count = self.active_context_menu_items.len();
+                        if count > 0 {
+                            for _ in 0..count {
+                                menu.selected = if key == ComponentKey::ArrowDown {
+                                    (menu.selected + 1) % count
+                                } else {
+                                    (menu.selected + count - 1) % count
+                                };
+                                if self.active_context_menu_items[menu.selected].enabled {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
+                ComponentKey::ArrowRight => {
+                    if self.active_context_menu_items[menu.selected].enabled
+                        && !self.active_context_menu_items[menu.selected].submenu.is_empty()
+                    {
+                        menu.submenu_open = true;
+                        menu.submenu_selected = self.active_context_menu_items[menu.selected]
+                            .submenu
+                            .iter()
+                            .position(|item| item.enabled)
+                            .unwrap_or(0);
                         self.context_menu_state = Some(menu);
                     }
                     return ComponentEvents::default();
                 }
+                ComponentKey::ArrowLeft => {
+                    menu.submenu_open = false;
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
                 ComponentKey::Enter | ComponentKey::Space => {
-                    let action = self
-                        .active_context_menu_items
-                        .get(menu.selected)
-                        .filter(|item| item.enabled)
-                        .map(|item| item.action);
+                    if menu.submenu_open {
+                        let action = self.active_context_menu_items[menu.selected]
+                            .submenu
+                            .get(menu.submenu_selected)
+                            .filter(|item| item.enabled && item.submenu.is_empty())
+                            .map(|item| item.action);
+                        self.context_menu_state = None;
+                        return ComponentEvents {
+                            context_menu_action: action,
+                            context_menu_target: menu.target,
+                            ..ComponentEvents::default()
+                        };
+                    }
+                    let item = &self.active_context_menu_items[menu.selected];
+                    if item.enabled && !item.submenu.is_empty() {
+                        menu.submenu_open = true;
+                        menu.submenu_selected = item
+                            .submenu
+                            .iter()
+                            .position(|child| child.enabled)
+                            .unwrap_or(0);
+                        self.context_menu_state = Some(menu);
+                        return ComponentEvents::default();
+                    }
+                    let action = item.enabled.then_some(item.action);
                     self.context_menu_state = None;
                     return ComponentEvents {
                         context_menu_action: action,
@@ -1998,6 +2181,34 @@ mod tests {
         let events = tree.handle_key(bounds, ComponentKey::Enter, false);
         assert_eq!(events.context_menu_action, Some(32));
         assert_eq!(events.context_menu_target, Some(ComponentId(3)));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_submenu_opens_and_activates_child_action() {
+        let bounds = Rect::new(0, 0, 400, 300);
+        let mut tree = sample_tree();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(40, "Open").with_submenu(vec![
+                ContextMenuItem::new(41, "Open in new tab"),
+                ContextMenuItem::new(42, "Open in new window").with_enabled(false),
+                ContextMenuItem::new(43, "Open in private window"),
+            ]),
+            ContextMenuItem::new(44, "Properties"),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(20, 20)));
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::ArrowRight, false)
+                .context_menu_action,
+            None
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::ArrowDown, false)
+                .context_menu_action,
+            None
+        );
+        let event = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(event.context_menu_action, Some(43));
         assert!(!tree.context_menu_is_open());
     }
 
