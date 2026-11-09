@@ -64,7 +64,7 @@ impl NativeInputAdapter {
                 self.frame.scroll_delta_y = self
                     .frame
                     .scroll_delta_y
-                    .saturating_add(clamp_coordinate(pixels));
+                    .saturating_add(clamp_coordinate(-pixels));
             }
             WindowEvent::MouseInput {
                 state,
