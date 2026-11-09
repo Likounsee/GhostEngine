@@ -342,9 +342,8 @@ pub fn fill_rect_linear_gradient(
         let row_position = if inverse_length_squared == 0.0 {
             0.0
         } else {
-            (((left as f32 + 0.5 - start.x) * dx
-                + (y as f32 + 0.5 - start.y) * dy)
-                * inverse_length_squared)
+            ((left as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
+                * inverse_length_squared
         };
         let Some(row) = target.row_mut(y) else {
             continue;
@@ -448,6 +447,9 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
     let length_squared = dx * dx + dy * dy;
     let mut visible = false;
     for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for x in left..right {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
@@ -460,7 +462,15 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
                 (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
                     .clamp(0.0, 1.0)
             };
-            paint_gradient_pixel(target, x, y, gradient.sample(position));
+            let color = gradient.sample(position);
+            let pixel = &mut row[x as usize];
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
+            } else {
+                color.blend_over(*pixel)
+            };
         }
     }
     visible
@@ -504,7 +514,11 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
         return false;
     };
     let mut visible = false;
+    let inverse_radius = radius.recip();
     for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for x in left..right {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
@@ -512,8 +526,16 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
             }
             visible = true;
             let position =
-                ((local.x - center.x).hypot(local.y - center.y) / radius).clamp(0.0, 1.0);
-            paint_gradient_pixel(target, x, y, gradient.sample(position));
+                (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
+            let color = gradient.sample(position.clamp(0.0, 1.0));
+            let pixel = &mut row[x as usize];
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
+            } else {
+                color.blend_over(*pixel)
+            };
         }
     }
     visible
