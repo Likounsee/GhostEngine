@@ -134,7 +134,14 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_quad(start, control, end, tolerance_squared, 0, &mut contour.points);
+                    flatten_quad(
+                        start,
+                        control,
+                        end,
+                        tolerance_squared,
+                        0,
+                        &mut contour.points,
+                    );
                 }
                 Command::CubicTo(c1, c2, end) => {
                     validate(c1)?;
@@ -147,7 +154,15 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_cubic(start, c1, c2, end, tolerance_squared, 0, &mut contour.points);
+                    flatten_cubic(
+                        start,
+                        c1,
+                        c2,
+                        end,
+                        tolerance_squared,
+                        0,
+                        &mut contour.points,
+                    );
                 }
                 Command::Close => {
                     let index = current.ok_or(PathError::MissingCurrentPoint)?;
