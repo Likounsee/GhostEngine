@@ -96,17 +96,52 @@ impl Texture {
         let y1 = (y0 + 1).min(self.height - 1);
         let tx = x - x0 as f32;
         let ty = y - y0 as f32;
-        let top = interpolate_premultiplied(
-            self.get_pixel(x0, y0).unwrap_or(Color::TRANSPARENT),
-            self.get_pixel(x1, y0).unwrap_or(Color::TRANSPARENT),
-            tx,
-        );
-        let bottom = interpolate_premultiplied(
-            self.get_pixel(x0, y1).unwrap_or(Color::TRANSPARENT),
-            self.get_pixel(x1, y1).unwrap_or(Color::TRANSPARENT),
-            tx,
-        );
-        interpolate_premultiplied(top, bottom, ty)
+
+        // Fetch directly from the validated row-major storage. The coordinates
+        // have already been clamped, so four Option-based get_pixel calls are
+        // unnecessary in this inner loop.
+        let width = self.width as usize;
+        let top_left = self.pixels[y0 as usize * width + x0 as usize];
+        let top_right = self.pixels[y0 as usize * width + x1 as usize];
+        let bottom_left = self.pixels[y1 as usize * width + x0 as usize];
+        let bottom_right = self.pixels[y1 as usize * width + x1 as usize];
+
+        // Bilinear interpolation is linear, so combine all four premultiplied
+        // samples and unpremultiply once instead of doing three intermediate
+        // color conversions and roundings.
+        let one_minus_x = 1.0 - tx;
+        let one_minus_y = 1.0 - ty;
+        let weights = [
+            one_minus_x * one_minus_y,
+            tx * one_minus_y,
+            one_minus_x * ty,
+            tx * ty,
+        ];
+        let samples = [top_left, top_right, bottom_left, bottom_right];
+        let mut alpha = 0.0_f32;
+        let mut red = 0.0_f32;
+        let mut green = 0.0_f32;
+        let mut blue = 0.0_f32;
+
+        for (sample, weight) in samples.into_iter().zip(weights) {
+            let weighted_alpha = f32::from(sample.a) * weight;
+            alpha += weighted_alpha;
+            red += f32::from(sample.r) * weighted_alpha;
+            green += f32::from(sample.g) * weighted_alpha;
+            blue += f32::from(sample.b) * weighted_alpha;
+        }
+
+        if alpha <= f32::EPSILON {
+            return Color::TRANSPARENT;
+        }
+
+        let channel = |value: f32| (value / alpha).round().clamp(0.0, 255.0) as u8;
+        Color::rgba(
+            channel(red),
+            channel(green),
+            channel(blue),
+            alpha.round().clamp(0.0, 255.0) as u8,
+        )
     }
 }
 
