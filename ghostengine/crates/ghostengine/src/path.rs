@@ -307,32 +307,39 @@ pub fn fill_transformed_path_even_odd_clipped(
         return Ok(());
     }
 
-    let min_y = contours
+    let edges = contours
         .iter()
-        .flat_map(|c| c.iter().map(|p| p.y))
+        .flat_map(|contour| {
+            (0..contour.len()).filter_map(move |index| {
+                FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
+            })
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return Ok(());
+    }
+
+    let min_y = edges
+        .iter()
+        .map(|edge| edge.min_y)
         .fold(f32::INFINITY, f32::min)
         .floor()
         .max(clip.y as f32)
         .min(clip_bottom as f32) as u32;
-    let max_y = contours
+    let max_y = edges
         .iter()
-        .flat_map(|c| c.iter().map(|p| p.y))
+        .map(|edge| edge.max_y)
         .fold(f32::NEG_INFINITY, f32::max)
         .ceil()
         .max(clip.y as f32)
         .min(clip_bottom as f32) as u32;
-    let mut intersections = Vec::new();
+    let mut intersections = Vec::with_capacity(edges.len());
     for y in min_y..max_y {
         intersections.clear();
         let scan = y as f32 + 0.5;
-        for contour in &contours {
-            for i in 0..contour.len() {
-                let a = contour[i];
-                let b = contour[(i + 1) % contour.len()];
-                if (a.y <= scan && scan < b.y) || (b.y <= scan && scan < a.y) {
-                    let t = (scan - a.y) / (b.y - a.y);
-                    intersections.push(a.x + t * (b.x - a.x));
-                }
+        for &edge in &edges {
+            if edge.crosses(scan) {
+                intersections.push(edge.x_at(scan));
             }
         }
         intersections.sort_by(f32::total_cmp);
