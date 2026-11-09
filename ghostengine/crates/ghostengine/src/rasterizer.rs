@@ -135,6 +135,13 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         return;
     };
 
+    // Integer-aligned opaque horizontal and vertical strokes have full
+    // coverage. Reuse the span/column path and skip floating-point Wu sampling.
+    if color.a == u8::MAX && (y0 == y1 || x0 == x1) {
+        draw_line(target, start, end, color);
+        return;
+    }
+
     let steep = (y1 - y0).abs() > (x1 - x0).abs();
     if steep {
         core::mem::swap(&mut x0, &mut y0);
