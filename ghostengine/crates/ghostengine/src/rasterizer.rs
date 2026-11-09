@@ -1907,6 +1907,31 @@ mod clipping_tests {
     }
 
     #[test]
+    fn optimized_rectangle_blending_matches_per_pixel_source_over() {
+        let backgrounds = [
+            Color::TRANSPARENT,
+            Color::rgba(20, 40, 60, 1),
+            Color::rgba(90, 130, 170, 127),
+            Color::rgba(200, 100, 50, 254),
+            Color::WHITE,
+        ];
+        for alpha in [1, 17, 64, 128, 200, 254] {
+            let source = Color::rgba(231, 73, 149, alpha);
+            let mut actual = Framebuffer::new(5, backgrounds.len() as u32, Color::BLACK).unwrap();
+            let mut expected = actual.clone();
+            for (y, background) in backgrounds.iter().copied().enumerate() {
+                for x in 0..5 {
+                    actual.set_pixel(x, y as u32, background);
+                    expected.set_pixel(x, y as u32, source.blend_over(background));
+                }
+            }
+
+            super::blend_rect(&mut actual, Rect::new(0, 0, 5, backgrounds.len() as u32), source);
+            assert_eq!(actual, expected, "source alpha {alpha}");
+        }
+    }
+
+    #[test]
     fn clipped_fill_respects_both_shape_and_viewport() {
         let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
         fill_rect_clipped(
