@@ -772,7 +772,8 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             for intersections in &scanline_intersections {
                 for offset_x in OFFSETS {
                     let sample_x = f64::from(x) + offset_x;
-                    let first_after = intersections.partition_point(|crossing| *crossing <= sample_x);
+                    let first_after =
+                        intersections.partition_point(|crossing| *crossing <= sample_x);
                     let inside = (intersections.len() - first_after) % 2 == 1;
                     covered += u16::from(inside);
                 }
