@@ -1233,7 +1233,7 @@ mod tests {
             .filter_map(|(x, y)| image.get_pixel(x, y))
             .collect::<Vec<_>>();
         assert!(pixels.iter().any(|pixel| pixel.a > 0 && pixel.a < 255));
-        assert!(pixels.iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(pixels.contains(&Color::WHITE));
     }
 
     #[test]
