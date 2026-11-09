@@ -194,7 +194,7 @@ mod tests {
                 for px in 0..6 {
                     let seed = (index as u8)
                         .wrapping_mul(47)
-                        .wrapping_add((py * 6 + px) as u8 * 19);
+                        .wrapping_add(((py * 6 + px) as u8).wrapping_mul(19));
                     let alpha = match (px + py + index as u32) % 4 {
                         0 => 0,
                         1 => 96,
