@@ -2192,6 +2192,7 @@ mod tests {
 
     #[test]
     fn context_menu_submenu_opens_and_activates_child_action() {
+        use super::ContextMenuItem;
         let bounds = Rect::new(0, 0, 400, 300);
         let mut tree = sample_tree();
         tree.set_context_menu(vec![
