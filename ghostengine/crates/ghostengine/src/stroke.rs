@@ -182,7 +182,9 @@ fn stroke_path_impl(
 
         return Err(StrokeError::InvalidWidth);
     }
-    if style.join == StrokeJoin::Miter && (!style.miter_limit.is_finite() || style.miter_limit < 1.0) {
+    if style.join == StrokeJoin::Miter
+        && (!style.miter_limit.is_finite() || style.miter_limit < 1.0)
+    {
         return Err(StrokeError::InvalidWidth);
     }
     if !transform.is_finite() {
@@ -259,17 +261,25 @@ fn stroke_path_impl(
                                 let b = contour.points[(i + 1) % contour.points.len()];
                                 let first = !contour.closed && i == 0;
                                 let last = !contour.closed && i + 1 == segment_count;
-                                let cap = if first || last { style.cap } else { StrokeCap::Butt };
-                                distance = distance.min(segment_distance(
-                                    sample, a, b, first, last, cap, radius,
-                                ));
+                                let cap = if first || last {
+                                    style.cap
+                                } else {
+                                    StrokeCap::Butt
+                                };
+                                distance = distance
+                                    .min(segment_distance(sample, a, b, first, last, cap, radius));
                             }
                             if style.join != StrokeJoin::Round {
                                 for vertex_index in 0..join_count(&contour.points, contour.closed) {
                                     let (previous, vertex, next) =
                                         join_points(&contour.points, contour.closed, vertex_index);
                                     if join_contains(
-                                        sample, previous, vertex, next, style.join, radius,
+                                        sample,
+                                        previous,
+                                        vertex,
+                                        next,
+                                        style.join,
+                                        radius,
                                         style.miter_limit,
                                     ) {
                                         distance = 0.0;
@@ -291,17 +301,25 @@ fn stroke_path_impl(
                         let b = contour.points[(i + 1) % contour.points.len()];
                         let first = !contour.closed && i == 0;
                         let last = !contour.closed && i + 1 == segment_count;
-                        let cap = if first || last { style.cap } else { StrokeCap::Butt };
-                        distance = distance.min(segment_distance(
-                            sample, a, b, first, last, cap, radius,
-                        ));
+                        let cap = if first || last {
+                            style.cap
+                        } else {
+                            StrokeCap::Butt
+                        };
+                        distance =
+                            distance.min(segment_distance(sample, a, b, first, last, cap, radius));
                     }
                     if style.join != StrokeJoin::Round {
                         for vertex_index in 0..join_count(&contour.points, contour.closed) {
                             let (previous, vertex, next) =
                                 join_points(&contour.points, contour.closed, vertex_index);
                             if join_contains(
-                                sample, previous, vertex, next, style.join, radius,
+                                sample,
+                                previous,
+                                vertex,
+                                next,
+                                style.join,
+                                radius,
                                 style.miter_limit,
                             ) {
                                 distance = 0.0;
@@ -326,7 +344,11 @@ fn stroke_path_impl(
 }
 
 fn join_count(points: &[Vector], closed: bool) -> usize {
-    if closed { points.len() } else { points.len().saturating_sub(2) }
+    if closed {
+        points.len()
+    } else {
+        points.len().saturating_sub(2)
+    }
 }
 
 fn join_points(points: &[Vector], closed: bool, index: usize) -> (Vector, Vector, Vector) {
@@ -453,7 +475,9 @@ fn segment_distance(
 
 #[cfg(test)]
 mod tests {
-    use super::{stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle};
+    use super::{
+        stroke_path, stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle,
+    };
     use crate::{Color, Framebuffer, Path, Rect, Transform2D, Vector};
 
     fn line() -> Path {
@@ -629,7 +653,8 @@ mod tests {
             StrokeStyle::new(6.0).with_join(StrokeJoin::Bevel),
             Color::WHITE,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(fb.get_pixel(12, 12).unwrap() == Color::BLACK);
         assert!(fb.get_pixel(10, 12).unwrap() == Color::WHITE);
     }
