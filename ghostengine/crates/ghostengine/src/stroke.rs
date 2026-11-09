@@ -275,22 +275,20 @@ fn stroke_path_impl(
                                 distance = distance
                                     .min(segment_distance(sample, a, b, first, last, cap, radius));
                             }
-                            if style.join != StrokeJoin::Round {
-                                for vertex_index in 0..join_count(&contour.points, contour.closed) {
-                                    let (previous, vertex, next) =
-                                        join_points(&contour.points, contour.closed, vertex_index);
-                                    if join_contains(
-                                        sample,
-                                        previous,
-                                        vertex,
-                                        next,
-                                        style.join,
-                                        radius,
-                                        style.miter_limit,
-                                    ) {
-                                        distance = 0.0;
-                                        break;
-                                    }
+                            for vertex_index in 0..join_count(&contour.points, contour.closed) {
+                                let (previous, vertex, next) =
+                                    join_points(&contour.points, contour.closed, vertex_index);
+                                if join_contains(
+                                    sample,
+                                    previous,
+                                    vertex,
+                                    next,
+                                    style.join,
+                                    radius,
+                                    style.miter_limit,
+                                ) {
+                                    distance = 0.0;
+                                    break;
                                 }
                             }
                             if distance <= radius {
@@ -315,22 +313,20 @@ fn stroke_path_impl(
                         distance =
                             distance.min(segment_distance(sample, a, b, first, last, cap, radius));
                     }
-                    if style.join != StrokeJoin::Round {
-                        for vertex_index in 0..join_count(&contour.points, contour.closed) {
-                            let (previous, vertex, next) =
-                                join_points(&contour.points, contour.closed, vertex_index);
-                            if join_contains(
-                                sample,
-                                previous,
-                                vertex,
-                                next,
-                                style.join,
-                                radius,
-                                style.miter_limit,
-                            ) {
-                                distance = 0.0;
-                                break;
-                            }
+                    for vertex_index in 0..join_count(&contour.points, contour.closed) {
+                        let (previous, vertex, next) =
+                            join_points(&contour.points, contour.closed, vertex_index);
+                        if join_contains(
+                            sample,
+                            previous,
+                            vertex,
+                            next,
+                            style.join,
+                            radius,
+                            style.miter_limit,
+                        ) {
+                            distance = 0.0;
+                            break;
                         }
                     }
                     // Legacy pixel-center coverage keeps the existing stroke appearance.
@@ -379,6 +375,9 @@ fn join_contains(
     radius: f32,
     miter_limit: f32,
 ) -> bool {
+    if join == StrokeJoin::Round {
+        return (sample.x - vertex.x).hypot(sample.y - vertex.y) <= radius;
+    }
     let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
     let outgoing = Vector::new(next.x - vertex.x, next.y - vertex.y);
     let in_length = incoming.x.hypot(incoming.y);
@@ -654,6 +653,21 @@ mod tests {
             .line_to(Vector::new(10.0, 10.0))
             .line_to(Vector::new(10.0, 3.0));
         path
+    }
+
+    #[test]
+    fn round_join_fills_outer_corner_with_circular_coverage() {
+        let mut fb = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        stroke_path(
+            &mut fb,
+            &corner_path(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(6.0).with_join(StrokeJoin::Round),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
+        assert_eq!(fb.get_pixel(12, 12), Some(Color::WHITE));
     }
 
     #[test]
