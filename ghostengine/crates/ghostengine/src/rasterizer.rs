@@ -677,8 +677,12 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 }
 
 /// Fills a rounded rectangle; radius is clamped to half its smaller dimension.
+/// Fills a rounded rectangle with clipped horizontal scanline spans.
+///
+/// The radius is clamped to half the smaller dimension. A zero radius is
+/// equivalent to a regular rectangle fill.
 pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
-    if rect.width == 0 || rect.height == 0 {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
     let radius = radius.min(rect.width / 2).min(rect.height / 2);
@@ -686,56 +690,44 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
         fill_rect(target, rect, color);
         return;
     }
-    fill_rect(
-        target,
-        Rect::new(
-            rect.x.saturating_add(radius),
-            rect.y,
-            rect.width - radius * 2,
-            rect.height,
-        ),
-        color,
-    );
-    fill_rect(
-        target,
-        Rect::new(
-            rect.x,
-            rect.y.saturating_add(radius),
-            rect.width,
-            rect.height - radius * 2,
-        ),
-        color,
-    );
 
-    let Some(lx) = rect.x.checked_add(radius) else {
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width) - 1;
+    let bottom = top + i64::from(rect.height) - 1;
+    let radius = i64::from(radius);
+    let left_center = left + radius;
+    let right_center = right - radius;
+    let top_center = top + radius;
+    let bottom_center = bottom - radius;
+    let first_y = top.max(0);
+    let last_y = bottom.min(i64::from(target.height()) - 1);
+    if first_y > last_y {
         return;
-    };
-    let Some(rx) = rect.x.checked_add(rect.width - radius - 1) else {
-        return;
-    };
-    let Some(ty) = rect.y.checked_add(radius) else {
-        return;
-    };
-    let Some(by) = rect.y.checked_add(rect.height - radius - 1) else {
-        return;
-    };
-    let (Ok(lx), Ok(rx), Ok(ty), Ok(by)) = (
-        i32::try_from(lx),
-        i32::try_from(rx),
-        i32::try_from(ty),
-        i32::try_from(by),
-    ) else {
-        return;
-    };
-    for center in [
-        Point::new(lx, ty),
-        Point::new(rx, ty),
-        Point::new(lx, by),
-        Point::new(rx, by),
-    ] {
-        fill_circle_clipped(target, center, radius, rect, color);
+    }
+
+    let radius_squared = (radius as u128) * (radius as u128);
+    let framebuffer_right = i64::from(target.width()) - 1;
+    for y in first_y..=last_y {
+        let dy = if y < top_center {
+            top_center - y
+        } else if y > bottom_center {
+            y - bottom_center
+        } else {
+            0
+        };
+        let extent = integer_sqrt(radius_squared - (dy as u128) * (dy as u128)) as i64;
+        let first_x = (left_center - extent).max(0);
+        let last_x = (right_center + extent).min(framebuffer_right);
+        if first_x > last_x {
+            continue;
+        }
+        if let Some(row) = target.row_mut(y as u32) {
+            row[first_x as usize..=last_x as usize].fill(color);
+        }
     }
 }
+
 
 /// Draws the outline of a rounded rectangle with clipped scanline endpoints.
 ///
@@ -789,57 +781,6 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     }
 }
 
-
-/// Fills a rounded rectangle using clipped horizontal scanline spans.
-///
-/// The radius is clamped to half the smaller dimension. A zero radius is
-/// equivalent to a regular rectangle fill.
-pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
-    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
-        return;
-    }
-    let radius = radius.min(rect.width / 2).min(rect.height / 2);
-    if radius == 0 {
-        fill_rect(target, rect, color);
-        return;
-    }
-
-    let left = i64::from(rect.x);
-    let top = i64::from(rect.y);
-    let right = left + i64::from(rect.width) - 1;
-    let bottom = top + i64::from(rect.height) - 1;
-    let radius = i64::from(radius);
-    let left_center = left + radius;
-    let right_center = right - radius;
-    let top_center = top + radius;
-    let bottom_center = bottom - radius;
-    let first_y = top.max(0);
-    let last_y = bottom.min(i64::from(target.height()) - 1);
-    if first_y > last_y {
-        return;
-    }
-
-    let radius_squared = (radius as u128) * (radius as u128);
-    let framebuffer_right = i64::from(target.width()) - 1;
-    for y in first_y..=last_y {
-        let dy = if y < top_center {
-            top_center - y
-        } else if y > bottom_center {
-            y - bottom_center
-        } else {
-            0
-        };
-        let extent = integer_sqrt(radius_squared - (dy as u128) * (dy as u128)) as i64;
-        let first_x = (left_center - extent).max(0);
-        let last_x = (right_center + extent).min(framebuffer_right);
-        if first_x > last_x {
-            continue;
-        }
-        if let Some(row) = target.row_mut(y as u32) {
-            row[first_x as usize..=last_x as usize].fill(color);
-        }
-    }
-}
 
 fn fill_circle_clipped(
     target: &mut Framebuffer,
