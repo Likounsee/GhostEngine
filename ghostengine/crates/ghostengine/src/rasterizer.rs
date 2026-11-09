@@ -983,23 +983,40 @@ pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, col
     let (bx, by) = (i128::from(b.x) * 2, i128::from(b.y) * 2);
     let (cx, cy) = (i128::from(c.x) * 2, i128::from(c.y) * 2);
 
+    // Edge functions are linear across the pixel grid. Step their values
+    // incrementally instead of multiplying coordinates three times per pixel.
+    let px_start = i128::from(min_x) * 2 + 1;
+    let py_start = i128::from(min_y) * 2 + 1;
+    let step_x0 = 2 * (by - ay);
+    let step_x1 = 2 * (cy - by);
+    let step_x2 = 2 * (ay - cy);
+    let step_y0 = -2 * (bx - ax);
+    let step_y1 = -2 * (cx - bx);
+    let step_y2 = -2 * (ax - cx);
+    let (mut row_e0, mut row_e1, mut row_e2) = (
+        edge_doubled(ax, ay, bx, by, px_start, py_start),
+        edge_doubled(bx, by, cx, cy, px_start, py_start),
+        edge_doubled(cx, cy, ax, ay, px_start, py_start),
+    );
+
     for y in min_y..=max_y {
-        let py = i128::from(y) * 2 + 1;
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
-        for x in min_x..=max_x {
-            let px = i128::from(x) * 2 + 1;
-            let e0 = edge_doubled(ax, ay, bx, by, px, py);
-            let e1 = edge_doubled(bx, by, cx, cy, px, py);
-            let e2 = edge_doubled(cx, cy, ax, ay, px, py);
-            if (e0 > 0 || (e0 == 0 && tl_ab))
-                && (e1 > 0 || (e1 == 0 && tl_bc))
-                && (e2 > 0 || (e2 == 0 && tl_ca))
-            {
-                row[x as usize] = color;
+        if let Some(row) = target.row_mut(y) {
+            let (mut e0, mut e1, mut e2) = (row_e0, row_e1, row_e2);
+            for x in min_x..=max_x {
+                if (e0 > 0 || (e0 == 0 && tl_ab))
+                    && (e1 > 0 || (e1 == 0 && tl_bc))
+                    && (e2 > 0 || (e2 == 0 && tl_ca))
+                {
+                    row[x as usize] = color;
+                }
+                e0 += step_x0;
+                e1 += step_x1;
+                e2 += step_x2;
             }
         }
+        row_e0 += step_y0;
+        row_e1 += step_y1;
+        row_e2 += step_y2;
     }
 }
 
