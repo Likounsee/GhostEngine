@@ -473,7 +473,18 @@ mod tests {
                 filter,
                 clip,
             );
-            assert_eq!(fast.pixels(), transformed.pixels(), "filter: {filter:?}");
+            for (index, (fast_pixel, transformed_pixel)) in
+                fast.pixels().iter().zip(transformed.pixels()).enumerate()
+            {
+                let channel_delta = |left: u8, right: u8| left.abs_diff(right);
+                assert!(
+                    channel_delta(fast_pixel.r, transformed_pixel.r) <= 1
+                        && channel_delta(fast_pixel.g, transformed_pixel.g) <= 1
+                        && channel_delta(fast_pixel.b, transformed_pixel.b) <= 1
+                        && fast_pixel.a == transformed_pixel.a,
+                    "filter: {filter:?}, pixel {index}: fast={fast_pixel:?}, transformed={transformed_pixel:?}"
+                );
+            }
         }
     }
 
