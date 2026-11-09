@@ -121,6 +121,7 @@ impl WindowSurface {
             height,
             presentation_buffer,
             previous_left_mouse_down: false,
+            previous_right_mouse_down: false,
         })
     }
 
@@ -399,6 +400,9 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
     }
     if next.focus_changed.is_some() {
         target.focus_changed = next.focus_changed;
+    }
+    if next.context_menu_action.is_some() {
+        target.context_menu_action = next.context_menu_action;
     }
 }
 
