@@ -1701,6 +1701,25 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_ellipse_outline_blends_partial_coverage_over_existing_pixels() {
+        let mut image = target(19, 15);
+        fill_rect(&mut image, Rect::new(0, 0, 19, 15), Color::BLUE);
+        draw_ellipse_aa(
+            &mut image,
+            Point::new(9, 7),
+            6,
+            4,
+            Color::rgba(255, 0, 0, 192),
+        );
+
+        assert_eq!(image.get_pixel(9, 7), Some(Color::BLUE));
+        assert!(image.pixels().iter().any(|pixel| {
+            pixel.r > 0 && pixel.b > 0 && pixel.r < 255 && pixel.b < 255
+        }));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLUE));
+    }
+
+    #[test]
     fn antialiased_ellipse_outline_handles_degenerate_radii() {
         let mut expected = target(9, 7);
         let mut actual = target(9, 7);
