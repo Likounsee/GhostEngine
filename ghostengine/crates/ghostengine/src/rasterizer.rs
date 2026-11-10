@@ -1224,6 +1224,87 @@ pub fn fill_ellipse_aa(
     }
 }
 
+/// Draws a one-pixel anti-aliased ellipse outline using 4x4 coverage sampling.
+pub fn draw_ellipse_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if radius_x == 0 || radius_y == 0 {
+        let rx = i64::from(radius_x);
+        let ry = i64::from(radius_y);
+        let start = Point::new(
+            (i64::from(center.x) - rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) - ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        let end = Point::new(
+            (i64::from(center.x) + rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) + ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        draw_line_aa(target, start, end, color);
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let rx = f64::from(radius_x);
+    let ry = f64::from(radius_y);
+    let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+    let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+    let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let inverse_rx_squared = 1.0 / (rx * rx);
+    let inverse_ry_squared = 1.0 / (ry * ry);
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = f64::from(y) + offset_y - cy;
+                let normalized_y = dy * dy * inverse_ry_squared;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    let normalized_x = dx * dx * inverse_rx_squared;
+                    let radius = (normalized_x + normalized_y).sqrt();
+                    if radius == 0.0 {
+                        continue;
+                    }
+                    let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
+                        + dy * dy * inverse_ry_squared * inverse_ry_squared)
+                        .sqrt()
+                        / radius;
+                    let distance = (radius - 1.0) / gradient.max(f64::EPSILON);
+                    if distance.abs() <= 0.5 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
 /// Fills a circle with anti-aliased edge coverage.
 pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     fill_ellipse_aa(target, center, radius, radius, color);
@@ -1358,7 +1439,7 @@ fn integer_sqrt(value: u128) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_pixel, draw_circle, draw_ellipse, draw_line, draw_line_aa, draw_pixel, draw_polygon,
+        blend_pixel, draw_circle, draw_ellipse, draw_ellipse_aa, draw_line, draw_line_aa, draw_pixel, draw_polygon,
         draw_rect, fill_circle, fill_circle_aa, fill_ellipse, fill_ellipse_aa, fill_polygon,
         fill_polygon_aa, fill_rect, fill_rounded_rect, fill_triangle,
     };
@@ -1603,6 +1684,39 @@ mod tests {
             .iter()
             .any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_draws_edges_without_filling_center() {
+        let mut image = target(17, 13);
+        draw_ellipse_aa(&mut image, Point::new(8, 6), 5, 3, Color::WHITE);
+
+        assert_eq!(image.get_pixel(8, 6), Some(Color::BLACK));
+        assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(image.pixels().iter().any(|pixel| {
+            pixel.r > 0 && pixel.r < 255 && pixel.g == pixel.r && pixel.b == pixel.r
+        }));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_handles_degenerate_radii() {
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(&mut expected, Point::new(2, 3), Point::new(6, 3), Color::GREEN);
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 2, 0, Color::GREEN);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_is_clipped_and_respects_transparency() {
+        let mut image = target(5, 4);
+        draw_ellipse_aa(&mut image, Point::new(0, 1), 4, 3, Color::rgba(255, 0, 0, 0));
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+
+        draw_ellipse_aa(&mut image, Point::new(0, 1), 4, 3, Color::BLUE);
+        assert!(image.pixels().iter().any(|pixel| *pixel == Color::BLUE));
+        assert_eq!(image.pixels().len(), 20);
     }
 
     #[test]
