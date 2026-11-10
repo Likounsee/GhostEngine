@@ -766,14 +766,12 @@ pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
 ///
 /// The rectangle uses half-open bounds, clamps the corner radius to its dimensions,
 /// clips work to the framebuffer, and composites translucent coverage source-over.
-pub fn fill_rounded_rect_aa(
-    target: &mut Framebuffer,
-    rect: Rect,
-    radius: u32,
-    color: Color,
-) {
-    if rect.width == 0 || rect.height == 0 || color.a == 0
-        || target.width() == 0 || target.height() == 0
+pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0
+        || rect.height == 0
+        || color.a == 0
+        || target.width() == 0
+        || target.height() == 0
     {
         return;
     }
@@ -800,7 +798,9 @@ pub fn fill_rounded_rect_aa(
     let inner_height = half_height - corner_radius;
 
     for y in clip_top..clip_bottom {
-        let Some(row) = target.row_mut(y) else { continue; };
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for x in clip_left..clip_right {
             let mut covered = 0_u16;
             for offset_y in SAMPLE_OFFSETS {
@@ -811,16 +811,20 @@ pub fn fill_rounded_rect_aa(
                     let qy = py.abs() - inner_height;
                     let outside_x = qx.max(0.0);
                     let outside_y = qy.max(0.0);
-                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0)
-                        - corner_radius;
-                    if distance <= 0.0 { covered += 1; }
+                    let distance =
+                        outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+                    if distance <= 0.0 {
+                        covered += 1;
+                    }
                 }
             }
-            if covered == 0 { continue; }
+            if covered == 0 {
+                continue;
+            }
             let alpha = (u16::from(color.a) * covered / 16) as u8;
             if alpha != 0 {
-                row[x as usize] = Color::rgba(color.r, color.g, color.b, alpha)
-                    .blend_over(row[x as usize]);
+                row[x as usize] =
+                    Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
             }
         }
     }
@@ -2974,7 +2978,10 @@ mod rounded_rectangle_aa_fill_tests {
         super::fill_rounded_rect_aa(&mut target, Rect::new(2, 2, 8, 6), 3, Color::WHITE);
         assert_eq!(target.get_pixel(5, 4), Some(Color::WHITE));
         assert_eq!(target.get_pixel(2, 2), Some(Color::BLACK));
-        assert!(target.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
     }
 
     #[test]
@@ -2987,7 +2994,10 @@ mod rounded_rectangle_aa_fill_tests {
             Color::rgba(20, 180, 90, 128),
         );
         assert!(target.pixels().iter().any(|pixel| pixel.g > 0));
-        assert!(target.pixels().iter().any(|pixel| pixel.g > 0 && pixel.g < 180));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.g > 0 && pixel.g < 180));
         let before = target.clone();
         super::fill_rounded_rect_aa(&mut target, Rect::new(0, 0, 5, 5), 2, Color::TRANSPARENT);
         assert_eq!(target, before);
