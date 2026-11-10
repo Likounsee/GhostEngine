@@ -811,8 +811,7 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
                     let qy = py.abs() - inner_height;
                     let outside_x = qx.max(0.0);
                     let outside_y = qy.max(0.0);
-                    let distance =
-                        outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
                     if distance <= 0.0 {
                         covered += 1;
                     }
