@@ -1907,7 +1907,7 @@ mod tests {
             .pixels()
             .iter()
             .any(|pixel| pixel.r > 0 && pixel.r < 255));
-        assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(image.pixels().contains(&Color::WHITE));
     }
 
     #[test]
