@@ -800,6 +800,23 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
                 }
             }
         }
+    } else {
+        // When the corner arcs meet (for example, a 2x2 rectangle), there
+        // is no straight top or bottom segment. Keep the complete tiny
+        // perimeter rather than dropping its only scanlines.
+        for y in [top, bottom] {
+            if y >= 0 && y < i64::from(target.height()) {
+                if let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) {
+                    let first_x = first_x.max(0);
+                    let last_x = last_x.min(framebuffer_right);
+                    if first_x <= last_x {
+                        if let Some(row) = target.row_mut(y as u32) {
+                            row[first_x as usize..=last_x as usize].fill(color);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let first_y = (top + 1).max(0);
@@ -2206,7 +2223,7 @@ mod rounded_outline_tests {
     fn rounded_rectangle_outline_clips_to_framebuffer() {
         let mut target = Framebuffer::new(5, 4, Color::BLACK).unwrap();
         draw_rounded_rect(&mut target, Rect::new(3, 1, 8, 5), 2, Color::BLUE);
-        assert_eq!(target.get_pixel(3, 2), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(3, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 3), Some(Color::BLUE));
     }
