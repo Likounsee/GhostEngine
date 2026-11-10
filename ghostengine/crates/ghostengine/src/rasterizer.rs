@@ -762,6 +762,70 @@ pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
     }
 }
 
+/// Fills a rounded rectangle with 4x4 supersampled edge coverage.
+///
+/// The rectangle uses half-open bounds, clamps the corner radius to its dimensions,
+/// clips work to the framebuffer, and composites translucent coverage source-over.
+pub fn fill_rounded_rect_aa(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+) {
+    if rect.width == 0 || rect.height == 0 || color.a == 0
+        || target.width() == 0 || target.height() == 0
+    {
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width);
+    let bottom = top + i64::from(rect.height);
+    let clip_left = left.saturating_sub(1).max(0) as u32;
+    let clip_top = top.saturating_sub(1).max(0) as u32;
+    let clip_right = (right + 1).clamp(0, i64::from(target.width())) as u32;
+    let clip_bottom = (bottom + 1).clamp(0, i64::from(target.height())) as u32;
+    if clip_left >= clip_right || clip_top >= clip_bottom {
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let center_x = (left + right - 1) as f64 * 0.5;
+    let center_y = (top + bottom - 1) as f64 * 0.5;
+    let half_width = (f64::from(rect.width) - 1.0) * 0.5;
+    let half_height = (f64::from(rect.height) - 1.0) * 0.5;
+    let corner_radius = f64::from(radius.min(rect.width / 2).min(rect.height / 2));
+    let inner_width = half_width - corner_radius;
+    let inner_height = half_height - corner_radius;
+
+    for y in clip_top..clip_bottom {
+        let Some(row) = target.row_mut(y) else { continue; };
+        for x in clip_left..clip_right {
+            let mut covered = 0_u16;
+            for offset_y in SAMPLE_OFFSETS {
+                let py = f64::from(y) + offset_y - center_y;
+                for offset_x in SAMPLE_OFFSETS {
+                    let px = f64::from(x) + offset_x - center_x;
+                    let qx = px.abs() - inner_width;
+                    let qy = py.abs() - inner_height;
+                    let outside_x = qx.max(0.0);
+                    let outside_y = qy.max(0.0);
+                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0)
+                        - corner_radius;
+                    if distance <= 0.0 { covered += 1; }
+                }
+            }
+            if covered == 0 { continue; }
+            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            if alpha != 0 {
+                row[x as usize] = Color::rgba(color.r, color.g, color.b, alpha)
+                    .blend_over(row[x as usize]);
+            }
+        }
+    }
+}
+
 /// Returns the inclusive horizontal pixel span for one rounded-rectangle scanline.
 ///
 /// Geometry is evaluated at pixel centers in doubled integer coordinates,
@@ -2897,5 +2961,43 @@ mod circle_aa_tests {
 
         super::draw_circle_aa(&mut actual, Point::new(-2, 2), 4, Color::GREEN);
         assert!(actual.pixels().iter().any(|pixel| pixel.g > 0));
+    }
+}
+
+#[cfg(test)]
+mod rounded_rectangle_aa_fill_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn antialiased_rounded_rectangle_fill_covers_center_and_leaves_corner_clear() {
+        let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
+        super::fill_rounded_rect_aa(&mut target, Rect::new(2, 2, 8, 6), 3, Color::WHITE);
+        assert_eq!(target.get_pixel(5, 4), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_rounded_rectangle_fill_clips_and_blends_alpha() {
+        let mut target = Framebuffer::new(5, 5, Color::BLACK).unwrap();
+        super::fill_rounded_rect_aa(
+            &mut target,
+            Rect::new(-2, -1, 6, 5),
+            2,
+            Color::rgba(20, 180, 90, 128),
+        );
+        assert!(target.pixels().iter().any(|pixel| pixel.g > 0));
+        assert!(target.pixels().iter().any(|pixel| pixel.g > 0 && pixel.g < 180));
+        let before = target.clone();
+        super::fill_rounded_rect_aa(&mut target, Rect::new(0, 0, 5, 5), 2, Color::TRANSPARENT);
+        assert_eq!(target, before);
+    }
+
+    #[test]
+    fn antialiased_rounded_rectangle_fill_ignores_empty_or_offscreen_shapes() {
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        super::fill_rounded_rect_aa(&mut target, Rect::new(1, 1, 0, 3), 2, Color::WHITE);
+        super::fill_rounded_rect_aa(&mut target, Rect::new(10, 10, 3, 3), 1, Color::WHITE);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 }
