@@ -2351,8 +2351,12 @@ mod rounded_fill_tests {
 
 #[cfg(test)]
 mod rounded_outline_tests {
-    use super::{draw_rect, draw_rounded_rect};
-    use crate::{Color, Framebuffer, Rect};
+    use super::{draw_ellipse, draw_rect, draw_rounded_rect, fill_ellipse};
+    use crate::{Color, Framebuffer, Point, Rect};
+
+    fn target(width: u32, height: u32) -> Framebuffer {
+        Framebuffer::new(width, height, Color::BLACK).unwrap()
+    }
 
     #[test]
     fn ellipse_scan_conversion_handles_maximum_radii_without_overflow() {
