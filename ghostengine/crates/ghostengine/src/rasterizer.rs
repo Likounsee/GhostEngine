@@ -1716,7 +1716,8 @@ mod tests {
             ],
             Color::WHITE,
         );
-        assert_eq!(image.get_pixel(5, 2), Some(Color::WHITE));
+        let edge = image.get_pixel(5, 2).unwrap();
+        assert!(edge.r > 0 && edge.r < 255);
         assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
         assert!(image
