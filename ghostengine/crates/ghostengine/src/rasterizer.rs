@@ -1713,9 +1713,10 @@ mod tests {
         );
 
         assert_eq!(image.get_pixel(9, 7), Some(Color::BLUE));
-        assert!(image.pixels().iter().any(|pixel| {
-            pixel.r > 0 && pixel.b > 0 && pixel.r < 255 && pixel.b < 255
-        }));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| { pixel.r > 0 && pixel.b > 0 && pixel.r < 255 && pixel.b < 255 }));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLUE));
     }
 
