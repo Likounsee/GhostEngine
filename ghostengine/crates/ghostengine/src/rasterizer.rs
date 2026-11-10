@@ -1704,6 +1704,80 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_polygon_outline_two_vertices_matches_line_fallback() {
+        let mut expected = target(10, 7);
+        let mut actual = target(10, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(-3, 1),
+            Point::new(8, 5),
+            Color::rgba(40, 180, 240, 160),
+        );
+        draw_polygon_aa(
+            &mut actual,
+            &[Point::new(-3, 1), Point::new(8, 5)],
+            Color::rgba(40, 180, 240, 160),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_clips_large_coordinates_and_ignores_transparency() {
+        let mut image = target(5, 4);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-100, -100),
+                Point::new(100, -100),
+                Point::new(100, 100),
+                Point::new(-100, 100),
+            ],
+            Color::TRANSPARENT,
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-100, -100),
+                Point::new(100, -100),
+                Point::new(100, 100),
+                Point::new(-100, 100),
+            ],
+            Color::GREEN,
+        );
+        assert!(image.pixels().iter().any(|pixel| *pixel == Color::GREEN));
+        assert_eq!(image.pixels().len(), 20);
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_handles_repeated_and_degenerate_vertices() {
+        let mut image = target(8, 8);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(2, 2),
+                Point::new(5, 2),
+                Point::new(5, 5),
+                Point::new(2, 5),
+                Point::new(2, 2),
+            ],
+            Color::BLUE,
+        );
+        assert!(image.pixels().iter().any(|pixel| pixel.b > 0));
+        assert_eq!(image.get_pixel(3, 3), Some(Color::BLACK));
+
+        let mut degenerate = target(8, 8);
+        draw_polygon_aa(
+            &mut degenerate,
+            &[Point::new(3, 3), Point::new(3, 3), Point::new(3, 3)],
+            Color::RED,
+        );
+        assert!(degenerate.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
     fn antialiased_polygon_outline_draws_edges_without_filling_center() {
         let mut image = target(12, 10);
         draw_polygon_aa(
