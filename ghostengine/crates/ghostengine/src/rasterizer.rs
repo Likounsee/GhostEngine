@@ -1522,7 +1522,7 @@ fn integer_sqrt(value: u128) -> u128 {
 mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_ellipse_aa, draw_line, draw_line_aa,
-        draw_pixel, draw_polygon, draw_rect, fill_circle, fill_circle_aa, fill_ellipse,
+        draw_pixel, draw_polygon, draw_polygon_aa, draw_rect, fill_circle, fill_circle_aa, fill_ellipse,
         fill_ellipse_aa, fill_polygon, fill_polygon_aa, fill_rect, fill_rounded_rect,
         fill_triangle,
     };
@@ -1701,6 +1701,47 @@ mod tests {
         assert_eq!(image.get_pixel(5, 2), Some(Color::GREEN));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
         assert_eq!(image.get_pixel(1, 4), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_draws_edges_without_filling_center() {
+        let mut image = target(12, 10);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(9, 2),
+                Point::new(9, 7),
+                Point::new(2, 7),
+            ],
+            Color::WHITE,
+        );
+        assert_eq!(image.get_pixel(5, 2), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_blends_shared_vertices_only_once() {
+        let mut image = target(12, 10);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(9, 2),
+                Point::new(9, 7),
+                Point::new(2, 7),
+            ],
+            Color::rgba(255, 0, 0, 128),
+        );
+        let corner = image.get_pixel(2, 2).unwrap();
+        assert!(corner.r > 0);
+        assert!(corner.r < 255);
         assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
     }
 
