@@ -1810,8 +1810,8 @@ mod tests {
     #[test]
     fn antialiased_rectangle_outline_is_clipped_and_does_not_fill_interior() {
         let mut image = target(7, 6);
-        super::draw_rect_aa(&mut image, Rect::new(-2, 1, 7, 4), Color::WHITE);
-        assert_eq!(image.get_pixel(2, 2), Some(Color::BLACK));
+        super::draw_rect_aa(&mut image, Rect::new(4, 1, 7, 4), Color::WHITE);
+        assert_eq!(image.get_pixel(5, 2), Some(Color::BLACK));
         assert!(image
             .pixels()
             .iter()
