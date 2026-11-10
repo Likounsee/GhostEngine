@@ -2355,6 +2355,33 @@ mod rounded_outline_tests {
     use crate::{Color, Framebuffer, Rect};
 
     #[test]
+    fn ellipse_scan_conversion_handles_maximum_radii_without_overflow() {
+        let mut filled = target(3, 3);
+        fill_ellipse(
+            &mut filled,
+            Point::new(1, 1),
+            u32::MAX,
+            u32::MAX,
+            Color::GREEN,
+        );
+        assert!(filled.pixels().iter().all(|pixel| *pixel == Color::GREEN));
+
+        let mut outlined = target(3, 3);
+        draw_ellipse(
+            &mut outlined,
+            Point::new(1, 1),
+            u32::MAX,
+            u32::MAX,
+            Color::WHITE,
+        );
+        for y in 0..3 {
+            assert_eq!(outlined.get_pixel(0, y), Some(Color::WHITE));
+            assert_eq!(outlined.get_pixel(2, y), Some(Color::WHITE));
+            assert_eq!(outlined.get_pixel(1, y), Some(Color::BLACK));
+        }
+    }
+
+    #[test]
     fn rounded_rectangle_outline_draws_only_the_perimeter() {
         let mut target = Framebuffer::new(10, 8, Color::BLACK).unwrap();
         draw_rounded_rect(&mut target, Rect::new(1, 1, 8, 6), 2, Color::WHITE);
