@@ -1703,7 +1703,12 @@ mod tests {
     fn antialiased_ellipse_outline_handles_degenerate_radii() {
         let mut expected = target(9, 7);
         let mut actual = target(9, 7);
-        draw_line_aa(&mut expected, Point::new(2, 3), Point::new(6, 3), Color::GREEN);
+        draw_line_aa(
+            &mut expected,
+            Point::new(2, 3),
+            Point::new(6, 3),
+            Color::GREEN,
+        );
         draw_ellipse_aa(&mut actual, Point::new(4, 3), 2, 0, Color::GREEN);
         assert_eq!(actual, expected);
     }
@@ -1711,7 +1716,13 @@ mod tests {
     #[test]
     fn antialiased_ellipse_outline_is_clipped_and_respects_transparency() {
         let mut image = target(5, 4);
-        draw_ellipse_aa(&mut image, Point::new(0, 1), 4, 3, Color::rgba(255, 0, 0, 0));
+        draw_ellipse_aa(
+            &mut image,
+            Point::new(0, 1),
+            4,
+            3,
+            Color::rgba(255, 0, 0, 0),
+        );
         assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
 
         draw_ellipse_aa(&mut image, Point::new(0, 1), 4, 3, Color::BLUE);
