@@ -1732,6 +1732,28 @@ mod tests {
         );
         draw_ellipse_aa(&mut actual, Point::new(4, 3), 2, 0, Color::GREEN);
         assert_eq!(actual, expected);
+
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(4, 0),
+            Point::new(4, 6),
+            Color::GREEN,
+        );
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 0, 3, Color::GREEN);
+        assert_eq!(actual, expected);
+
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(4, 3),
+            Point::new(4, 3),
+            Color::GREEN,
+        );
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 0, 0, Color::GREEN);
+        assert_eq!(actual, expected);
     }
 
     #[test]
