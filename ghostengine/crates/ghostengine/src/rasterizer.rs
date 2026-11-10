@@ -2864,8 +2864,19 @@ mod circle_aa_tests {
     fn antialiased_circle_outline_matches_equal_radius_ellipse() {
         let mut expected = Framebuffer::new(17, 15, Color::BLACK).unwrap();
         let mut actual = expected.clone();
-        super::draw_ellipse_aa(&mut expected, Point::new(8, 7), 5, 5, Color::rgba(220, 80, 40, 190));
-        super::draw_circle_aa(&mut actual, Point::new(8, 7), 5, Color::rgba(220, 80, 40, 190));
+        super::draw_ellipse_aa(
+            &mut expected,
+            Point::new(8, 7),
+            5,
+            5,
+            Color::rgba(220, 80, 40, 190),
+        );
+        super::draw_circle_aa(
+            &mut actual,
+            Point::new(8, 7),
+            5,
+            Color::rgba(220, 80, 40, 190),
+        );
         assert_eq!(actual, expected);
         assert_eq!(actual.get_pixel(8, 7), Some(Color::BLACK));
         assert!(actual.pixels().iter().any(|pixel| pixel.r > 0));
@@ -2875,7 +2886,12 @@ mod circle_aa_tests {
     fn antialiased_circle_outline_handles_zero_radius_and_clipping() {
         let mut expected = Framebuffer::new(5, 5, Color::BLACK).unwrap();
         let mut actual = expected.clone();
-        super::draw_line_aa(&mut expected, Point::new(2, 2), Point::new(2, 2), Color::WHITE);
+        super::draw_line_aa(
+            &mut expected,
+            Point::new(2, 2),
+            Point::new(2, 2),
+            Color::WHITE,
+        );
         super::draw_circle_aa(&mut actual, Point::new(2, 2), 0, Color::WHITE);
         assert_eq!(actual, expected);
 
