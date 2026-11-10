@@ -1004,13 +1004,13 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                                 return false;
                             }
                             let t = if length_squared == 0.0 {
-                            0.0
-                        } else {
-                            (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
-                        };
-                        let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
-                        let distance_x = px - nearest_x;
-                        let distance_y = py - nearest_y;
+                                0.0
+                            } else {
+                                (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
+                            };
+                            let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
+                            let distance_x = px - nearest_x;
+                            let distance_y = py - nearest_y;
                             distance_x * distance_x + distance_y * distance_y <= 0.25
                         },
                     );
