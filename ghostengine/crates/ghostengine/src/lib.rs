@@ -56,8 +56,8 @@ pub use path::{
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{
-    blend_rect, blend_rect_clipped, draw_ellipse_aa, draw_rounded_rect, fill_circle_aa, fill_ellipse_aa,
-    fill_polygon_aa, fill_rect_clipped, fill_rounded_rect,
+    blend_rect, blend_rect_clipped, draw_ellipse_aa, draw_rounded_rect, fill_circle_aa,
+    fill_ellipse_aa, fill_polygon_aa, fill_rect_clipped, fill_rounded_rect,
     fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
     Gradient, GradientError, GradientStop,
 };
