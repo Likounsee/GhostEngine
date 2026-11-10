@@ -1832,7 +1832,7 @@ mod tests {
             ],
             Color::GREEN,
         );
-        assert!(image.pixels().iter().any(|pixel| *pixel == Color::GREEN));
+        assert!(image.pixels().contains(&Color::GREEN));
         assert_eq!(image.pixels().len(), 20);
     }
 
@@ -1875,7 +1875,7 @@ mod tests {
             .pixels()
             .iter()
             .any(|pixel| pixel.r > 0 && pixel.r < 255));
-        assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(image.pixels().contains(&Color::WHITE));
 
         let before = image.clone();
         super::draw_rect_aa(&mut image, Rect::new(1, 1, 0, 4), Color::RED);
