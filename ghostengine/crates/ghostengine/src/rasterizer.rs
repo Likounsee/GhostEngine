@@ -974,7 +974,17 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             let b = vertices[(index + 1) % vertices.len()];
             let (ax, ay) = (f64::from(a.x), f64::from(a.y));
             let (dx, dy) = (f64::from(b.x) - ax, f64::from(b.y) - ay);
-            (ax, ay, dx, dy, dx * dx + dy * dy)
+            (
+                ax,
+                ay,
+                dx,
+                dy,
+                dx * dx + dy * dy,
+                ax.min(f64::from(b.x)) - 0.5,
+                ax.max(f64::from(b.x)) + 0.5,
+                ay.min(f64::from(b.y)) - 0.5,
+                ay.max(f64::from(b.y)) + 0.5,
+            )
         })
         .collect::<Vec<_>>();
 
@@ -988,8 +998,12 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                 let mut covered = 0;
                 for offset_x in OFFSETS {
                     let (px, py) = (sample_x + offset_x, sample_y);
-                    let on_outline = segments.iter().any(|&(ax, ay, dx, dy, length_squared)| {
-                        let t = if length_squared == 0.0 {
+                    let on_outline = segments.iter().any(
+                        |&(ax, ay, dx, dy, length_squared, min_x, max_x, min_y, max_y)| {
+                            if px < min_x || px > max_x || py < min_y || py > max_y {
+                                return false;
+                            }
+                            let t = if length_squared == 0.0 {
                             0.0
                         } else {
                             (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
@@ -997,8 +1011,9 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                         let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
                         let distance_x = px - nearest_x;
                         let distance_y = py - nearest_y;
-                        distance_x * distance_x + distance_y * distance_y <= 0.25
-                    });
+                            distance_x * distance_x + distance_y * distance_y <= 0.25
+                        },
+                    );
                     if on_outline {
                         covered += 1;
                     }
