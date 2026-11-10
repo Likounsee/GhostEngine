@@ -676,6 +676,33 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
+/// Draws an anti-aliased rectangle outline with 4x4 supersampled coverage.
+pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
+    let point = |x: i64, y: i64| {
+        Point::new(
+            i32::try_from(x).unwrap_or(if x < 0 { i32::MIN } else { i32::MAX }),
+            i32::try_from(y).unwrap_or(if y < 0 { i32::MIN } else { i32::MAX }),
+        )
+    };
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width) - 1;
+    let bottom = top + i64::from(rect.height) - 1;
+    draw_polygon_aa(
+        target,
+        &[
+            point(left, top),
+            point(right, top),
+            point(right, bottom),
+            point(left, bottom),
+        ],
+        color,
+    );
+}
+
 /// Returns the inclusive horizontal pixel span for one rounded-rectangle scanline.
 ///
 /// Geometry is evaluated at pixel centers in doubled integer coordinates,
@@ -1775,6 +1802,20 @@ mod tests {
             Color::RED,
         );
         assert!(degenerate.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_rectangle_outline_is_clipped_and_does_not_fill_interior() {
+        let mut image = target(7, 6);
+        super::draw_rect_aa(&mut image, Rect::new(-2, 1, 7, 4), Color::WHITE);
+        assert_eq!(image.get_pixel(2, 2), Some(Color::BLACK));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+
+        let before = image.clone();
+        super::draw_rect_aa(&mut image, Rect::new(1, 1, 0, 4), Color::RED);
+        super::draw_rect_aa(&mut image, Rect::new(1, 1, 4, 0), Color::RED);
+        assert_eq!(image, before);
     }
 
     #[test]
