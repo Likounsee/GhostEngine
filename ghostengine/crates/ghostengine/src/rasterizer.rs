@@ -1812,7 +1812,10 @@ mod tests {
         let mut image = target(7, 6);
         super::draw_rect_aa(&mut image, Rect::new(-2, 1, 7, 4), Color::WHITE);
         assert_eq!(image.get_pixel(2, 2), Some(Color::BLACK));
-        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
 
         let before = image.clone();
