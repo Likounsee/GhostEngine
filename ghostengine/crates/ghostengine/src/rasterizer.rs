@@ -1240,6 +1240,16 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     }
 }
 
+/// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
+pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    draw_polygon_aa(target, &[a, b, c], color);
+}
+
+/// Fills a triangle with 4x4 coverage sampling and source-over alpha blending.
+pub fn fill_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    fill_polygon_aa(target, &[a, b, c], color);
+}
+
 /// Fills a triangle using integer edge functions, pixel-center sampling and
 /// the top-left rule. Degenerate triangles draw nothing; vertex order is free.
 pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
@@ -2771,5 +2781,68 @@ mod rounded_outline_tests {
         assert_eq!(target.get_pixel(3, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 3), Some(Color::BLUE));
+    }
+}
+
+#[cfg(test)]
+mod triangle_aa_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn antialiased_triangle_helpers_match_polygon_rasterizers() {
+        let vertices = [Point::new(1, 1), Point::new(7, 2), Point::new(3, 7)];
+        let mut expected_fill = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        let mut actual_fill = expected_fill.clone();
+        super::fill_polygon_aa(&mut expected_fill, &vertices, Color::rgba(40, 180, 240, 190));
+        super::fill_triangle_aa(
+            &mut actual_fill,
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            Color::rgba(40, 180, 240, 190),
+        );
+        assert_eq!(actual_fill, expected_fill);
+
+        let mut expected_outline = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        let mut actual_outline = expected_outline.clone();
+        super::draw_polygon_aa(&mut expected_outline, &vertices, Color::WHITE);
+        super::draw_triangle_aa(
+            &mut actual_outline,
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            Color::WHITE,
+        );
+        assert_eq!(actual_outline, expected_outline);
+    }
+
+    #[test]
+    fn antialiased_triangle_helpers_handle_degenerate_and_clipped_geometry() {
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        super::fill_triangle_aa(
+            &mut target,
+            Point::new(-8, -8),
+            Point::new(8, -8),
+            Point::new(0, 8),
+            Color::GREEN,
+        );
+        assert!(target.pixels().iter().any(|pixel| pixel.g > 0));
+
+        let before = target.clone();
+        super::fill_triangle_aa(
+            &mut target,
+            Point::new(1, 1),
+            Point::new(2, 2),
+            Point::new(3, 3),
+            Color::RED,
+        );
+        super::draw_triangle_aa(
+            &mut target,
+            Point::new(2, 2),
+            Point::new(2, 2),
+            Point::new(2, 2),
+            Color::RED,
+        );
+        assert_eq!(target, before);
     }
 }
