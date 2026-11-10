@@ -1845,8 +1845,8 @@ mod tests {
             &[
                 Point::new(-100, -100),
                 Point::new(100, -100),
-                Point::new(100, 100),
-                Point::new(-100, 100),
+                Point::new(100, 2),
+                Point::new(-100, 2),
             ],
             Color::GREEN,
         );
