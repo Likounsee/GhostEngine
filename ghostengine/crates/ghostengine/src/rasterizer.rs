@@ -856,6 +856,88 @@ pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     }
 }
 
+/// Draws a closed polygon outline with 4x4 supersampled coverage.
+///
+/// Segment coverage is accumulated as a union, so shared vertices are blended
+/// only once and translucent outlines do not become darker at their corners.
+pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 2 || color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if vertices.len() == 2 {
+        draw_line_aa(target, vertices[0], vertices[1], color);
+        return;
+    }
+
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let min_x = vertices.iter().map(|point| point.x).min().unwrap();
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap();
+    let max_x = vertices.iter().map(|point| point.x).max().unwrap();
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    let left = (i64::from(min_x) - 1).max(0) as u32;
+    let top = (i64::from(min_y) - 1).max(0) as u32;
+    let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
+    let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let segments = (0..vertices.len())
+        .map(|index| {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let (ax, ay) = (f64::from(a.x), f64::from(a.y));
+            let (dx, dy) = (f64::from(b.x) - ax, f64::from(b.y) - ay);
+            (ax, ay, dx, dy, dx * dx + dy * dy)
+        })
+        .collect::<Vec<_>>();
+
+    let mut coverage = vec![0_u8; (right - left) as usize];
+    for y in top..bottom {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
+            let sample_y = f64::from(y) + offset_y;
+            for x in left..right {
+                let sample_x = f64::from(x);
+                let mut covered = 0;
+                for offset_x in OFFSETS {
+                    let (px, py) = (sample_x + offset_x, sample_y);
+                    let on_outline = segments.iter().any(|&(ax, ay, dx, dy, length_squared)| {
+                        let t = if length_squared == 0.0 {
+                            0.0
+                        } else {
+                            (((px - ax) * dx + (py - ay) * dy) / length_squared)
+                                .clamp(0.0, 1.0)
+                        };
+                        let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
+                        let distance_x = px - nearest_x;
+                        let distance_y = py - nearest_y;
+                        distance_x * distance_x + distance_y * distance_y <= 0.25
+                    });
+                    if on_outline {
+                        covered += 1;
+                    }
+                }
+                coverage[(x - left) as usize] += covered;
+            }
+        }
+        if let Some(row) = target.row_mut(y) {
+            for (pixel, covered) in row[left as usize..right as usize]
+                .iter_mut()
+                .zip(coverage.iter().copied())
+            {
+                if covered == 0 {
+                    continue;
+                }
+                let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+                if alpha != 0 {
+                    *pixel = Color::rgba(color.r, color.g, color.b, alpha).blend_over(*pixel);
+                }
+            }
+        }
+    }
+}
+
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
 pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
