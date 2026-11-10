@@ -2982,7 +2982,7 @@ mod rounded_rectangle_aa_fill_tests {
         let mut target = Framebuffer::new(5, 5, Color::BLACK).unwrap();
         super::fill_rounded_rect_aa(
             &mut target,
-            Rect::new(-2, -1, 6, 5),
+            Rect::new(2, 1, 6, 5),
             2,
             Color::rgba(20, 180, 90, 128),
         );
