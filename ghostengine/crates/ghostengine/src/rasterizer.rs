@@ -774,14 +774,40 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
-    let first_y = i64::from(rect.y).max(0);
-    let last_y =
-        (i64::from(rect.y) + i64::from(rect.height) - 1).min(i64::from(target.height()) - 1);
+
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 {
+        draw_rect(target, rect, color);
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let right = left + i64::from(rect.width) - 1;
+    let top = i64::from(rect.y);
+    let bottom = top + i64::from(rect.height) - 1;
+    let framebuffer_right = i64::from(target.width()) - 1;
+
+    // Rounded corners join two straight horizontal sections. Draw those
+    // sections explicitly; scanline endpoints are reserved for the curved
+    // sides so the top and bottom edges do not collapse to two pixels.
+    let horizontal_start = (left + i64::from(radius)).max(0);
+    let horizontal_end = (right - i64::from(radius)).min(framebuffer_right);
+    if horizontal_start <= horizontal_end {
+        for y in [top, bottom] {
+            if y >= 0 && y < i64::from(target.height()) {
+                if let Some(row) = target.row_mut(y as u32) {
+                    row[horizontal_start as usize..=horizontal_end as usize].fill(color);
+                }
+            }
+        }
+    }
+
+    let first_y = (top + 1).max(0);
+    let last_y = (bottom - 1).min(i64::from(target.height()) - 1);
     if first_y > last_y {
         return;
     }
 
-    let framebuffer_right = i64::from(target.width()) - 1;
     for y in first_y..=last_y {
         let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
             continue;
