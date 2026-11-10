@@ -1801,7 +1801,10 @@ mod tests {
             &[Point::new(3, 3), Point::new(3, 3), Point::new(3, 3)],
             Color::RED,
         );
-        assert!(degenerate.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+        assert!(degenerate
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
