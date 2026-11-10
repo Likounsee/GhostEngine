@@ -704,12 +704,7 @@ pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
 }
 
 /// Draws an anti-aliased rounded-rectangle outline using signed-distance coverage.
-pub fn draw_rounded_rect_aa(
-    target: &mut Framebuffer,
-    rect: Rect,
-    radius: u32,
-    color: Color,
-) {
+pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
     if rect.width == 0 || rect.height == 0 || color.a == 0 {
         return;
     }
@@ -749,9 +744,7 @@ pub fn draw_rounded_rect_aa(
                     let qy = py.abs() - inner_height;
                     let outside_x = qx.max(0.0);
                     let outside_y = qy.max(0.0);
-                    let distance = outside_x.hypot(outside_y)
-                        + qx.max(qy).min(0.0)
-                        - corner_radius;
+                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
                     if distance.abs() <= 0.5 {
                         covered += 1;
                     }
@@ -1895,7 +1888,10 @@ mod tests {
         let mut image = target(10, 8);
         super::draw_rounded_rect_aa(&mut image, Rect::new(2, 1, 12, 6), 2, Color::WHITE);
         assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
-        assert!(image.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
         assert!(image.pixels().iter().any(|pixel| *pixel == Color::WHITE));
     }
 
@@ -1905,12 +1901,7 @@ mod tests {
         let before = image.clone();
         super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 0, 4), 2, Color::WHITE);
         super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 4, 0), 2, Color::WHITE);
-        super::draw_rounded_rect_aa(
-            &mut image,
-            Rect::new(1, 1, 4, 4),
-            2,
-            Color::TRANSPARENT,
-        );
+        super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 4, 4), 2, Color::TRANSPARENT);
         assert_eq!(image, before);
     }
 
