@@ -906,8 +906,7 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                         let t = if length_squared == 0.0 {
                             0.0
                         } else {
-                            (((px - ax) * dx + (py - ay) * dy) / length_squared)
-                                .clamp(0.0, 1.0)
+                            (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
                         };
                         let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
                         let distance_x = px - nearest_x;
