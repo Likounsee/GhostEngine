@@ -2793,7 +2793,11 @@ mod triangle_aa_tests {
         let vertices = [Point::new(1, 1), Point::new(7, 2), Point::new(3, 7)];
         let mut expected_fill = Framebuffer::new(9, 9, Color::BLACK).unwrap();
         let mut actual_fill = expected_fill.clone();
-        super::fill_polygon_aa(&mut expected_fill, &vertices, Color::rgba(40, 180, 240, 190));
+        super::fill_polygon_aa(
+            &mut expected_fill,
+            &vertices,
+            Color::rgba(40, 180, 240, 190),
+        );
         super::fill_triangle_aa(
             &mut actual_fill,
             vertices[0],
