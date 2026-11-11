@@ -3188,7 +3188,6 @@ mod rounded_rectangle_aa_fill_tests {
     }
 }
 
-
 #[cfg(test)]
 mod arc_aa_fill_tests {
     use crate::{Color, Framebuffer, Point};
