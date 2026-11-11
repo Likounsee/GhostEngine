@@ -3104,7 +3104,6 @@ mod rounded_rectangle_aa_fill_tests {
     }
 }
 
-
 #[cfg(test)]
 mod arc_aa_tests {
     use crate::{Color, Framebuffer, Point};
@@ -3170,14 +3169,7 @@ mod arc_aa_tests {
 
         let before = full.clone();
         super::draw_arc_aa(&mut full, Point::new(4, 4), 3, 1.0, 1.0, Color::RED);
-        super::draw_arc_aa(
-            &mut full,
-            Point::new(4, 4),
-            3,
-            f32::NAN,
-            2.0,
-            Color::RED,
-        );
+        super::draw_arc_aa(&mut full, Point::new(4, 4), 3, f32::NAN, 2.0, Color::RED);
         assert_eq!(full, before);
 
         super::draw_arc_aa(
