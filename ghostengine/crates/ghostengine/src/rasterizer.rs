@@ -3187,7 +3187,6 @@ mod rounded_rectangle_aa_fill_tests {
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 }
-
 #[cfg(test)]
 mod arc_aa_fill_tests {
     use crate::{Color, Framebuffer, Point};
