@@ -3188,6 +3188,97 @@ mod rounded_rectangle_aa_fill_tests {
     }
 }
 
+
+#[cfg(test)]
+mod arc_aa_fill_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn antialiased_arc_fill_covers_sector_without_filling_outside() {
+        let mut target = Framebuffer::new(17, 17, Color::BLACK).unwrap();
+        super::fill_arc_aa(
+            &mut target,
+            Point::new(8, 8),
+            5,
+            0.0,
+            core::f32::consts::FRAC_PI_2,
+            Color::WHITE,
+        );
+
+        assert!(target.get_pixel(8, 8).unwrap().r > 0);
+        assert!(target.get_pixel(12, 8).unwrap().r > 0);
+        assert!(target.get_pixel(8, 12).unwrap().r > 0);
+        assert_eq!(target.get_pixel(4, 8), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(8, 4), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(14, 8), Some(Color::BLACK));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_arc_fill_wraps_angles_and_blends_alpha() {
+        let mut target = Framebuffer::new(17, 17, Color::BLACK).unwrap();
+        super::fill_arc_aa(
+            &mut target,
+            Point::new(8, 8),
+            5,
+            3.0 * core::f32::consts::FRAC_PI_2,
+            core::f32::consts::FRAC_PI_2,
+            Color::rgba(30, 180, 90, 128),
+        );
+
+        assert!(target.get_pixel(8, 8).unwrap().g > 0);
+        assert!(target.get_pixel(8, 3).unwrap().g > 0);
+        assert!(target.get_pixel(13, 8).unwrap().g > 0);
+        assert!(target.get_pixel(8, 13).unwrap().g > 0);
+        assert_eq!(target.get_pixel(3, 8), Some(Color::BLACK));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.g > 0 && pixel.g < 180));
+    }
+
+    #[test]
+    fn antialiased_arc_fill_handles_full_turn_clipping_and_invalid_angles() {
+        let mut target = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        super::fill_arc_aa(
+            &mut target,
+            Point::new(4, 4),
+            3,
+            0.0,
+            core::f32::consts::TAU,
+            Color::WHITE,
+        );
+        assert!(target.get_pixel(4, 4).unwrap().r > 0);
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+
+        super::fill_arc_aa(
+            &mut target,
+            Point::new(-2, 4),
+            5,
+            0.0,
+            core::f32::consts::PI,
+            Color::GREEN,
+        );
+        assert!(target.pixels().iter().any(|pixel| pixel.g > 0));
+
+        let before = target.clone();
+        super::fill_arc_aa(&mut target, Point::new(4, 4), 3, 1.0, 1.0, Color::RED);
+        super::fill_arc_aa(&mut target, Point::new(4, 4), 3, f32::NAN, 2.0, Color::RED);
+        super::fill_arc_aa(
+            &mut target,
+            Point::new(4, 4),
+            3,
+            0.0,
+            core::f32::consts::TAU,
+            Color::TRANSPARENT,
+        );
+        assert_eq!(target, before);
+    }
+}
+
 #[cfg(test)]
 mod arc_aa_tests {
     use crate::{Color, Framebuffer, Point};
