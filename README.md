@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ghostengine-logo.png" alt="GhostEngine logo" width="420">
+  <img src="docs/assets/ghostengine-logo.png" alt="GhostEngine logo" width="420">
 </p>
 
 # GhostEngine
