@@ -1660,6 +1660,90 @@ pub fn draw_arc_aa(
     }
 }
 
+/// Fills an anti-aliased circular sector (pie slice).
+///
+/// Angles are radians measured from the positive X axis. Positive sweeps are
+/// clockwise in framebuffer coordinates; an end angle below the start angle
+/// wraps through zero. A sweep of at least one full turn fills a full circle.
+/// The circular and radial edges use 4x4 subpixel coverage.
+pub fn fill_arc_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+) {
+    use core::f64::consts::TAU;
+
+    if color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+        || !start_angle.is_finite()
+        || !end_angle.is_finite()
+    {
+        return;
+    }
+
+    let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
+    if raw_sweep == 0.0 {
+        return;
+    }
+    let full_circle = raw_sweep.abs() >= TAU;
+    let start = f64::from(start_angle).rem_euclid(TAU);
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
+    let radius = f64::from(radius);
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let left = (cx - radius - 1.0).floor().max(0.0) as u32;
+    let top = (cy - radius - 1.0).floor().max(0.0) as u32;
+    let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = f64::from(y) + offset_y - cy;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    if dx.hypot(dy) > radius {
+                        continue;
+                    }
+                    if !full_circle {
+                        let angle = dy.atan2(dx).rem_euclid(TAU);
+                        if (angle - start).rem_euclid(TAU) > sweep {
+                            continue;
+                        }
+                    }
+                    covered += 1;
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
 /// Fills a circle with anti-aliased edge coverage.
 pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     fill_ellipse_aa(target, center, radius, radius, color);
