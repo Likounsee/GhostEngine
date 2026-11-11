@@ -3103,3 +3103,91 @@ mod rounded_rectangle_aa_fill_tests {
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 }
+
+
+#[cfg(test)]
+mod arc_aa_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn antialiased_arc_draws_only_the_requested_quadrant() {
+        let mut target = Framebuffer::new(17, 17, Color::BLACK).unwrap();
+        super::draw_arc_aa(
+            &mut target,
+            Point::new(8, 8),
+            5,
+            0.0,
+            core::f32::consts::FRAC_PI_2,
+            Color::WHITE,
+        );
+
+        assert!(target.get_pixel(13, 8).unwrap().r > 0);
+        assert!(target.get_pixel(8, 13).unwrap().r > 0);
+        assert_eq!(target.get_pixel(3, 8), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(8, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(8, 8), Some(Color::BLACK));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_arc_wraps_angles_and_blends_alpha() {
+        let mut target = Framebuffer::new(17, 17, Color::BLACK).unwrap();
+        super::draw_arc_aa(
+            &mut target,
+            Point::new(8, 8),
+            5,
+            3.0 * core::f32::consts::FRAC_PI_2,
+            core::f32::consts::FRAC_PI_2,
+            Color::rgba(30, 180, 90, 128),
+        );
+
+        assert!(target.get_pixel(8, 3).unwrap().g > 0);
+        assert!(target.get_pixel(13, 8).unwrap().g > 0);
+        assert!(target.get_pixel(8, 13).unwrap().g > 0);
+        assert_eq!(target.get_pixel(3, 8), Some(Color::BLACK));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.g > 0 && pixel.g < 180));
+    }
+
+    #[test]
+    fn antialiased_arc_handles_full_turn_degenerate_and_clipped_inputs() {
+        let mut full = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        super::draw_arc_aa(
+            &mut full,
+            Point::new(4, 4),
+            3,
+            0.0,
+            core::f32::consts::TAU,
+            Color::WHITE,
+        );
+        assert!(full.pixels().iter().any(|pixel| pixel.r > 0));
+        assert_eq!(full.get_pixel(4, 4), Some(Color::BLACK));
+
+        let before = full.clone();
+        super::draw_arc_aa(&mut full, Point::new(4, 4), 3, 1.0, 1.0, Color::RED);
+        super::draw_arc_aa(
+            &mut full,
+            Point::new(4, 4),
+            3,
+            f32::NAN,
+            2.0,
+            Color::RED,
+        );
+        assert_eq!(full, before);
+
+        super::draw_arc_aa(
+            &mut full,
+            Point::new(-2, 4),
+            5,
+            0.0,
+            core::f32::consts::PI,
+            Color::GREEN,
+        );
+        assert!(full.pixels().iter().any(|pixel| pixel.g > 0));
+    }
+}
