@@ -456,7 +456,17 @@ pub fn fill_rect_radial_gradient(
         };
         for (offset, pixel) in row[left as usize..right as usize].iter_mut().enumerate() {
             let dx = left as f32 + offset as f32 + 0.5 - center.x;
-            let position = dx.hypot(dy) * inverse_radius;
+            // Framebuffer coordinates are bounded by u32, so the squared
+            // distance is finite for ordinary scene coordinates. Prefer the
+            // cheaper square-root path and retain hypot's overflow-safe
+            // behavior for unusually large finite gradient centers.
+            let distance_squared = dx * dx + dy * dy;
+            let distance = if distance_squared.is_finite() {
+                distance_squared.sqrt()
+            } else {
+                dx.hypot(dy)
+            };
+            let position = distance * inverse_radius;
             let color = gradient.sample(position);
             *pixel = if color.a == u8::MAX {
                 color
