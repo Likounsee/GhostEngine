@@ -139,6 +139,33 @@ impl DisplayList {
         }
     }
 
+    /// Creates an empty display list with room for at least the requested
+    /// number of drawing commands.
+    #[must_use]
+    pub fn with_capacity(command_capacity: usize) -> Self {
+        Self {
+            commands: Vec::with_capacity(command_capacity),
+            clips: Vec::new(),
+            transforms: Vec::new(),
+        }
+    }
+
+    /// Reserves room for at least the requested number of additional drawing
+    /// commands without reallocating the command buffer.
+    ///
+    /// Call this before recording a frame when the approximate command count
+    /// is known. The reservation is retained by clear() for later frames.
+    pub fn reserve_commands(&mut self, additional: usize) {
+        self.commands.reserve(additional);
+    }
+
+    /// Returns the number of drawing commands that can be recorded before
+    /// the command buffer needs to grow.
+    #[must_use]
+    pub fn command_capacity(&self) -> usize {
+        self.commands.capacity()
+    }
+
     /// Removes all commands and clip state while retaining allocated capacity.
     pub fn clear(&mut self) {
         self.commands.clear();
@@ -796,6 +823,26 @@ fn clip_line(start: Point, end: Point, clip: Rect) -> Option<(Point, Point)> {
 mod tests {
     use super::DisplayList;
     use crate::{Color, Framebuffer, Point, Rect};
+
+    #[test]
+    fn display_list_capacity_is_reused_between_frames() {
+        let mut list = DisplayList::with_capacity(8);
+        assert!(list.command_capacity() >= 8);
+        let initial_capacity = list.command_capacity();
+
+        for index in 0..8 {
+            list.fill_rect(Rect::new(index, 0, 1, 1), Color::WHITE);
+        }
+        assert_eq!(list.len(), 8);
+        assert_eq!(list.command_capacity(), initial_capacity);
+
+        list.clear();
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.command_capacity(), initial_capacity);
+
+        list.reserve_commands(16);
+        assert!(list.command_capacity() >= 16);
+    }
 
     #[test]
     fn commands_replay_in_submission_order() {
