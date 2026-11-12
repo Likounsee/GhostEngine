@@ -338,9 +338,9 @@ fn stroke_path_impl(
                     // contains all four extreme sample points of this pixel,
                     // it also contains every inner 4x4 sample. This makes the
                     // common wide-stroke interior a four-test fast path.
-                    let fully_covered = row_segments.iter().any(|segment| {
-                        segment.fully_covers_pixel(x, y, radius_squared)
-                    });
+                    let fully_covered = row_segments
+                        .iter()
+                        .any(|segment| segment.fully_covers_pixel(x, y, radius_squared));
                     if fully_covered {
                         1.0
                     } else {
@@ -488,9 +488,7 @@ impl StrokeSegment {
             Vector::new(right, bottom),
         ]
         .into_iter()
-        .all(|point| {
-            self.may_cover(point) && self.covers_within_radius(point, radius_squared)
-        })
+        .all(|point| self.may_cover(point) && self.covers_within_radius(point, radius_squared))
     }
 
     /// Tests coverage without constructing the nearest point for the common
