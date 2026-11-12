@@ -669,7 +669,7 @@ mod tests {
         ];
         let width = 3;
         let height = 2;
-        for opacity in [1, 64, 128, 200, 255] {
+        for opacity in [1_u8, 64, 128, 200, 255] {
             for y in [0.0, 0.25, 0.5, 0.9] {
                 for x in [0.0, 0.2, 0.75, 1.4, 1.9] {
                     let mut actual = Color::rgb(37, 91, 163);
