@@ -172,6 +172,32 @@ fn main() {
     foreground_layer.set_opacity(210);
     let layers = [background_layer, foreground_layer];
 
+    // Dedicated transformed-layer workloads exercise the inverse-transform
+    // sampling path independently from the identity-layer composition test.
+    let mut transformed_layer = Layer::new(640, 360, Color::TRANSPARENT)
+        .expect("transformed benchmark layer should allocate");
+    for y in 0..360 {
+        for x in 0..640 {
+            let checker = ((x / 16) + (y / 16)) % 2 == 0;
+            let color = if checker {
+                Color::rgba(55, 145, 235, 230)
+            } else {
+                Color::rgba(235, 105, 65, 190)
+            };
+            transformed_layer.framebuffer_mut().set_pixel(x, y, color);
+        }
+    }
+    transformed_layer.set_position(500, 250);
+    transformed_layer.set_transform(
+        Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)),
+    );
+    transformed_layer.set_filter(TextureFilter::Bilinear);
+    let transformed_layers = [transformed_layer];
+
+    let mut nearest_layer = transformed_layers[0].clone();
+    nearest_layer.set_filter(TextureFilter::Nearest);
+    let nearest_layers = [nearest_layer];
+
     let font = FontFace::from_bytes(include_bytes!(
         "../tests/fixtures/NotoSansArabic[wdth,wght].ttf"
     ))
@@ -338,6 +364,12 @@ fn main() {
         }),
         measure("Layer composition (2 layers)", iterations, |target| {
             ghostengine::compose_layers(target, &layers);
+        }),
+        measure("Transformed layer (nearest)", iterations, |target| {
+            ghostengine::compose_layers(target, &nearest_layers);
+        }),
+        measure("Transformed layer (bilinear)", iterations, |target| {
+            ghostengine::compose_layers(target, &transformed_layers);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
             draw_text(
