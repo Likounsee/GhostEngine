@@ -383,3 +383,4 @@ fn main() {
     }
 
     // Benchmark results are printed to the console only; do not create report files.
+}
