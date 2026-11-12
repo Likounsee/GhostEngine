@@ -338,31 +338,38 @@ fn stroke_path_impl(
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
-            // Narrow the active scanline geometry to each pixel's horizontal
-            // sample interval once. The 4x4 AA loop can then avoid repeating
-            // the same segment AABB test for all sixteen samples.
+            // Sweep horizontally through the active geometry. Sorting each
+            // scanline by its left edge lets us add candidates once and retire
+            // them when their right edge is passed, instead of rescanning every
+            // segment and join for every pixel in the row.
+            let mut row_segments_x = row_segments.clone();
+            row_segments_x.sort_by(|left, right| left.min_x.total_cmp(&right.min_x));
+            let mut row_joins_x = row_joins.clone();
+            row_joins_x.sort_by(|left, right| left.min_x.total_cmp(&right.min_x));
+            let mut next_pixel_segment = 0;
+            let mut next_pixel_join = 0;
+            pixel_segments.clear();
+            pixel_joins.clear();
+
             for x in row_left..row_right {
                 if antialias {
                     let sample_left = x as f32 + 0.125;
                     let sample_right = x as f32 + 0.875;
-                    pixel_segments.clear();
-                    pixel_segments.extend(
-                        row_segments
-                            .iter()
-                            .filter(|segment| {
-                                segment.max_x >= sample_left && segment.min_x <= sample_right
-                            })
-                            .copied(),
-                    );
-                    pixel_joins.clear();
-                    pixel_joins.extend(
-                        row_joins
-                            .iter()
-                            .filter(|join| {
-                                join.max_x >= sample_left && join.min_x <= sample_right
-                            })
-                            .copied(),
-                    );
+                    while next_pixel_segment < row_segments_x.len()
+                        && row_segments_x[next_pixel_segment].min_x <= sample_right
+                    {
+                        pixel_segments.push(row_segments_x[next_pixel_segment]);
+                        next_pixel_segment += 1;
+                    }
+                    pixel_segments.retain(|segment| segment.max_x >= sample_left);
+
+                    while next_pixel_join < row_joins_x.len()
+                        && row_joins_x[next_pixel_join].min_x <= sample_right
+                    {
+                        pixel_joins.push(row_joins_x[next_pixel_join]);
+                        next_pixel_join += 1;
+                    }
+                    pixel_joins.retain(|join| join.max_x >= sample_left);
                 }
                 let coverage = if antialias {
                     // A stroked segment is a convex region. If one segment
