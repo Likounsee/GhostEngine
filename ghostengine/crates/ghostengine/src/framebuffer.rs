@@ -90,6 +90,41 @@ impl Framebuffer {
         self.pixels.fill(color);
     }
 
+    /// Resizes the framebuffer and initializes every pixel to the supplied color.
+    ///
+    /// The existing pixel allocation is retained whenever its capacity is large
+    /// enough. This is useful for applications such as emulators whose output
+    /// dimensions can change between frames or display modes.
+    ///
+    /// If additional storage is required, allocation is attempted before the
+    /// dimensions or existing pixels are changed.
+    pub fn resize_and_clear(
+        &mut self,
+        width: u32,
+        height: u32,
+        clear_color: Color,
+    ) -> Result<(), FramebufferError> {
+        if width == 0 || height == 0 {
+            return Err(FramebufferError::ZeroDimension);
+        }
+
+        let pixel_count = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(FramebufferError::SizeOverflow)?;
+
+        if pixel_count > self.pixels.len() {
+            self.pixels
+                .try_reserve_exact(pixel_count - self.pixels.len())
+                .map_err(|_| FramebufferError::AllocationFailed)?;
+        }
+
+        self.pixels.resize(pixel_count, clear_color);
+        self.pixels.fill(clear_color);
+        self.width = width;
+        self.height = height;
+        Ok(())
+    }
+
     /// Writes a pixel. Returns false when the coordinates are outside the target.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: Color) -> bool {
         let Some(index) = self.pixel_index(x, y) else {
@@ -191,5 +226,34 @@ mod tests {
             .pixels()
             .iter()
             .all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn resize_and_clear_reuses_existing_pixel_allocation() {
+        let mut framebuffer = Framebuffer::new(4, 4, Color::RED).unwrap();
+        let allocation = framebuffer.pixels().as_ptr();
+
+        framebuffer.resize_and_clear(2, 2, Color::BLUE).unwrap();
+        framebuffer.resize_and_clear(4, 4, Color::GREEN).unwrap();
+
+        assert_eq!(framebuffer.width(), 4);
+        assert_eq!(framebuffer.height(), 4);
+        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::GREEN));
+    }
+
+    #[test]
+    fn failed_resize_keeps_framebuffer_unchanged() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::RED).unwrap();
+        let original = framebuffer.clone();
+
+        assert_eq!(
+            framebuffer.resize_and_clear(0, 4, Color::BLUE),
+            Err(FramebufferError::ZeroDimension)
+        );
+        assert_eq!(framebuffer, original);
     }
 }
