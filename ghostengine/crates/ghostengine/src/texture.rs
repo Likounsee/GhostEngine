@@ -272,23 +272,25 @@ pub fn draw_texture_clipped(
         let use_cache = end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
         if use_cache {
-            let mut cache = vec![[0.0_f32; 4]; cache_len.unwrap()];
+            // The cache is fully overwritten during construction. Reserving
+            // capacity and pushing rows avoids zero-initializing the entire
+            // multi-megabyte buffer before filling it.
+            let mut cache = Vec::with_capacity(cache_len.unwrap());
             let row_width = texture.width as usize;
             for source_row in 0..texture.height as usize {
                 let source_offset = source_row * row_width;
-                let cache_offset = source_row * samples.len();
-                for (column, &(x0, x1, tx)) in samples.iter().enumerate() {
+                for &(x0, x1, tx) in samples {
                     let left = texture.pixels[source_offset + x0];
                     let right = texture.pixels[source_offset + x1];
                     let inverse_x = 1.0 - tx;
                     let left_alpha = f32::from(left.a) * inverse_x;
                     let right_alpha = f32::from(right.a) * tx;
-                    cache[cache_offset + column] = [
+                    cache.push([
                         f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
                         f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
                         f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
                         left_alpha + right_alpha,
-                    ];
+                    ]);
                 }
             }
             Some(cache)
