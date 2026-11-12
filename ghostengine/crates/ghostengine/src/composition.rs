@@ -369,34 +369,53 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
                 && source_x < source_width
                 && source_y < source_height
             {
-                let source = match layer.filter {
-                    TextureFilter::Nearest => sample_pixels_nearest(
-                        layer.framebuffer.pixels(),
-                        layer.framebuffer.width(),
-                        layer.framebuffer.height(),
-                        source_x,
-                        source_y,
-                    ),
-                    TextureFilter::Bilinear => sample_pixels_bilinear(
+                let destination = &mut destination_row[x as usize];
+                if layer.filter == TextureFilter::Bilinear
+                    && layer.blend_mode == BlendMode::SourceOver
+                    && destination.a == u8::MAX
+                {
+                    blend_bilinear_over_opaque(
                         layer.framebuffer.pixels(),
                         layer.framebuffer.width(),
                         layer.framebuffer.height(),
                         source_x - 0.5,
                         source_y - 0.5,
-                    ),
-                };
-                if source.a != 0 {
-                    let destination = &mut destination_row[x as usize];
-                    if layer.blend_mode == BlendMode::SourceOver {
-                        let alpha =
-                            ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
-                        if alpha > 0 {
-                            *destination = Color::rgba(source.r, source.g, source.b, alpha)
-                                .blend_over(*destination);
+                        layer.opacity,
+                        destination,
+                    );
+                } else {
+                    let source = match layer.filter {
+                        TextureFilter::Nearest => sample_pixels_nearest(
+                            layer.framebuffer.pixels(),
+                            layer.framebuffer.width(),
+                            layer.framebuffer.height(),
+                            source_x,
+                            source_y,
+                        ),
+                        TextureFilter::Bilinear => sample_pixels_bilinear(
+                            layer.framebuffer.pixels(),
+                            layer.framebuffer.width(),
+                            layer.framebuffer.height(),
+                            source_x - 0.5,
+                            source_y - 0.5,
+                        ),
+                    };
+                    if source.a != 0 {
+                        if layer.blend_mode == BlendMode::SourceOver {
+                            let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127)
+                                / 255) as u8;
+                            if alpha > 0 {
+                                *destination = Color::rgba(source.r, source.g, source.b, alpha)
+                                    .blend_over(*destination);
+                            }
+                        } else {
+                            *destination = blend_with_mode(
+                                source,
+                                *destination,
+                                layer.opacity,
+                                layer.blend_mode,
+                            );
                         }
-                    } else {
-                        *destination =
-                            blend_with_mode(source, *destination, layer.opacity, layer.blend_mode);
                     }
                 }
             }
@@ -404,6 +423,64 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
             source_y += source_step_y;
         }
     }
+}
+
+// Bilinear source-over over an opaque destination can be performed directly
+// from interpolated premultiplied channels. This avoids unpremultiplying into an
+// intermediate 8-bit Color and blending it again.
+#[inline]
+fn blend_bilinear_over_opaque(
+    pixels: &[Color],
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+    opacity: u8,
+    destination: &mut Color,
+) {
+    if width == 0 || height == 0 || opacity == 0 {
+        return;
+    }
+    let x = x.clamp(0.0, width as f32 - 1.0);
+    let y = y.clamp(0.0, height as f32 - 1.0);
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+    let x1 = (x0 + 1).min(width as usize - 1);
+    let y1 = (y0 + 1).min(height as usize - 1);
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+    let top_left = pixels[y0 * width as usize + x0];
+    let top_right = pixels[y0 * width as usize + x1];
+    let bottom_left = pixels[y1 * width as usize + x0];
+    let bottom_right = pixels[y1 * width as usize + x1];
+
+    let inverse_x = 1.0 - tx;
+    let inverse_y = 1.0 - ty;
+    let top_left_alpha = f32::from(top_left.a) * inverse_x;
+    let top_right_alpha = f32::from(top_right.a) * tx;
+    let bottom_left_alpha = f32::from(bottom_left.a) * inverse_x;
+    let bottom_right_alpha = f32::from(bottom_right.a) * tx;
+    let alpha_top = top_left_alpha + top_right_alpha;
+    let alpha_bottom = bottom_left_alpha + bottom_right_alpha;
+    let alpha = (alpha_top * inverse_y + alpha_bottom * ty) * (f32::from(opacity) / 255.0);
+    if alpha <= f32::EPSILON {
+        return;
+    }
+
+    let interpolate = |tl: u8, tr: u8, bl: u8, br: u8| {
+        let top = f32::from(tl) * top_left_alpha + f32::from(tr) * top_right_alpha;
+        let bottom = f32::from(bl) * bottom_left_alpha + f32::from(br) * bottom_right_alpha;
+        (top * inverse_y + bottom * ty) * (f32::from(opacity) / 255.0)
+    };
+    let inverse_alpha = 255.0 - alpha;
+    let channel = |premultiplied: f32, background: u8| {
+        ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    destination.r = channel(interpolate(top_left.r, top_right.r, bottom_left.r, bottom_right.r), destination.r);
+    destination.g = channel(interpolate(top_left.g, top_right.g, bottom_left.g, bottom_right.g), destination.g);
+    destination.b = channel(interpolate(top_left.b, top_right.b, bottom_left.b, bottom_right.b), destination.b);
 }
 
 fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMode) -> Color {
