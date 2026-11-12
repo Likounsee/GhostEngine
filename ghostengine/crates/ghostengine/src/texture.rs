@@ -347,26 +347,46 @@ pub fn draw_texture_clipped(
                     if alpha <= f32::EPSILON {
                         continue;
                     }
-                    let inverse_alpha = alpha.recip();
-                    let red = ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
-                    let green = ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
-                    let blue = ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
-                    let color = Color::rgba(
-                        red,
-                        green,
-                        blue,
-                        alpha.round().clamp(0.0, 255.0) as u8,
-                    );
-                    if color.a == 255 {
-                        *pixel = color;
-                    } else if color.a > 0 {
-                        *pixel = color.blend_over(*pixel);
+                    let red_premultiplied = top[0] * inverse_y + bottom[0] * ty;
+                    let green_premultiplied = top[1] * inverse_y + bottom[1] * ty;
+                    let blue_premultiplied = top[2] * inverse_y + bottom[2] * ty;
+                    if pixel.a == 255 {
+                        // Composite directly from premultiplied channels over an
+                        // opaque destination. This avoids unpremultiplying to an
+                        // 8-bit color only to multiply by alpha again in blend_over.
+                        let inverse_alpha = 255.0 - alpha;
+                        pixel.r = ((red_premultiplied
+                            + f32::from(pixel.r) * inverse_alpha)
+                            / 255.0)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                        pixel.g = ((green_premultiplied
+                            + f32::from(pixel.g) * inverse_alpha)
+                            / 255.0)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                        pixel.b = ((blue_premultiplied
+                            + f32::from(pixel.b) * inverse_alpha)
+                            / 255.0)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                    } else {
+                        let inverse_alpha = alpha.recip();
+                        let color = Color::rgba(
+                            (red_premultiplied * inverse_alpha)
+                                .round()
+                                .clamp(0.0, 255.0) as u8,
+                            (green_premultiplied * inverse_alpha)
+                                .round()
+                                .clamp(0.0, 255.0) as u8,
+                            (blue_premultiplied * inverse_alpha)
+                                .round()
+                                .clamp(0.0, 255.0) as u8,
+                            alpha.round().clamp(0.0, 255.0) as u8,
+                        );
+                        if color.a > 0 {
+                            *pixel = color.blend_over(*pixel);
+                        }
                     }
                 }
             } else {
@@ -510,6 +530,33 @@ mod tests {
 
     fn two_color_texture() -> Texture {
         Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap()
+    }
+
+    #[test]
+    fn premultiplied_composition_over_opaque_stays_within_one_channel_value() {
+        // The fused floating-point path can differ by at most one 8-bit level
+        // from the established unpremultiply-then-source-over rounding path.
+        for alpha in [0.5_f32, 1.0, 32.5, 127.5, 180.0, 220.0, 254.5] {
+            for premultiplied in [0.0_f32, 1.0, 32.0, 127.0, 255.0, 1024.0, 255.0 * alpha] {
+                if premultiplied > 255.0 * alpha {
+                    continue;
+                }
+                for destination in [0_u8, 1, 64, 127, 200, 254, 255] {
+                    let source = (premultiplied / alpha)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    let source_alpha = alpha.round().clamp(0.0, 255.0) as u8;
+                    let expected = Color::rgba(source, source, source, source_alpha)
+                        .blend_over(Color::rgb(destination, destination, destination));
+                    let actual = ((premultiplied
+                        + f32::from(destination) * (255.0 - alpha))
+                        / 255.0)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    assert!(actual.abs_diff(expected.r) <= 1);
+                }
+            }
+        }
     }
 
     #[test]
