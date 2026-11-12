@@ -198,14 +198,24 @@ fn main() {
         measure("Rectangle fill + clipping", iterations, |target| {
             ghostengine::rasterizer::fill_rect(
                 target,
-                Rect::new(24 * SCALE_U32, 24 * SCALE_U32, 420 * SCALE_U32, 220 * SCALE_U32),
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
                 Color::rgb(45, 130, 220),
             );
         }),
         measure("Rectangle alpha blend", iterations, |target| {
             blend_rect(
                 target,
-                Rect::new(24 * SCALE_U32, 24 * SCALE_U32, 420 * SCALE_U32, 220 * SCALE_U32),
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
                 Color::rgba(220, 90, 55, 150),
             );
         }),
@@ -233,8 +243,13 @@ fn main() {
             );
         }),
         measure("Vector path fill", iterations, |target| {
-            fill_path_even_odd(target, &path, Color::rgba(245, 130, 45, 220), 0.35 * SCALE_F32)
-                .expect("benchmark path should be valid");
+            fill_path_even_odd(
+                target,
+                &path,
+                Color::rgba(245, 130, 45, 220),
+                0.35 * SCALE_F32,
+            )
+            .expect("benchmark path should be valid");
         }),
         measure("Vector path fill AA", iterations, |target| {
             fill_path_even_odd_aa(
