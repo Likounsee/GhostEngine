@@ -1385,11 +1385,11 @@ mod tests {
                         let expected = segments
                             .iter()
                             .any(|segment| segment.distance_squared(sample) <= radius_squared)
-                            || joins.iter().any(|join| join.contains(sample));
+                            || joins.iter().any(|join| join.contains_xy(sample.x, sample.y));
                         let actual = row_segments.iter().any(|segment| {
                             segment.may_cover(sample)
                                 && segment.distance_squared(sample) <= radius_squared
-                        }) || row_joins.iter().any(|join| join.contains(sample));
+                        }) || row_joins.iter().any(|join| join.contains_xy(sample.x, sample.y));
 
                         assert_eq!(
                             actual, expected,
