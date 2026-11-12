@@ -319,7 +319,10 @@ impl Gradient {
             return Err(GradientError::InvalidPosition);
         }
         stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-        let lookup = if stops.windows(2).all(|pair| pair[0].position < pair[1].position) {
+        let lookup = if stops
+            .windows(2)
+            .all(|pair| pair[0].position < pair[1].position)
+        {
             const LOOKUP_SIZE: usize = 4096;
             Some(
                 (0..LOOKUP_SIZE)
@@ -1982,10 +1985,20 @@ mod tests {
     #[test]
     fn raster_gradient_lookup_stays_within_one_channel_of_exact_sampling() {
         let gradient = super::Gradient::new(vec![
-            super::GradientStop { position: 0.0, color: Color::rgb(35, 110, 230) },
-            super::GradientStop { position: 0.5, color: Color::rgb(50, 210, 160) },
-            super::GradientStop { position: 1.0, color: Color::rgb(245, 130, 45) },
-        ]).unwrap();
+            super::GradientStop {
+                position: 0.0,
+                color: Color::rgb(35, 110, 230),
+            },
+            super::GradientStop {
+                position: 0.5,
+                color: Color::rgb(50, 210, 160),
+            },
+            super::GradientStop {
+                position: 1.0,
+                color: Color::rgb(245, 130, 45),
+            },
+        ])
+        .unwrap();
 
         for index in 0..=10_000 {
             let position = index as f32 / 10_000.0;
