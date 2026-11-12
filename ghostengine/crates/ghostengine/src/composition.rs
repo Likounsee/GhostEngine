@@ -277,15 +277,22 @@ fn compose_layers_clipped(target: &mut Framebuffer, layers: &[Layer], clip: Opti
         let source_right = source_left + (destination_right - destination_left) as usize;
         let source_width = layer.framebuffer.width() as usize;
 
-        for source_y in 0..layer.framebuffer.height() {
-            let destination_y = i64::from(layer.y) + i64::from(source_y);
-            if destination_y < i64::from(clip.y)
-                || destination_y >= i64::from(clip.y) + i64::from(clip.height)
-            {
-                continue;
-            }
+        // Intersect vertically before entering the scanline loop. This avoids
+        // visiting every off-screen source row when a large layer is only
+        // partially visible (or almost entirely outside the target).
+        let destination_top = i64::from(layer.y).max(i64::from(clip.y));
+        let destination_bottom = (i64::from(layer.y)
+            + i64::from(layer.framebuffer.height()))
+        .min(i64::from(clip.y) + i64::from(clip.height));
+        if destination_top >= destination_bottom {
+            continue;
+        }
+        let source_top = (destination_top - i64::from(layer.y)) as usize;
+        let source_bottom = (destination_bottom - i64::from(layer.y)) as usize;
 
-            let source_start = source_y as usize * source_width + source_left;
+        for source_y in source_top..source_bottom {
+            let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
+            let source_start = source_y * source_width + source_left;
             let source_row = &layer.framebuffer.pixels()
                 [source_start..source_y as usize * source_width + source_right];
             let Some(destination_row) = target.row_mut(destination_y as u32) else {
@@ -917,6 +924,30 @@ mod tests {
         compose_layers(&mut optimized, &layers);
 
         assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
+    fn identity_layer_composition_skips_rows_outside_vertical_clip() {
+        let mut layer = Layer::new(2, 5, Color::TRANSPARENT).unwrap();
+        for y in 0..5 {
+            for x in 0..2 {
+                layer.framebuffer_mut().set_pixel(
+                    x,
+                    y,
+                    Color::rgb((y * 40) as u8, (x * 80) as u8, 10),
+                );
+            }
+        }
+        layer.set_position(1, -3);
+
+        let mut target = Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        compose_layers(&mut target, &[layer]);
+
+        assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(120, 0, 10)));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::rgb(120, 80, 10)));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::rgb(160, 0, 10)));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::rgb(160, 80, 10)));
+        assert!(target.get_pixel(1, 2).unwrap() == Color::BLACK);
     }
 
     #[test]
