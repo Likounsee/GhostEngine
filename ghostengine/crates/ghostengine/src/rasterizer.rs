@@ -1529,21 +1529,39 @@ pub fn fill_ellipse_aa(
         for x in left..right {
             let normalized_x =
                 SAMPLE_OFFSETS.map(|offset| (f64::from(x) + offset - cx) * inverse_rx);
-            let mut covered = 0_u32;
-            for dx in normalized_x {
-                let dx_squared = dx * dx;
-                if dx_squared + max_y_squared <= 1.0 {
-                    // All four vertical samples are inside this ellipse column.
-                    covered += 4;
-                } else if dx_squared + min_y_squared <= 1.0 {
-                    // Only edge columns need the individual sample comparisons.
-                    for dy_squared in normalized_y_squared {
-                        if dx_squared + dy_squared <= 1.0 {
-                            covered += 1;
+            let min_x_squared = normalized_x
+                .iter()
+                .map(|value| value * value)
+                .fold(f64::INFINITY, f64::min);
+            let max_x_squared = normalized_x
+                .iter()
+                .map(|value| value * value)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let covered = if max_x_squared + max_y_squared <= 1.0 {
+                // The farthest sample in both axes is inside: all 16 samples
+                // are covered, so the pixel needs no per-sample work.
+                16
+            } else if min_x_squared + min_y_squared > 1.0 {
+                // Even the nearest sample is outside the ellipse.
+                0
+            } else {
+                let mut covered = 0_u32;
+                for dx in normalized_x {
+                    let dx_squared = dx * dx;
+                    if dx_squared + max_y_squared <= 1.0 {
+                        // All four vertical samples are inside this column.
+                        covered += 4;
+                    } else if dx_squared + min_y_squared <= 1.0 {
+                        // Only edge columns need individual comparisons.
+                        for dy_squared in normalized_y_squared {
+                            if dx_squared + dy_squared <= 1.0 {
+                                covered += 1;
+                            }
                         }
                     }
                 }
-            }
+                covered
+            };
             if covered == 0 {
                 continue;
             }
