@@ -237,8 +237,13 @@ fn main() {
                 .expect("benchmark path should be valid");
         }),
         measure("Vector path fill AA", iterations, |target| {
-            fill_path_even_odd_aa(target, &path, Color::rgba(245, 130, 45, 220), 0.35 * SCALE_F32)
-                .expect("benchmark path should be valid");
+            fill_path_even_odd_aa(
+                target,
+                &path,
+                Color::rgba(245, 130, 45, 220),
+                0.35 * SCALE_F32,
+            )
+            .expect("benchmark path should be valid");
         }),
         measure("Vector path stroke", iterations, |target| {
             stroke_path(
@@ -265,7 +270,12 @@ fn main() {
         measure("Linear gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_linear_gradient(
                 target,
-                Rect::new(12 * SCALE_U32, 12 * SCALE_U32, 456 * SCALE_U32, 246 * SCALE_U32),
+                Rect::new(
+                    12 * SCALE_U32,
+                    12 * SCALE_U32,
+                    456 * SCALE_U32,
+                    246 * SCALE_U32,
+                ),
                 Vector::new(12.0 * SCALE_F32, 12.0 * SCALE_F32),
                 Vector::new(468.0 * SCALE_F32, 258.0 * SCALE_F32),
                 &gradient,
@@ -274,7 +284,12 @@ fn main() {
         measure("Radial gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_radial_gradient(
                 target,
-                Rect::new(12 * SCALE_U32, 12 * SCALE_U32, 456 * SCALE_U32, 246 * SCALE_U32),
+                Rect::new(
+                    12 * SCALE_U32,
+                    12 * SCALE_U32,
+                    456 * SCALE_U32,
+                    246 * SCALE_U32,
+                ),
                 Vector::new(240.0 * SCALE_F32, 135.0 * SCALE_F32),
                 190.0 * SCALE_F32,
                 &gradient,
@@ -284,7 +299,12 @@ fn main() {
             ghostengine::draw_texture(
                 target,
                 &texture,
-                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
                 TextureFilter::Nearest,
             );
         }),
@@ -292,7 +312,12 @@ fn main() {
             ghostengine::draw_texture(
                 target,
                 &texture,
-                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
                 TextureFilter::Bilinear,
             );
         }),
@@ -313,7 +338,12 @@ fn main() {
             ghostengine::draw_button(
                 target,
                 &font,
-                Rect::new(110 * SCALE_U32, 100 * SCALE_U32, 260 * SCALE_U32, 64 * SCALE_U32),
+                Rect::new(
+                    110 * SCALE_U32,
+                    100 * SCALE_U32,
+                    260 * SCALE_U32,
+                    64 * SCALE_U32,
+                ),
                 "مرحبا",
                 28.0 * SCALE_F32,
                 WidgetState::Hovered,
