@@ -67,6 +67,17 @@ impl Framebuffer {
         &self.pixels
     }
 
+    /// Returns mutable access to the tightly packed row-major pixel storage.
+    ///
+    /// This is useful for applications that produce pixels outside GhostEngine
+    /// (for example, an emulator framebuffer) and want to copy them without
+    /// issuing one bounds-checked set_pixel call per pixel.
+    ///
+    /// The slice always contains exactly width() * height() pixels.
+    pub fn pixels_mut(&mut self) -> &mut [Color] {
+        &mut self.pixels
+    }
+
     pub fn clear(&mut self, color: Color) {
         self.pixels.fill(color);
     }
@@ -146,6 +157,22 @@ mod tests {
         assert_eq!(framebuffer.get_pixel(1, 1), Some(Color::RED));
         assert!(!framebuffer.set_pixel(2, 1, Color::RED));
         assert_eq!(framebuffer.get_pixel(2, 1), None);
+    }
+
+    #[test]
+    fn mutable_pixel_slice_updates_row_major_storage() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        framebuffer.pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::WHITE,
+        ]);
+
+        assert_eq!(framebuffer.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(framebuffer.get_pixel(1, 0), Some(Color::GREEN));
+        assert_eq!(framebuffer.get_pixel(0, 1), Some(Color::BLUE));
+        assert_eq!(framebuffer.get_pixel(1, 1), Some(Color::WHITE));
     }
 
     #[test]
