@@ -490,6 +490,26 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
         return Ok(());
     }
 
+    // Coverage has only 17 possible values with 4x4 supersampling.
+    // Precompute source-over results for opaque destination pixels so the
+    // hot pixel loop performs table lookups instead of three channel divisions.
+    let mut opaque_r = [[0_u8; 256]; 17];
+    let mut opaque_g = [[0_u8; 256]; 17];
+    let mut opaque_b = [[0_u8; 256]; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u32;
+        let inverse_alpha = 255 - alpha;
+        for destination in 0..256 {
+            let destination = destination as u32;
+            opaque_r[covered][destination as usize] =
+                ((u32::from(color.r) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_g[covered][destination as usize] =
+                ((u32::from(color.g) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_b[covered][destination as usize] =
+                ((u32::from(color.b) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+        }
+    }
+
     let width = (max_x - min_x) as usize;
     let mut coverage = vec![0_u8; width];
     let mut intersections = Vec::with_capacity(edges.len());
@@ -555,13 +575,20 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
             if alpha == 0 {
                 continue;
             }
-            let source = Color::rgba(color.r, color.g, color.b, alpha);
             let index = (min_x as usize) + offset;
-            row[index] = if alpha == u8::MAX {
-                source
+            if alpha == u8::MAX {
+                row[index] = Color::rgba(color.r, color.g, color.b, alpha);
+            } else if row[index].a == u8::MAX {
+                let coverage_index = usize::from(covered);
+                row[index] = Color::rgb(
+                    opaque_r[coverage_index][row[index].r as usize],
+                    opaque_g[coverage_index][row[index].g as usize],
+                    opaque_b[coverage_index][row[index].b as usize],
+                );
             } else {
-                source.blend_over(row[index])
-            };
+                let source = Color::rgba(color.r, color.g, color.b, alpha);
+                row[index] = source.blend_over(row[index]);
+            }
         }
     }
     Ok(())
