@@ -240,6 +240,26 @@ pub fn draw_texture_clipped(
 
     let source_x_scale = texture.width as f32 / destination.width as f32;
     let source_y_scale = texture.height as f32 / destination.height as f32;
+    let horizontal_samples = if filter == TextureFilter::Bilinear {
+        let row_width = texture.width as usize;
+        Some(
+            (first_x..end_x)
+                .map(|x| {
+                    let source_x =
+                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+                    let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
+                    let x0 = source_x.floor() as usize;
+                    (
+                        x0,
+                        (x0 + 1).min(row_width - 1),
+                        source_x - x0 as f32,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
     for y in first_y..end_y {
         let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
         let Some(row) = target.row_mut(y as u32) else {
@@ -270,24 +290,15 @@ pub fn draw_texture_clipped(
             let ty = source_y - y0 as f32;
             let row_width = texture.width as usize;
 
-            // Horizontal source coordinates are identical for every destination
-            // row. Prepare their clamped texel indices and interpolation weights
-            // once instead of repeating floor/clamp work for every output pixel.
-            let horizontal_samples = (first_x..end_x)
-                .map(|x| {
-                    let source_x =
-                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
-                    let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
-                    let x0 = source_x.floor() as usize;
-                    (
-                        x0,
-                        (x0 + 1).min(row_width - 1),
-                        source_x - x0 as f32,
-                    )
-                })
-                .collect::<Vec<_>>();
-
-            for (offset, (x0, x1, tx)) in horizontal_samples.into_iter().enumerate() {
+            // Horizontal texel indices and weights were prepared once for
+            // the complete draw operation, not once for every destination row.
+            for (offset, (x0, x1, tx)) in horizontal_samples
+                .as_ref()
+                .expect("bilinear samples are prepared for bilinear filtering")
+                .iter()
+                .copied()
+                .enumerate()
+            {
                 let color = sample_bilinear_prepared(
                     &texture.pixels,
                     row_width,
