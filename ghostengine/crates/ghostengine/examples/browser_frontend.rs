@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut page_message = String::from("This page is drawn by GhostEngine's CPU renderer.");
 
     while window.is_open() {
+        window.sync_framebuffer_size(&mut framebuffer)?;
         let input = window.poll_input();
         if input.escape_down {
             break;
