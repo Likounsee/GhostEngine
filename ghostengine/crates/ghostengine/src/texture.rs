@@ -461,16 +461,13 @@ pub fn draw_texture_transformed_clipped(
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
         return false;
     }
-    let Some(inverse) = transform.inverse() else {
-        return false;
-    };
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return false;
     };
 
     // Identity is the common case for display-list texture commands. Route it
-    // through the specialized scanline renderer instead of computing four
-    // transformed corners and an inverse-mapped point for every destination pixel.
+    // through the specialized scanline renderer before attempting matrix
+    // inversion, corner transforms, or per-pixel inverse mapping.
     if transform == Transform2D::IDENTITY {
         let Some(visible) = destination.intersection(clip) else {
             return false;
@@ -481,6 +478,10 @@ pub fn draw_texture_transformed_clipped(
         draw_texture_clipped(target, texture, destination, filter, clip);
         return true;
     }
+
+    let Some(inverse) = transform.inverse() else {
+        return false;
+    };
 
     let left = destination.x as f32;
     let top = destination.y as f32;
