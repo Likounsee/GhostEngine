@@ -2,6 +2,20 @@
 
 use crate::{Color, Framebuffer, FramebufferError};
 
+/// Pixel blend operation used when a layer is composited.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BlendMode {
+    /// Standard source-over composition.
+    #[default]
+    SourceOver,
+    /// Multiplies source and destination color channels.
+    Multiply,
+    /// Lightens using `source + destination - source * destination`.
+    Screen,
+    /// Adds source and destination channels, clamping at full intensity.
+    Add,
+}
+
 /// A framebuffer-backed layer positioned in the destination coordinate space.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Layer {
@@ -10,6 +24,7 @@ pub struct Layer {
     y: i32,
     opacity: u8,
     visible: bool,
+    blend_mode: BlendMode,
 }
 
 impl Layer {
@@ -21,6 +36,7 @@ impl Layer {
             y: 0,
             opacity: 255,
             visible: true,
+            blend_mode: BlendMode::SourceOver,
         })
     }
 
@@ -59,6 +75,15 @@ impl Layer {
 
     pub fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
+    }
+
+    #[must_use]
+    pub const fn blend_mode(&self) -> BlendMode {
+        self.blend_mode
+    }
+
+    pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+        self.blend_mode = blend_mode;
     }
 }
 
@@ -102,28 +127,66 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
                 if source.a == 0 {
                     continue;
                 }
-                if layer.opacity == u8::MAX && source.a == u8::MAX {
-                    *destination = *source;
-                    continue;
-                }
-                let alpha = if layer.opacity == u8::MAX {
-                    source.a
+                if layer.blend_mode == BlendMode::SourceOver {
+                    if layer.opacity == u8::MAX && source.a == u8::MAX {
+                        *destination = *source;
+                        continue;
+                    }
+                    let alpha = if layer.opacity == u8::MAX {
+                        source.a
+                    } else {
+                        ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
+                    };
+                    if alpha == 0 {
+                        continue;
+                    }
+                    let source = Color::rgba(source.r, source.g, source.b, alpha);
+                    *destination = source.blend_over(*destination);
                 } else {
-                    ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
-                };
-                if alpha == 0 {
-                    continue;
+                    *destination =
+                        blend_with_mode(*source, *destination, layer.opacity, layer.blend_mode);
                 }
-                let source = Color::rgba(source.r, source.g, source.b, alpha);
-                *destination = source.blend_over(*destination);
             }
         }
     }
 }
 
+fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMode) -> Color {
+    let source_alpha = f32::from(source.a) / 255.0 * (f32::from(opacity) / 255.0);
+    let destination_alpha = f32::from(destination.a) / 255.0;
+    let output_alpha = source_alpha + destination_alpha * (1.0 - source_alpha);
+    if output_alpha <= 0.0 {
+        return Color::TRANSPARENT;
+    }
+
+    let channel = |source: u8, destination: u8| {
+        let source = f32::from(source) / 255.0;
+        let destination = f32::from(destination) / 255.0;
+        let blended = match mode {
+            BlendMode::SourceOver => source,
+            BlendMode::Multiply => source * destination,
+            BlendMode::Screen => source + destination - source * destination,
+            BlendMode::Add => (source + destination).min(1.0),
+        };
+        let premultiplied = source * source_alpha * (1.0 - destination_alpha)
+            + blended * source_alpha * destination_alpha
+            + destination * destination_alpha * (1.0 - source_alpha);
+        (premultiplied / output_alpha * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+
+    Color::rgba(
+        channel(source.r, destination.r),
+        channel(source.g, destination.g),
+        channel(source.b, destination.b),
+        (output_alpha * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{compose_layers, Layer};
+    use super::{compose_layers, BlendMode, Layer};
     use crate::{Color, Framebuffer};
 
     #[test]
@@ -147,6 +210,40 @@ mod tests {
         compose_layers(&mut target, &[layer]);
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::rgb(128, 0, 127)));
+    }
+
+    #[test]
+    fn multiply_screen_and_add_blend_opaque_layer_channels() {
+        let modes = [
+            (BlendMode::Multiply, Color::rgb(0, 0, 0)),
+            (BlendMode::Screen, Color::rgb(255, 255, 0)),
+            (BlendMode::Add, Color::rgb(255, 255, 0)),
+        ];
+
+        for (mode, expected) in modes {
+            let mut layer = Layer::new(1, 1, Color::RED).unwrap();
+            layer.set_blend_mode(mode);
+            let mut target = Framebuffer::new(1, 1, Color::GREEN).unwrap();
+
+            compose_layers(&mut target, &[layer]);
+
+            assert_eq!(target.get_pixel(0, 0), Some(expected));
+        }
+    }
+
+    #[test]
+    fn non_source_over_blends_respect_layer_and_source_alpha() {
+        let mut layer = Layer::new(1, 1, Color::rgba(255, 0, 0, 128)).unwrap();
+        layer.set_blend_mode(BlendMode::Screen);
+        layer.set_opacity(128);
+        let mut target = Framebuffer::new(1, 1, Color::rgba(0, 0, 255, 128)).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        let pixel = target.get_pixel(0, 0).unwrap();
+        assert!(pixel.r > 0);
+        assert!(pixel.b > 0);
+        assert!(pixel.a > 128);
     }
 
     #[test]
