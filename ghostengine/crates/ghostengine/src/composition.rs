@@ -1,6 +1,6 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
-use crate::{Color, Framebuffer, FramebufferError};
+use crate::{Color, Framebuffer, FramebufferError, Transform2D, Vector};
 
 /// Pixel blend operation used when a layer is composited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -17,7 +17,7 @@ pub enum BlendMode {
 }
 
 /// A framebuffer-backed layer positioned in the destination coordinate space.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     framebuffer: Framebuffer,
     x: i32,
@@ -25,6 +25,7 @@ pub struct Layer {
     opacity: u8,
     visible: bool,
     blend_mode: BlendMode,
+    transform: Transform2D,
 }
 
 impl Layer {
@@ -37,6 +38,7 @@ impl Layer {
             opacity: 255,
             visible: true,
             blend_mode: BlendMode::SourceOver,
+            transform: Transform2D::IDENTITY,
         })
     }
 
@@ -85,6 +87,17 @@ impl Layer {
     pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
         self.blend_mode = blend_mode;
     }
+
+    /// Returns the affine transform applied to this layer's pixels.
+    #[must_use]
+    pub const fn transform(&self) -> Transform2D {
+        self.transform
+    }
+
+    /// Sets the affine transform applied before the layer's position offset.
+    pub fn set_transform(&mut self, transform: Transform2D) {
+        self.transform = transform;
+    }
 }
 
 /// Composites layers in slice order, from back to front.
@@ -95,6 +108,10 @@ impl Layer {
 pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
     for layer in layers {
         if !layer.visible || layer.opacity == 0 {
+            continue;
+        }
+        if layer.transform != Transform2D::IDENTITY {
+            compose_transformed_layer(target, layer);
             continue;
         }
 
@@ -151,6 +168,101 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
     }
 }
 
+fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer) {
+    let Some(inverse) = layer.transform.inverse() else {
+        return;
+    };
+    if target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    let width = layer.framebuffer.width() as f32;
+    let height = layer.framebuffer.height() as f32;
+    let corners = [
+        Vector::new(0.0, 0.0),
+        Vector::new(width, 0.0),
+        Vector::new(width, height),
+        Vector::new(0.0, height),
+    ]
+    .map(|point| {
+        let point = layer.transform.transform_point(point);
+        Vector::new(point.x + layer.x as f32, point.y + layer.y as f32)
+    });
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return;
+    }
+
+    let min_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::INFINITY, f32::min);
+    let max_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::NEG_INFINITY, f32::max);
+
+    let clip_width = target.width() as f32;
+    let clip_height = target.height() as f32;
+    let left = min_x.floor().clamp(0.0, clip_width) as u32;
+    let right = max_x.ceil().clamp(0.0, clip_width) as u32;
+    let top = min_y.floor().clamp(0.0, clip_height) as u32;
+    let bottom = max_y.ceil().clamp(0.0, clip_height) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let source_width = layer.framebuffer.width() as f32;
+    let source_height = layer.framebuffer.height() as f32;
+    for y in top..bottom {
+        let Some(destination_row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let source_point = inverse.transform_point(Vector::new(
+                x as f32 + 0.5 - layer.x as f32,
+                y as f32 + 0.5 - layer.y as f32,
+            ));
+            if source_point.x < 0.0
+                || source_point.y < 0.0
+                || source_point.x >= source_width
+                || source_point.y >= source_height
+            {
+                continue;
+            }
+            let source_x = source_point.x.floor() as u32;
+            let source_y = source_point.y.floor() as u32;
+            let Some(source) = layer.framebuffer.get_pixel(source_x, source_y) else {
+                continue;
+            };
+            if source.a == 0 {
+                continue;
+            }
+            let destination = &mut destination_row[x as usize];
+            if layer.blend_mode == BlendMode::SourceOver {
+                let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
+                if alpha > 0 {
+                    *destination =
+                        Color::rgba(source.r, source.g, source.b, alpha).blend_over(*destination);
+                }
+            } else {
+                *destination =
+                    blend_with_mode(source, *destination, layer.opacity, layer.blend_mode);
+            }
+        }
+    }
+}
+
 fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMode) -> Color {
     let source_alpha = f32::from(source.a) / 255.0 * (f32::from(opacity) / 255.0);
     let destination_alpha = f32::from(destination.a) / 255.0;
@@ -187,7 +299,7 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 #[cfg(test)]
 mod tests {
     use super::{compose_layers, BlendMode, Layer};
-    use crate::{Color, Framebuffer};
+    use crate::{Color, Framebuffer, Transform2D};
 
     #[test]
     fn layers_compose_in_back_to_front_order() {
@@ -244,6 +356,44 @@ mod tests {
         assert!(pixel.r > 0);
         assert!(pixel.b > 0);
         assert!(pixel.a > 128);
+    }
+
+    #[test]
+    fn layer_transform_scales_pixels_using_pixel_center_sampling() {
+        let mut layer = Layer::new(1, 1, Color::RED).unwrap();
+        layer.set_transform(Transform2D::scale(2.0, 2.0));
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
+    }
+
+    #[test]
+    fn layer_transform_rotates_and_applies_position_offset() {
+        let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().set_pixel(0, 0, Color::RED);
+        layer.framebuffer_mut().set_pixel(1, 0, Color::GREEN);
+        layer.set_transform(Transform2D::rotation(core::f32::consts::FRAC_PI_2));
+        layer.set_position(1, 0);
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(0, 1), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(1, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn singular_layer_transform_draws_nothing() {
+        let mut layer = Layer::new(1, 1, Color::RED).unwrap();
+        layer.set_transform(Transform2D::scale(0.0, 1.0));
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
