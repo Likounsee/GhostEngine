@@ -181,7 +181,7 @@ fn sample_bilinear_prepared(
                                      top_right_channel: u8,
                                      bottom_left_channel: u8,
                                      bottom_right_channel: u8| {
-        let top = f32::from(top_left_channel) * weighted_alpha_top
+        let top = f32::from(top_left_channel) * weighted_alpha_top_left
             + f32::from(top_right_channel) * weighted_alpha_top_right;
         let bottom = f32::from(bottom_left_channel) * weighted_alpha_bottom_left
             + f32::from(bottom_right_channel) * weighted_alpha_bottom_right;
