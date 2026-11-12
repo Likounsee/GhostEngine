@@ -25,6 +25,7 @@ pub struct Texture {
     width: u32,
     height: u32,
     pixels: Vec<Color>,
+    fully_opaque: bool,
 }
 
 impl Texture {
@@ -39,10 +40,12 @@ impl Texture {
         if pixels.len() != expected {
             return Err(TextureError::PixelCountMismatch);
         }
+        let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
         Ok(Self {
             width,
             height,
             pixels,
+            fully_opaque,
         })
     }
 
@@ -53,6 +56,7 @@ impl Texture {
             width: framebuffer.width(),
             height: framebuffer.height(),
             pixels: framebuffer.pixels().to_vec(),
+            fully_opaque: framebuffer.pixels().iter().all(|pixel| pixel.a == 255),
         }
     }
 
@@ -63,11 +67,22 @@ impl Texture {
     #[must_use]
     pub fn from_framebuffer_owned(framebuffer: Framebuffer) -> Self {
         let (width, height, pixels) = framebuffer.into_parts();
+        let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
         Self {
             width,
             height,
             pixels,
+            fully_opaque,
         }
+    }
+
+    /// Returns true when every texel has fully opaque alpha.
+    ///
+    /// This property is computed once at construction and allows renderers to
+    /// avoid per-pixel alpha tests for common opaque assets.
+    #[must_use]
+    pub const fn is_fully_opaque(&self) -> bool {
+        self.fully_opaque
     }
 
     #[must_use]
@@ -372,15 +387,24 @@ pub fn draw_texture_clipped(
             // avoiding the generic floating-point sampler for every pixel.
             let source_row =
                 (source_y.floor() as u32).min(texture.height - 1) as usize * texture.width as usize;
-            for (pixel, &source_column) in row[first_x as usize..end_x as usize]
-                .iter_mut()
-                .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
-            {
-                let color = texture.pixels[source_row + source_column];
-                if color.a == 255 {
-                    *pixel = color;
-                } else if color.a > 0 {
-                    *pixel = color.blend_over(*pixel);
+            if texture.fully_opaque {
+                for (pixel, &source_column) in row[first_x as usize..end_x as usize]
+                    .iter_mut()
+                    .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
+                {
+                    *pixel = texture.pixels[source_row + source_column];
+                }
+            } else {
+                for (pixel, &source_column) in row[first_x as usize..end_x as usize]
+                    .iter_mut()
+                    .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
+                {
+                    let color = texture.pixels[source_row + source_column];
+                    if color.a == 255 {
+                        *pixel = color;
+                    } else if color.a > 0 {
+                        *pixel = color.blend_over(*pixel);
+                    }
                 }
             }
         } else {
@@ -912,6 +936,16 @@ mod tests {
             Rect::new(8, 8, 2, 2),
         );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn texture_tracks_whether_all_pixels_are_opaque() {
+        let opaque = Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let translucent =
+            Texture::new(2, 1, vec![Color::RED, Color::rgba(0, 0, 255, 128)]).unwrap();
+
+        assert!(opaque.is_fully_opaque());
+        assert!(!translucent.is_fully_opaque());
     }
 
     #[test]
