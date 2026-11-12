@@ -198,6 +198,87 @@ fn sample_bilinear_prepared(
     )
 }
 
+// The cached bilinear path stores horizontal samples as premultiplied RGBA
+// floats. On x86_64, SSE2 interpolates and composites all four components
+// together instead of running separate scalar arithmetic for each RGB channel.
+#[inline]
+fn blend_cached_bilinear_over_opaque(
+    top: &[f32; 4],
+    bottom: &[f32; 4],
+    inverse_y: f32,
+    ty: f32,
+    destination: &mut Color,
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use core::arch::x86_64::*;
+
+        // SSE2 is part of the x86_64 baseline, so no runtime feature check is needed.
+        // The loads point to the four-element cache entries passed by the caller.
+        unsafe {
+            let top_values = _mm_loadu_ps(top.as_ptr());
+            let bottom_values = _mm_loadu_ps(bottom.as_ptr());
+            let interpolated = _mm_add_ps(
+                _mm_mul_ps(top_values, _mm_set1_ps(inverse_y)),
+                _mm_mul_ps(bottom_values, _mm_set1_ps(ty)),
+            );
+            let alpha = _mm_cvtss_f32(_mm_shuffle_ps::<0xff>(interpolated, interpolated));
+            if alpha <= f32::EPSILON {
+                return;
+            }
+
+            // RGB cache values are premultiplied by 8-bit alpha (0..65025).
+            // The opaque-destination source-over equation is:
+            // (premultiplied + destination * (255 - alpha)) / 255.
+            let inverse_alpha = _mm_set1_ps(255.0 - alpha);
+            let background = _mm_setr_ps(
+                f32::from(destination.r),
+                f32::from(destination.g),
+                f32::from(destination.b),
+                0.0,
+            );
+            let composed = _mm_mul_ps(
+                _mm_add_ps(interpolated, _mm_mul_ps(background, inverse_alpha)),
+                _mm_set1_ps(1.0 / 255.0),
+            );
+
+            // All output channels are non-negative. Adding 0.5 then truncating
+            // matches f32::round() for this range; pack instructions retain the
+            // saturating u8 conversion semantics of the scalar implementation.
+            let rounded = _mm_cvttps_epi32(_mm_add_ps(composed, _mm_set1_ps(0.5)));
+            let packed = _mm_packus_epi16(
+                _mm_packs_epi32(rounded, _mm_setzero_si128()),
+                _mm_setzero_si128(),
+            );
+            let channels = _mm_cvtsi128_si32(packed) as u32;
+            destination.r = channels as u8;
+            destination.g = (channels >> 8) as u8;
+            destination.b = (channels >> 16) as u8;
+            destination.a = u8::MAX;
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let alpha = top[3] * inverse_y + bottom[3] * ty;
+        if alpha <= f32::EPSILON {
+            return;
+        }
+        let inverse_alpha = 255.0 - alpha;
+        let channel = |index: usize, background: u8| {
+            ((top[index] * inverse_y
+                + bottom[index] * ty
+                + f32::from(background) * inverse_alpha)
+                / 255.0)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        destination.r = channel(0, destination.r);
+        destination.g = channel(1, destination.g);
+        destination.b = channel(2, destination.b);
+    }
+}
+
 /// Draws a texture into a destination rectangle, scaling and alpha-compositing it.
 ///
 /// The destination is clipped to the framebuffer. A zero-sized destination draws
@@ -361,43 +442,22 @@ pub fn draw_texture_clipped(
                             .zip(&horizontal_cache[bottom_offset..bottom_offset + samples.len()]),
                     )
                 {
-                    let alpha = top[3] * inverse_y + bottom[3] * ty;
-                    if alpha <= f32::EPSILON {
-                        continue;
-                    }
-                    let red_premultiplied = top[0] * inverse_y + bottom[0] * ty;
-                    let green_premultiplied = top[1] * inverse_y + bottom[1] * ty;
-                    let blue_premultiplied = top[2] * inverse_y + bottom[2] * ty;
                     if pixel.a == 255 {
-                        // Composite directly from premultiplied channels over an
-                        // opaque destination. This avoids unpremultiplying to an
-                        // 8-bit color only to multiply by alpha again in blend_over.
-                        let inverse_alpha = 255.0 - alpha;
-                        pixel.r = ((red_premultiplied
-                            + f32::from(pixel.r) * inverse_alpha)
-                            / 255.0)
-                            .round()
-                            .clamp(0.0, 255.0) as u8;
-                        pixel.g = ((green_premultiplied
-                            + f32::from(pixel.g) * inverse_alpha)
-                            / 255.0)
-                            .round()
-                            .clamp(0.0, 255.0) as u8;
-                        pixel.b = ((blue_premultiplied
-                            + f32::from(pixel.b) * inverse_alpha)
-                            / 255.0)
-                            .round()
-                            .clamp(0.0, 255.0) as u8;
+                        blend_cached_bilinear_over_opaque(top, bottom, inverse_y, ty, pixel);
                     } else {
+                        let alpha = top[3] * inverse_y + bottom[3] * ty;
+                        if alpha <= f32::EPSILON {
+                            continue;
+                        }
                         let inverse_alpha = alpha.recip();
                         let color = Color::rgba(
-                            (red_premultiplied * inverse_alpha)
+                            ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha)
                                 .round()
                                 .clamp(0.0, 255.0) as u8,
-                            (green_premultiplied * inverse_alpha)
+                            ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha)
                                 .round()
                                 .clamp(0.0, 255.0) as u8,
-                            (blue_premultiplied * inverse_alpha)
+                            ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha)
                                 .round()
                                 .clamp(0.0, 255.0) as u8,
                             alpha.round().clamp(0.0, 255.0) as u8,
@@ -541,13 +601,72 @@ pub fn draw_texture_transformed_clipped(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_texture, draw_texture_clipped, draw_texture_transformed_clipped, Texture,
-        TextureError, TextureFilter,
+        blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
+        draw_texture_transformed_clipped, Texture, TextureError, TextureFilter,
     };
     use crate::{Color, Framebuffer, Rect};
 
     fn two_color_texture() -> Texture {
         Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap()
+    }
+
+    #[test]
+    fn cached_bilinear_opaque_composition_matches_scalar_reference() {
+        let cases = [
+            (
+                [12.5, 2400.0, 1800.0, 220.0],
+                [12500.0, 3200.0, 9000.0, 180.0],
+                1.0,
+                0.0,
+                Color::rgb(10, 80, 190),
+            ),
+            (
+                [3200.0, 18000.0, 900.0, 90.0],
+                [21000.0, 4000.0, 15000.0, 210.0],
+                0.375,
+                0.625,
+                Color::rgb(250, 30, 70),
+            ),
+            (
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                0.5,
+                0.5,
+                Color::WHITE,
+            ),
+        ];
+
+        for (top, bottom, inverse_y, ty, initial) in cases {
+            let alpha = top[3] * inverse_y + bottom[3] * ty;
+            let mut expected = initial;
+            if alpha > f32::EPSILON {
+                let inverse_alpha = 255.0 - alpha;
+                let channel = |index: usize, background: u8| {
+                    ((top[index] * inverse_y
+                        + bottom[index] * ty
+                        + f32::from(background) * inverse_alpha)
+                        / 255.0)
+                        .round()
+                        .clamp(0.0, 255.0) as u8
+                };
+                expected.r = channel(0, expected.r);
+                expected.g = channel(1, expected.g);
+                expected.b = channel(2, expected.b);
+            }
+
+            let mut actual = initial;
+            blend_cached_bilinear_over_opaque(
+                &top,
+                &bottom,
+                inverse_y,
+                ty,
+                &mut actual,
+            );
+            assert!(actual.r.abs_diff(expected.r) <= 1);
+            assert!(actual.g.abs_diff(expected.g) <= 1);
+            assert!(actual.b.abs_diff(expected.b) <= 1);
+            assert_eq!(actual.a, 255);
+        }
     }
 
     #[test]
