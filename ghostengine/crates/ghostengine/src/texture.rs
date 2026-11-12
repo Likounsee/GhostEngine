@@ -468,6 +468,20 @@ pub fn draw_texture_transformed_clipped(
         return false;
     };
 
+    // Identity is the common case for display-list texture commands. Route it
+    // through the specialized scanline renderer instead of computing four
+    // transformed corners and an inverse-mapped point for every destination pixel.
+    if transform == Transform2D::IDENTITY {
+        let Some(visible) = destination.intersection(clip) else {
+            return false;
+        };
+        if visible.width == 0 || visible.height == 0 {
+            return false;
+        }
+        draw_texture_clipped(target, texture, destination, filter, clip);
+        return true;
+    }
+
     let left = destination.x as f32;
     let top = destination.y as f32;
     let right = destination.x.saturating_add(destination.width) as f32;
@@ -799,6 +813,40 @@ mod tests {
                     "filter: {filter:?}, pixel {index}: fast={fast_pixel:?}, transformed={transformed_pixel:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn identity_texture_transform_uses_the_untransformed_sampling_result() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 5, 3);
+        let clip = Rect::new(2, 0, 3, 4);
+
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut expected = Framebuffer::new(7, 5, Color::rgb(12, 24, 36)).unwrap();
+            let mut actual = expected.clone();
+            draw_texture_clipped(&mut expected, &texture, destination, filter, clip);
+            assert!(draw_texture_transformed_clipped(
+                &mut actual,
+                &texture,
+                destination,
+                crate::Transform2D::IDENTITY,
+                filter,
+                clip,
+            ));
+            assert_eq!(actual.pixels(), expected.pixels());
         }
     }
 
