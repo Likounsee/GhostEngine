@@ -470,8 +470,8 @@ impl StrokeSegment {
         if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
             let relative_x = point.x - self.a.x;
             let relative_y = point.y - self.a.y;
-            let projection = (relative_x * self.dx + relative_y * self.dy)
-                * self.inverse_length_squared;
+            let projection =
+                (relative_x * self.dx + relative_y * self.dy) * self.inverse_length_squared;
             if !(0.0..=1.0).contains(&projection) {
                 return false;
             }
