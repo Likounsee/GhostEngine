@@ -1360,7 +1360,11 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                 continue;
             }
             let source = Color::rgba(color.r, color.g, color.b, alpha);
-            *pixel = source.blend_over(*pixel);
+            *pixel = if alpha == u8::MAX {
+                source
+            } else {
+                source.blend_over(*pixel)
+            };
         }
     }
 }
