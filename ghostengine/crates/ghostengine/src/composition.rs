@@ -25,6 +25,27 @@ impl DamageRegion {
         }
     }
 
+    /// Creates an empty damage region with storage reserved for the requested number of rectangles.
+    #[must_use]
+    pub fn with_capacity(width: u32, height: u32, capacity: usize) -> Self {
+        Self {
+            width,
+            height,
+            rectangles: Vec::with_capacity(capacity),
+        }
+    }
+
+    /// Reserves additional storage for at least the requested number of more rectangles.
+    pub fn reserve(&mut self, additional: usize) {
+        self.rectangles.reserve(additional);
+    }
+
+    /// Returns the number of rectangles that can be stored without reallocating.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.rectangles.capacity()
+    }
+
     /// Adds a rectangle, clipping it to the configured framebuffer bounds.
     ///
     /// Overlapping entries are merged. The resulting rectangles remain disjoint,
@@ -107,8 +128,17 @@ pub struct Layer {
 impl Layer {
     /// Creates a layer with its own framebuffer and an opaque initial visibility.
     pub fn new(width: u32, height: u32, clear_color: Color) -> Result<Self, FramebufferError> {
-        Ok(Self {
-            framebuffer: Framebuffer::new(width, height, clear_color)?,
+        Self::from_framebuffer(Framebuffer::new(width, height, clear_color)?)
+    }
+
+    /// Creates a layer by taking ownership of an existing framebuffer.
+    ///
+    /// This avoids allocating and copying pixels when an application already
+    /// renders into a GhostEngine-compatible framebuffer.
+    #[must_use]
+    pub fn from_framebuffer(framebuffer: Framebuffer) -> Self {
+        Self {
+            framebuffer,
             x: 0,
             y: 0,
             opacity: 255,
@@ -116,7 +146,13 @@ impl Layer {
             blend_mode: BlendMode::SourceOver,
             transform: Transform2D::IDENTITY,
             filter: TextureFilter::Nearest,
-        })
+        }
+    }
+
+    /// Consumes the layer and returns its framebuffer without copying pixels.
+    #[must_use]
+    pub fn into_framebuffer(self) -> Framebuffer {
+        self.framebuffer
     }
 
     #[must_use]
@@ -535,6 +571,35 @@ mod tests {
         DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn damage_region_reuses_reserved_storage_after_clear() {
+        let mut damage = DamageRegion::with_capacity(10, 10, 4);
+        assert!(damage.capacity() >= 4);
+        damage.add(Rect::new(0, 0, 2, 2));
+        damage.add(Rect::new(4, 4, 2, 2));
+        let capacity = damage.capacity();
+
+        damage.clear();
+        damage.add(Rect::new(1, 1, 2, 2));
+        damage.add(Rect::new(5, 5, 2, 2));
+
+        assert_eq!(damage.capacity(), capacity);
+        assert_eq!(damage.rectangles().len(), 2);
+    }
+
+    #[test]
+    fn layer_can_take_and_return_an_existing_framebuffer_without_copying() {
+        let framebuffer = Framebuffer::new(2, 1, Color::BLACK).unwrap();
+        let original_pixels = framebuffer.pixels().as_ptr();
+        let layer = Layer::from_framebuffer(framebuffer);
+
+        assert_eq!(layer.framebuffer().pixels().as_ptr(), original_pixels);
+        let framebuffer = layer.into_framebuffer();
+        assert_eq!(framebuffer.pixels().as_ptr(), original_pixels);
+        assert_eq!(framebuffer.width(), 2);
+        assert_eq!(framebuffer.height(), 1);
+    }
 
     #[test]
     fn damage_region_clips_and_coalesces_overlapping_rectangles() {
