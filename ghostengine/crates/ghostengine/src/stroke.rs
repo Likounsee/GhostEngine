@@ -296,6 +296,8 @@ fn stroke_path_impl(
         let mut row_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         let mut next_segment = 0;
         let mut next_join = 0;
+        let mut pixel_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
+        let mut pixel_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
@@ -335,8 +337,8 @@ fn stroke_path_impl(
             // Narrow the active scanline geometry to each pixel's horizontal
             // sample interval once. The 4x4 AA loop can then avoid repeating
             // the same segment AABB test for all sixteen samples.
-            let mut pixel_segments = Vec::with_capacity(row_segments.len());
-            let mut pixel_joins = Vec::with_capacity(row_joins.len());
+            pixel_segments.clear();
+            pixel_joins.clear();
             for x in row_left..row_right {
                 let sample_left = x as f32 + 0.125;
                 let sample_right = x as f32 + 0.875;
