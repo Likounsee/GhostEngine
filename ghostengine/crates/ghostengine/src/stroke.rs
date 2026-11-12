@@ -314,10 +314,25 @@ fn stroke_path_impl(
             if row_segments.is_empty() && row_joins.is_empty() {
                 continue;
             }
+            let mut row_min_x = f32::INFINITY;
+            let mut row_max_x = f32::NEG_INFINITY;
+            for segment in &row_segments {
+                row_min_x = row_min_x.min(segment.min_x);
+                row_max_x = row_max_x.max(segment.max_x);
+            }
+            for join in &row_joins {
+                row_min_x = row_min_x.min(join.min_x);
+                row_max_x = row_max_x.max(join.max_x);
+            }
+            let row_left = (row_min_x - 1.0).floor().max(left as f32).min(right as f32) as u32;
+            let row_right = (row_max_x + 1.0).ceil().max(left as f32).min(right as f32) as u32;
+            if row_left >= row_right {
+                continue;
+            }
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
-            for x in left..right {
+            for x in row_left..row_right {
                 let coverage = if antialias {
                     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
                     let mut covered = 0_u16;
@@ -567,6 +582,8 @@ struct PreparedJoin {
     miter: Option<PreparedTriangle>,
     min_y: f32,
     max_y: f32,
+    min_x: f32,
+    max_x: f32,
 }
 
 impl PreparedJoin {
@@ -587,6 +604,8 @@ impl PreparedJoin {
                 miter: None,
                 min_y: vertex.y - radius,
                 max_y: vertex.y + radius,
+                min_x: vertex.x - radius,
+                max_x: vertex.x + radius,
             });
         }
         let incoming = Vector::new(vertex.x - previous.x, vertex.y - previous.y);
@@ -644,9 +663,13 @@ impl PreparedJoin {
         };
         let mut min_y = bevel.min_y;
         let mut max_y = bevel.max_y;
+        let mut min_x = bevel.min_x;
+        let mut max_x = bevel.max_x;
         if let Some(triangle) = miter {
             min_y = min_y.min(triangle.min_y);
             max_y = max_y.max(triangle.max_y);
+            min_x = min_x.min(triangle.min_x);
+            max_x = max_x.max(triangle.max_x);
         }
         Some(Self {
             vertex,
@@ -656,6 +679,8 @@ impl PreparedJoin {
             miter,
             min_y,
             max_y,
+            min_x,
+            max_x,
         })
     }
 
@@ -1053,24 +1078,46 @@ mod tests {
                 .iter()
                 .filter(|join| join.max_y >= sample_top && join.min_y <= sample_bottom)
                 .collect::<Vec<_>>();
+            let row_min_x = row_segments
+                .iter()
+                .map(|segment| segment.min_x)
+                .chain(row_joins.iter().map(|join| join.min_x))
+                .fold(f32::INFINITY, f32::min);
+            let row_max_x = row_segments
+                .iter()
+                .map(|segment| segment.max_x)
+                .chain(row_joins.iter().map(|join| join.max_x))
+                .fold(f32::NEG_INFINITY, f32::max);
+            let row_left = (row_min_x - 1.0).floor() as i32;
+            let row_right = (row_max_x + 1.0).ceil() as i32;
 
             for x in 0..20 {
                 for offset_y in [0.125, 0.375, 0.625, 0.875, 0.5] {
-                    let sample = Vector::new(x as f32 + 0.5, y as f32 + offset_y);
-                    let expected = segments
-                        .iter()
-                        .any(|segment| segment.distance_squared(sample) <= radius_squared)
-                        || joins.iter().any(|join| join.contains(sample));
-                    let actual = row_segments.iter().any(|segment| {
-                        segment.may_cover(sample)
-                            && segment.distance_squared(sample) <= radius_squared
-                    }) || row_joins.iter().any(|join| join.contains(sample));
+                    for offset_x in [0.125, 0.375, 0.625, 0.875, 0.5] {
+                        let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
+                        let expected = segments
+                            .iter()
+                            .any(|segment| segment.distance_squared(sample) <= radius_squared)
+                            || joins.iter().any(|join| join.contains(sample));
+                        let actual = row_segments.iter().any(|segment| {
+                            segment.may_cover(sample)
+                                && segment.distance_squared(sample) <= radius_squared
+                        }) || row_joins.iter().any(|join| join.contains(sample));
 
-                    assert_eq!(
-                        actual, expected,
-                        "scanline culling changed coverage at ({}, {})",
-                        sample.x, sample.y
-                    );
+                        assert_eq!(
+                            actual, expected,
+                            "scanline culling changed coverage at ({}, {})",
+                            sample.x, sample.y
+                        );
+                        if expected {
+                            assert!(
+                                x >= row_left && x < row_right,
+                                "horizontal culling omitted coverage at ({}, {})",
+                                sample.x,
+                                sample.y
+                            );
+                        }
+                    }
                 }
             }
         }
