@@ -1084,6 +1084,14 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     }
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    // Coverage can only take 17 values with 4x4 supersampling. Prepare the
+    // source colors once instead of rebuilding an RGBA value for every pixel.
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for (covered, source) in coverage_colors.iter_mut().enumerate().skip(1) {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        *source = Color::rgba(color.r, color.g, color.b, alpha);
+    }
+
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
     let max_x = vertices.iter().map(|point| point.x).max().unwrap();
@@ -1355,15 +1363,13 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             if covered == 0 {
                 continue;
             }
-            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
-            if alpha == 0 {
-                continue;
-            }
-            let source = Color::rgba(color.r, color.g, color.b, alpha);
-            *pixel = if alpha == u8::MAX {
+            let source = coverage_colors[covered as usize];
+            *pixel = if source.a == u8::MAX {
                 source
-            } else {
+            } else if source.a > 0 {
                 source.blend_over(*pixel)
+            } else {
+                *pixel
             };
         }
     }
