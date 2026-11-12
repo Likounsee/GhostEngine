@@ -487,7 +487,7 @@ fn stroke_path_impl(
                     }
                     if distance_squared > radius_squared {
                         for join in &row_joins_x {
-                            if join.contains(sample) {
+                            if join.contains_xy(sample.x, sample.y) {
                                 distance_squared = 0.0;
                                 break;
                             }
