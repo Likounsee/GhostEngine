@@ -543,26 +543,23 @@ pub fn fill_rect_radial_gradient(
     let outside_color = gradient.sample_raster(1.0);
     for y in top..bottom {
         let dy = y as f32 + 0.5 - center.y;
+        let dy_squared = dy * dy;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for (offset, pixel) in row[left as usize..right as usize].iter_mut().enumerate() {
-            let dx = left as f32 + offset as f32 + 0.5 - center.x;
-            // Framebuffer coordinates are bounded by u32, so the squared
-            // distance is finite for ordinary scene coordinates. Prefer the
-            // cheaper square-root path and retain hypot's overflow-safe
-            // behavior for unusually large finite gradient centers.
-            let distance_squared = dx * dx + dy * dy;
-            // Samples outside the radius always resolve to the final stop;
-            // avoid a square root for those pixels.
+        let mut dx = left as f32 + 0.5 - center.x;
+        let mut distance_squared = dx * dx + dy_squared;
+        for pixel in &mut row[left as usize..right as usize] {
+            // Advance squared distance with the exact second-difference
+            // identity: (dx + 1)^2 = dx^2 + 2*dx + 1. This removes a
+            // per-pixel multiplication while retaining full 4x4-independent
+            // gradient sampling precision (no lower-resolution lookup).
             let color = if radius_squared.is_finite()
                 && distance_squared.is_finite()
             {
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    // Multiplication by the precomputed reciprocal avoids a
-                    // floating-point division for every pixel inside the radius.
                     gradient.sample_radial_squared(distance_squared * inverse_radius_squared)
                 }
             } else {
@@ -576,6 +573,8 @@ pub fn fill_rect_radial_gradient(
             } else {
                 color.blend_over(*pixel)
             };
+            distance_squared += dx * 2.0 + 1.0;
+            dx += 1.0;
         }
     }
 }
