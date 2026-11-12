@@ -7,6 +7,7 @@ pub enum FramebufferError {
     ZeroDimension,
     SizeOverflow,
     AllocationFailed,
+    PixelCountMismatch,
 }
 
 impl fmt::Display for FramebufferError {
@@ -15,6 +16,7 @@ impl fmt::Display for FramebufferError {
             Self::ZeroDimension => formatter.write_str("framebuffer dimensions must be non-zero"),
             Self::SizeOverflow => formatter.write_str("framebuffer pixel count overflows usize"),
             Self::AllocationFailed => formatter.write_str("could not allocate framebuffer storage"),
+            Self::PixelCountMismatch => formatter.write_str("source pixel count does not match framebuffer dimensions"),
         }
     }
 }
@@ -65,6 +67,19 @@ impl Framebuffer {
     #[must_use]
     pub fn pixels(&self) -> &[Color] {
         &self.pixels
+    }
+
+    /// Copies a complete row-major image into this framebuffer without reallocating.
+    ///
+    /// The source must contain exactly width() * height() pixels. On a size
+    /// mismatch, the framebuffer is left unchanged. This is a convenient
+    /// frame-transfer operation for producers such as emulator video cores.
+    pub fn copy_pixels_from(&mut self, source: &[Color]) -> Result<(), FramebufferError> {
+        if source.len() != self.pixels.len() {
+            return Err(FramebufferError::PixelCountMismatch);
+        }
+        self.pixels.copy_from_slice(source);
+        Ok(())
     }
 
     /// Returns mutable access to the tightly packed row-major pixel storage.
@@ -200,6 +215,30 @@ mod tests {
         assert_eq!(framebuffer.get_pixel(1, 1), Some(Color::RED));
         assert!(!framebuffer.set_pixel(2, 1, Color::RED));
         assert_eq!(framebuffer.get_pixel(2, 1), None);
+    }
+
+    #[test]
+    fn copy_pixels_from_replaces_frame_without_reallocating() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        let allocation = framebuffer.pixels().as_ptr();
+        let source = [Color::RED, Color::GREEN, Color::BLUE, Color::WHITE];
+
+        framebuffer.copy_pixels_from(&source).unwrap();
+
+        assert_eq!(framebuffer.pixels(), &source);
+        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
+    }
+
+    #[test]
+    fn copy_pixels_from_rejects_wrong_size_without_mutating_frame() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::RED).unwrap();
+        let original = framebuffer.clone();
+
+        assert_eq!(
+            framebuffer.copy_pixels_from(&[Color::BLUE]),
+            Err(FramebufferError::PixelCountMismatch)
+        );
+        assert_eq!(framebuffer, original);
     }
 
     #[test]
