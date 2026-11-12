@@ -1,7 +1,81 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
 use crate::texture::{sample_pixels_bilinear, sample_pixels_nearest};
-use crate::{Color, Framebuffer, FramebufferError, TextureFilter, Transform2D, Vector};
+use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
+
+/// A bounded collection of framebuffer regions that need recomposition.
+///
+/// Added rectangles are clipped to the dimensions supplied at construction.
+/// Overlapping rectangles are coalesced into conservative bounding rectangles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DamageRegion {
+    width: u32,
+    height: u32,
+    rectangles: Vec<Rect>,
+}
+
+impl DamageRegion {
+    /// Creates an empty damage region bounded to a framebuffer of `width` × `height`.
+    #[must_use]
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            rectangles: Vec::new(),
+        }
+    }
+
+    /// Adds a rectangle, clipping it to the configured framebuffer bounds.
+    ///
+    /// Overlapping entries are merged. The resulting rectangles remain disjoint,
+    /// so a damaged pixel is never composited twice.
+    pub fn add(&mut self, rectangle: Rect) {
+        let bounds = Rect::new(0, 0, self.width, self.height);
+        let Some(mut merged) = rectangle.intersection(bounds) else {
+            return;
+        };
+
+        let mut index = 0;
+        while index < self.rectangles.len() {
+            if merged.intersection(self.rectangles[index]).is_some() {
+                let current = self.rectangles.swap_remove(index);
+                let left = merged.x.min(current.x);
+                let top = merged.y.min(current.y);
+                let right = (u64::from(merged.x) + u64::from(merged.width))
+                    .max(u64::from(current.x) + u64::from(current.width));
+                let bottom = (u64::from(merged.y) + u64::from(merged.height))
+                    .max(u64::from(current.y) + u64::from(current.height));
+                merged = Rect::new(
+                    left,
+                    top,
+                    (right - u64::from(left)) as u32,
+                    (bottom - u64::from(top)) as u32,
+                );
+                index = 0;
+            } else {
+                index += 1;
+            }
+        }
+        self.rectangles.push(merged);
+    }
+
+    /// Returns the disjoint rectangles currently marked for recomposition.
+    #[must_use]
+    pub fn rectangles(&self) -> &[Rect] {
+        &self.rectangles
+    }
+
+    /// Returns true when no area is marked for recomposition.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rectangles.is_empty()
+    }
+
+    /// Removes all accumulated damage rectangles.
+    pub fn clear(&mut self) {
+        self.rectangles.clear();
+    }
+}
 
 /// Pixel blend operation used when a layer is composited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -120,18 +194,46 @@ impl Layer {
 /// the source pixel alpha before source-over composition. Hidden and fully
 /// transparent layers are skipped.
 pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
+    compose_layers_clipped(target, layers, None);
+}
+
+/// Composites layers in slice order, limited to the accumulated damage rectangles.
+///
+/// Callers should redraw or clear the damaged target areas before recomposition
+/// when the previous contents in those areas are no longer valid.
+pub fn compose_layers_in_damage_regions(
+    target: &mut Framebuffer,
+    layers: &[Layer],
+    damage: &DamageRegion,
+) {
+    for rectangle in damage.rectangles() {
+        compose_layers_clipped(target, layers, Some(*rectangle));
+    }
+}
+
+fn compose_layers_clipped(target: &mut Framebuffer, layers: &[Layer], clip: Option<Rect>) {
+    let target_bounds = Rect::new(0, 0, target.width(), target.height());
+    let clip = match clip {
+        Some(clip) => {
+            let Some(clip) = clip.intersection(target_bounds) else {
+                return;
+            };
+            clip
+        }
+        None => target_bounds,
+    };
     for layer in layers {
         if !layer.visible || layer.opacity == 0 {
             continue;
         }
         if layer.transform != Transform2D::IDENTITY {
-            compose_transformed_layer(target, layer);
+            compose_transformed_layer(target, layer, clip);
             continue;
         }
 
-        let destination_left = i64::from(layer.x).max(0);
+        let destination_left = i64::from(layer.x).max(i64::from(clip.x));
         let destination_right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
-            .min(i64::from(target.width()));
+            .min(i64::from(clip.x) + i64::from(clip.width));
         if destination_left >= destination_right {
             continue;
         }
@@ -141,7 +243,9 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
 
         for source_y in 0..layer.framebuffer.height() {
             let destination_y = i64::from(layer.y) + i64::from(source_y);
-            if destination_y < 0 || destination_y >= i64::from(target.height()) {
+            if destination_y < i64::from(clip.y)
+                || destination_y >= i64::from(clip.y) + i64::from(clip.height)
+            {
                 continue;
             }
 
@@ -182,7 +286,7 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
     }
 }
 
-fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer) {
+fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect) {
     let Some(inverse) = layer.transform.inverse() else {
         return;
     };
@@ -226,12 +330,14 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer) {
         .map(|point| point.y)
         .fold(f32::NEG_INFINITY, f32::max);
 
-    let clip_width = target.width() as f32;
-    let clip_height = target.height() as f32;
-    let left = min_x.floor().clamp(0.0, clip_width) as u32;
-    let right = max_x.ceil().clamp(0.0, clip_width) as u32;
-    let top = min_y.floor().clamp(0.0, clip_height) as u32;
-    let bottom = max_y.ceil().clamp(0.0, clip_height) as u32;
+    let clip_left = clip.x as f32;
+    let clip_top = clip.y as f32;
+    let clip_right = (u64::from(clip.x) + u64::from(clip.width)) as f32;
+    let clip_bottom = (u64::from(clip.y) + u64::from(clip.height)) as f32;
+    let left = min_x.floor().clamp(clip_left, clip_right) as u32;
+    let right = max_x.ceil().clamp(clip_left, clip_right) as u32;
+    let top = min_y.floor().clamp(clip_top, clip_bottom) as u32;
+    let bottom = max_y.ceil().clamp(clip_top, clip_bottom) as u32;
     if left >= right || top >= bottom {
         return;
     }
@@ -323,8 +429,67 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 
 #[cfg(test)]
 mod tests {
-    use super::{compose_layers, BlendMode, Layer};
-    use crate::{Color, Framebuffer, TextureFilter, Transform2D};
+    use super::{compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer};
+    use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn damage_region_clips_and_coalesces_overlapping_rectangles() {
+        let mut damage = DamageRegion::new(10, 10);
+        damage.add(Rect::new(1, 1, 4, 4));
+        damage.add(Rect::new(3, 3, 4, 4));
+        damage.add(Rect::new(12, 12, 2, 2));
+        damage.add(Rect::new(0, 9, 1, 1));
+
+        assert_eq!(damage.rectangles().len(), 2);
+        assert!(damage.rectangles().contains(&Rect::new(1, 1, 6, 6)));
+        assert!(damage.rectangles().contains(&Rect::new(0, 9, 1, 1)));
+
+        damage.clear();
+        assert!(damage.is_empty());
+    }
+
+    #[test]
+    fn damage_composition_writes_only_inside_damaged_rectangles() {
+        let layer = Layer::new(4, 3, Color::RED).unwrap();
+        let mut target = Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        let mut damage = DamageRegion::new(4, 3);
+        damage.add(Rect::new(1, 1, 2, 1));
+
+        compose_layers_in_damage_regions(&mut target, &[layer], &damage);
+
+        for y in 0..3 {
+            for x in 0..4 {
+                let expected = if y == 1 && (1..3).contains(&x) {
+                    Color::RED
+                } else {
+                    Color::BLACK
+                };
+                assert_eq!(target.get_pixel(x, y), Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn transformed_layer_composition_respects_damage_clip() {
+        let mut layer = Layer::new(2, 2, Color::GREEN).unwrap();
+        layer.set_transform(Transform2D::scale(2.0, 2.0));
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        let mut damage = DamageRegion::new(4, 4);
+        damage.add(Rect::new(1, 2, 2, 1));
+
+        compose_layers_in_damage_regions(&mut target, &[layer], &damage);
+
+        for y in 0..4 {
+            for x in 0..4 {
+                let expected = if y == 2 && (1..3).contains(&x) {
+                    Color::GREEN
+                } else {
+                    Color::BLACK
+                };
+                assert_eq!(target.get_pixel(x, y), Some(expected));
+            }
+        }
+    }
 
     #[test]
     fn layers_compose_in_back_to_front_order() {

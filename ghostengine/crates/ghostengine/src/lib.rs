@@ -44,7 +44,9 @@ pub use components::{
     ComponentTreeError, ContextMenuItem, ContextMenuShortcut, PlacedComponent, TextInputEvent,
     UiComponent,
 };
-pub use composition::{compose_layers, BlendMode, Layer};
+pub use composition::{
+    compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
+};
 pub use display_list::{DisplayList, RenderStats};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
