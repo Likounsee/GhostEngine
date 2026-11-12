@@ -10,7 +10,7 @@ pub enum TextureError {
     PixelCountMismatch,
 }
 
-/// Sampling mode used when a texture is scaled.
+/// Sampling mode used when a texture or transformed layer is scaled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureFilter {
     /// Selects the closest source texel.
@@ -82,67 +82,93 @@ impl Texture {
     }
 
     fn sample_nearest(&self, x: f32, y: f32) -> Color {
-        let sx = x.floor().clamp(0.0, self.width as f32 - 1.0) as u32;
-        let sy = y.floor().clamp(0.0, self.height as f32 - 1.0) as u32;
-        self.get_pixel(sx, sy).unwrap_or(Color::TRANSPARENT)
+        sample_pixels_nearest(&self.pixels, self.width, self.height, x, y)
     }
 
     fn sample_bilinear(&self, x: f32, y: f32) -> Color {
-        let x = x.clamp(0.0, self.width as f32 - 1.0);
-        let y = y.clamp(0.0, self.height as f32 - 1.0);
-        let x0 = x.floor() as u32;
-        let y0 = y.floor() as u32;
-        let x1 = (x0 + 1).min(self.width - 1);
-        let y1 = (y0 + 1).min(self.height - 1);
-        let tx = x - x0 as f32;
-        let ty = y - y0 as f32;
-
-        // Fetch directly from the validated row-major storage. The coordinates
-        // have already been clamped, so four Option-based get_pixel calls are
-        // unnecessary in this inner loop.
-        let width = self.width as usize;
-        let top_left = self.pixels[y0 as usize * width + x0 as usize];
-        let top_right = self.pixels[y0 as usize * width + x1 as usize];
-        let bottom_left = self.pixels[y1 as usize * width + x0 as usize];
-        let bottom_right = self.pixels[y1 as usize * width + x1 as usize];
-
-        // Bilinear interpolation is linear, so combine all four premultiplied
-        // samples and unpremultiply once instead of doing three intermediate
-        // color conversions and roundings.
-        let one_minus_x = 1.0 - tx;
-        let one_minus_y = 1.0 - ty;
-        let weights = [
-            one_minus_x * one_minus_y,
-            tx * one_minus_y,
-            one_minus_x * ty,
-            tx * ty,
-        ];
-        let samples = [top_left, top_right, bottom_left, bottom_right];
-        let mut alpha = 0.0_f32;
-        let mut red = 0.0_f32;
-        let mut green = 0.0_f32;
-        let mut blue = 0.0_f32;
-
-        for (sample, weight) in samples.into_iter().zip(weights) {
-            let weighted_alpha = f32::from(sample.a) * weight;
-            alpha += weighted_alpha;
-            red += f32::from(sample.r) * weighted_alpha;
-            green += f32::from(sample.g) * weighted_alpha;
-            blue += f32::from(sample.b) * weighted_alpha;
-        }
-
-        if alpha <= f32::EPSILON {
-            return Color::TRANSPARENT;
-        }
-
-        let channel = |value: f32| (value / alpha).round().clamp(0.0, 255.0) as u8;
-        Color::rgba(
-            channel(red),
-            channel(green),
-            channel(blue),
-            alpha.round().clamp(0.0, 255.0) as u8,
-        )
+        sample_pixels_bilinear(&self.pixels, self.width, self.height, x, y)
     }
+}
+
+pub(crate) fn sample_pixels_nearest(
+    pixels: &[Color],
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+) -> Color {
+    if width == 0 || height == 0 {
+        return Color::TRANSPARENT;
+    }
+    let sx = x.floor().clamp(0.0, width as f32 - 1.0) as u32;
+    let sy = y.floor().clamp(0.0, height as f32 - 1.0) as u32;
+    pixels[sy as usize * width as usize + sx as usize]
+}
+
+pub(crate) fn sample_pixels_bilinear(
+    pixels: &[Color],
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+) -> Color {
+    if width == 0 || height == 0 {
+        return Color::TRANSPARENT;
+    }
+    let x = x.clamp(0.0, width as f32 - 1.0);
+    let y = y.clamp(0.0, height as f32 - 1.0);
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+
+    // Fetch directly from the validated row-major storage. The coordinates
+    // have already been clamped, so four Option-based get_pixel calls are
+    // unnecessary in this inner loop.
+    let row_width = width as usize;
+    let top_left = pixels[y0 as usize * row_width + x0 as usize];
+    let top_right = pixels[y0 as usize * row_width + x1 as usize];
+    let bottom_left = pixels[y1 as usize * row_width + x0 as usize];
+    let bottom_right = pixels[y1 as usize * row_width + x1 as usize];
+
+    // Bilinear interpolation is linear, so combine all four premultiplied
+    // samples and unpremultiply once instead of doing three intermediate
+    // color conversions and roundings.
+    let one_minus_x = 1.0 - tx;
+    let one_minus_y = 1.0 - ty;
+    let weights = [
+        one_minus_x * one_minus_y,
+        tx * one_minus_y,
+        one_minus_x * ty,
+        tx * ty,
+    ];
+    let samples = [top_left, top_right, bottom_left, bottom_right];
+    let mut alpha = 0.0_f32;
+    let mut red = 0.0_f32;
+    let mut green = 0.0_f32;
+    let mut blue = 0.0_f32;
+
+    for (sample, weight) in samples.into_iter().zip(weights) {
+        let weighted_alpha = f32::from(sample.a) * weight;
+        alpha += weighted_alpha;
+        red += f32::from(sample.r) * weighted_alpha;
+        green += f32::from(sample.g) * weighted_alpha;
+        blue += f32::from(sample.b) * weighted_alpha;
+    }
+
+    if alpha <= f32::EPSILON {
+        return Color::TRANSPARENT;
+    }
+
+    let channel = |value: f32| (value / alpha).round().clamp(0.0, 255.0) as u8;
+    Color::rgba(
+        channel(red),
+        channel(green),
+        channel(blue),
+        alpha.round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 /// Draws a texture into a destination rectangle, scaling and alpha-compositing it.

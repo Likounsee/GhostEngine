@@ -1,6 +1,7 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
-use crate::{Color, Framebuffer, FramebufferError, Transform2D, Vector};
+use crate::texture::{sample_pixels_bilinear, sample_pixels_nearest};
+use crate::{Color, Framebuffer, FramebufferError, TextureFilter, Transform2D, Vector};
 
 /// Pixel blend operation used when a layer is composited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -26,6 +27,7 @@ pub struct Layer {
     visible: bool,
     blend_mode: BlendMode,
     transform: Transform2D,
+    filter: TextureFilter,
 }
 
 impl Layer {
@@ -39,6 +41,7 @@ impl Layer {
             visible: true,
             blend_mode: BlendMode::SourceOver,
             transform: Transform2D::IDENTITY,
+            filter: TextureFilter::Nearest,
         })
     }
 
@@ -97,6 +100,17 @@ impl Layer {
     /// Sets the affine transform applied before the layer's position offset.
     pub fn set_transform(&mut self, transform: Transform2D) {
         self.transform = transform;
+    }
+
+    /// Returns the sampling filter used when this layer is transformed.
+    #[must_use]
+    pub const fn filter(&self) -> TextureFilter {
+        self.filter
+    }
+
+    /// Sets the sampling filter used when this layer is transformed.
+    pub fn set_filter(&mut self, filter: TextureFilter) {
+        self.filter = filter;
     }
 }
 
@@ -240,10 +254,21 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer) {
             {
                 continue;
             }
-            let source_x = source_point.x.floor() as u32;
-            let source_y = source_point.y.floor() as u32;
-            let Some(source) = layer.framebuffer.get_pixel(source_x, source_y) else {
-                continue;
+            let source = match layer.filter {
+                TextureFilter::Nearest => sample_pixels_nearest(
+                    layer.framebuffer.pixels(),
+                    layer.framebuffer.width(),
+                    layer.framebuffer.height(),
+                    source_point.x,
+                    source_point.y,
+                ),
+                TextureFilter::Bilinear => sample_pixels_bilinear(
+                    layer.framebuffer.pixels(),
+                    layer.framebuffer.width(),
+                    layer.framebuffer.height(),
+                    source_point.x - 0.5,
+                    source_point.y - 0.5,
+                ),
             };
             if source.a == 0 {
                 continue;
@@ -299,7 +324,7 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 #[cfg(test)]
 mod tests {
     use super::{compose_layers, BlendMode, Layer};
-    use crate::{Color, Framebuffer, Transform2D};
+    use crate::{Color, Framebuffer, TextureFilter, Transform2D};
 
     #[test]
     fn layers_compose_in_back_to_front_order() {
@@ -367,6 +392,23 @@ mod tests {
         compose_layers(&mut target, &[layer]);
 
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
+    }
+
+    #[test]
+    fn transformed_layer_supports_bilinear_filtering() {
+        let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().set_pixel(0, 0, Color::RED);
+        layer.framebuffer_mut().set_pixel(1, 0, Color::BLUE);
+        layer.set_transform(Transform2D::scale(2.0, 1.0));
+        layer.set_filter(TextureFilter::Bilinear);
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(191, 0, 64)));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::rgb(64, 0, 191)));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
     }
 
     #[test]
