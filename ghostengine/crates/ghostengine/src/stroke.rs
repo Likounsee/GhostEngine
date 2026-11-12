@@ -341,9 +341,11 @@ fn stroke_path_impl(
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                             let mut distance_squared = f32::INFINITY;
                             for segment in &row_segments {
-                                if segment.may_cover(sample) {
-                                    distance_squared =
-                                        distance_squared.min(segment.distance_squared(sample));
+                                if segment.may_cover(sample)
+                                    && segment.distance_squared(sample) <= radius_squared
+                                {
+                                    distance_squared = 0.0;
+                                    break;
                                 }
                             }
                             // A segment already covers this sample, so join geometry
