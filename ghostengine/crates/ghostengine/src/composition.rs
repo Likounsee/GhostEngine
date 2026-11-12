@@ -461,33 +461,38 @@ fn blend_bilinear_over_opaque(
     let bottom_left = pixels[bottom_offset + x0];
     let bottom_right = pixels[bottom_offset + x1];
 
+    // Share the four bilinear weights across alpha and all color channels.
+    // The separable form repeats horizontal/vertical arithmetic for each
+    // channel; these weights let each channel use only four multiply-adds.
     let inverse_x = 1.0 - tx;
     let inverse_y = 1.0 - ty;
-    let top_left_alpha = f32::from(top_left.a) * inverse_x;
-    let top_right_alpha = f32::from(top_right.a) * tx;
-    let bottom_left_alpha = f32::from(bottom_left.a) * inverse_x;
-    let bottom_right_alpha = f32::from(bottom_right.a) * tx;
-    let alpha_top = top_left_alpha + top_right_alpha;
-    let alpha_bottom = bottom_left_alpha + bottom_right_alpha;
-    let alpha = (alpha_top * inverse_y + alpha_bottom * ty) * opacity_factor;
+    let weight_top_left = inverse_x * inverse_y;
+    let weight_top_right = tx * inverse_y;
+    let weight_bottom_left = inverse_x * ty;
+    let weight_bottom_right = tx * ty;
+    let alpha = (f32::from(top_left.a) * weight_top_left
+        + f32::from(top_right.a) * weight_top_right
+        + f32::from(bottom_left.a) * weight_bottom_left
+        + f32::from(bottom_right.a) * weight_bottom_right)
+        * opacity_factor;
     if alpha <= f32::EPSILON {
         return;
     }
 
-    let interpolate = |tl: u8, tr: u8, bl: u8, br: u8| {
-        let top = f32::from(tl) * top_left_alpha + f32::from(tr) * top_right_alpha;
-        let bottom = f32::from(bl) * bottom_left_alpha + f32::from(br) * bottom_right_alpha;
-        (top * inverse_y + bottom * ty) * opacity_factor
-    };
     let inverse_alpha = 255.0 - alpha;
-    let channel = |premultiplied: f32, background: u8| {
+    let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
+        let premultiplied = (f32::from(tl) * f32::from(top_left.a) * weight_top_left
+            + f32::from(tr) * f32::from(top_right.a) * weight_top_right
+            + f32::from(bl) * f32::from(bottom_left.a) * weight_bottom_left
+            + f32::from(br) * f32::from(bottom_right.a) * weight_bottom_right)
+            * opacity_factor;
         ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
     };
-    destination.r = channel(interpolate(top_left.r, top_right.r, bottom_left.r, bottom_right.r), destination.r);
-    destination.g = channel(interpolate(top_left.g, top_right.g, bottom_left.g, bottom_right.g), destination.g);
-    destination.b = channel(interpolate(top_left.b, top_right.b, bottom_left.b, bottom_right.b), destination.b);
+    destination.r = channel(top_left.r, top_right.r, bottom_left.r, bottom_right.r, destination.r);
+    destination.g = channel(top_left.g, top_right.g, bottom_left.g, bottom_right.g, destination.g);
+    destination.b = channel(top_left.b, top_right.b, bottom_left.b, bottom_right.b, destination.b);
 }
 
 fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMode) -> Color {
