@@ -245,15 +245,10 @@ pub fn draw_texture_clipped(
         Some(
             (first_x..end_x)
                 .map(|x| {
-                    let source_x =
-                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+                    let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
                     let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
                     let x0 = source_x.floor() as usize;
-                    (
-                        x0,
-                        (x0 + 1).min(row_width - 1),
-                        source_x - x0 as f32,
-                    )
+                    (x0, (x0 + 1).min(row_width - 1), source_x - x0 as f32)
                 })
                 .collect::<Vec<_>>(),
         )
@@ -299,16 +294,8 @@ pub fn draw_texture_clipped(
                 .copied()
                 .enumerate()
             {
-                let color = sample_bilinear_prepared(
-                    &texture.pixels,
-                    row_width,
-                    x0,
-                    x1,
-                    y0,
-                    y1,
-                    tx,
-                    ty,
-                );
+                let color =
+                    sample_bilinear_prepared(&texture.pixels, row_width, x0, x1, y0, y1, tx, ty);
                 let index = first_x as usize + offset;
                 if color.a == 255 {
                     row[index] = color;
