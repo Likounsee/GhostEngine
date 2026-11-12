@@ -1533,6 +1533,66 @@ pub fn fill_circle(target: &mut Framebuffer, center: Point, radius: u32, color: 
 ///
 /// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
 /// line along the remaining axis; a point-sized ellipse draws one pixel.
+#[inline]
+fn accumulate_ellipse_span(
+    coverage: &mut [u8],
+    row_left: u32,
+    start_x: u32,
+    end_x: u32,
+    span_left: f64,
+    span_right: f64,
+) {
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    if start_x >= end_x {
+        return;
+    }
+
+    let interior_start = ((span_left - OFFSETS[0]).ceil() as i64)
+        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+    let interior_end = ((span_right - OFFSETS[3]).floor() as i64 + 1)
+        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+
+    if interior_start < interior_end {
+        for x in start_x..interior_start {
+            let base = f64::from(x);
+            for offset in OFFSETS {
+                let sample_x = base + offset;
+                if sample_x >= span_left && sample_x <= span_right {
+                    coverage[(x - row_left) as usize] += 1;
+                }
+            }
+        }
+        for covered in &mut coverage
+            [(interior_start - row_left) as usize..(interior_end - row_left) as usize]
+        {
+            *covered += 4;
+        }
+        for x in interior_end..end_x {
+            let base = f64::from(x);
+            for offset in OFFSETS {
+                let sample_x = base + offset;
+                if sample_x >= span_left && sample_x <= span_right {
+                    coverage[(x - row_left) as usize] += 1;
+                }
+            }
+        }
+    } else {
+        for x in start_x..end_x {
+            let base = f64::from(x);
+            for offset in OFFSETS {
+                let sample_x = base + offset;
+                if sample_x >= span_left && sample_x <= span_right {
+                    coverage[(x - row_left) as usize] += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Fills an ellipse with 4x4 supersampled edge coverage and source-over blending.
+///
+/// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
+/// line along the remaining axis; a point-sized ellipse draws one pixel.
 pub fn fill_ellipse_aa(
     target: &mut Framebuffer,
     center: Point,
@@ -1573,48 +1633,51 @@ pub fn fill_ellipse_aa(
 
     let inverse_rx = rx.recip();
     let inverse_ry = ry.recip();
+    let mut coverage = vec![0_u8; (right - left) as usize];
     for y in top..bottom {
-        let normalized_y = SAMPLE_OFFSETS.map(|offset| (f64::from(y) + offset - cy) * inverse_ry);
-        let normalized_y_squared = normalized_y.map(|value| value * value);
-        let min_y_squared = normalized_y_squared
-            .iter()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
-        let max_y_squared = normalized_y_squared
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
+        coverage.fill(0);
+        for offset_y in SAMPLE_OFFSETS {
+            let normalized_y = (f64::from(y) + offset_y - cy) * inverse_ry;
+            let remaining = 1.0 - normalized_y * normalized_y;
+            if remaining < 0.0 {
+                continue;
+            }
+
+            // At a fixed sub-scanline, the ellipse is a single horizontal span.
+            // Count its interior four samples at once and inspect only edge pixels.
+            let half_width = rx * remaining.sqrt();
+            let span_left = cx - half_width;
+            let span_right = cx + half_width;
+            let first = ((span_left - SAMPLE_OFFSETS[3]).ceil() as i64)
+                .clamp(i64::from(left), i64::from(right)) as u32;
+            let end = ((span_right - SAMPLE_OFFSETS[0]).floor() as i64 + 1)
+                .clamp(i64::from(left), i64::from(right)) as u32;
+            accumulate_ellipse_span(
+                &mut coverage,
+                left,
+                first,
+                end,
+                span_left,
+                span_right,
+            );
+        }
+
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in left..right {
-            let normalized_x =
-                SAMPLE_OFFSETS.map(|offset| (f64::from(x) + offset - cx) * inverse_rx);
-            let mut covered = 0_u32;
-            for dx in normalized_x {
-                let dx_squared = dx * dx;
-                if dx_squared + max_y_squared <= 1.0 {
-                    // All four vertical samples are inside this ellipse column.
-                    covered += 4;
-                } else if dx_squared + min_y_squared <= 1.0 {
-                    // Only edge columns need the individual sample comparisons.
-                    for dy_squared in normalized_y_squared {
-                        if dx_squared + dy_squared <= 1.0 {
-                            covered += 1;
-                        }
-                    }
-                }
-            }
+        for (pixel, covered) in row[left as usize..right as usize]
+            .iter_mut()
+            .zip(coverage.iter().copied())
+        {
             if covered == 0 {
                 continue;
             }
-            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
             if alpha == 0 {
                 continue;
             }
             let source = Color::rgba(color.r, color.g, color.b, alpha);
-            let index = x as usize;
-            row[index] = source.blend_over(row[index]);
+            *pixel = source.blend_over(*pixel);
         }
     }
 }
