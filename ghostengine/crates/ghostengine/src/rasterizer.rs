@@ -377,23 +377,6 @@ impl Gradient {
         sample_gradient_stops(&self.stops, position)
     }
 
-    /// Samples a radial gradient using normalized squared distance.
-    /// The dedicated table folds sqrt and gradient lookup into one access.
-    #[inline]
-    fn sample_radial_squared(&self, squared_position: f32) -> Color {
-        if let Some(lookup) = &self.radial_lookup {
-            let position = if squared_position.is_finite() {
-                squared_position.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let index = (position * (lookup.len() - 1) as f32 + 0.5) as usize;
-            lookup[index.min(lookup.len() - 1)]
-        } else {
-            self.sample_raster(squared_position.sqrt())
-        }
-    }
-
     /// Samples a finite, non-negative squared distance from the radial
     /// rasterizer. Its caller has already rejected non-finite values and
     /// bounded the value to the radius (with a tiny edge tolerance), so the
