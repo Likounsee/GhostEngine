@@ -334,35 +334,46 @@ fn stroke_path_impl(
             };
             for x in row_left..row_right {
                 let coverage = if antialias {
-                    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-                    let mut covered = 0_u16;
-                    for offset_y in OFFSETS {
-                        for offset_x in OFFSETS {
-                            let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
-                            let mut sample_covered = false;
-                            for segment in &row_segments {
-                                if segment.may_cover(sample)
-                                    && segment.covers_within_radius(sample, radius_squared)
-                                {
-                                    sample_covered = true;
-                                    break;
-                                }
-                            }
-                            // Joins only need testing when no segment covers the sample.
-                            if !sample_covered {
-                                for join in &row_joins {
-                                    if join.contains(sample) {
+                    // A stroked segment is a convex region. If one segment
+                    // contains all four extreme sample points of this pixel,
+                    // it also contains every inner 4x4 sample. This makes the
+                    // common wide-stroke interior a four-test fast path.
+                    let fully_covered = row_segments.iter().any(|segment| {
+                        segment.fully_covers_pixel(x, y, radius_squared)
+                    });
+                    if fully_covered {
+                        1.0
+                    } else {
+                        const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+                        let mut covered = 0_u16;
+                        for offset_y in OFFSETS {
+                            for offset_x in OFFSETS {
+                                let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
+                                let mut sample_covered = false;
+                                for segment in &row_segments {
+                                    if segment.may_cover(sample)
+                                        && segment.covers_within_radius(sample, radius_squared)
+                                    {
                                         sample_covered = true;
                                         break;
                                     }
                                 }
-                            }
-                            if sample_covered {
-                                covered += 1;
+                                // Joins only need testing when no segment covers the sample.
+                                if !sample_covered {
+                                    for join in &row_joins {
+                                        if join.contains(sample) {
+                                            sample_covered = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if sample_covered {
+                                    covered += 1;
+                                }
                             }
                         }
+                        f32::from(covered) / 16.0
                     }
-                    f32::from(covered) / 16.0
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance_squared = f32::INFINITY;
@@ -461,6 +472,25 @@ impl StrokeSegment {
             && point.x <= self.max_x
             && point.y >= self.min_y
             && point.y <= self.max_y
+    }
+
+    /// Uses convexity to prove that the complete pixel sample square is covered.
+    #[inline]
+    fn fully_covers_pixel(self, x: u32, y: u32, radius_squared: f32) -> bool {
+        let left = x as f32 + 0.125;
+        let right = x as f32 + 0.875;
+        let top = y as f32 + 0.125;
+        let bottom = y as f32 + 0.875;
+        [
+            Vector::new(left, top),
+            Vector::new(right, top),
+            Vector::new(left, bottom),
+            Vector::new(right, bottom),
+        ]
+        .into_iter()
+        .all(|point| {
+            self.may_cover(point) && self.covers_within_radius(point, radius_squared)
+        })
     }
 
     /// Tests coverage without constructing the nearest point for the common
