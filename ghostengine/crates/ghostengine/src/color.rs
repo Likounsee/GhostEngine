@@ -111,10 +111,13 @@ mod tests {
         for source_alpha in 1_u32..255 {
             for source in [0_u32, 1, 63, 127, 128, 192, 254, 255] {
                 for destination in [0_u32, 1, 63, 127, 128, 192, 254, 255] {
-                    let expected = ((source * source_alpha
-                        + destination * (255 - source_alpha)
-                        + 127)
-                        / 255) as u8;
+                    let inverse_source_alpha = 255 - source_alpha;
+                    let alpha_numerator =
+                        source_alpha * 255 + 255 * inverse_source_alpha;
+                    let channel_numerator = source * source_alpha * 255
+                        + destination * 255 * inverse_source_alpha;
+                    let expected =
+                        ((channel_numerator + alpha_numerator / 2) / alpha_numerator) as u8;
                     let actual = Color::rgba(
                         source as u8,
                         source as u8,
