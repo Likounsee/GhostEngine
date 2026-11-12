@@ -449,6 +449,7 @@ pub fn fill_rect_radial_gradient(
         return;
     }
     let inverse_radius = radius.recip();
+    let radius_squared = radius * radius;
     for y in top..bottom {
         let dy = y as f32 + 0.5 - center.y;
         let Some(row) = target.row_mut(y) else {
@@ -461,12 +462,18 @@ pub fn fill_rect_radial_gradient(
             // cheaper square-root path and retain hypot's overflow-safe
             // behavior for unusually large finite gradient centers.
             let distance_squared = dx * dx + dy * dy;
-            let distance = if distance_squared.is_finite() {
-                distance_squared.sqrt()
+            // Samples outside the radius always resolve to the final stop;
+            // avoid a square root for those pixels.
+            let position = if radius_squared.is_finite() && distance_squared >= radius_squared {
+                1.0
             } else {
-                dx.hypot(dy)
+                let distance = if distance_squared.is_finite() {
+                    distance_squared.sqrt()
+                } else {
+                    dx.hypot(dy)
+                };
+                distance * inverse_radius
             };
-            let position = distance * inverse_radius;
             let color = gradient.sample(position);
             *pixel = if color.a == u8::MAX {
                 color
