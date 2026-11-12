@@ -589,7 +589,11 @@ pub fn draw_texture_transformed_clipped(
                 TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
                 TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
             };
-            if color.a == 255 {
+            if texture.fully_opaque {
+                // Every nearest or bilinear sample is guaranteed opaque, so
+                // transformed draws can replace the destination directly.
+                row[x as usize] = color;
+            } else if color.a == 255 {
                 row[x as usize] = color;
             } else if color.a > 0 {
                 let index = x as usize;
@@ -907,6 +911,26 @@ mod tests {
         assert_eq!(target.get_pixel(2, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(3, 1), Some(Color::BLACK));
         assert_eq!(target.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn transformed_opaque_bilinear_texture_replaces_destination() {
+        let texture = Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let mut target = Framebuffer::new(4, 1, Color::GREEN).unwrap();
+
+        assert!(draw_texture_transformed_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 2, 1),
+            Transform2D::scale(2.0, 1.0),
+            TextureFilter::Bilinear,
+            Rect::new(0, 0, 4, 1),
+        ));
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(191, 0, 64)));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::rgb(64, 0, 191)));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
     }
 
     #[test]
