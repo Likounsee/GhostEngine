@@ -227,6 +227,57 @@ fn sample_bilinear_prepared(
     )
 }
 
+#[inline]
+fn sample_bilinear_opaque_prepared(
+    pixels: &[Color],
+    row_width: usize,
+    coordinates: BilinearCoordinates,
+) -> Color {
+    let BilinearCoordinates {
+        x0,
+        x1,
+        y0,
+        y1,
+        tx,
+        ty,
+    } = coordinates;
+    let top_left = pixels[y0 * row_width + x0];
+    let top_right = pixels[y0 * row_width + x1];
+    let bottom_left = pixels[y1 * row_width + x0];
+    let bottom_right = pixels[y1 * row_width + x1];
+
+    let inverse_x = 1.0 - tx;
+    let inverse_y = 1.0 - ty;
+    let interpolate = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
+        let top = f32::from(top_left) * inverse_x + f32::from(top_right) * tx;
+        let bottom = f32::from(bottom_left) * inverse_x + f32::from(bottom_right) * tx;
+        (top * inverse_y + bottom * ty)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+
+    Color::rgb(
+        interpolate(top_left.r, top_right.r, bottom_left.r, bottom_right.r),
+        interpolate(top_left.g, top_right.g, bottom_left.g, bottom_right.g),
+        interpolate(top_left.b, top_right.b, bottom_left.b, bottom_right.b),
+    )
+}
+
+#[inline]
+fn sample_cached_bilinear_opaque(
+    top: &[f32; 4],
+    bottom: &[f32; 4],
+    inverse_y: f32,
+    ty: f32,
+) -> Color {
+    let channel = |index: usize| {
+        ((top[index] * inverse_y + bottom[index] * ty) / 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    Color::rgb(channel(0), channel(1), channel(2))
+}
+
 // The cached bilinear path stores horizontal samples as premultiplied RGBA
 // floats. Keep the opaque-destination blend in safe Rust because the crate
 // explicitly forbids unsafe code.
@@ -429,7 +480,9 @@ pub fn draw_texture_clipped(
                             .zip(&horizontal_cache[bottom_offset..bottom_offset + samples.len()]),
                     )
                 {
-                    if pixel.a == 255 {
+                    if texture.fully_opaque {
+                        *pixel = sample_cached_bilinear_opaque(&top, &bottom, inverse_y, ty);
+                    } else if pixel.a == 255 {
                         blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, pixel);
                     } else {
                         let alpha = top[3] * inverse_y + bottom[3] * ty;
@@ -459,22 +512,28 @@ pub fn draw_texture_clipped(
                     .iter_mut()
                     .zip(samples.iter())
                 {
-                    let color = sample_bilinear_prepared(
-                        &texture.pixels,
-                        row_width,
-                        BilinearCoordinates {
-                            x0,
-                            x1,
-                            y0,
-                            y1,
-                            tx,
-                            ty,
-                        },
-                    );
-                    if color.a == 255 {
-                        *pixel = color;
-                    } else if color.a > 0 {
-                        *pixel = color.blend_over(*pixel);
+                    let coordinates = BilinearCoordinates {
+                        x0,
+                        x1,
+                        y0,
+                        y1,
+                        tx,
+                        ty,
+                    };
+                    if texture.fully_opaque {
+                        *pixel = sample_bilinear_opaque_prepared(
+                            &texture.pixels,
+                            row_width,
+                            coordinates,
+                        );
+                    } else {
+                        let color =
+                            sample_bilinear_prepared(&texture.pixels, row_width, coordinates);
+                        if color.a == 255 {
+                            *pixel = color;
+                        } else if color.a > 0 {
+                            *pixel = color.blend_over(*pixel);
+                        }
                     }
                 }
             }
@@ -725,6 +784,37 @@ mod tests {
         assert_eq!(target.get_pixel(1, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(2, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn opaque_bilinear_texture_replaces_destination_in_cached_and_uncached_paths() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgb(255, 0, 0),
+                Color::rgb(0, 255, 0),
+                Color::rgb(0, 0, 255),
+                Color::rgb(255, 255, 0),
+                Color::rgb(0, 255, 255),
+                Color::rgb(255, 0, 255),
+            ],
+        )
+        .unwrap();
+
+        for (width, height) in [(7, 3), (7, 5)] {
+            let mut target =
+                Framebuffer::new(width, height, Color::rgba(20, 40, 60, 120)).unwrap();
+            draw_texture(
+                &mut target,
+                &texture,
+                Rect::new(0, 0, width, height),
+                TextureFilter::Bilinear,
+            );
+
+            assert!(target.pixels().iter().all(|pixel| pixel.a == 255));
+            assert_ne!(target.get_pixel(3, height / 2), Some(Color::rgba(20, 40, 60, 120)));
+        }
     }
 
     #[test]
