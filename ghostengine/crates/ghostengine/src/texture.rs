@@ -263,6 +263,41 @@ pub fn draw_texture_clipped(
     } else {
         None
     };
+
+    // Build the optional horizontal cache once per draw, never once per scanline.
+    let horizontal_cache = if filter == TextureFilter::Bilinear {
+        let samples = horizontal_samples.as_ref().expect("bilinear samples are prepared");
+        let cache_len = (texture.height as usize).checked_mul(samples.len());
+        let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+        let use_cache = end_y - first_y >= u64::from(texture.height) * 2
+            && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
+        if use_cache {
+            let mut cache = vec![[0.0_f32; 4]; cache_len.unwrap()];
+            let row_width = texture.width as usize;
+            for source_row in 0..texture.height as usize {
+                let source_offset = source_row * row_width;
+                let cache_offset = source_row * samples.len();
+                for (column, &(x0, x1, tx)) in samples.iter().enumerate() {
+                    let left = texture.pixels[source_offset + x0];
+                    let right = texture.pixels[source_offset + x1];
+                    let inverse_x = 1.0 - tx;
+                    let left_alpha = f32::from(left.a) * inverse_x;
+                    let right_alpha = f32::from(right.a) * tx;
+                    cache[cache_offset + column] = [
+                        f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                        f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                        f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                        left_alpha + right_alpha,
+                    ];
+                }
+            }
+            Some(cache)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     for y in first_y..end_y {
         let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
         let Some(row) = target.row_mut(y as u32) else {
@@ -296,35 +331,7 @@ pub fn draw_texture_clipped(
                 .as_ref()
                 .expect("bilinear samples are prepared for bilinear filtering");
 
-            // When scaling a small texture over many destination rows, the
-            // same source rows are sampled repeatedly. Cache their horizontal
-            // premultiplied interpolation once, then only interpolate vertically
-            // in the hot destination loop.
-            let cache_len = (texture.height as usize).checked_mul(samples.len());
-            let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
-            let use_cache = end_y - first_y >= u64::from(texture.height) * 2
-                && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
-
-            if use_cache {
-                let mut horizontal_cache = vec![[0.0_f32; 4]; cache_len.unwrap()];
-                for source_row in 0..texture.height as usize {
-                    let source_offset = source_row * row_width;
-                    let cache_offset = source_row * samples.len();
-                    for (column, &(x0, x1, tx)) in samples.iter().enumerate() {
-                        let left = texture.pixels[source_offset + x0];
-                        let right = texture.pixels[source_offset + x1];
-                        let inverse_x = 1.0 - tx;
-                        let left_alpha = f32::from(left.a) * inverse_x;
-                        let right_alpha = f32::from(right.a) * tx;
-                        horizontal_cache[cache_offset + column] = [
-                            f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
-                            f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
-                            f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
-                            left_alpha + right_alpha,
-                        ];
-                    }
-                }
-
+            if let Some(horizontal_cache) = horizontal_cache.as_ref() {
                 let top_offset = y0 * samples.len();
                 let bottom_offset = y1 * samples.len();
                 let inverse_y = 1.0 - ty;
