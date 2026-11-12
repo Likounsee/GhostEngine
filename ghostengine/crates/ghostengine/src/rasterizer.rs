@@ -1268,6 +1268,27 @@ impl PolygonEdge {
     }
 }
 
+#[inline]
+fn accumulate_polygon_span_edges(
+    coverage: &mut [u8],
+    row_left: u32,
+    start_x: u32,
+    end_x: u32,
+    span_left: f64,
+    span_right: f64,
+) {
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    for x in start_x..end_x {
+        let sample_base = f64::from(x);
+        let mut covered = 0;
+        for offset in OFFSETS {
+            let sample_x = sample_base + offset;
+            covered += u8::from(sample_x >= span_left && sample_x < span_right);
+        }
+        coverage[(x - row_left) as usize] += covered;
+    }
+}
+
 /// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
 pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
@@ -1333,21 +1354,52 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             );
             intersections.sort_unstable_by(f64::total_cmp);
 
-            // Samples are visited from left to right, so advance through the
-            // sorted crossings once instead of binary-searching for every
-            // horizontal subpixel sample.
-            let mut crossing = 0;
-            let mut inside = false;
-            for x in left..right {
-                for offset_x in OFFSETS {
-                    let sample_x = f64::from(x) + offset_x;
-                    while crossing < intersections.len() && intersections[crossing] <= sample_x {
-                        crossing += 1;
-                        inside = !inside;
-                    }
-                    if inside {
-                        coverage[(x - left) as usize] += 1;
-                    }
+            // Convert each even-odd crossing pair into a horizontal span.
+            // Interior pixels receive all four horizontal samples at once;
+            // only the two boundary regions need individual sample tests.
+            for pair in intersections.chunks_exact(2) {
+                let span_left = pair[0].max(f64::from(left));
+                let span_right = pair[1].min(f64::from(right));
+                if span_left >= span_right {
+                    continue;
+                }
+
+                let first = span_left.floor() as u32;
+                let end = span_right.ceil() as u32;
+                let interior_start = (span_left - OFFSETS[0]).ceil() as u32;
+                let interior_end = (span_right - OFFSETS[3]).ceil() as u32;
+                let interior_start = interior_start.clamp(first, end);
+                let interior_end = interior_end.clamp(first, end);
+
+                if interior_start < interior_end {
+                    accumulate_polygon_span_edges(
+                        &mut coverage,
+                        left,
+                        first,
+                        interior_start,
+                        span_left,
+                        span_right,
+                    );
+                    coverage[(interior_start - left) as usize..(interior_end - left) as usize]
+                        .iter_mut()
+                        .for_each(|covered| *covered += 4);
+                    accumulate_polygon_span_edges(
+                        &mut coverage,
+                        left,
+                        interior_end,
+                        end,
+                        span_left,
+                        span_right,
+                    );
+                } else {
+                    accumulate_polygon_span_edges(
+                        &mut coverage,
+                        left,
+                        first,
+                        end,
+                        span_left,
+                        span_right,
+                    );
                 }
             }
         }
