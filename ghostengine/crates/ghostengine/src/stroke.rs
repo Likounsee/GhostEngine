@@ -332,13 +332,36 @@ fn stroke_path_impl(
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
+            // Narrow the active scanline geometry to each pixel's horizontal
+            // sample interval once. The 4x4 AA loop can then avoid repeating
+            // the same segment AABB test for all sixteen samples.
+            let mut pixel_segments = Vec::with_capacity(row_segments.len());
+            let mut pixel_joins = Vec::with_capacity(row_joins.len());
             for x in row_left..row_right {
+                let sample_left = x as f32 + 0.125;
+                let sample_right = x as f32 + 0.875;
+                pixel_segments.clear();
+                pixel_segments.extend(
+                    row_segments
+                        .iter()
+                        .filter(|segment| {
+                            segment.max_x >= sample_left && segment.min_x <= sample_right
+                        })
+                        .copied(),
+                );
+                pixel_joins.clear();
+                pixel_joins.extend(
+                    row_joins
+                        .iter()
+                        .filter(|join| join.max_x >= sample_left && join.min_x <= sample_right)
+                        .copied(),
+                );
                 let coverage = if antialias {
                     // A stroked segment is a convex region. If one segment
                     // contains all four extreme sample points of this pixel,
                     // it also contains every inner 4x4 sample. This makes the
                     // common wide-stroke interior a four-test fast path.
-                    let fully_covered = row_segments
+                    let fully_covered = pixel_segments
                         .iter()
                         .any(|segment| segment.fully_covers_pixel(x, y, radius_squared));
                     if fully_covered {
@@ -350,17 +373,15 @@ fn stroke_path_impl(
                             for offset_x in OFFSETS {
                                 let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
                                 let mut sample_covered = false;
-                                for segment in &row_segments {
-                                    if segment.may_cover(sample)
-                                        && segment.covers_within_radius(sample, radius_squared)
-                                    {
+                                for segment in &pixel_segments {
+                                    if segment.covers_within_radius(sample, radius_squared) {
                                         sample_covered = true;
                                         break;
                                     }
                                 }
                                 // Joins only need testing when no segment covers the sample.
                                 if !sample_covered {
-                                    for join in &row_joins {
+                                    for join in &pixel_joins {
                                         if join.contains(sample) {
                                             sample_covered = true;
                                             break;
