@@ -1991,8 +1991,16 @@ mod tests {
             let position = index as f32 / 10_000.0;
             let exact = gradient.sample(position);
             let fast = gradient.sample_raster(position);
-            for (a, b) in [(exact.r, fast.r), (exact.g, fast.g), (exact.b, fast.b), (exact.a, fast.a)] {
-                assert!(a.abs_diff(b) <= 1, "position {position}: {exact:?} != {fast:?}");
+            for (a, b) in [
+                (exact.r, fast.r),
+                (exact.g, fast.g),
+                (exact.b, fast.b),
+                (exact.a, fast.a),
+            ] {
+                assert!(
+                    a.abs_diff(b) <= 1,
+                    "position {position}: {exact:?} != {fast:?}"
+                );
             }
         }
     }
@@ -2000,11 +2008,24 @@ mod tests {
     #[test]
     fn raster_gradient_lookup_preserves_duplicate_stop_hard_edges() {
         let gradient = super::Gradient::new(vec![
-            super::GradientStop { position: 0.0, color: Color::RED },
-            super::GradientStop { position: 0.5, color: Color::GREEN },
-            super::GradientStop { position: 0.5, color: Color::BLUE },
-            super::GradientStop { position: 1.0, color: Color::WHITE },
-        ]).unwrap();
+            super::GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+            super::GradientStop {
+                position: 0.5,
+                color: Color::GREEN,
+            },
+            super::GradientStop {
+                position: 0.5,
+                color: Color::BLUE,
+            },
+            super::GradientStop {
+                position: 1.0,
+                color: Color::WHITE,
+            },
+        ])
+        .unwrap();
 
         assert!(gradient.lookup.is_none());
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
