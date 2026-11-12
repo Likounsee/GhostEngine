@@ -405,32 +405,52 @@ fn stroke_path_impl(
                         1.0
                     } else {
                         const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-                        let mut covered = 0_u16;
-                        for offset_y in OFFSETS {
-                            for offset_x in OFFSETS {
-                                let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
-                                let mut sample_covered = false;
-                                for segment in &pixel_segments {
-                                    if segment.covers_within_radius(sample, radius_squared) {
-                                        sample_covered = true;
-                                        break;
+                        let sample_x = OFFSETS.map(|offset| x as f32 + offset);
+                        let sample_y = OFFSETS.map(|offset| y as f32 + offset);
+                        let mut covered_mask = 0_u16;
+
+                        // Build the 4x4 coverage mask one segment at a time.
+                        // Each sample is tested only until some segment covers it;
+                        // joins are deferred until the segment union is complete.
+                        for segment in &pixel_segments {
+                            for (sample_y_index, &sample_y_value) in sample_y.iter().enumerate() {
+                                for (sample_x_index, &sample_x_value) in sample_x.iter().enumerate() {
+                                    let bit = 1_u16 << (sample_y_index * 4 + sample_x_index);
+                                    if covered_mask & bit == 0
+                                        && segment.covers_within_radius_xy(
+                                            sample_x_value,
+                                            sample_y_value,
+                                            radius_squared,
+                                        )
+                                    {
+                                        covered_mask |= bit;
                                     }
                                 }
-                                // Joins only need testing when no segment covers the sample.
-                                if !sample_covered {
-                                    for join in &pixel_joins {
-                                        if join.contains(sample) {
-                                            sample_covered = true;
-                                            break;
+                            }
+                            if covered_mask == u16::MAX {
+                                break;
+                            }
+                        }
+
+                        if covered_mask != u16::MAX {
+                            for join in &pixel_joins {
+                                for (sample_y_index, &sample_y_value) in sample_y.iter().enumerate() {
+                                    for (sample_x_index, &sample_x_value) in sample_x.iter().enumerate() {
+                                        let bit = 1_u16 << (sample_y_index * 4 + sample_x_index);
+                                        if covered_mask & bit == 0
+                                            && join.contains(Vector::new(sample_x_value, sample_y_value))
+                                        {
+                                            covered_mask |= bit;
                                         }
                                     }
                                 }
-                                if sample_covered {
-                                    covered += 1;
+                                if covered_mask == u16::MAX {
+                                    break;
                                 }
                             }
                         }
-                        f32::from(covered) / 16.0
+
+                        covered_mask.count_ones() as f32 / 16.0
                     }
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
@@ -581,9 +601,14 @@ impl StrokeSegment {
     /// perpendicular-distance comparison for projections inside the segment.
     #[inline]
     fn covers_within_radius(self, point: Vector, radius_squared: f32) -> bool {
+        self.covers_within_radius_xy(point.x, point.y, radius_squared)
+    }
+
+    #[inline]
+    fn covers_within_radius_xy(self, x: f32, y: f32, radius_squared: f32) -> bool {
         if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
-            let relative_x = point.x - self.a.x;
-            let relative_y = point.y - self.a.y;
+            let relative_x = x - self.a.x;
+            let relative_y = y - self.a.y;
             // Keep the projection unnormalized: comparing its dot product
             // directly with [0, length_squared] avoids a reciprocal multiply
             // for every supersample. The perpendicular-distance threshold is
