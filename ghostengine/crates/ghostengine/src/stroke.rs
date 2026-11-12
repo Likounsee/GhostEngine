@@ -342,7 +342,7 @@ fn stroke_path_impl(
                             let mut sample_covered = false;
                             for segment in &row_segments {
                                 if segment.may_cover(sample)
-                                    && segment.distance_squared(sample) <= radius_squared
+                                    && segment.covers_within_radius(sample, radius_squared)
                                 {
                                     sample_covered = true;
                                     break;
@@ -461,6 +461,24 @@ impl StrokeSegment {
             && point.x <= self.max_x
             && point.y >= self.min_y
             && point.y <= self.max_y
+    }
+
+    /// Tests coverage without constructing the nearest point for the common
+    /// butt-capped segment case. The squared cross product gives the exact
+    /// perpendicular-distance comparison for projections inside the segment.
+    fn covers_within_radius(self, point: Vector, radius_squared: f32) -> bool {
+        if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
+            let relative_x = point.x - self.a.x;
+            let relative_y = point.y - self.a.y;
+            let projection = (relative_x * self.dx + relative_y * self.dy)
+                * self.inverse_length_squared;
+            if !(0.0..=1.0).contains(&projection) {
+                return false;
+            }
+            let cross = relative_x * self.dy - relative_y * self.dx;
+            return cross * cross <= radius_squared * self.length_squared;
+        }
+        self.distance_squared(point) <= radius_squared
     }
 
     fn distance_squared(self, point: Vector) -> f32 {
