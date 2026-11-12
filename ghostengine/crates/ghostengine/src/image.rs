@@ -1,4 +1,4 @@
-//! Optional PNG and JPEG decoding into GhostEngine's CPU texture format.
+//! Optional common-format decoding into GhostEngine's CPU texture format.
 
 use std::{error::Error, fmt, io::Cursor};
 
@@ -46,7 +46,7 @@ impl Error for ImageDecodeError {
     }
 }
 
-/// Decodes PNG or JPEG bytes into an immutable, row-major RGBA texture.
+/// Decodes BMP, JPEG, PNG, or PNM bytes into an immutable, row-major RGBA texture.
 ///
 /// This adapter is available only with the `image-decoding` feature. The decoder
 /// rejects dimensions above 4096 pixels and applies a 64 MiB decoder allocation
@@ -56,7 +56,10 @@ pub fn decode_texture(encoded: &[u8]) -> Result<Texture, ImageDecodeError> {
         .with_guessed_format()
         .map_err(ImageDecodeError::Reader)?;
     let format = reader.format().ok_or(ImageDecodeError::UnknownFormat)?;
-    if !matches!(format, ImageFormat::Png | ImageFormat::Jpeg) {
+    if !matches!(
+        format,
+        ImageFormat::Bmp | ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Pnm
+    ) {
         return Err(ImageDecodeError::UnsupportedFormat(format));
     }
 
@@ -128,17 +131,35 @@ mod tests {
     }
 
     #[test]
+    fn decodes_bmp_pixels() {
+        let mut encoded = Vec::new();
+        ::image::codecs::bmp::BmpEncoder::new(&mut encoded)
+            .encode(&[25, 50, 225], 1, 1, ::image::ColorType::Rgb8.into())
+            .unwrap();
+
+        let texture = decode_texture(&encoded).unwrap();
+
+        assert_eq!(texture.get_pixel(0, 0), Some(Color::rgb(25, 50, 225)));
+    }
+
+    #[test]
+    fn decodes_portable_pixmap_pixels() {
+        let texture = decode_texture(b"P3\n1 1\n255\n12 34 56\n").unwrap();
+
+        assert_eq!(texture.get_pixel(0, 0), Some(Color::rgb(12, 34, 56)));
+    }
+
+    #[test]
     fn rejects_unknown_and_recognized_unsupported_formats() {
         assert!(matches!(
             decode_texture(b"not an image"),
             Err(ImageDecodeError::UnknownFormat)
         ));
 
-        let ppm = b"P3\n1 1\n255\n0 0 0\n";
         assert!(matches!(
-            decode_texture(ppm),
+            decode_texture(b"GIF89a"),
             Err(ImageDecodeError::UnsupportedFormat(
-                ::image::ImageFormat::Pnm
+                ::image::ImageFormat::Gif
             ))
         ));
     }

@@ -25,7 +25,7 @@ minifb = { version = "0.27", optional = true }
 winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"], optional = true }
 arboard = { version = "3", optional = true }
 softbuffer = { version = "0.4.8", optional = true }
-image = { version = "=0.25.0", default-features = false, features = ["jpeg", "png"], optional = true }
+image = { version = "=0.25.0", default-features = false, features = ["bmp", "jpeg", "png", "pnm"], optional = true }
 
 [[example]]
 name = "browser_frontend"
