@@ -1467,7 +1467,10 @@ pub fn fill_ellipse_aa(
     for y in top..bottom {
         let normalized_y = SAMPLE_OFFSETS.map(|offset| (f64::from(y) + offset - cy) * inverse_ry);
         let normalized_y_squared = normalized_y.map(|value| value * value);
-        let min_y_squared = normalized_y_squared.iter().copied().fold(f64::INFINITY, f64::min);
+        let min_y_squared = normalized_y_squared
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
         let max_y_squared = normalized_y_squared
             .iter()
             .copied()
