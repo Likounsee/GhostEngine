@@ -2266,7 +2266,7 @@ mod tests {
         for index in 0..=10_000 {
             let squared_position = index as f32 / 10_000.0;
             let exact = gradient.sample(squared_position.sqrt());
-            let fast = gradient.sample_radial_squared(squared_position);
+            let fast = gradient.sample_radial_squared_in_range(squared_position);
             for (a, b) in [
                 (exact.r, fast.r),
                 (exact.g, fast.g),
