@@ -461,10 +461,10 @@ fn stroke_path_impl(
                                     let sample_index = remaining.trailing_zeros() as usize;
                                     let bit = 1_u16 << sample_index;
                                     remaining &= remaining - 1;
-                                    if join.contains(Vector::new(
+                                    if join.contains_xy(
                                         sample_x[sample_index & 3],
                                         sample_y[sample_index >> 2],
-                                    )) {
+                                    ) {
                                         covered_mask |= bit;
                                     }
                                 }
@@ -744,18 +744,14 @@ impl PreparedTriangle {
     }
 
     #[inline]
-    fn contains(self, point: Vector) -> bool {
-        if point.x < self.min_x
-            || point.x > self.max_x
-            || point.y < self.min_y
-            || point.y > self.max_y
-        {
+    fn contains_xy(self, x: f32, y: f32) -> bool {
+        if x < self.min_x || x > self.max_x || y < self.min_y || y > self.max_y {
             return false;
         }
         let mut has_negative = false;
         let mut has_positive = false;
-        for (constant, x, y) in self.edges {
-            let cross = constant + x * point.y + y * point.x;
+        for (constant, edge_x, edge_y) in self.edges {
+            let cross = constant + edge_x * y + edge_y * x;
             has_negative |= cross < -1.0e-5;
             has_positive |= cross > 1.0e-5;
             if has_negative && has_positive {
@@ -769,7 +765,7 @@ impl PreparedTriangle {
 #[derive(Debug, Clone, Copy)]
 struct PreparedJoin {
     vertex: Vector,
-    radius: f32,
+    radius_squared: f32,
     round: bool,
     bevel: PreparedTriangle,
     miter: Option<PreparedTriangle>,
@@ -791,7 +787,7 @@ impl PreparedJoin {
         if join == StrokeJoin::Round {
             return Some(Self {
                 vertex,
-                radius,
+                radius_squared: radius * radius,
                 round: true,
                 bevel: PreparedTriangle::new([vertex; 3]),
                 miter: None,
@@ -866,7 +862,7 @@ impl PreparedJoin {
         }
         Some(Self {
             vertex,
-            radius,
+            radius_squared: radius * radius,
             round: false,
             bevel,
             miter,
@@ -877,13 +873,18 @@ impl PreparedJoin {
         })
     }
 
-    fn contains(self, sample: Vector) -> bool {
-        if self.round {
-            let dx = sample.x - self.vertex.x;
-            let dy = sample.y - self.vertex.y;
-            return dx * dx + dy * dy <= self.radius * self.radius;
+    #[inline]
+    fn contains_xy(self, x: f32, y: f32) -> bool {
+        if x < self.min_x || x > self.max_x || y < self.min_y || y > self.max_y {
+            return false;
         }
-        self.bevel.contains(sample) || self.miter.is_some_and(|triangle| triangle.contains(sample))
+        if self.round {
+            let dx = x - self.vertex.x;
+            let dy = y - self.vertex.y;
+            return dx * dx + dy * dy <= self.radius_squared;
+        }
+        self.bevel.contains_xy(x, y)
+            || self.miter.is_some_and(|triangle| triangle.contains_xy(x, y))
     }
 }
 
