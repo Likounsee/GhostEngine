@@ -236,29 +236,36 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     let source_g = u32::from(color.g) * source_alpha * 255;
     let source_b = u32::from(color.b) * source_alpha * 255;
 
+    // Opaque destinations are common in CPU raster workloads. Precompute the
+    // exact rounded result for every possible destination channel once, then
+    // replace three multiplies and divisions per pixel with table lookups.
+    let opaque_channel = |source: u8| {
+        let mut table = [0_u8; 256];
+        for (destination, output) in table.iter_mut().enumerate() {
+            *output = ((u32::from(source) * source_alpha
+                + destination as u32 * inverse_source_alpha
+                + 127)
+                / 255) as u8;
+        }
+        table
+    };
+    let opaque_r = opaque_channel(color.r);
+    let opaque_g = opaque_channel(color.g);
+    let opaque_b = opaque_channel(color.b);
+
     for y in top..bottom {
         if let Some(row) = target.row_mut(y as u32) {
             for pixel in &mut row[left as usize..right as usize] {
-                // Transparent destinations need no channel arithmetic: the
-                // straight-alpha source color is preserved exactly.
                 if pixel.a == 0 {
                     *pixel = color;
                     continue;
                 }
 
-                // Opaque destinations stay opaque, so source-over reduces to
-                // three rounded 8-bit channel interpolations.
                 if pixel.a == 255 {
-                    let blend_channel = |source: u8, destination: u8| -> u8 {
-                        ((u32::from(source) * source_alpha
-                            + u32::from(destination) * inverse_source_alpha
-                            + 127)
-                            / 255) as u8
-                    };
                     *pixel = Color::rgb(
-                        blend_channel(color.r, pixel.r),
-                        blend_channel(color.g, pixel.g),
-                        blend_channel(color.b, pixel.b),
+                        opaque_r[pixel.r as usize],
+                        opaque_g[pixel.g as usize],
+                        opaque_b[pixel.b as usize],
                     );
                     continue;
                 }
