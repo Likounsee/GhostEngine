@@ -302,12 +302,14 @@ pub fn draw_texture_clipped(
 
             // Horizontal texel indices and weights were prepared once for
             // the complete draw operation, not once for every destination row.
-            for (offset, (x0, x1, tx)) in horizontal_samples
-                .as_ref()
-                .expect("bilinear samples are prepared for bilinear filtering")
-                .iter()
-                .copied()
-                .enumerate()
+            for (pixel, &(x0, x1, tx)) in row[first_x as usize..end_x as usize]
+                .iter_mut()
+                .zip(
+                    horizontal_samples
+                        .as_ref()
+                        .expect("bilinear samples are prepared for bilinear filtering")
+                        .iter(),
+                )
             {
                 let color = sample_bilinear_prepared(
                     &texture.pixels,
@@ -321,11 +323,10 @@ pub fn draw_texture_clipped(
                         ty,
                     },
                 );
-                let index = first_x as usize + offset;
                 if color.a == 255 {
-                    row[index] = color;
+                    *pixel = color;
                 } else if color.a > 0 {
-                    row[index] = color.blend_over(row[index]);
+                    *pixel = color.blend_over(*pixel);
                 }
             }
         }
