@@ -591,7 +591,7 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
             }
             visible = true;
             let position = (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
-            let color = gradient.sample(position.clamp(0.0, 1.0));
+            let color = gradient.sample(position);
             let pixel = &mut row[x as usize];
             *pixel = if color.a == u8::MAX {
                 color
