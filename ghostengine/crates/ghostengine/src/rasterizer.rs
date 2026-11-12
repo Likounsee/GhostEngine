@@ -548,12 +548,8 @@ pub fn fill_rect_radial_gradient(
             continue;
         };
         let mut dx = left as f32 + 0.5 - center.x;
-        let mut distance_squared = dx * dx + dy_squared;
         for pixel in &mut row[left as usize..right as usize] {
-            // Advance squared distance with the exact second-difference
-            // identity: (dx + 1)^2 = dx^2 + 2*dx + 1. This removes a
-            // per-pixel multiplication while retaining full 4x4-independent
-            // gradient sampling precision (no lower-resolution lookup).
+            let distance_squared = dx * dx + dy_squared;
             let color = if radius_squared.is_finite()
                 && distance_squared.is_finite()
             {
@@ -573,7 +569,6 @@ pub fn fill_rect_radial_gradient(
             } else {
                 color.blend_over(*pixel)
             };
-            distance_squared += dx * 2.0 + 1.0;
             dx += 1.0;
         }
     }
