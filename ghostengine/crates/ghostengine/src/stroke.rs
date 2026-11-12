@@ -339,26 +339,25 @@ fn stroke_path_impl(
                     for offset_y in OFFSETS {
                         for offset_x in OFFSETS {
                             let sample = Vector::new(x as f32 + offset_x, y as f32 + offset_y);
-                            let mut distance_squared = f32::INFINITY;
+                            let mut sample_covered = false;
                             for segment in &row_segments {
                                 if segment.may_cover(sample)
                                     && segment.distance_squared(sample) <= radius_squared
                                 {
-                                    distance_squared = 0.0;
+                                    sample_covered = true;
                                     break;
                                 }
                             }
-                            // A segment already covers this sample, so join geometry
-                            // cannot increase its coverage.
-                            if distance_squared > radius_squared {
+                            // Joins only need testing when no segment covers the sample.
+                            if !sample_covered {
                                 for join in &row_joins {
                                     if join.contains(sample) {
-                                        distance_squared = 0.0;
+                                        sample_covered = true;
                                         break;
                                     }
                                 }
                             }
-                            if distance_squared <= radius_squared {
+                            if sample_covered {
                                 covered += 1;
                             }
                         }
