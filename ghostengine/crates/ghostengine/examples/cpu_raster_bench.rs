@@ -155,11 +155,19 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
 
-    let mut background_layer = Layer::new(400 * SCALE_U32, 220 * SCALE_U32, Color::rgba(35, 90, 155, 255))
-        .expect("benchmark layer should allocate");
+    let mut background_layer = Layer::new(
+        400 * SCALE_U32,
+        220 * SCALE_U32,
+        Color::rgba(35, 90, 155, 255),
+    )
+    .expect("benchmark layer should allocate");
     background_layer.set_position(30 * SCALE, 25 * SCALE);
-    let mut foreground_layer = Layer::new(320 * SCALE_U32, 180 * SCALE_U32, Color::rgba(225, 95, 45, 190))
-        .expect("benchmark layer should allocate");
+    let mut foreground_layer = Layer::new(
+        320 * SCALE_U32,
+        180 * SCALE_U32,
+        Color::rgba(225, 95, 45, 190),
+    )
+    .expect("benchmark layer should allocate");
     foreground_layer.set_position(90 * SCALE, 55 * SCALE);
     foreground_layer.set_opacity(210);
     let layers = [background_layer, foreground_layer];
@@ -219,13 +227,13 @@ fn main() {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
                 Point::new(240 * SCALE, 135 * SCALE),
-                185,
-                105,
+                185 * SCALE,
+                105 * SCALE,
                 Color::rgba(80, 190, 120, 220),
             );
         }),
         measure("Vector path fill", iterations, |target| {
-            fill_path_even_odd(target, &path, Color::rgba(245, 130, 45, 220), 0.35)
+            fill_path_even_odd(target, &path, Color::rgba(245, 130, 45, 220), 0.35 * SCALE_F32)
                 .expect("benchmark path should be valid");
         }),
         measure("Vector path fill AA", iterations, |target| {
@@ -237,9 +245,9 @@ fn main() {
                 target,
                 &path,
                 Transform2D::IDENTITY,
-                StrokeStyle::new(7.0),
+                StrokeStyle::new(7.0 * SCALE_F32),
                 Color::rgba(90, 220, 130, 230),
-                0.35,
+                0.35 * SCALE_F32,
             )
             .expect("benchmark stroke should be valid");
         }),
@@ -268,7 +276,7 @@ fn main() {
                 target,
                 Rect::new(12 * SCALE_U32, 12 * SCALE_U32, 456 * SCALE_U32, 246 * SCALE_U32),
                 Vector::new(240.0 * SCALE_F32, 135.0 * SCALE_F32),
-                190.0,
+                190.0 * SCALE_F32,
                 &gradient,
             );
         }),
@@ -292,7 +300,14 @@ fn main() {
             ghostengine::compose_layers(target, &layers);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
-            draw_text(target, &font, text, Point::new(18 * SCALE, 145 * SCALE), 28.0 * SCALE_F32, Color::WHITE);
+            draw_text(
+                target,
+                &font,
+                text,
+                Point::new(18 * SCALE, 145 * SCALE),
+                28.0 * SCALE_F32,
+                Color::WHITE,
+            );
         }),
         measure("UI button + text", iterations, |target| {
             ghostengine::draw_button(
