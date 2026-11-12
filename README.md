@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
-> **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, layer composition, display lists, retained UI components, TrueType/OpenType glyph rasterization, text layout and shaping. Optional window adapters present completed CPU framebuffers and forward input. Image-file decoding adapters and the software 3D pipeline are not implemented yet. The current 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
+> **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, layer composition, display lists, retained UI components, TrueType/OpenType glyph rasterization, text layout and shaping. The optional `image-decoding` feature decodes PNG and JPEG files into CPU textures. Optional window adapters present completed CPU framebuffers and forward input. The software 3D pipeline is not implemented yet. The 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
 
 ## Vision
 
@@ -175,6 +175,7 @@ cd ghostengine
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
+cargo test -p ghostengine --features image-decoding
 cargo run -p ghostengine --example first_image -- first-image.ppm
 cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
