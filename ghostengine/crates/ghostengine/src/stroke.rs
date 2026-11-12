@@ -1051,6 +1051,33 @@ mod tests {
     }
 
     #[test]
+    fn fast_butt_segment_coverage_matches_distance_reference() {
+        let segment = super::StrokeSegment::new(
+            Vector::new(2.25, 3.75),
+            Vector::new(17.5, 12.125),
+            false,
+            false,
+            StrokeCap::Butt,
+            3.5,
+        );
+        let radius_squared = 3.5_f32 * 3.5;
+        for y in 0..20 {
+            for x in 0..24 {
+                for offset in [0.0, 0.125, 0.25, 0.5, 0.75, 0.875] {
+                    let point = Vector::new(x as f32 + offset, y as f32 + offset);
+                    assert_eq!(
+                        segment.covers_within_radius(point, radius_squared),
+                        segment.distance_squared(point) <= radius_squared,
+                        "coverage mismatch at ({}, {})",
+                        point.x,
+                        point.y
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn scanline_culling_preserves_segment_and_join_coverage() {
         let points = [
             Vector::new(2.0, 14.0),
