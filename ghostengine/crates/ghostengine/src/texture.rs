@@ -177,6 +177,8 @@ fn sample_bilinear_prepared(
         return Color::TRANSPARENT;
     }
 
+    // One reciprocal is shared by RGB instead of performing three divisions.
+    let inverse_alpha = alpha.recip();
     let interpolate_premultiplied = |top_left_channel: u8,
                                      top_right_channel: u8,
                                      bottom_left_channel: u8,
@@ -185,7 +187,7 @@ fn sample_bilinear_prepared(
             + f32::from(top_right_channel) * weighted_alpha_top_right;
         let bottom = f32::from(bottom_left_channel) * weighted_alpha_bottom_left
             + f32::from(bottom_right_channel) * weighted_alpha_bottom_right;
-        (top * one_minus_y + bottom * ty) / alpha
+        (top * one_minus_y + bottom * ty) * inverse_alpha
     };
     let channel = |value: f32| value.round().clamp(0.0, 255.0) as u8;
     Color::rgba(
