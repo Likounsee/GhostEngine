@@ -38,8 +38,26 @@ impl Color {
         }
 
         let source_alpha = u32::from(self.a);
-        let destination_alpha = u32::from(background.a);
         let inverse_source_alpha = 255 - source_alpha;
+
+        // Framebuffers are commonly opaque. In that case source-over reduces
+        // to three rounded 8-bit interpolations, avoiding a per-channel
+        // division by the more expensive general alpha numerator.
+        if background.a == u8::MAX {
+            let blend_channel = |source: u8, destination: u8| -> u8 {
+                ((u32::from(source) * source_alpha
+                    + u32::from(destination) * inverse_source_alpha
+                    + 127)
+                    / 255) as u8
+            };
+            return Self::rgb(
+                blend_channel(self.r, background.r),
+                blend_channel(self.g, background.g),
+                blend_channel(self.b, background.b),
+            );
+        }
+
+        let destination_alpha = u32::from(background.a);
         let alpha_numerator = source_alpha * 255 + destination_alpha * inverse_source_alpha;
 
         if alpha_numerator == 0 {
@@ -86,5 +104,31 @@ mod tests {
     fn half_transparent_red_over_opaque_blue() {
         let result = Color::rgba(255, 0, 0, 128).blend_over(Color::BLUE);
         assert_eq!(result, Color::rgb(128, 0, 127));
+    }
+
+    #[test]
+    fn opaque_background_fast_blend_matches_general_source_over_rounding() {
+        for source_alpha in 1_u32..255 {
+            for source in [0_u32, 1, 63, 127, 128, 192, 254, 255] {
+                for destination in [0_u32, 1, 63, 127, 128, 192, 254, 255] {
+                    let expected = ((source * source_alpha
+                        + destination * (255 - source_alpha)
+                        + 127)
+                        / 255) as u8;
+                    let actual = Color::rgba(
+                        source as u8,
+                        source as u8,
+                        source as u8,
+                        source_alpha as u8,
+                    )
+                    .blend_over(Color::rgb(
+                        destination as u8,
+                        destination as u8,
+                        destination as u8,
+                    ));
+                    assert_eq!(actual, Color::rgb(expected, expected, expected));
+                }
+            }
+        }
     }
 }
