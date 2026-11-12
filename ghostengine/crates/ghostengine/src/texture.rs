@@ -243,8 +243,8 @@ pub fn draw_texture_clipped(
             // The destination clipping guarantees that samples lie inside the
             // destination rectangle. Clamp only the final integer texel index,
             // avoiding the generic floating-point sampler for every pixel.
-            let source_row = (source_y.floor() as u32).min(texture.height - 1) as usize
-                * texture.width as usize;
+            let source_row =
+                (source_y.floor() as u32).min(texture.height - 1) as usize * texture.width as usize;
             for x in first_x..end_x {
                 let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
                 let source_column = (source_x.floor() as u32).min(texture.width - 1) as usize;
