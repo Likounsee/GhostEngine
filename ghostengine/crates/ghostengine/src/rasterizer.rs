@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 29633)
-Total output lines: 3360
-
 //! Deterministic CPU rasterization primitives.
 //!
 //! Lines are clipped before rasterization; rectangles use half-open bounds;
@@ -675,7 +672,2003 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
     if rect.width > 1 {
         draw_line(target, point(left, top), point(left, bottom), color);
-        draw_line(target, point(right, top), poi…17633 tokens truncated…   );
+        draw_line(target, point(right, top), point(right, bottom), color);
+    }
+}
+
+/// Draws an anti-aliased rectangle outline with 4x4 supersampled coverage.
+pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
+    let point = |x: i64, y: i64| {
+        Point::new(
+            i32::try_from(x).unwrap_or(if x < 0 { i32::MIN } else { i32::MAX }),
+            i32::try_from(y).unwrap_or(if y < 0 { i32::MIN } else { i32::MAX }),
+        )
+    };
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width) - 1;
+    let bottom = top + i64::from(rect.height) - 1;
+    draw_polygon_aa(
+        target,
+        &[
+            point(left, top),
+            point(right, top),
+            point(right, bottom),
+            point(left, bottom),
+        ],
+        color,
+    );
+}
+
+/// Draws an anti-aliased rounded-rectangle outline using signed-distance coverage.
+pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0 || rect.height == 0 || color.a == 0 {
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width);
+    let bottom = top + i64::from(rect.height);
+    let clip_left = left.saturating_sub(1).max(0) as u32;
+    let clip_top = top.saturating_sub(1).max(0) as u32;
+    let clip_right = (right + 1).clamp(0, i64::from(target.width())) as u32;
+    let clip_bottom = (bottom + 1).clamp(0, i64::from(target.height())) as u32;
+    if clip_left >= clip_right || clip_top >= clip_bottom {
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let center_x = (left + right - 1) as f64 * 0.5;
+    let center_y = (top + bottom - 1) as f64 * 0.5;
+    let half_width = (f64::from(rect.width) - 1.0) * 0.5;
+    let half_height = (f64::from(rect.height) - 1.0) * 0.5;
+    let corner_radius = f64::from(radius.min(rect.width / 2).min(rect.height / 2));
+    let inner_width = half_width - corner_radius;
+    let inner_height = half_height - corner_radius;
+
+    for y in clip_top..clip_bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in clip_left..clip_right {
+            let mut covered = 0_u16;
+            for offset_y in SAMPLE_OFFSETS {
+                let py = f64::from(y) + offset_y - center_y;
+                for offset_x in SAMPLE_OFFSETS {
+                    let px = f64::from(x) + offset_x - center_x;
+                    let qx = px.abs() - inner_width;
+                    let qy = py.abs() - inner_height;
+                    let outside_x = qx.max(0.0);
+                    let outside_y = qy.max(0.0);
+                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+                    if distance.abs() <= 0.5 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            if alpha != 0 {
+                row[x as usize] =
+                    Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
+            }
+        }
+    }
+}
+
+/// Fills a rounded rectangle with 4x4 supersampled edge coverage.
+///
+/// The rectangle uses half-open bounds, clamps the corner radius to its dimensions,
+/// clips work to the framebuffer, and composites translucent coverage source-over.
+pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0
+        || rect.height == 0
+        || color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+    {
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width);
+    let bottom = top + i64::from(rect.height);
+    let clip_left = left.saturating_sub(1).max(0) as u32;
+    let clip_top = top.saturating_sub(1).max(0) as u32;
+    let clip_right = (right + 1).clamp(0, i64::from(target.width())) as u32;
+    let clip_bottom = (bottom + 1).clamp(0, i64::from(target.height())) as u32;
+    if clip_left >= clip_right || clip_top >= clip_bottom {
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let center_x = (left + right - 1) as f64 * 0.5;
+    let center_y = (top + bottom - 1) as f64 * 0.5;
+    let half_width = (f64::from(rect.width) - 1.0) * 0.5;
+    let half_height = (f64::from(rect.height) - 1.0) * 0.5;
+    let corner_radius = f64::from(radius.min(rect.width / 2).min(rect.height / 2));
+    let inner_width = half_width - corner_radius;
+    let inner_height = half_height - corner_radius;
+
+    for y in clip_top..clip_bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in clip_left..clip_right {
+            let mut covered = 0_u16;
+            for offset_y in SAMPLE_OFFSETS {
+                let py = f64::from(y) + offset_y - center_y;
+                for offset_x in SAMPLE_OFFSETS {
+                    let px = f64::from(x) + offset_x - center_x;
+                    let qx = px.abs() - inner_width;
+                    let qy = py.abs() - inner_height;
+                    let outside_x = qx.max(0.0);
+                    let outside_y = qy.max(0.0);
+                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+                    if distance <= 0.0 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered / 16) as u8;
+            if alpha != 0 {
+                row[x as usize] =
+                    Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
+            }
+        }
+    }
+}
+
+/// Returns the inclusive horizontal pixel span for one rounded-rectangle scanline.
+///
+/// Geometry is evaluated at pixel centers in doubled integer coordinates,
+/// avoiding floating-point drift and preserving very small rounded rectangles.
+fn rounded_rect_scanline_span(rect: Rect, radius: u32, y: i64) -> Option<(i64, i64)> {
+    if rect.width == 0 || rect.height == 0 {
+        return None;
+    }
+
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 {
+        return Some((
+            i64::from(rect.x),
+            i64::from(rect.x) + i64::from(rect.width) - 1,
+        ));
+    }
+
+    let left = i64::from(rect.x);
+    let right = left + i64::from(rect.width) - 1;
+    let top = i64::from(rect.y);
+    let bottom = top + i64::from(rect.height) - 1;
+    if y < top || y > bottom {
+        return None;
+    }
+
+    let radius_twice = i64::from(radius) * 2;
+    let radius_squared = (radius_twice as u128) * (radius_twice as u128);
+    let pixel_center_y = y * 2 + 1;
+    let top_center = top * 2 + radius_twice;
+    let bottom_center = (bottom + 1) * 2 - radius_twice;
+    let dy = if pixel_center_y < top_center {
+        top_center - pixel_center_y
+    } else if pixel_center_y > bottom_center {
+        pixel_center_y - bottom_center
+    } else {
+        0
+    };
+    let dy_squared = (dy as u128) * (dy as u128);
+    if dy_squared > radius_squared {
+        return None;
+    }
+
+    let extent = integer_sqrt(radius_squared - dy_squared) as i64;
+    let left_center = left * 2 + radius_twice;
+    let right_center = (right + 1) * 2 - radius_twice;
+    let left_boundary = left_center - extent;
+    let right_boundary = right_center + extent;
+
+    // Pixel centers are at 2*x+1. Convert the continuous boundaries to
+    // inclusive integer pixel coordinates, then clamp to the rectangle.
+    let first_x =
+        (left_boundary - 1).div_euclid(2) + i64::from((left_boundary - 1).rem_euclid(2) != 0);
+    let last_x = (right_boundary - 1).div_euclid(2);
+    let first_x = first_x.max(left);
+    let last_x = last_x.min(right);
+    (first_x <= last_x).then_some((first_x, last_x))
+}
+
+/// Fills a rounded rectangle using clipped horizontal scanline spans.
+///
+/// The radius is clamped to half the smaller dimension. A zero radius is
+/// equivalent to a regular rectangle fill.
+pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let first_y = i64::from(rect.y).max(0);
+    let last_y =
+        (i64::from(rect.y) + i64::from(rect.height) - 1).min(i64::from(target.height()) - 1);
+    if first_y > last_y {
+        return;
+    }
+
+    let framebuffer_right = i64::from(target.width()) - 1;
+    for y in first_y..=last_y {
+        let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
+            continue;
+        };
+        let first_x = first_x.max(0);
+        let last_x = last_x.min(framebuffer_right);
+        if first_x > last_x {
+            continue;
+        }
+        if let Some(row) = target.row_mut(y as u32) {
+            row[first_x as usize..=last_x as usize].fill(color);
+        }
+    }
+}
+
+/// Draws the outline of a rounded rectangle with clipped scanline endpoints.
+///
+/// The radius is clamped to half the smaller dimension. Unlike drawing four
+/// complete circles, this emits only the visible quarter-circle corners and
+/// the straight side sections.
+pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    if radius == 0 {
+        draw_rect(target, rect, color);
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let right = left + i64::from(rect.width) - 1;
+    let top = i64::from(rect.y);
+    let bottom = top + i64::from(rect.height) - 1;
+    let framebuffer_right = i64::from(target.width()) - 1;
+
+    // Rounded corners join two straight horizontal sections. Draw those
+    // sections explicitly; scanline endpoints are reserved for the curved
+    // sides so the top and bottom edges do not collapse to two pixels.
+    let horizontal_start = (left + i64::from(radius)).max(0);
+    let horizontal_end = (right - i64::from(radius)).min(framebuffer_right);
+    if horizontal_start <= horizontal_end {
+        for y in [top, bottom] {
+            if y >= 0 && y < i64::from(target.height()) {
+                if let Some(row) = target.row_mut(y as u32) {
+                    row[horizontal_start as usize..=horizontal_end as usize].fill(color);
+                }
+            }
+        }
+    } else {
+        // When the corner arcs meet (for example, a 2x2 rectangle), there
+        // is no straight top or bottom segment. Keep the complete tiny
+        // perimeter rather than dropping its only scanlines.
+        for y in [top, bottom] {
+            if y >= 0 && y < i64::from(target.height()) {
+                if let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) {
+                    let first_x = first_x.max(0);
+                    let last_x = last_x.min(framebuffer_right);
+                    if first_x <= last_x {
+                        if let Some(row) = target.row_mut(y as u32) {
+                            row[first_x as usize..=last_x as usize].fill(color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let first_y = (top + 1).max(0);
+    let last_y = (bottom - 1).min(i64::from(target.height()) - 1);
+    if first_y > last_y {
+        return;
+    }
+
+    for y in first_y..=last_y {
+        let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
+            continue;
+        };
+        let first_x = first_x.max(0);
+        let last_x = last_x.min(framebuffer_right);
+        if first_x > last_x {
+            continue;
+        }
+        if let Some(row) = target.row_mut(y as u32) {
+            row[first_x as usize] = color;
+            row[last_x as usize] = color;
+        }
+    }
+}
+
+/// Draws a closed polygon outline. Fewer than two vertices draw nothing.
+pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 2 {
+        return;
+    }
+    for index in 0..vertices.len() {
+        draw_line(
+            target,
+            vertices[index],
+            vertices[(index + 1) % vertices.len()],
+            color,
+        );
+    }
+}
+
+/// Draws a closed polygon outline with 4x4 supersampled coverage.
+///
+/// Segment coverage is accumulated as a union, so shared vertices are blended
+/// only once and translucent outlines do not become darker at their corners.
+pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 2 || color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if vertices.len() == 2 {
+        draw_line_aa(target, vertices[0], vertices[1], color);
+        return;
+    }
+    if vertices.iter().all(|point| *point == vertices[0]) {
+        return;
+    }
+
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let min_x = vertices.iter().map(|point| point.x).min().unwrap();
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap();
+    let max_x = vertices.iter().map(|point| point.x).max().unwrap();
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    let left = (i64::from(min_x) - 1).max(0) as u32;
+    let top = (i64::from(min_y) - 1).max(0) as u32;
+    let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
+    let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let segments = (0..vertices.len())
+        .map(|index| {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let (ax, ay) = (f64::from(a.x), f64::from(a.y));
+            let (dx, dy) = (f64::from(b.x) - ax, f64::from(b.y) - ay);
+            (
+                ax,
+                ay,
+                dx,
+                dy,
+                dx * dx + dy * dy,
+                ax.min(f64::from(b.x)) - 0.5,
+                ax.max(f64::from(b.x)) + 0.5,
+                ay.min(f64::from(b.y)) - 0.5,
+                ay.max(f64::from(b.y)) + 0.5,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut coverage = vec![0_u8; (right - left) as usize];
+    for y in top..bottom {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
+            let sample_y = f64::from(y) + offset_y;
+            for x in left..right {
+                let sample_x = f64::from(x);
+                let mut covered = 0;
+                for offset_x in OFFSETS {
+                    let (px, py) = (sample_x + offset_x, sample_y);
+                    let on_outline = segments.iter().any(
+                        |&(ax, ay, dx, dy, length_squared, min_x, max_x, min_y, max_y)| {
+                            if px < min_x || px > max_x || py < min_y || py > max_y {
+                                return false;
+                            }
+                            let t = if length_squared == 0.0 {
+                                0.0
+                            } else {
+                                (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
+                            };
+                            let (nearest_x, nearest_y) = (ax + t * dx, ay + t * dy);
+                            let distance_x = px - nearest_x;
+                            let distance_y = py - nearest_y;
+                            distance_x * distance_x + distance_y * distance_y <= 0.25
+                        },
+                    );
+                    if on_outline {
+                        covered += 1;
+                    }
+                }
+                coverage[(x - left) as usize] += covered;
+            }
+        }
+        if let Some(row) = target.row_mut(y) {
+            for (pixel, covered) in row[left as usize..right as usize]
+                .iter_mut()
+                .zip(coverage.iter().copied())
+            {
+                if covered == 0 {
+                    continue;
+                }
+                let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+                if alpha != 0 {
+                    *pixel = Color::rgba(color.r, color.g, color.b, alpha).blend_over(*pixel);
+                }
+            }
+        }
+    }
+}
+
+/// Fills a polygon using the even-odd scanline rule at pixel centers.
+pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let min_y = vertices.iter().map(|p| p.y).min().unwrap().max(0) as u32;
+    let max_y = vertices.iter().map(|p| p.y).max().unwrap();
+    if max_y < 0 || min_y >= target.height() {
+        return;
+    }
+    let max_y = (max_y as u32).min(target.height() - 1);
+    // Convert vertices and discard horizontal edges once. Scan conversion
+    // then works on compact f64 edge records without repeated indexing,
+    // modulo operations, or integer-to-float conversions on every row.
+    let mut edges = (0..vertices.len())
+        .filter_map(|index| {
+            let a = vertices[index];
+            let b = vertices[(index + 1) % vertices.len()];
+            let (ax, ay, bx, by) = (
+                f64::from(a.x),
+                f64::from(a.y),
+                f64::from(b.x),
+                f64::from(b.y),
+            );
+            (ay != by).then_some((ay.min(by), ay.max(by), ax, ay, bx, by))
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return;
+    }
+    // Activate only edges crossing the current scanline. Sorting by their
+    // first covered y avoids revisiting every polygon edge on every row.
+    edges.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
+    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
+    let mut intersections = Vec::with_capacity(edges.len());
+    let target_width = target.width();
+
+    for y in min_y..=max_y {
+        intersections.clear();
+        let scan_y = f64::from(y) + 0.5;
+        active_edges.retain(|&index| edges[index].1 > scan_y);
+        while next_edge < edges.len() && edges[next_edge].0 <= scan_y {
+            if edges[next_edge].1 > scan_y {
+                active_edges.push(next_edge);
+            }
+            next_edge += 1;
+        }
+        for &index in &active_edges {
+            let (_, _, ax, ay, bx, by) = edges[index];
+            let t = (scan_y - ay) / (by - ay);
+            intersections.push(ax + t * (bx - ax));
+        }
+        intersections.sort_unstable_by(f64::total_cmp);
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for pair in intersections.chunks_exact(2) {
+            let first = (pair[0] - 0.5).ceil().max(0.0) as u32;
+            let end = ((pair[1] - 0.5).ceil().max(0.0) as u32).min(target_width);
+            let start = first.min(target_width);
+            if start < end {
+                row[start as usize..end as usize].fill(color);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PolygonEdge {
+    min_y: f64,
+    max_y: f64,
+    min_x: f64,
+    inverse_slope: f64,
+}
+
+impl PolygonEdge {
+    fn new(a: Point, b: Point) -> Option<Self> {
+        let (ax, ay) = (f64::from(a.x), f64::from(a.y));
+        let (bx, by) = (f64::from(b.x), f64::from(b.y));
+        if (ay - by).abs() <= f64::EPSILON {
+            return None;
+        }
+        let (min_x, min_y, max_y, upper_x) = if ay < by {
+            (ax, ay, by, bx)
+        } else {
+            (bx, by, ay, ax)
+        };
+        Some(Self {
+            min_y,
+            max_y,
+            min_x,
+            inverse_slope: (upper_x - min_x) / (max_y - min_y),
+        })
+    }
+
+    fn intersection_x(self, sample_y: f64) -> f64 {
+        self.min_x + (sample_y - self.min_y) * self.inverse_slope
+    }
+}
+
+/// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
+pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let min_x = vertices.iter().map(|point| point.x).min().unwrap();
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap();
+    let max_x = vertices.iter().map(|point| point.x).max().unwrap();
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    let left = (i64::from(min_x) - 1).max(0) as u32;
+    let top = (i64::from(min_y) - 1).max(0) as u32;
+    let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
+    let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let edges = (0..vertices.len())
+        .filter_map(|index| {
+            PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return;
+    }
+
+    // Keep edges ordered by their first covered sub-scanline. The four
+    // vertical samples advance monotonically, so an active list avoids
+    // checking every polygon edge for every sample.
+    let mut edge_order = (0..edges.len()).collect::<Vec<_>>();
+    edge_order.sort_unstable_by(|&a, &b| edges[a].min_y.total_cmp(&edges[b].min_y));
+    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
+    let row_width = (right - left) as usize;
+    let mut coverage = vec![0_u8; row_width];
+    // Reuse one intersection buffer for every sub-scanline.
+    let mut intersections = Vec::with_capacity(edges.len());
+    for y in top..bottom {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
+            let sample_y = f64::from(y) + offset_y;
+            active_edges.retain(|&index| edges[index].max_y > sample_y);
+            while next_edge < edge_order.len() && edges[edge_order[next_edge]].min_y <= sample_y {
+                let index = edge_order[next_edge];
+                if edges[index].max_y > sample_y {
+                    active_edges.push(index);
+                }
+                next_edge += 1;
+            }
+            intersections.clear();
+            intersections.extend(
+                active_edges
+                    .iter()
+                    .map(|&index| edges[index].intersection_x(sample_y)),
+            );
+            intersections.sort_unstable_by(f64::total_cmp);
+
+            // Samples are visited from left to right, so advance through the
+            // sorted crossings once instead of binary-searching for every
+            // horizontal subpixel sample.
+            let mut crossing = 0;
+            let mut inside = false;
+            for x in left..right {
+                for offset_x in OFFSETS {
+                    let sample_x = f64::from(x) + offset_x;
+                    while crossing < intersections.len() && intersections[crossing] <= sample_x {
+                        crossing += 1;
+                        inside = !inside;
+                    }
+                    if inside {
+                        coverage[(x - left) as usize] += 1;
+                    }
+                }
+            }
+        }
+
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for (pixel, covered) in row[left as usize..right as usize]
+            .iter_mut()
+            .zip(coverage.iter().copied())
+        {
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            *pixel = source.blend_over(*pixel);
+        }
+    }
+}
+
+/// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
+pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    draw_polygon_aa(target, &[a, b, c], color);
+}
+
+/// Fills a triangle with 4x4 coverage sampling and source-over alpha blending.
+pub fn fill_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    fill_polygon_aa(target, &[a, b, c], color);
+}
+
+/// Fills a triangle using integer edge functions, pixel-center sampling and
+/// the top-left rule. Degenerate triangles draw nothing; vertex order is free.
+pub fn fill_triangle(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    let mut vertices = [a, b, c];
+    let area = edge(vertices[0], vertices[1], vertices[2]);
+    if area == 0 {
+        return;
+    }
+    if area < 0 {
+        vertices.swap(1, 2);
+    }
+    let [a, b, c] = vertices;
+
+    let min_x = a.x.min(b.x).min(c.x).max(0) as u32;
+    let min_y = a.y.min(b.y).min(c.y).max(0) as u32;
+    let max_x = a.x.max(b.x).max(c.x);
+    let max_y = a.y.max(b.y).max(c.y);
+    if max_x < 0 || max_y < 0 || min_x >= target.width() || min_y >= target.height() {
+        return;
+    }
+    let max_x = (max_x as u32).min(target.width() - 1);
+    let max_y = (max_y as u32).min(target.height() - 1);
+
+    let tl_ab = is_top_left(a, b);
+    let tl_bc = is_top_left(b, c);
+    let tl_ca = is_top_left(c, a);
+    let (ax, ay) = (i128::from(a.x) * 2, i128::from(a.y) * 2);
+    let (bx, by) = (i128::from(b.x) * 2, i128::from(b.y) * 2);
+    let (cx, cy) = (i128::from(c.x) * 2, i128::from(c.y) * 2);
+
+    // Edge functions are linear across the pixel grid. Step their values
+    // incrementally instead of multiplying coordinates three times per pixel.
+    let px_start = i128::from(min_x) * 2 + 1;
+    let py_start = i128::from(min_y) * 2 + 1;
+    let step_x0 = 2 * (by - ay);
+    let step_x1 = 2 * (cy - by);
+    let step_x2 = 2 * (ay - cy);
+    let step_y0 = -2 * (bx - ax);
+    let step_y1 = -2 * (cx - bx);
+    let step_y2 = -2 * (ax - cx);
+    let (mut row_e0, mut row_e1, mut row_e2) = (
+        edge_doubled(ax, ay, bx, by, px_start, py_start),
+        edge_doubled(bx, by, cx, cy, px_start, py_start),
+        edge_doubled(cx, cy, ax, ay, px_start, py_start),
+    );
+
+    for y in min_y..=max_y {
+        if let Some(row) = target.row_mut(y) {
+            let (mut e0, mut e1, mut e2) = (row_e0, row_e1, row_e2);
+            for x in min_x..=max_x {
+                if (e0 > 0 || (e0 == 0 && tl_ab))
+                    && (e1 > 0 || (e1 == 0 && tl_bc))
+                    && (e2 > 0 || (e2 == 0 && tl_ca))
+                {
+                    row[x as usize] = color;
+                }
+                e0 += step_x0;
+                e1 += step_x1;
+                e2 += step_x2;
+            }
+        }
+        row_e0 += step_y0;
+        row_e1 += step_y1;
+        row_e2 += step_y2;
+    }
+}
+
+fn edge(a: Point, b: Point, p: Point) -> i128 {
+    (i128::from(p.x) - i128::from(a.x)) * (i128::from(b.y) - i128::from(a.y))
+        - (i128::from(p.y) - i128::from(a.y)) * (i128::from(b.x) - i128::from(a.x))
+}
+
+fn edge_doubled(ax: i128, ay: i128, bx: i128, by: i128, px: i128, py: i128) -> i128 {
+    (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+}
+
+fn is_top_left(a: Point, b: Point) -> bool {
+    let dx = i64::from(b.x) - i64::from(a.x);
+    let dy = i64::from(b.y) - i64::from(a.y);
+    dy > 0 || (dy == 0 && dx < 0)
+}
+
+/// Draws the outline of a circle using an integer ellipse-span algorithm.
+/// The radius is measured in pixels; a zero radius draws the center pixel.
+pub fn draw_circle(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    draw_ellipse(target, center, radius, radius, color);
+}
+
+/// Fills a circle, clipping its scanlines to the framebuffer.
+pub fn fill_circle(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    fill_ellipse(target, center, radius, radius, color);
+}
+
+/// Fills an ellipse with 4x4 supersampled edge coverage and source-over blending.
+///
+/// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
+/// line along the remaining axis; a point-sized ellipse draws one pixel.
+pub fn fill_ellipse_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if radius_x == 0 || radius_y == 0 {
+        let rx = i64::from(radius_x);
+        let ry = i64::from(radius_y);
+        let start = Point::new(
+            (i64::from(center.x) - rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) - ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        let end = Point::new(
+            (i64::from(center.x) + rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) + ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        draw_line_aa(target, start, end, color);
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let rx = f64::from(radius_x);
+    let ry = f64::from(radius_y);
+    let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+    let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+    let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let inverse_rx = rx.recip();
+    let inverse_ry = ry.recip();
+    for y in top..bottom {
+        let normalized_y = SAMPLE_OFFSETS.map(|offset| (f64::from(y) + offset - cy) * inverse_ry);
+        let normalized_y_squared = normalized_y.map(|value| value * value);
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let normalized_x =
+                SAMPLE_OFFSETS.map(|offset| (f64::from(x) + offset - cx) * inverse_rx);
+            let mut covered = 0_u32;
+            for dx in normalized_x {
+                let dx_squared = dx * dx;
+                for dy_squared in normalized_y_squared {
+                    if dx_squared + dy_squared <= 1.0 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
+/// Draws a one-pixel anti-aliased ellipse outline using 4x4 coverage sampling.
+pub fn draw_ellipse_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if radius_x == 0 || radius_y == 0 {
+        let rx = i64::from(radius_x);
+        let ry = i64::from(radius_y);
+        let start = Point::new(
+            (i64::from(center.x) - rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) - ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        let end = Point::new(
+            (i64::from(center.x) + rx).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            (i64::from(center.y) + ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        );
+        draw_line_aa(target, start, end, color);
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let rx = f64::from(radius_x);
+    let ry = f64::from(radius_y);
+    let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+    let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+    let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let inverse_rx_squared = 1.0 / (rx * rx);
+    let inverse_ry_squared = 1.0 / (ry * ry);
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = f64::from(y) + offset_y - cy;
+                let normalized_y = dy * dy * inverse_ry_squared;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    let normalized_x = dx * dx * inverse_rx_squared;
+                    let radius = (normalized_x + normalized_y).sqrt();
+                    if radius == 0.0 {
+                        continue;
+                    }
+                    let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
+                        + dy * dy * inverse_ry_squared * inverse_ry_squared)
+                        .sqrt()
+                        / radius;
+                    let distance = (radius - 1.0) / gradient.max(f64::EPSILON);
+                    if distance.abs() <= 0.5 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
+/// Draws an anti-aliased circular arc.
+///
+/// Angles are expressed in radians from the positive X axis. Positive sweeps
+/// follow the framebuffer's clockwise direction; when `end_angle` is less
+/// than `start_angle`, the arc wraps through zero. A sweep of at least one
+/// full turn draws a complete circle. The arc is sampled at 4x4 subpixel
+/// positions and composited with source-over alpha.
+pub fn draw_arc_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+) {
+    use core::f64::consts::TAU;
+
+    if color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+        || !start_angle.is_finite()
+        || !end_angle.is_finite()
+    {
+        return;
+    }
+
+    let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
+    if raw_sweep == 0.0 {
+        return;
+    }
+    let full_circle = raw_sweep.abs() >= TAU;
+    let start = f64::from(start_angle).rem_euclid(TAU);
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
+    let radius = f64::from(radius);
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let left = (cx - radius - 1.0).floor().max(0.0) as u32;
+    let top = (cy - radius - 1.0).floor().max(0.0) as u32;
+    let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    if radius == 0.0 {
+        if full_circle || sweep > 0.0 {
+            draw_pixel(target, center, color);
+        }
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = f64::from(y) + offset_y - cy;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    let distance = dx.hypot(dy);
+                    if (distance - radius).abs() > 0.5 {
+                        continue;
+                    }
+                    if !full_circle {
+                        let angle = dy.atan2(dx).rem_euclid(TAU);
+                        if (angle - start).rem_euclid(TAU) > sweep {
+                            continue;
+                        }
+                    }
+                    covered += 1;
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
+/// Fills an anti-aliased circular sector (pie slice).
+///
+/// Angles are radians measured from the positive X axis. Positive sweeps are
+/// clockwise in framebuffer coordinates; an end angle below the start angle
+/// wraps through zero. A sweep of at least one full turn fills a full circle.
+/// The circular and radial edges use 4x4 subpixel coverage.
+pub fn fill_arc_aa(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+) {
+    use core::f64::consts::TAU;
+
+    if color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+        || !start_angle.is_finite()
+        || !end_angle.is_finite()
+    {
+        return;
+    }
+
+    let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
+    if raw_sweep == 0.0 {
+        return;
+    }
+    let full_circle = raw_sweep.abs() >= TAU;
+    let start = f64::from(start_angle).rem_euclid(TAU);
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
+    let radius = f64::from(radius);
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let left = (cx - radius - 1.0).floor().max(0.0) as u32;
+    let top = (cy - radius - 1.0).floor().max(0.0) as u32;
+    let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    // Arc points use integer pixel coordinates as their centers. Keep the
+    // coverage samples centered on each destination pixel as well.
+    const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = f64::from(y) + offset_y - cy;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    if dx.hypot(dy) > radius {
+                        continue;
+                    }
+                    if !full_circle {
+                        let angle = dy.atan2(dx).rem_euclid(TAU);
+                        if (angle - start).rem_euclid(TAU) > sweep {
+                            continue;
+                        }
+                    }
+                    covered += 1;
+                }
+            }
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = x as usize;
+            row[index] = source.blend_over(row[index]);
+        }
+    }
+}
+
+/// Fills a circle with anti-aliased edge coverage.
+pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    fill_ellipse_aa(target, center, radius, radius, color);
+}
+
+/// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
+pub fn draw_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
+    draw_ellipse_aa(target, center, radius, radius, color);
+}
+
+/// Draws an ellipse outline from its center and horizontal/vertical radii.
+/// The result is symmetric and clipped, including when the center is off-screen.
+pub fn draw_ellipse(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    for_each_ellipse_span(
+        target.width(),
+        target.height(),
+        center,
+        radius_x,
+        radius_y,
+        |y, left, right| {
+            if let Some(row) = target.row_mut(y) {
+                row[left as usize] = color;
+                row[right as usize] = color;
+            }
+        },
+    );
+}
+
+/// Fills an ellipse using integer scanline spans, clipped to the framebuffer.
+/// A zero horizontal or vertical radius produces a line.
+pub fn fill_ellipse(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    for_each_ellipse_span(
+        target.width(),
+        target.height(),
+        center,
+        radius_x,
+        radius_y,
+        |y, left, right| {
+            if let Some(row) = target.row_mut(y) {
+                row[left as usize..=right as usize].fill(color);
+            }
+        },
+    );
+}
+
+fn for_each_ellipse_span(
+    width: u32,
+    height: u32,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    mut draw_span: impl FnMut(u32, i64, i64),
+) {
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    let cx = i64::from(center.x);
+    let cy = i64::from(center.y);
+    let rx = u128::from(radius_x);
+    let ry = u128::from(radius_y);
+    let x_limit = i64::from(width - 1);
+    let y_limit = i64::from(height - 1);
+
+    if radius_y == 0 {
+        if cy < 0 || cy > y_limit {
+            return;
+        }
+        let left = (cx - i64::from(radius_x)).max(0);
+        let right = (cx + i64::from(radius_x)).min(x_limit);
+        if left <= right {
+            draw_span(cy as u32, left, right);
+        }
+        return;
+    }
+
+    let first_y = (cy - i64::from(radius_y)).max(0);
+    let last_y = (cy + i64::from(radius_y)).min(y_limit);
+    if first_y > last_y {
+        return;
+    }
+
+    if radius_x == 0 {
+        if cx >= 0 && cx <= x_limit {
+            for y in first_y..=last_y {
+                draw_span(y as u32, cx, cx);
+            }
+        }
+        return;
+    }
+
+    let rx_squared = rx * rx;
+    let ry_squared = ry * ry;
+    for y in first_y..=last_y {
+        let dy = (i128::from(y) - i128::from(center.y)).unsigned_abs();
+        let dy = dy.min(ry);
+        let remaining = ry_squared - dy * dy;
+        let x_squared = rx_squared * remaining / ry_squared;
+        let extent = integer_sqrt(x_squared) as i64;
+        let left = (cx - extent).max(0);
+        let right = (cx + extent).min(x_limit);
+        if left <= right {
+            draw_span(y as u32, left, right);
+        }
+    }
+}
+
+fn integer_sqrt(value: u128) -> u128 {
+    if value < 2 {
+        return value;
+    }
+    let mut low = 1_u128;
+    let mut high = u64::MAX as u128 + 1;
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if middle * middle <= value {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    low
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        blend_pixel, draw_circle, draw_ellipse, draw_ellipse_aa, draw_line, draw_line_aa,
+        draw_pixel, draw_polygon, draw_polygon_aa, draw_rect, fill_circle, fill_circle_aa,
+        fill_ellipse, fill_ellipse_aa, fill_polygon, fill_polygon_aa, fill_rect, fill_rounded_rect,
+        fill_triangle,
+    };
+    use crate::{Color, Framebuffer, Point, Rect};
+
+    fn target(width: u32, height: u32) -> Framebuffer {
+        Framebuffer::new(width, height, Color::BLACK).unwrap()
+    }
+
+    fn test_gradient() -> super::Gradient {
+        super::Gradient::new(vec![
+            super::GradientStop {
+                position: 1.0,
+                color: Color::BLUE,
+            },
+            super::GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn gradient_sorts_stops_and_interpolates_midpoint() {
+        let gradient = test_gradient();
+        assert_eq!(gradient.sample(0.0), Color::RED);
+        assert_eq!(gradient.sample(0.5), Color::rgb(128, 0, 128));
+        assert_eq!(gradient.sample(1.0), Color::BLUE);
+        assert_eq!(gradient.sample(-2.0), Color::RED);
+        assert_eq!(gradient.sample(2.0), Color::BLUE);
+    }
+
+    #[test]
+    fn gradient_rejects_invalid_stop_definitions() {
+        use super::{Gradient, GradientError, GradientStop};
+        assert_eq!(Gradient::new(vec![]), Err(GradientError::TooFewStops));
+        assert_eq!(
+            Gradient::new(vec![
+                GradientStop {
+                    position: 0.0,
+                    color: Color::BLACK,
+                },
+                GradientStop {
+                    position: f32::NAN,
+                    color: Color::WHITE,
+                },
+            ]),
+            Err(GradientError::InvalidPosition)
+        );
+    }
+
+    #[test]
+    fn linear_gradient_fills_clipped_rectangle_at_pixel_centers() {
+        use super::fill_rect_linear_gradient;
+        use crate::Vector;
+        let mut image = target(4, 1);
+        fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 4, 1),
+            Vector::new(0.0, 0.5),
+            Vector::new(4.0, 0.5),
+            &test_gradient(),
+        );
+        assert_eq!(image.get_pixel(0, 0), Some(Color::rgb(223, 0, 32)));
+        assert_eq!(image.get_pixel(3, 0), Some(Color::rgb(32, 0, 223)));
+    }
+
+    #[test]
+    fn linear_gradient_blends_transparent_stops_over_existing_pixels() {
+        use super::{fill_rect_linear_gradient, Gradient, GradientStop};
+        use crate::Vector;
+        let gradient = Gradient::new(vec![
+            GradientStop {
+                position: 0.0,
+                color: Color::rgba(255, 0, 0, 0),
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::rgba(255, 0, 0, 255),
+            },
+        ])
+        .unwrap();
+        let mut image = target(2, 1);
+        fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 2, 1),
+            Vector::new(0.0, 0.0),
+            Vector::new(2.0, 0.0),
+            &gradient,
+        );
+        assert_eq!(image.get_pixel(0, 0), Some(Color::rgb(64, 0, 0)));
+        assert_eq!(image.get_pixel(1, 0), Some(Color::rgb(191, 0, 0)));
+    }
+
+    #[test]
+    fn radial_gradient_uses_distance_and_clips_to_rectangle() {
+        use super::fill_rect_radial_gradient;
+        use crate::Vector;
+        let mut image = target(5, 5);
+        fill_rect_radial_gradient(
+            &mut image,
+            Rect::new(1, 1, 3, 3),
+            Vector::new(2.5, 2.5),
+            2.0,
+            &test_gradient(),
+        );
+        assert_eq!(image.get_pixel(2, 2), Some(Color::rgb(255, 0, 0)));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::rgb(75, 0, 180)));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn invalid_gradient_geometry_draws_nothing() {
+        use super::fill_rect_radial_gradient;
+        use crate::Vector;
+        let mut image = target(3, 3);
+        fill_rect_radial_gradient(
+            &mut image,
+            Rect::new(0, 0, 3, 3),
+            Vector::new(1.0, 1.0),
+            0.0,
+            &test_gradient(),
+        );
+        super::fill_rect_linear_gradient(
+            &mut image,
+            Rect::new(0, 0, 3, 3),
+            Vector::new(f32::NAN, 0.0),
+            Vector::new(2.0, 2.0),
+            &test_gradient(),
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn circle_outline_is_symmetric_and_radius_zero_is_one_pixel() {
+        let mut image = target(9, 9);
+        draw_circle(&mut image, Point::new(4, 4), 3, Color::RED);
+        assert_eq!(image.get_pixel(4, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(4, 7), Some(Color::RED));
+        assert_eq!(image.get_pixel(1, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(7, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(4, 4), Some(Color::BLACK));
+
+        draw_circle(&mut image, Point::new(0, 0), 0, Color::GREEN);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn filled_circle_has_center_and_clipped_edges() {
+        let mut image = target(5, 5);
+        fill_circle(&mut image, Point::new(0, 0), 2, Color::BLUE);
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(2, 0), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(0, 2), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(3, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(4, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn ellipse_respects_independent_radii() {
+        let mut image = target(11, 9);
+        draw_ellipse(&mut image, Point::new(5, 4), 4, 2, Color::RED);
+        assert_eq!(image.get_pixel(1, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(9, 4), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 6), Some(Color::RED));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn filled_ellipse_covers_interior_and_is_clipped() {
+        let mut image = target(6, 5);
+        fill_ellipse(&mut image, Point::new(1, 2), 4, 2, Color::GREEN);
+        assert_eq!(image.get_pixel(1, 2), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(5, 2), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(1, 4), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_two_vertices_matches_line_fallback() {
+        let mut expected = target(10, 7);
+        let mut actual = target(10, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(-3, 1),
+            Point::new(8, 5),
+            Color::rgba(40, 180, 240, 160),
+        );
+        draw_polygon_aa(
+            &mut actual,
+            &[Point::new(-3, 1), Point::new(8, 5)],
+            Color::rgba(40, 180, 240, 160),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_clips_large_coordinates_and_ignores_transparency() {
+        let mut image = target(5, 4);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-100, -100),
+                Point::new(100, -100),
+                Point::new(100, 2),
+                Point::new(-100, 2),
+            ],
+            Color::TRANSPARENT,
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-100, -100),
+                Point::new(100, -100),
+                Point::new(100, 2),
+                Point::new(-100, 2),
+            ],
+            Color::GREEN,
+        );
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.g > 0 && pixel.g < 255));
+        assert_eq!(image.pixels().len(), 20);
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_handles_repeated_and_degenerate_vertices() {
+        let mut image = target(8, 8);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(2, 2),
+                Point::new(5, 2),
+                Point::new(5, 5),
+                Point::new(2, 5),
+                Point::new(2, 2),
+            ],
+            Color::BLUE,
+        );
+        assert!(image.pixels().iter().any(|pixel| pixel.b > 0));
+        assert_eq!(image.get_pixel(3, 3), Some(Color::BLACK));
+
+        let mut degenerate = target(8, 8);
+        draw_polygon_aa(
+            &mut degenerate,
+            &[Point::new(3, 3), Point::new(3, 3), Point::new(3, 3)],
+            Color::RED,
+        );
+        assert!(degenerate
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_rectangle_outline_is_clipped_and_does_not_fill_interior() {
+        let mut image = target(7, 6);
+        super::draw_rect_aa(&mut image, Rect::new(4, 1, 7, 4), Color::WHITE);
+        assert_eq!(image.get_pixel(5, 2), Some(Color::BLACK));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0));
+
+        let before = image.clone();
+        super::draw_rect_aa(&mut image, Rect::new(1, 1, 0, 4), Color::RED);
+        super::draw_rect_aa(&mut image, Rect::new(1, 1, 4, 0), Color::RED);
+        assert_eq!(image, before);
+    }
+
+    #[test]
+    fn antialiased_rounded_rectangle_outline_preserves_center_and_clips() {
+        let mut image = target(10, 8);
+        super::draw_rounded_rect_aa(&mut image, Rect::new(2, 1, 12, 6), 2, Color::WHITE);
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0));
+    }
+
+    #[test]
+    fn antialiased_rounded_rectangle_outline_handles_zero_size_and_transparency() {
+        let mut image = target(6, 6);
+        let before = image.clone();
+        super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 0, 4), 2, Color::WHITE);
+        super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 4, 0), 2, Color::WHITE);
+        super::draw_rounded_rect_aa(&mut image, Rect::new(1, 1, 4, 4), 2, Color::TRANSPARENT);
+        assert_eq!(image, before);
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_draws_edges_without_filling_center() {
+        let mut image = target(12, 10);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(9, 2),
+                Point::new(9, 7),
+                Point::new(2, 7),
+            ],
+            Color::WHITE,
+        );
+        let edge = image.get_pixel(5, 2).unwrap();
+        assert!(edge.r > 0 && edge.r < 255);
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_polygon_outline_blends_shared_vertices_only_once() {
+        let mut image = target(12, 10);
+        draw_polygon_aa(
+            &mut image,
+            &[
+                Point::new(2, 2),
+                Point::new(9, 2),
+                Point::new(9, 7),
+                Point::new(2, 7),
+            ],
+            Color::rgba(255, 0, 0, 128),
+        );
+        let corner = image.get_pixel(2, 2).unwrap();
+        assert!(corner.r > 0);
+        assert!(corner.r < 255);
+        assert_eq!(image.get_pixel(5, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_polygon_blends_partial_edge_coverage() {
+        let mut image = target(8, 8);
+        fill_polygon_aa(
+            &mut image,
+            &[Point::new(1, 1), Point::new(6, 2), Point::new(3, 6)],
+            Color::WHITE,
+        );
+        let pixels = (0..8)
+            .flat_map(|y| (0..8).map(move |x| (x, y)))
+            .filter_map(|(x, y)| image.get_pixel(x, y))
+            .collect::<Vec<_>>();
+        assert!(pixels.iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(pixels.contains(&Color::WHITE));
+    }
+
+    #[test]
+    fn antialiased_polygon_is_clipped_and_respects_source_alpha() {
+        let mut image = target(4, 4);
+        fill_polygon_aa(
+            &mut image,
+            &[
+                Point::new(-4, -4),
+                Point::new(3, -4),
+                Point::new(3, 3),
+                Point::new(-4, 3),
+            ],
+            Color::rgba(255, 0, 0, 128),
+        );
+        assert_eq!(image.get_pixel(3, 3), Some(Color::BLACK));
+        assert!(image.get_pixel(0, 0).unwrap().r > 0);
+        assert!(image.get_pixel(0, 0).unwrap().r < 255);
+    }
+
+    #[test]
+    fn antialiased_polygon_uses_even_odd_fill_for_concave_shapes() {
+        let mut image = target(8, 8);
+        fill_polygon_aa(
+            &mut image,
+            &[
+                Point::new(1, 1),
+                Point::new(6, 1),
+                Point::new(6, 3),
+                Point::new(3, 3),
+                Point::new(3, 6),
+                Point::new(1, 6),
+            ],
+            Color::WHITE,
+        );
+        assert_eq!(image.get_pixel(2, 4), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(5, 5), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_ellipse_blends_partial_edge_coverage() {
+        let mut image = target(13, 11);
+        fill_ellipse_aa(&mut image, Point::new(6, 5), 4, 3, Color::WHITE);
+        assert_eq!(image.get_pixel(6, 5), Some(Color::WHITE));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_draws_edges_without_filling_center() {
+        let mut image = target(17, 13);
+        draw_ellipse_aa(&mut image, Point::new(8, 6), 5, 3, Color::WHITE);
+
+        assert_eq!(image.get_pixel(8, 6), Some(Color::BLACK));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0));
+        assert!(image.pixels().iter().any(|pixel| {
+            pixel.r > 0 && pixel.r < 255 && pixel.g == pixel.r && pixel.b == pixel.r
+        }));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_blends_partial_coverage_over_existing_pixels() {
+        let mut image = target(19, 15);
+        fill_rect(&mut image, Rect::new(0, 0, 19, 15), Color::BLUE);
+        draw_ellipse_aa(
+            &mut image,
+            Point::new(9, 7),
+            6,
+            4,
+            Color::rgba(255, 0, 0, 192),
+        );
+
+        assert_eq!(image.get_pixel(9, 7), Some(Color::BLUE));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| { pixel.r > 0 && pixel.b > 0 && pixel.r < 255 && pixel.b < 255 }));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_handles_degenerate_radii() {
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(2, 3),
+            Point::new(6, 3),
+            Color::GREEN,
+        );
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 2, 0, Color::GREEN);
+        assert_eq!(actual, expected);
+
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(4, 0),
+            Point::new(4, 6),
+            Color::GREEN,
+        );
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 0, 3, Color::GREEN);
+        assert_eq!(actual, expected);
+
+        let mut expected = target(9, 7);
+        let mut actual = target(9, 7);
+        draw_line_aa(
+            &mut expected,
+            Point::new(4, 3),
+            Point::new(4, 3),
+            Color::GREEN,
+        );
+        draw_ellipse_aa(&mut actual, Point::new(4, 3), 0, 0, Color::GREEN);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn antialiased_ellipse_outline_is_clipped_and_respects_transparency() {
+        let mut image = target(5, 4);
+        draw_ellipse_aa(
+            &mut image,
+            Point::new(0, 1),
+            4,
+            3,
+            Color::rgba(255, 0, 0, 0),
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+
+        draw_ellipse_aa(&mut image, Point::new(0, 1), 4, 3, Color::BLUE);
+        assert!(image.pixels().iter().any(|pixel| pixel.b > 0));
+        assert_eq!(image.pixels().len(), 20);
+    }
+
+    #[test]
+    fn antialiased_ellipse_is_clipped_and_respects_source_alpha() {
+        let mut image = target(5, 5);
+        fill_circle_aa(&mut image, Point::new(0, 0), 3, Color::rgba(255, 0, 0, 128));
+        assert!(image.pixels().iter().any(|pixel| pixel.r > 0));
+        assert!(image.pixels().iter().all(|pixel| pixel.b == 0));
+        assert_eq!(image.get_pixel(4, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn antialiased_degenerate_ellipse_uses_line_fallback() {
+        let mut image = target(5, 3);
+        fill_ellipse_aa(&mut image, Point::new(2, 1), 2, 0, Color::WHITE);
+        assert_eq!(image.get_pixel(0, 1), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(4, 1), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(2, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn zero_radius_ellipse_axes_are_lines() {
+        let mut horizontal = target(5, 3);
+        fill_ellipse(&mut horizontal, Point::new(2, 1), 2, 0, Color::RED);
+        for x in 0..5 {
+            assert_eq!(horizontal.get_pixel(x, 1), Some(Color::RED));
+        }
+
+        let mut vertical = target(3, 5);
+        fill_ellipse(&mut vertical, Point::new(1, 2), 0, 2, Color::BLUE);
+        for y in 0..5 {
+            assert_eq!(vertical.get_pixel(1, y), Some(Color::BLUE));
+        }
+    }
+
+    #[test]
+    fn huge_ellipse_radii_are_clipped_without_coordinate_overflow() {
+        let mut image = target(3, 3);
+        fill_ellipse(
+            &mut image,
+            Point::new(1, 1),
+            u32::MAX,
+            u32::MAX,
+            Color::WHITE,
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn rectangle_outline_respects_half_open_bounds() {
+        let mut image = target(5, 5);
+        draw_rect(&mut image, Rect::new(1, 1, 3, 2), Color::RED);
+        assert_eq!(image.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(3, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_stays_inside_its_bounds() {
+        let mut image = target(8, 8);
+        fill_rounded_rect(&mut image, Rect::new(1, 1, 6, 6), 2, Color::GREEN);
+        assert_eq!(image.get_pixel(3, 1), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(5, 5), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(6, 6), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_corner_circles_are_clipped_to_the_rectangle() {
+        let mut image = target(8, 8);
+        fill_rounded_rect(&mut image, Rect::new(1, 2, 6, 2), 1, Color::BLUE);
+        assert_eq!(image.get_pixel(0, 2), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(1, 2), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(6, 3), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(6, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rounded_rectangle_radius_is_clamped_and_zero_is_plain_rect() {
+        let mut rounded = target(4, 4);
+        fill_rounded_rect(&mut rounded, Rect::new(0, 0, 4, 2), u32::MAX, Color::BLUE);
+        assert_eq!(rounded.get_pixel(0, 0), Some(Color::BLUE));
+        assert_eq!(rounded.get_pixel(1, 0), Some(Color::BLUE));
+        let mut plain = target(3, 3);
+        fill_rounded_rect(&mut plain, Rect::new(0, 0, 2, 2), 0, Color::RED);
+        assert_eq!(plain.get_pixel(0, 0), Some(Color::RED));
+    }
+
+    #[test]
+    fn polygon_fill_uses_even_odd_scanlines() {
+        let mut image = target(6, 6);
+        fill_polygon(
+            &mut image,
+            &[Point::new(1, 1), Point::new(5, 1), Point::new(3, 5)],
+            Color::RED,
+        );
+        assert_eq!(image.get_pixel(3, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(3, 3), Some(Color::RED));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(3, 5), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn polygon_outline_closes_and_fill_ignores_too_few_vertices() {
+        let mut image = target(4, 4);
+        draw_polygon(
+            &mut image,
+            &[Point::new(1, 1), Point::new(2, 1), Point::new(2, 2)],
+            Color::WHITE,
+        );
+        assert_eq!(image.get_pixel(1, 1), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(2, 2), Some(Color::WHITE));
+        fill_polygon(
+            &mut image,
+            &[Point::new(0, 0), Point::new(3, 3)],
+            Color::RED,
+        );
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn pixel_write_checks_bounds() {
+        let mut image = target(2, 2);
+        assert!(draw_pixel(&mut image, Point::new(1, 1), Color::RED));
+        assert!(!draw_pixel(&mut image, Point::new(-1, 0), Color::RED));
+        assert!(!draw_pixel(&mut image, Point::new(2, 0), Color::RED));
+        assert_eq!(image.get_pixel(1, 1), Some(Color::RED));
+    }
+
+    #[test]
+    fn blended_pixel_uses_source_over_alpha() {
+        let mut image = target(1, 1);
+        assert!(blend_pixel(
+            &mut image,
+            Point::new(0, 0),
+            Color::rgba(255, 0, 0, 128)
+        ));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::rgba(128, 0, 0, 255)));
+        assert!(!blend_pixel(&mut image, Point::new(1, 0), Color::WHITE));
+    }
+
+    #[test]
+    fn horizontal_and_vertical_lines_include_endpoints() {
+        let mut image = target(4, 4);
+        draw_line(&mut image, Point::new(0, 1), Point::new(3, 1), Color::RED);
+        draw_line(&mut image, Point::new(2, 0), Point::new(2, 3), Color::GREEN);
+        for x in 0..4 {
+            assert_eq!(
+                image.get_pixel(x, 1),
+                Some(if x == 2 { Color::GREEN } else { Color::RED })
+            );
+        }
+        for y in 0..4 {
+            assert_eq!(image.get_pixel(2, y), Some(Color::GREEN));
+        }
+    }
+
+    #[test]
+    fn diagonal_line_is_symmetric_when_reversed() {
+        let mut forward = target(5, 5);
+        let mut reverse = target(5, 5);
+        draw_line(
+            &mut forward,
+            Point::new(0, 0),
+            Point::new(4, 3),
+            Color::WHITE,
+        );
+        draw_line(
+            &mut reverse,
+            Point::new(4, 3),
+            Point::new(0, 0),
+            Color::WHITE,
+        );
+        assert_eq!(forward, reverse);
+    }
+
+    #[test]
+    fn antialiased_line_blends_edge_coverage() {
+        let mut image = target(8, 8);
+        draw_line_aa(&mut image, Point::new(1, 1), Point::new(6, 4), Color::WHITE);
+        assert!(image.pixels().iter().any(|pixel| pixel.r == 255));
+        assert!(image
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn antialiased_line_is_clipped_and_reversible() {
+        let mut forward = target(6, 4);
+        let mut reverse = target(6, 4);
+        draw_line_aa(
+            &mut forward,
+            Point::new(-20, 0),
+            Point::new(20, 3),
+            Color::RED,
+        );
+        draw_line_aa(
+            &mut reverse,
+            Point::new(20, 3),
+            Point::new(-20, 0),
+            Color::RED,
+        );
+        assert_eq!(forward, reverse);
+        assert!(forward.pixels().iter().any(|pixel| pixel.r > 0));
+    }
+
+    #[test]
+    fn line_is_clipped_to_framebuffer() {
+        let mut image = target(5, 3);
+        draw_line(
+            &mut image,
+            Point::new(-100, 1),
+            Point::new(100, 1),
+            Color::BLUE,
+        );
+        for x in 0..5 {
+            assert_eq!(image.get_pixel(x, 1), Some(Color::BLUE));
+        }
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn line_outside_target_draws_nothing() {
+        let mut image = target(4, 4);
+        draw_line(
+            &mut image,
+            Point::new(-5, -2),
+            Point::new(-1, -8),
+            Color::WHITE,
+        );
+        assert!(image.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn rectangle_uses_half_open_bounds() {
+        let mut image = target(4, 4);
+        fill_rect(&mut image, Rect::new(1, 1, 2, 2), Color::RED);
+        assert_eq!(image.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(image.get_pixel(2, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(3, 2), Some(Color::BLACK));
+        assert_eq!(image.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn rectangle_is_clipped_and_zero_area_is_ignored() {
+        let mut image = target(3, 3);
+        fill_rect(
+            &mut image,
+            Rect::new(2, 2, u32::MAX, u32::MAX),
+            Color::GREEN,
+        );
+        fill_rect(&mut image, Rect::new(0, 0, 0, 3), Color::RED);
+        assert_eq!(image.get_pixel(2, 2), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn triangle_is_independent_of_vertex_order() {
+        let mut forward = target(3, 3);
+        let mut reverse = target(3, 3);
+        fill_triangle(
+            &mut forward,
+            Point::new(0, 0),
+            Point::new(0, 2),
+            Point::new(2, 0),
+            Color::RED,
+        );
+        fill_triangle(
+            &mut reverse,
+            Point::new(0, 0),
+            Point::new(2, 0),
+            Point::new(0, 2),
+            Color::RED,
+        );
+        assert_eq!(forward, reverse);
+        assert_eq!(forward.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(forward.get_pixel(2, 2), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn adjacent_triangles_cover_square_without_cracks() {
+        let mut image = target(2, 2);
+        fill_triangle(
+            &mut image,
+            Point::new(0, 0),
+            Point::new(0, 2),
+            Point::new(2, 0),
+            Color::RED,
+        );
         fill_triangle(
             &mut image,
             Point::new(2, 0),
