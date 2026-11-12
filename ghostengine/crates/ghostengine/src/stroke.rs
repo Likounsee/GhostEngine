@@ -302,6 +302,10 @@ fn stroke_path_impl(
         let mut next_join = 0;
         let mut pixel_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         let mut pixel_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
+        // Reuse scanline sorting buffers. Cloning active geometry inside every
+        // row allocated two fresh vectors per scanline on complex paths.
+        let mut row_segments_x: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
+        let mut row_joins_x: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
@@ -342,10 +346,12 @@ fn stroke_path_impl(
             // scanline by its left edge lets us add candidates once and retire
             // them when their right edge is passed, instead of rescanning every
             // segment and join for every pixel in the row.
-            let mut row_segments_x = row_segments.clone();
-            row_segments_x.sort_by(|left, right| left.min_x.total_cmp(&right.min_x));
-            let mut row_joins_x = row_joins.clone();
-            row_joins_x.sort_by(|left, right| left.min_x.total_cmp(&right.min_x));
+            row_segments_x.clear();
+            row_segments_x.extend_from_slice(&row_segments);
+            row_segments_x.sort_unstable_by(|left, right| left.min_x.total_cmp(&right.min_x));
+            row_joins_x.clear();
+            row_joins_x.extend_from_slice(&row_joins);
+            row_joins_x.sort_unstable_by(|left, right| left.min_x.total_cmp(&right.min_x));
             let mut next_pixel_segment = 0;
             let mut next_pixel_join = 0;
             pixel_segments.clear();
