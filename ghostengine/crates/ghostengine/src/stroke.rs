@@ -620,7 +620,7 @@ impl StrokeSegment {
             let cross = relative_x * self.dy - relative_y * self.dx;
             return cross * cross <= self.cross_limit_squared;
         }
-        self.distance_squared(point) <= radius_squared
+        self.distance_squared(Vector::new(x, y)) <= radius_squared
     }
 
     #[inline]
