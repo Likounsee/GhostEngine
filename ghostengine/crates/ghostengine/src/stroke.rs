@@ -337,27 +337,29 @@ fn stroke_path_impl(
             // Narrow the active scanline geometry to each pixel's horizontal
             // sample interval once. The 4x4 AA loop can then avoid repeating
             // the same segment AABB test for all sixteen samples.
-            pixel_segments.clear();
-            pixel_joins.clear();
             for x in row_left..row_right {
-                let sample_left = x as f32 + 0.125;
-                let sample_right = x as f32 + 0.875;
-                pixel_segments.clear();
-                pixel_segments.extend(
-                    row_segments
-                        .iter()
-                        .filter(|segment| {
-                            segment.max_x >= sample_left && segment.min_x <= sample_right
-                        })
-                        .copied(),
-                );
-                pixel_joins.clear();
-                pixel_joins.extend(
-                    row_joins
-                        .iter()
-                        .filter(|join| join.max_x >= sample_left && join.min_x <= sample_right)
-                        .copied(),
-                );
+                if antialias {
+                    let sample_left = x as f32 + 0.125;
+                    let sample_right = x as f32 + 0.875;
+                    pixel_segments.clear();
+                    pixel_segments.extend(
+                        row_segments
+                            .iter()
+                            .filter(|segment| {
+                                segment.max_x >= sample_left && segment.min_x <= sample_right
+                            })
+                            .copied(),
+                    );
+                    pixel_joins.clear();
+                    pixel_joins.extend(
+                        row_joins
+                            .iter()
+                            .filter(|join| {
+                                join.max_x >= sample_left && join.min_x <= sample_right
+                            })
+                            .copied(),
+                    );
+                }
                 let coverage = if antialias {
                     // A stroked segment is a convex region. If one segment
                     // contains all four extreme sample points of this pixel,
