@@ -8,11 +8,11 @@ use ghostengine::{
     StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
-const WIDTH: u32 = 960;
-const HEIGHT: u32 = 540;
-const SCALE: i32 = 2;
-const SCALE_U32: u32 = 2;
-const SCALE_F32: f32 = 2.0;
+const WIDTH: u32 = 1920;
+const HEIGHT: u32 = 1080;
+const SCALE: i32 = 4;
+const SCALE_U32: u32 = 4;
+const SCALE_F32: f32 = 4.0;
 const WARMUP_FRAMES: u32 = 5;
 
 #[derive(Clone)]
@@ -180,7 +180,7 @@ fn main() {
     let text = "مرحبا GhostEngine — CPU benchmark";
 
     println!("GhostEngine — benchmark global CPU");
-    println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 2x from 480x270)");
+    println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
