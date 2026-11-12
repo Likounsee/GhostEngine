@@ -149,7 +149,14 @@ fn sample_bilinear_prepared(
     row_width: usize,
     coordinates: BilinearCoordinates,
 ) -> Color {
-    let BilinearCoordinates {\n        x0,\n        x1,\n        y0,\n        y1,\n        tx,\n        ty,\n    } = coordinates;
+    let BilinearCoordinates {
+        x0,
+        x1,
+        y0,
+        y1,
+        tx,
+        ty,
+    } = coordinates;
     let top_left = pixels[y0 * row_width + x0];
     let top_right = pixels[y0 * row_width + x1];
     let bottom_left = pixels[y1 * row_width + x0];
