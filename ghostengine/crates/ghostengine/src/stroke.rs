@@ -366,7 +366,17 @@ fn stroke_path_impl(
                         pixel_segments.push(row_segments_x[next_pixel_segment]);
                         next_pixel_segment += 1;
                     }
-                    pixel_segments.retain(|segment| segment.max_x >= sample_left);
+                    // Candidate order is irrelevant during coverage tests. Remove
+                    // expired geometry with swap_remove so advancing across a scanline
+                    // does not shift the remaining candidates on every pixel.
+                    let mut segment_index = 0;
+                    while segment_index < pixel_segments.len() {
+                        if pixel_segments[segment_index].max_x < sample_left {
+                            pixel_segments.swap_remove(segment_index);
+                        } else {
+                            segment_index += 1;
+                        }
+                    }
 
                     while next_pixel_join < row_joins_x.len()
                         && row_joins_x[next_pixel_join].min_x <= sample_right
@@ -374,7 +384,14 @@ fn stroke_path_impl(
                         pixel_joins.push(row_joins_x[next_pixel_join]);
                         next_pixel_join += 1;
                     }
-                    pixel_joins.retain(|join| join.max_x >= sample_left);
+                    let mut join_index = 0;
+                    while join_index < pixel_joins.len() {
+                        if pixel_joins[join_index].max_x < sample_left {
+                            pixel_joins.swap_remove(join_index);
+                        } else {
+                            join_index += 1;
+                        }
+                    }
                 }
                 let coverage = if antialias {
                     // A stroked segment is a convex region. If one segment
