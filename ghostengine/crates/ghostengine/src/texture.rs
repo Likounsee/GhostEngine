@@ -237,9 +237,9 @@ fn blend_cached_bilinear_over_opaque(
                 f32::from(destination.b),
                 0.0,
             );
-            let composed = _mm_mul_ps(
+            let composed = _mm_div_ps(
                 _mm_add_ps(interpolated, _mm_mul_ps(background, inverse_alpha)),
-                _mm_set1_ps(1.0 / 255.0),
+                _mm_set1_ps(255.0),
             );
 
             // All output channels are non-negative. Adding 0.5 then truncating
@@ -662,9 +662,9 @@ mod tests {
                 ty,
                 &mut actual,
             );
-            assert!(actual.r.abs_diff(expected.r) <= 1);
-            assert!(actual.g.abs_diff(expected.g) <= 1);
-            assert!(actual.b.abs_diff(expected.b) <= 1);
+            assert_eq!(actual.r, expected.r);
+            assert_eq!(actual.g, expected.g);
+            assert_eq!(actual.b, expected.b);
             assert_eq!(actual.a, 255);
         }
     }
