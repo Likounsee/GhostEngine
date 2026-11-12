@@ -248,6 +248,22 @@ pub fn draw_texture_clipped(
 
     let source_x_scale = texture.width as f32 / destination.width as f32;
     let source_y_scale = texture.height as f32 / destination.height as f32;
+    // Nearest-neighbor horizontal coordinates are invariant across scanlines.
+    // Prepare them once instead of repeating float mapping and floor conversion
+    // for every destination pixel on every row.
+    let nearest_columns = if filter == TextureFilter::Nearest {
+        Some(
+            (first_x..end_x)
+                .map(|x| {
+                    let source_x =
+                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+                    (source_x.floor() as u32).min(texture.width - 1) as usize
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
     let horizontal_samples = if filter == TextureFilter::Bilinear {
         let row_width = texture.width as usize;
         Some(
@@ -312,15 +328,15 @@ pub fn draw_texture_clipped(
             // avoiding the generic floating-point sampler for every pixel.
             let source_row =
                 (source_y.floor() as u32).min(texture.height - 1) as usize * texture.width as usize;
-            for x in first_x..end_x {
-                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
-                let source_column = (source_x.floor() as u32).min(texture.width - 1) as usize;
+            for (pixel, &source_column) in row[first_x as usize..end_x as usize]
+                .iter_mut()
+                .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
+            {
                 let color = texture.pixels[source_row + source_column];
-                let index = x as usize;
                 if color.a == 255 {
-                    row[index] = color;
+                    *pixel = color;
                 } else if color.a > 0 {
-                    row[index] = color.blend_over(row[index]);
+                    *pixel = color.blend_over(*pixel);
                 }
             }
         } else {
