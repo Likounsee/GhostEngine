@@ -1467,6 +1467,11 @@ pub fn fill_ellipse_aa(
     for y in top..bottom {
         let normalized_y = SAMPLE_OFFSETS.map(|offset| (f64::from(y) + offset - cy) * inverse_ry);
         let normalized_y_squared = normalized_y.map(|value| value * value);
+        let min_y_squared = normalized_y_squared.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_y_squared = normalized_y_squared
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
@@ -1476,9 +1481,15 @@ pub fn fill_ellipse_aa(
             let mut covered = 0_u32;
             for dx in normalized_x {
                 let dx_squared = dx * dx;
-                for dy_squared in normalized_y_squared {
-                    if dx_squared + dy_squared <= 1.0 {
-                        covered += 1;
+                if dx_squared + max_y_squared <= 1.0 {
+                    // All four vertical samples are inside this ellipse column.
+                    covered += 4;
+                } else if dx_squared + min_y_squared <= 1.0 {
+                    // Only edge columns need the individual sample comparisons.
+                    for dy_squared in normalized_y_squared {
+                        if dx_squared + dy_squared <= 1.0 {
+                            covered += 1;
+                        }
                     }
                 }
             }
