@@ -529,8 +529,8 @@ pub fn fill_rect_radial_gradient(
     }
     let inverse_radius = radius.recip();
     let radius_squared = radius * radius;
-    // Keep a small floating-point safety margin so pixels close to the radius
-    // still use the original square-root calculation.
+    // Keep a small floating-point safety margin so samples at the radius
+    // resolve to the final stop instead of a rounded inner lookup entry.
     let outside_radius_squared = radius_squared * (1.0 + 4.0 * f32::EPSILON);
     for y in top..bottom {
         let dy = y as f32 + 0.5 - center.y;
