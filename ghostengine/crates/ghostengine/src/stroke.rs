@@ -509,7 +509,7 @@ fn stroke_path_impl(
                 let index = x as usize;
                 if alpha == u8::MAX {
                     row[index] = Color::rgba(color.r, color.g, color.b, alpha);
-                } else if alpha != 0 && row[index].a == u8::MAX {
+                } else if antialias && alpha != 0 && row[index].a == u8::MAX {
                     let covered = (coverage * 16.0).round() as usize;
                     row[index] = Color::rgb(
                         opaque_r[covered][row[index].r as usize],
