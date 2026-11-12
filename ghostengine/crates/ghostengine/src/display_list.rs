@@ -84,7 +84,7 @@ enum Command {
         clip: Rect,
     },
     DrawTexture {
-        texture: Texture,
+        texture: Arc<Texture>,
         destination: Rect,
         transform: Transform2D,
         filter: TextureFilter,
@@ -137,6 +137,33 @@ impl DisplayList {
             clips: Vec::new(),
             transforms: Vec::new(),
         }
+    }
+
+    /// Creates an empty display list with room for at least the requested
+    /// number of drawing commands.
+    #[must_use]
+    pub fn with_capacity(command_capacity: usize) -> Self {
+        Self {
+            commands: Vec::with_capacity(command_capacity),
+            clips: Vec::new(),
+            transforms: Vec::new(),
+        }
+    }
+
+    /// Reserves room for at least the requested number of additional drawing
+    /// commands without reallocating the command buffer.
+    ///
+    /// Call this before recording a frame when the approximate command count
+    /// is known. The reservation is retained by clear() for later frames.
+    pub fn reserve_commands(&mut self, additional: usize) {
+        self.commands.reserve(additional);
+    }
+
+    /// Returns the number of drawing commands that can be recorded before
+    /// the command buffer needs to grow.
+    #[must_use]
+    pub fn command_capacity(&self) -> usize {
+        self.commands.capacity()
     }
 
     /// Removes all commands and clip state while retaining allocated capacity.
@@ -488,7 +515,24 @@ impl DisplayList {
     }
 
     /// Records an image command with its sampling mode, active transform and clip.
+    ///
+    /// The texture is moved into a shared allocation. Use draw_shared_texture
+    /// when the same image is submitted by multiple commands or display lists.
     pub fn draw_texture(&mut self, texture: Texture, destination: Rect, filter: TextureFilter) {
+        self.draw_shared_texture(Arc::new(texture), destination, filter);
+    }
+
+    /// Records an image command using shared texture storage.
+    ///
+    /// Cloning the Arc is constant-time and does not copy the pixel buffer.
+    /// This is useful for applications that keep a texture asset alive and
+    /// reference it from many frames or display lists.
+    pub fn draw_shared_texture(
+        &mut self,
+        texture: Arc<Texture>,
+        destination: Rect,
+        filter: TextureFilter,
+    ) {
         if let Some(clip) = self.active_clip() {
             self.commands.push(Command::DrawTexture {
                 texture,
@@ -781,6 +825,26 @@ mod tests {
     use crate::{Color, Framebuffer, Point, Rect};
 
     #[test]
+    fn display_list_capacity_is_reused_between_frames() {
+        let mut list = DisplayList::with_capacity(8);
+        assert!(list.command_capacity() >= 8);
+        let initial_capacity = list.command_capacity();
+
+        for index in 0..8 {
+            list.fill_rect(Rect::new(index, 0, 1, 1), Color::WHITE);
+        }
+        assert_eq!(list.len(), 8);
+        assert_eq!(list.command_capacity(), initial_capacity);
+
+        list.clear();
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.command_capacity(), initial_capacity);
+
+        list.reserve_commands(16);
+        assert!(list.command_capacity() >= 16);
+    }
+
+    #[test]
     fn commands_replay_in_submission_order() {
         let mut list = DisplayList::new();
         list.clear_color(Color::BLACK);
@@ -1002,6 +1066,40 @@ mod tests {
         assert_eq!(target.get_pixel(3, 0), Some(Color::BLUE));
         assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn shared_texture_commands_reuse_the_same_pixel_storage() {
+        let texture = std::sync::Arc::new(
+            crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap(),
+        );
+        let mut list = DisplayList::new();
+        list.draw_shared_texture(
+            std::sync::Arc::clone(&texture),
+            Rect::new(0, 0, 2, 1),
+            crate::TextureFilter::Nearest,
+        );
+        list.draw_shared_texture(
+            std::sync::Arc::clone(&texture),
+            Rect::new(2, 0, 2, 1),
+            crate::TextureFilter::Nearest,
+        );
+
+        let first = match &list.commands[0] {
+            super::Command::DrawTexture { texture, .. } => texture,
+            _ => panic!("expected first texture command"),
+        };
+        let second = match &list.commands[1] {
+            super::Command::DrawTexture { texture, .. } => texture,
+            _ => panic!("expected second texture command"),
+        };
+        assert!(std::sync::Arc::ptr_eq(first, second));
+        assert!(std::sync::Arc::ptr_eq(first, &texture));
+
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.pixels(), &[Color::RED, Color::BLUE, Color::RED, Color::BLUE]);
+        assert_eq!(stats.commands_executed, 2);
     }
 
     #[test]
