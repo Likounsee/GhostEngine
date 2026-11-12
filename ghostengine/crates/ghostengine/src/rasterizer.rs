@@ -394,6 +394,20 @@ impl Gradient {
         }
     }
 
+    /// Samples a finite, non-negative squared distance from the radial
+    /// rasterizer. Its caller has already rejected non-finite values and
+    /// bounded the value to the radius (with a tiny edge tolerance), so the
+    /// hot path only needs the final table-index bound.
+    #[inline]
+    fn sample_radial_squared_in_range(&self, squared_position: f32) -> Color {
+        if let Some(lookup) = &self.radial_lookup {
+            let index = (squared_position * (lookup.len() - 1) as f32 + 0.5) as usize;
+            lookup[index.min(lookup.len() - 1)]
+        } else {
+            self.sample_raster(squared_position.sqrt())
+        }
+    }
+
     /// Fast per-pixel sampler. The 4096-entry table introduces at most a
     /// sub-channel interpolation error for smooth gradients while avoiding
     /// repeated stop lookup and floating-point channel interpolation.
@@ -556,7 +570,7 @@ pub fn fill_rect_radial_gradient(
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient.sample_radial_squared(distance_squared * inverse_radius_squared)
+                    gradient.sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
