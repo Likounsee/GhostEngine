@@ -203,6 +203,25 @@ fn stroke_path_impl(
     let coverage_alpha = core::array::from_fn::<u8, 17, _>(|covered| {
         (f32::from(color.a) * (covered as f32 / 16.0)).round() as u8
     });
+    // Cache source-over results for all coverage levels and destination
+    // channel values. Opaque framebuffers are common and can use three table
+    // lookups instead of the divisions performed by Color::blend_over.
+    let mut opaque_r = [[0_u8; 256]; 17];
+    let mut opaque_g = [[0_u8; 256]; 17];
+    let mut opaque_b = [[0_u8; 256]; 17];
+    for covered in 1..=16 {
+        let alpha = u32::from(coverage_alpha[covered]);
+        let inverse_alpha = 255 - alpha;
+        for destination in 0..256 {
+            let destination = destination as u32;
+            opaque_r[covered][destination as usize] =
+                ((u32::from(color.r) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_g[covered][destination as usize] =
+                ((u32::from(color.g) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_b[covered][destination as usize] =
+                ((u32::from(color.b) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+        }
+    }
     if !radius.is_finite() {
         return Err(StrokeError::InvalidWidth);
     }
@@ -487,14 +506,20 @@ fn stroke_path_impl(
                 if alpha == 0 {
                     continue;
                 }
-                let src = Color::rgba(color.r, color.g, color.b, alpha);
                 let index = x as usize;
-                // Opaque coverage needs no source-over arithmetic.
-                row[index] = if alpha == u8::MAX {
-                    src
-                } else {
-                    src.blend_over(row[index])
-                };
+                if alpha == u8::MAX {
+                    row[index] = Color::rgba(color.r, color.g, color.b, alpha);
+                } else if alpha != 0 && row[index].a == u8::MAX {
+                    let covered = (coverage * 16.0).round() as usize;
+                    row[index] = Color::rgb(
+                        opaque_r[covered][row[index].r as usize],
+                        opaque_g[covered][row[index].g as usize],
+                        opaque_b[covered][row[index].b as usize],
+                    );
+                } else if alpha != 0 {
+                    let src = Color::rgba(color.r, color.g, color.b, alpha);
+                    row[index] = src.blend_over(row[index]);
+                }
             }
         }
     }
