@@ -162,46 +162,32 @@ fn sample_bilinear_prepared(
     let bottom_left = pixels[y1 * row_width + x0];
     let bottom_right = pixels[y1 * row_width + x1];
 
-    // Combine premultiplied samples and unpremultiply only once.
+    // Interpolate premultiplied channels in two separable passes. This avoids
+    // building four bilinear weights and multiplying every texel by each weight.
     let one_minus_x = 1.0 - tx;
     let one_minus_y = 1.0 - ty;
-    let weight_top_left = one_minus_x * one_minus_y;
-    let weight_top_right = tx * one_minus_y;
-    let weight_bottom_left = one_minus_x * ty;
-    let weight_bottom_right = tx * ty;
-
-    let weighted_alpha_top_left = f32::from(top_left.a) * weight_top_left;
-    let weighted_alpha_top_right = f32::from(top_right.a) * weight_top_right;
-    let weighted_alpha_bottom_left = f32::from(bottom_left.a) * weight_bottom_left;
-    let weighted_alpha_bottom_right = f32::from(bottom_right.a) * weight_bottom_right;
-
-    let alpha = weighted_alpha_top_left
-        + weighted_alpha_top_right
-        + weighted_alpha_bottom_left
-        + weighted_alpha_bottom_right;
+    let alpha_top = f32::from(top_left.a) * one_minus_x
+        + f32::from(top_right.a) * tx;
+    let alpha_bottom = f32::from(bottom_left.a) * one_minus_x
+        + f32::from(bottom_right.a) * tx;
+    let alpha = alpha_top * one_minus_y + alpha_bottom * ty;
     if alpha <= f32::EPSILON {
         return Color::TRANSPARENT;
     }
 
-    let red = f32::from(top_left.r) * weighted_alpha_top_left
-        + f32::from(top_right.r) * weighted_alpha_top_right
-        + f32::from(bottom_left.r) * weighted_alpha_bottom_left
-        + f32::from(bottom_right.r) * weighted_alpha_bottom_right;
-    let green = f32::from(top_left.g) * weighted_alpha_top_left
-        + f32::from(top_right.g) * weighted_alpha_top_right
-        + f32::from(bottom_left.g) * weighted_alpha_bottom_left
-        + f32::from(bottom_right.g) * weighted_alpha_bottom_right;
-    let blue = f32::from(top_left.b) * weighted_alpha_top_left
-        + f32::from(top_right.b) * weighted_alpha_top_right
-        + f32::from(bottom_left.b) * weighted_alpha_bottom_left
-        + f32::from(bottom_right.b) * weighted_alpha_bottom_right;
-
-    let channel = |value: f32| (value / alpha).round().clamp(0.0, 255.0) as u8;
+    let interpolate_premultiplied = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
+        let top = f32::from(top_left) * f32::from(pixels[y0 * row_width + x0].a) * one_minus_x
+            + f32::from(top_right) * f32::from(pixels[y0 * row_width + x1].a) * tx;
+        let bottom = f32::from(bottom_left) * f32::from(pixels[y1 * row_width + x0].a) * one_minus_x
+            + f32::from(bottom_right) * f32::from(pixels[y1 * row_width + x1].a) * tx;
+        (top * one_minus_y + bottom * ty) / alpha
+    };
+    let channel = |value: f32| value.round().clamp(0.0, 255.0) as u8;
     Color::rgba(
-        channel(red),
-        channel(green),
-        channel(blue),
-        alpha.round().clamp(0.0, 255.0) as u8,
+        channel(interpolate_premultiplied(top_left.r, top_right.r, bottom_left.r, bottom_right.r)),
+        channel(interpolate_premultiplied(top_left.g, top_right.g, bottom_left.g, bottom_right.g)),
+        channel(interpolate_premultiplied(top_left.b, top_right.b, bottom_left.b, bottom_right.b)),
+        channel(alpha),
     )
 }
 
