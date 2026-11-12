@@ -492,6 +492,7 @@ impl StrokeSegment {
         }
     }
 
+    #[inline]
     fn may_cover(self, point: Vector) -> bool {
         point.x >= self.min_x
             && point.x <= self.max_x
@@ -519,6 +520,7 @@ impl StrokeSegment {
     /// Tests coverage without constructing the nearest point for the common
     /// butt-capped segment case. The squared cross product gives the exact
     /// perpendicular-distance comparison for projections inside the segment.
+    #[inline]
     fn covers_within_radius(self, point: Vector, radius_squared: f32) -> bool {
         if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
             let relative_x = point.x - self.a.x;
@@ -534,6 +536,7 @@ impl StrokeSegment {
         self.distance_squared(point) <= radius_squared
     }
 
+    #[inline]
     fn distance_squared(self, point: Vector) -> f32 {
         if self.length_squared <= f32::EPSILON {
             let dx = point.x - self.a.x;
@@ -623,6 +626,7 @@ impl PreparedTriangle {
         }
     }
 
+    #[inline]
     fn contains(self, point: Vector) -> bool {
         if point.x < self.min_x
             || point.x > self.max_x
