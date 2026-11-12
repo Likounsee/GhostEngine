@@ -78,6 +78,14 @@ impl Framebuffer {
         &mut self.pixels
     }
 
+    /// Consumes the framebuffer and returns its dimensions and pixel allocation.
+    ///
+    /// This crate-private transfer lets other owned image types reuse the same
+    /// allocation without copying the framebuffer contents.
+    pub(crate) fn into_parts(self) -> (u32, u32, Vec<Color>) {
+        (self.width, self.height, self.pixels)
+    }
+
     pub fn clear(&mut self, color: Color) {
         self.pixels.fill(color);
     }
