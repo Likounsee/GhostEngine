@@ -536,9 +536,11 @@ pub fn fill_rect_radial_gradient(
     }
     let inverse_radius = radius.recip();
     let radius_squared = radius * radius;
+    let inverse_radius_squared = radius_squared.recip();
     // Keep a small floating-point safety margin so samples at the radius
     // resolve to the final stop instead of a rounded inner lookup entry.
     let outside_radius_squared = radius_squared * (1.0 + 4.0 * f32::EPSILON);
+    let outside_color = gradient.sample_raster(1.0);
     for y in top..bottom {
         let dy = y as f32 + 0.5 - center.y;
         let Some(row) = target.row_mut(y) else {
@@ -557,9 +559,11 @@ pub fn fill_rect_radial_gradient(
                 && distance_squared.is_finite()
             {
                 if distance_squared >= outside_radius_squared {
-                    gradient.sample_raster(1.0)
+                    outside_color
                 } else {
-                    gradient.sample_radial_squared(distance_squared / radius_squared)
+                    // Multiplication by the precomputed reciprocal avoids a
+                    // floating-point division for every pixel inside the radius.
+                    gradient.sample_radial_squared(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
