@@ -1289,6 +1289,12 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     }
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    // Cache the 17 possible source colors produced by 4x4 coverage sampling.
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for (covered, source) in coverage_colors.iter_mut().enumerate().skip(1) {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        *source = Color::rgba(color.r, color.g, color.b, alpha);
+    }
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
     let max_x = vertices.iter().map(|point| point.x).max().unwrap();
