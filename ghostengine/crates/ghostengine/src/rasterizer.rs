@@ -415,7 +415,7 @@ pub fn fill_rect_linear_gradient(
         };
         let mut position = row_position;
         for pixel in &mut row[left as usize..right as usize] {
-            let color = gradient.sample(position.clamp(0.0, 1.0));
+            let color = gradient.sample(position);
             *pixel = if color.a == u8::MAX {
                 color
             } else if color.a == 0 {
@@ -457,7 +457,7 @@ pub fn fill_rect_radial_gradient(
         for (offset, pixel) in row[left as usize..right as usize].iter_mut().enumerate() {
             let dx = left as f32 + offset as f32 + 0.5 - center.x;
             let position = dx.hypot(dy) * inverse_radius;
-            let color = gradient.sample(position.clamp(0.0, 1.0));
+            let color = gradient.sample(position);
             *pixel = if color.a == u8::MAX {
                 color
             } else if color.a == 0 {
