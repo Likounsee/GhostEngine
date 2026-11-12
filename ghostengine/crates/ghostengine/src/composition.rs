@@ -344,52 +344,64 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
 
     let source_width = layer.framebuffer.width() as f32;
     let source_height = layer.framebuffer.height() as f32;
+    // An affine inverse advances by a constant source-space delta for every
+    // destination pixel in a row. Calculate the first sample once per row,
+    // then use additions instead of rebuilding a Vector and multiplying the
+    // inverse matrix for every pixel.
+    let source_step_x = inverse.m11;
+    let source_step_y = inverse.m21;
+    let destination_offset_x = layer.x as f32;
+    let destination_offset_y = layer.y as f32;
     for y in top..bottom {
+        let destination_y = y as f32 + 0.5 - destination_offset_y;
+        let mut source_x = inverse.m11 * (left as f32 + 0.5 - destination_offset_x)
+            + inverse.m12 * destination_y
+            + inverse.tx;
+        let mut source_y = inverse.m21 * (left as f32 + 0.5 - destination_offset_x)
+            + inverse.m22 * destination_y
+            + inverse.ty;
         let Some(destination_row) = target.row_mut(y) else {
             continue;
         };
         for x in left..right {
-            let source_point = inverse.transform_point(Vector::new(
-                x as f32 + 0.5 - layer.x as f32,
-                y as f32 + 0.5 - layer.y as f32,
-            ));
-            if source_point.x < 0.0
-                || source_point.y < 0.0
-                || source_point.x >= source_width
-                || source_point.y >= source_height
+            if source_x >= 0.0
+                && source_y >= 0.0
+                && source_x < source_width
+                && source_y < source_height
             {
-                continue;
-            }
-            let source = match layer.filter {
-                TextureFilter::Nearest => sample_pixels_nearest(
-                    layer.framebuffer.pixels(),
-                    layer.framebuffer.width(),
-                    layer.framebuffer.height(),
-                    source_point.x,
-                    source_point.y,
-                ),
-                TextureFilter::Bilinear => sample_pixels_bilinear(
-                    layer.framebuffer.pixels(),
-                    layer.framebuffer.width(),
-                    layer.framebuffer.height(),
-                    source_point.x - 0.5,
-                    source_point.y - 0.5,
-                ),
-            };
-            if source.a == 0 {
-                continue;
-            }
-            let destination = &mut destination_row[x as usize];
-            if layer.blend_mode == BlendMode::SourceOver {
-                let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
-                if alpha > 0 {
-                    *destination =
-                        Color::rgba(source.r, source.g, source.b, alpha).blend_over(*destination);
+                let source = match layer.filter {
+                    TextureFilter::Nearest => sample_pixels_nearest(
+                        layer.framebuffer.pixels(),
+                        layer.framebuffer.width(),
+                        layer.framebuffer.height(),
+                        source_x,
+                        source_y,
+                    ),
+                    TextureFilter::Bilinear => sample_pixels_bilinear(
+                        layer.framebuffer.pixels(),
+                        layer.framebuffer.width(),
+                        layer.framebuffer.height(),
+                        source_x - 0.5,
+                        source_y - 0.5,
+                    ),
+                };
+                if source.a != 0 {
+                    let destination = &mut destination_row[x as usize];
+                    if layer.blend_mode == BlendMode::SourceOver {
+                        let alpha =
+                            ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
+                        if alpha > 0 {
+                            *destination = Color::rgba(source.r, source.g, source.b, alpha)
+                                .blend_over(*destination);
+                        }
+                    } else {
+                        *destination =
+                            blend_with_mode(source, *destination, layer.opacity, layer.blend_mode);
+                    }
                 }
-            } else {
-                *destination =
-                    blend_with_mode(source, *destination, layer.opacity, layer.blend_mode);
             }
+            source_x += source_step_x;
+            source_y += source_step_y;
         }
     }
 }
