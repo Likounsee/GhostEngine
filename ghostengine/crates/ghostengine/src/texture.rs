@@ -138,29 +138,41 @@ pub(crate) fn sample_pixels_bilinear(
     // color conversions and roundings.
     let one_minus_x = 1.0 - tx;
     let one_minus_y = 1.0 - ty;
-    let weights = [
-        one_minus_x * one_minus_y,
-        tx * one_minus_y,
-        one_minus_x * ty,
-        tx * ty,
-    ];
-    let samples = [top_left, top_right, bottom_left, bottom_right];
-    let mut alpha = 0.0_f32;
-    let mut red = 0.0_f32;
-    let mut green = 0.0_f32;
-    let mut blue = 0.0_f32;
+    let weight_top_left = one_minus_x * one_minus_y;
+    let weight_top_right = tx * one_minus_y;
+    let weight_bottom_left = one_minus_x * ty;
+    let weight_bottom_right = tx * ty;
 
-    for (sample, weight) in samples.into_iter().zip(weights) {
-        let weighted_alpha = f32::from(sample.a) * weight;
-        alpha += weighted_alpha;
-        red += f32::from(sample.r) * weighted_alpha;
-        green += f32::from(sample.g) * weighted_alpha;
-        blue += f32::from(sample.b) * weighted_alpha;
-    }
+    let alpha_top_left = f32::from(top_left.a);
+    let alpha_top_right = f32::from(top_right.a);
+    let alpha_bottom_left = f32::from(bottom_left.a);
+    let alpha_bottom_right = f32::from(bottom_right.a);
 
+    let weighted_alpha_top_left = alpha_top_left * weight_top_left;
+    let weighted_alpha_top_right = alpha_top_right * weight_top_right;
+    let weighted_alpha_bottom_left = alpha_bottom_left * weight_bottom_left;
+    let weighted_alpha_bottom_right = alpha_bottom_right * weight_bottom_right;
+
+    let alpha = weighted_alpha_top_left
+        + weighted_alpha_top_right
+        + weighted_alpha_bottom_left
+        + weighted_alpha_bottom_right;
     if alpha <= f32::EPSILON {
         return Color::TRANSPARENT;
     }
+
+    let red = f32::from(top_left.r) * weighted_alpha_top_left
+        + f32::from(top_right.r) * weighted_alpha_top_right
+        + f32::from(bottom_left.r) * weighted_alpha_bottom_left
+        + f32::from(bottom_right.r) * weighted_alpha_bottom_right;
+    let green = f32::from(top_left.g) * weighted_alpha_top_left
+        + f32::from(top_right.g) * weighted_alpha_top_right
+        + f32::from(bottom_left.g) * weighted_alpha_bottom_left
+        + f32::from(bottom_right.g) * weighted_alpha_bottom_right;
+    let blue = f32::from(top_left.b) * weighted_alpha_top_left
+        + f32::from(top_right.b) * weighted_alpha_top_right
+        + f32::from(bottom_left.b) * weighted_alpha_bottom_left
+        + f32::from(bottom_right.b) * weighted_alpha_bottom_right;
 
     let channel = |value: f32| (value / alpha).round().clamp(0.0, 255.0) as u8;
     Color::rgba(
@@ -226,17 +238,34 @@ pub fn draw_texture_clipped(
         let Some(row) = target.row_mut(y as u32) else {
             continue;
         };
-        for x in first_x..end_x {
-            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
-            let color = match filter {
-                TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
-                TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
-            };
-            let index = x as usize;
-            if color.a == 255 {
-                row[index] = color;
-            } else if color.a > 0 {
-                row[index] = color.blend_over(row[index]);
+
+        if filter == TextureFilter::Nearest {
+            // The destination clipping guarantees that samples lie inside the
+            // destination rectangle. Clamp only the final integer texel index,
+            // avoiding the generic floating-point sampler for every pixel.
+            let source_row = (source_y.floor() as u32).min(texture.height - 1) as usize
+                * texture.width as usize;
+            for x in first_x..end_x {
+                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+                let source_column = (source_x.floor() as u32).min(texture.width - 1) as usize;
+                let color = texture.pixels[source_row + source_column];
+                let index = x as usize;
+                if color.a == 255 {
+                    row[index] = color;
+                } else if color.a > 0 {
+                    row[index] = color.blend_over(row[index]);
+                }
+            }
+        } else {
+            for x in first_x..end_x {
+                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+                let color = texture.sample_bilinear(source_x - 0.5, source_y - 0.5);
+                let index = x as usize;
+                if color.a == 255 {
+                    row[index] = color;
+                } else if color.a > 0 {
+                    row[index] = color.blend_over(row[index]);
+                }
             }
         }
     }
