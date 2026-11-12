@@ -122,26 +122,34 @@ pub(crate) fn sample_pixels_bilinear(
     sample_bilinear_prepared(
         pixels,
         width as usize,
-        x0 as usize,
-        (x0 + 1).min(width - 1) as usize,
-        y0 as usize,
-        (y0 + 1).min(height - 1) as usize,
-        x - x0 as f32,
-        y - y0 as f32,
+        BilinearCoordinates {
+            x0: x0 as usize,
+            x1: (x0 + 1).min(width - 1) as usize,
+            y0: y0 as usize,
+            y1: (y0 + 1).min(height - 1) as usize,
+            tx: x - x0 as f32,
+            ty: y - y0 as f32,
+        },
     )
 }
 
-#[inline]
-fn sample_bilinear_prepared(
-    pixels: &[Color],
-    row_width: usize,
+#[derive(Clone, Copy)]
+struct BilinearCoordinates {
     x0: usize,
     x1: usize,
     y0: usize,
     y1: usize,
     tx: f32,
     ty: f32,
+}
+
+#[inline]
+fn sample_bilinear_prepared(
+    pixels: &[Color],
+    row_width: usize,
+    coordinates: BilinearCoordinates,
 ) -> Color {
+    let BilinearCoordinates { x0, x1, y0, y1, tx, ty } = coordinates;
     let top_left = pixels[y0 * row_width + x0];
     let top_right = pixels[y0 * row_width + x1];
     let bottom_left = pixels[y1 * row_width + x0];
@@ -294,8 +302,18 @@ pub fn draw_texture_clipped(
                 .copied()
                 .enumerate()
             {
-                let color =
-                    sample_bilinear_prepared(&texture.pixels, row_width, x0, x1, y0, y1, tx, ty);
+                let color = sample_bilinear_prepared(
+                    &texture.pixels,
+                    row_width,
+                    BilinearCoordinates {
+                        x0,
+                        x1,
+                        y0,
+                        y1,
+                        tx,
+                        ty,
+                    },
+                );
                 let index = first_x as usize + offset;
                 if color.a == 255 {
                     row[index] = color;
