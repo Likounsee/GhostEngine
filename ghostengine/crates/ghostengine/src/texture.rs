@@ -292,34 +292,94 @@ pub fn draw_texture_clipped(
             let y1 = (y0 + 1).min(texture.height as usize - 1);
             let ty = source_y - y0 as f32;
             let row_width = texture.width as usize;
+            let samples = horizontal_samples
+                .as_ref()
+                .expect("bilinear samples are prepared for bilinear filtering");
 
-            // Horizontal texel indices and weights were prepared once for
-            // the complete draw operation, not once for every destination row.
-            for (pixel, &(x0, x1, tx)) in row[first_x as usize..end_x as usize]
-                .iter_mut()
-                .zip(
-                    horizontal_samples
-                        .as_ref()
-                        .expect("bilinear samples are prepared for bilinear filtering")
-                        .iter(),
-                )
-            {
-                let color = sample_bilinear_prepared(
-                    &texture.pixels,
-                    row_width,
-                    BilinearCoordinates {
-                        x0,
-                        x1,
-                        y0,
-                        y1,
-                        tx,
-                        ty,
-                    },
-                );
-                if color.a == 255 {
-                    *pixel = color;
-                } else if color.a > 0 {
-                    *pixel = color.blend_over(*pixel);
+            // When scaling a small texture over many destination rows, the
+            // same source rows are sampled repeatedly. Cache their horizontal
+            // premultiplied interpolation once, then only interpolate vertically
+            // in the hot destination loop.
+            let cache_len = (texture.height as usize).checked_mul(samples.len());
+            let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+            let use_cache = end_y - first_y >= u64::from(texture.height) * 2
+                && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
+
+            if use_cache {
+                let mut horizontal_cache = vec![[0.0_f32; 4]; cache_len.unwrap()];
+                for source_row in 0..texture.height as usize {
+                    let source_offset = source_row * row_width;
+                    let cache_offset = source_row * samples.len();
+                    for (column, &(x0, x1, tx)) in samples.iter().enumerate() {
+                        let left = texture.pixels[source_offset + x0];
+                        let right = texture.pixels[source_offset + x1];
+                        let inverse_x = 1.0 - tx;
+                        let left_alpha = f32::from(left.a) * inverse_x;
+                        let right_alpha = f32::from(right.a) * tx;
+                        horizontal_cache[cache_offset + column] = [
+                            f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                            f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                            f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                            left_alpha + right_alpha,
+                        ];
+                    }
+                }
+
+                let top_offset = y0 * samples.len();
+                let bottom_offset = y1 * samples.len();
+                let inverse_y = 1.0 - ty;
+                for (pixel, (&top, &bottom)) in row[first_x as usize..end_x as usize]
+                    .iter_mut()
+                    .zip(
+                        horizontal_cache[top_offset..top_offset + samples.len()]
+                            .iter()
+                            .zip(&horizontal_cache[bottom_offset..bottom_offset + samples.len()]),
+                    )
+                {
+                    let alpha = top[3] * inverse_y + bottom[3] * ty;
+                    if alpha <= f32::EPSILON {
+                        continue;
+                    }
+                    let inverse_alpha = alpha.recip();
+                    let channel = |index: usize| {
+                        ((top[index] * inverse_y + bottom[index] * ty) * inverse_alpha)
+                            .round()
+                            .clamp(0.0, 255.0) as u8
+                    };
+                    let color = Color::rgba(
+                        channel(0),
+                        channel(1),
+                        channel(2),
+                        alpha.round().clamp(0.0, 255.0) as u8,
+                    );
+                    if color.a == 255 {
+                        *pixel = color;
+                    } else if color.a > 0 {
+                        *pixel = color.blend_over(*pixel);
+                    }
+                }
+            } else {
+                for (pixel, &(x0, x1, tx)) in row[first_x as usize..end_x as usize]
+                    .iter_mut()
+                    .zip(samples.iter())
+                {
+                    let color = sample_bilinear_prepared(
+                        &texture.pixels,
+                        row_width,
+                        BilinearCoordinates {
+                            x0,
+                            x1,
+                            y0,
+                            y1,
+                            tx,
+                            ty,
+                        },
+                    );
+                    if color.a == 255 {
+                        *pixel = color;
+                    } else if color.a > 0 {
+                        *pixel = color.blend_over(*pixel);
+                    }
                 }
             }
         }
