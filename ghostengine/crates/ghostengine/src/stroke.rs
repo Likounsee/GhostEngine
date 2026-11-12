@@ -413,18 +413,19 @@ fn stroke_path_impl(
                         // Each sample is tested only until some segment covers it;
                         // joins are deferred until the segment union is complete.
                         for segment in &pixel_segments {
-                            for (sample_y_index, &sample_y_value) in sample_y.iter().enumerate() {
-                                for (sample_x_index, &sample_x_value) in sample_x.iter().enumerate() {
-                                    let bit = 1_u16 << (sample_y_index * 4 + sample_x_index);
-                                    if covered_mask & bit == 0
-                                        && segment.covers_within_radius_xy(
-                                            sample_x_value,
-                                            sample_y_value,
-                                            radius_squared,
-                                        )
-                                    {
-                                        covered_mask |= bit;
-                                    }
+                            // Visit only samples that remain uncovered. The bit scan
+                            // avoids repeating 16 mask checks for every overlapping segment.
+                            let mut remaining = !covered_mask;
+                            while remaining != 0 {
+                                let sample_index = remaining.trailing_zeros() as usize;
+                                let bit = 1_u16 << sample_index;
+                                remaining &= remaining - 1;
+                                if segment.covers_within_radius_xy(
+                                    sample_x[sample_index & 3],
+                                    sample_y[sample_index >> 2],
+                                    radius_squared,
+                                ) {
+                                    covered_mask |= bit;
                                 }
                             }
                             if covered_mask == u16::MAX {
@@ -434,14 +435,16 @@ fn stroke_path_impl(
 
                         if covered_mask != u16::MAX {
                             for join in &pixel_joins {
-                                for (sample_y_index, &sample_y_value) in sample_y.iter().enumerate() {
-                                    for (sample_x_index, &sample_x_value) in sample_x.iter().enumerate() {
-                                        let bit = 1_u16 << (sample_y_index * 4 + sample_x_index);
-                                        if covered_mask & bit == 0
-                                            && join.contains(Vector::new(sample_x_value, sample_y_value))
-                                        {
-                                            covered_mask |= bit;
-                                        }
+                                let mut remaining = !covered_mask;
+                                while remaining != 0 {
+                                    let sample_index = remaining.trailing_zeros() as usize;
+                                    let bit = 1_u16 << sample_index;
+                                    remaining &= remaining - 1;
+                                    if join.contains(Vector::new(
+                                        sample_x[sample_index & 3],
+                                        sample_y[sample_index >> 2],
+                                    )) {
+                                        covered_mask |= bit;
                                     }
                                 }
                                 if covered_mask == u16::MAX {
