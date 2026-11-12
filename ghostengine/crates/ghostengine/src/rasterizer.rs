@@ -1685,6 +1685,27 @@ pub fn fill_ellipse_aa(
     }
 
     let inverse_ry = ry.recip();
+
+    // Ellipse coverage has only 17 possible values (0..=16). Precompute the
+    // exact source-over result for every destination channel when the
+    // framebuffer pixel is opaque, avoiding three divisions per covered pixel.
+    let mut opaque_r = [[0_u8; 256]; 17];
+    let mut opaque_g = [[0_u8; 256]; 17];
+    let mut opaque_b = [[0_u8; 256]; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u32;
+        let inverse_alpha = 255 - alpha;
+        for destination in 0..256 {
+            let destination = destination as u32;
+            opaque_r[covered][destination as usize] =
+                ((u32::from(color.r) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_g[covered][destination as usize] =
+                ((u32::from(color.g) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+            opaque_b[covered][destination as usize] =
+                ((u32::from(color.b) * alpha + destination * inverse_alpha + 127) / 255) as u8;
+        }
+    }
+
     let mut coverage = vec![0_u8; (right - left) as usize];
     for y in top..bottom {
         coverage.fill(0);
@@ -1724,12 +1745,24 @@ pub fn fill_ellipse_aa(
             if covered == 0 {
                 continue;
             }
-            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
-            if alpha == 0 {
+            if color.a == 0 {
                 continue;
             }
-            let source = Color::rgba(color.r, color.g, color.b, alpha);
-            *pixel = source.blend_over(*pixel);
+            if pixel.a == u8::MAX {
+                let index = usize::from(covered);
+                *pixel = Color::rgb(
+                    opaque_r[index][pixel.r as usize],
+                    opaque_g[index][pixel.g as usize],
+                    opaque_b[index][pixel.b as usize],
+                );
+            } else {
+                let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+                if alpha == 0 {
+                    continue;
+                }
+                let source = Color::rgba(color.r, color.g, color.b, alpha);
+                *pixel = source.blend_over(*pixel);
+            }
         }
     }
 }
