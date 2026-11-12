@@ -454,6 +454,7 @@ struct StrokeSegment {
     dy: f32,
     length_squared: f32,
     inverse_length_squared: f32,
+    cross_limit_squared: f32,
     low: f32,
     high: f32,
     cap: StrokeCap,
@@ -490,6 +491,7 @@ impl StrokeSegment {
             } else {
                 0.0
             },
+            cross_limit_squared: radius * radius * length_squared,
             low: if first { -extension } else { 0.0 },
             high: if last { 1.0 + extension } else { 1.0 },
             cap,
@@ -533,13 +535,16 @@ impl StrokeSegment {
         if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
             let relative_x = point.x - self.a.x;
             let relative_y = point.y - self.a.y;
-            let projection =
-                (relative_x * self.dx + relative_y * self.dy) * self.inverse_length_squared;
-            if !(0.0..=1.0).contains(&projection) {
+            // Keep the projection unnormalized: comparing its dot product
+            // directly with [0, length_squared] avoids a reciprocal multiply
+            // for every supersample. The perpendicular-distance threshold is
+            // prepared once when the segment is built.
+            let projection = relative_x * self.dx + relative_y * self.dy;
+            if projection < 0.0 || projection > self.length_squared {
                 return false;
             }
             let cross = relative_x * self.dy - relative_y * self.dx;
-            return cross * cross <= radius_squared * self.length_squared;
+            return cross * cross <= self.cross_limit_squared;
         }
         self.distance_squared(point) <= radius_squared
     }
