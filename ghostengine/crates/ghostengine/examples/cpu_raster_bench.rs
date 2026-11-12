@@ -227,8 +227,8 @@ fn main() {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
                 Point::new(240 * SCALE, 135 * SCALE),
-                185 * SCALE,
-                105 * SCALE,
+                185 * SCALE_U32,
+                105 * SCALE_U32,
                 Color::rgba(80, 190, 120, 220),
             );
         }),
