@@ -8,8 +8,11 @@ use ghostengine::{
     StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
-const WIDTH: u32 = 480;
-const HEIGHT: u32 = 270;
+const WIDTH: u32 = 960;
+const HEIGHT: u32 = 540;
+const SCALE: i32 = 2;
+const SCALE_U32: u32 = 2;
+const SCALE_F32: f32 = 2.0;
 const WARMUP_FRAMES: u32 = 5;
 
 #[derive(Clone)]
@@ -95,31 +98,31 @@ fn main() {
         .clamp(1, 100_000);
 
     let polygon = [
-        Point::new(240, 12),
-        Point::new(286, 96),
-        Point::new(382, 104),
-        Point::new(310, 168),
-        Point::new(330, 252),
-        Point::new(240, 208),
-        Point::new(150, 252),
-        Point::new(170, 168),
-        Point::new(98, 104),
-        Point::new(194, 96),
+        Point::new(240 * SCALE, 12 * SCALE),
+        Point::new(286 * SCALE, 96 * SCALE),
+        Point::new(382 * SCALE, 104 * SCALE),
+        Point::new(310 * SCALE, 168 * SCALE),
+        Point::new(330 * SCALE, 252 * SCALE),
+        Point::new(240 * SCALE, 208 * SCALE),
+        Point::new(150 * SCALE, 252 * SCALE),
+        Point::new(170 * SCALE, 168 * SCALE),
+        Point::new(98 * SCALE, 104 * SCALE),
+        Point::new(194 * SCALE, 96 * SCALE),
     ];
 
     let mut path = Path::new();
-    path.move_to(Vector::new(80.0, 140.0))
+    path.move_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
         .cubic_to(
-            Vector::new(100.0, 5.0),
-            Vector::new(220.0, 5.0),
-            Vector::new(240.0, 140.0),
+            Vector::new(100.0 * SCALE_F32, 5.0 * SCALE_F32),
+            Vector::new(220.0 * SCALE_F32, 5.0 * SCALE_F32),
+            Vector::new(240.0 * SCALE_F32, 140.0 * SCALE_F32),
         )
         .cubic_to(
-            Vector::new(260.0, 275.0),
-            Vector::new(380.0, 275.0),
-            Vector::new(400.0, 140.0),
+            Vector::new(260.0 * SCALE_F32, 275.0 * SCALE_F32),
+            Vector::new(380.0 * SCALE_F32, 275.0 * SCALE_F32),
+            Vector::new(400.0 * SCALE_F32, 140.0 * SCALE_F32),
         )
-        .line_to(Vector::new(80.0, 140.0))
+        .line_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
         .close();
 
     let gradient = Gradient::new(vec![
@@ -152,12 +155,12 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
 
-    let mut background_layer = Layer::new(400, 220, Color::rgba(35, 90, 155, 255))
+    let mut background_layer = Layer::new(400 * SCALE_U32, 220 * SCALE_U32, Color::rgba(35, 90, 155, 255))
         .expect("benchmark layer should allocate");
-    background_layer.set_position(30, 25);
-    let mut foreground_layer = Layer::new(320, 180, Color::rgba(225, 95, 45, 190))
+    background_layer.set_position(30 * SCALE, 25 * SCALE);
+    let mut foreground_layer = Layer::new(320 * SCALE_U32, 180 * SCALE_U32, Color::rgba(225, 95, 45, 190))
         .expect("benchmark layer should allocate");
-    foreground_layer.set_position(90, 55);
+    foreground_layer.set_position(90 * SCALE, 55 * SCALE);
     foreground_layer.set_opacity(210);
     let layers = [background_layer, foreground_layer];
 
@@ -169,7 +172,7 @@ fn main() {
     let text = "مرحبا GhostEngine — CPU benchmark";
 
     println!("GhostEngine — benchmark global CPU");
-    println!("Resolution: {WIDTH}x{HEIGHT}");
+    println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 2x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
@@ -187,22 +190,22 @@ fn main() {
         measure("Rectangle fill + clipping", iterations, |target| {
             ghostengine::rasterizer::fill_rect(
                 target,
-                Rect::new(24, 24, 420, 220),
+                Rect::new(24 * SCALE_U32, 24 * SCALE_U32, 420 * SCALE_U32, 220 * SCALE_U32),
                 Color::rgb(45, 130, 220),
             );
         }),
         measure("Rectangle alpha blend", iterations, |target| {
             blend_rect(
                 target,
-                Rect::new(24, 24, 420, 220),
+                Rect::new(24 * SCALE_U32, 24 * SCALE_U32, 420 * SCALE_U32, 220 * SCALE_U32),
                 Color::rgba(220, 90, 55, 150),
             );
         }),
         measure("Antialiased line", iterations, |target| {
             ghostengine::rasterizer::draw_line_aa(
                 target,
-                Point::new(12, 12),
-                Point::new(468, 258),
+                Point::new(12 * SCALE, 12 * SCALE),
+                Point::new(468 * SCALE, 258 * SCALE),
                 Color::rgba(80, 210, 140, 230),
             );
         }),
@@ -215,7 +218,7 @@ fn main() {
         measure("Ellipse fill AA", iterations, |target| {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
-                Point::new(240, 135),
+                Point::new(240 * SCALE, 135 * SCALE),
                 185,
                 105,
                 Color::rgba(80, 190, 120, 220),
@@ -254,17 +257,17 @@ fn main() {
         measure("Linear gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_linear_gradient(
                 target,
-                Rect::new(12, 12, 456, 246),
-                Vector::new(12.0, 12.0),
-                Vector::new(468.0, 258.0),
+                Rect::new(12 * SCALE_U32, 12 * SCALE_U32, 456 * SCALE_U32, 246 * SCALE_U32),
+                Vector::new(12.0 * SCALE_F32, 12.0 * SCALE_F32),
+                Vector::new(468.0 * SCALE_F32, 258.0 * SCALE_F32),
                 &gradient,
             );
         }),
         measure("Radial gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_radial_gradient(
                 target,
-                Rect::new(12, 12, 456, 246),
-                Vector::new(240.0, 135.0),
+                Rect::new(12 * SCALE_U32, 12 * SCALE_U32, 456 * SCALE_U32, 246 * SCALE_U32),
+                Vector::new(240.0 * SCALE_F32, 135.0 * SCALE_F32),
                 190.0,
                 &gradient,
             );
@@ -273,7 +276,7 @@ fn main() {
             ghostengine::draw_texture(
                 target,
                 &texture,
-                Rect::new(80, 35, 320, 200),
+                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
                 TextureFilter::Nearest,
             );
         }),
@@ -281,7 +284,7 @@ fn main() {
             ghostengine::draw_texture(
                 target,
                 &texture,
-                Rect::new(80, 35, 320, 200),
+                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
                 TextureFilter::Bilinear,
             );
         }),
@@ -289,15 +292,15 @@ fn main() {
             ghostengine::compose_layers(target, &layers);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
-            draw_text(target, &font, text, Point::new(18, 145), 28.0, Color::WHITE);
+            draw_text(target, &font, text, Point::new(18 * SCALE, 145 * SCALE), 28.0 * SCALE_F32, Color::WHITE);
         }),
         measure("UI button + text", iterations, |target| {
             ghostengine::draw_button(
                 target,
                 &font,
-                Rect::new(110, 100, 260, 64),
+                Rect::new(110 * SCALE_U32, 100 * SCALE_U32, 260 * SCALE_U32, 64 * SCALE_U32),
                 "مرحبا",
-                28.0,
+                28.0 * SCALE_F32,
                 WidgetState::Hovered,
                 &theme,
             );
