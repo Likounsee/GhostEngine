@@ -56,6 +56,20 @@ impl Texture {
         }
     }
 
+    /// Converts an owned framebuffer into a texture without copying its pixels.
+    ///
+    /// Use this when the framebuffer is no longer needed as a render target.
+    /// The pixel allocation is transferred directly into the immutable texture.
+    #[must_use]
+    pub fn from_framebuffer_owned(framebuffer: Framebuffer) -> Self {
+        let (width, height, pixels) = framebuffer.into_parts();
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
     #[must_use]
     pub const fn width(&self) -> u32 {
         self.width
@@ -906,5 +920,17 @@ mod tests {
         let texture = Texture::from_framebuffer(&framebuffer);
         framebuffer.clear(Color::RED);
         assert_eq!(texture.get_pixel(0, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn owned_framebuffer_conversion_reuses_pixel_allocation() {
+        let framebuffer = Framebuffer::new(2, 2, Color::GREEN).unwrap();
+        let original_storage = framebuffer.pixels().as_ptr();
+        let texture = Texture::from_framebuffer_owned(framebuffer);
+
+        assert_eq!(texture.pixels().as_ptr(), original_storage);
+        assert_eq!(texture.width(), 2);
+        assert_eq!(texture.height(), 2);
+        assert!(texture.pixels().iter().all(|pixel| *pixel == Color::GREEN));
     }
 }
