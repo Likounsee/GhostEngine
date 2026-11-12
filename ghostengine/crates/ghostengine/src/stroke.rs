@@ -199,6 +199,10 @@ fn stroke_path_impl(
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
     let radius = style.width * 0.5;
+    // 4x4 coverage has only 17 possible alpha values; precompute them once.
+    let coverage_alpha = core::array::from_fn::<u8, 17, _>(|covered| {
+        (f32::from(color.a) * (covered as f32 / 16.0)).round() as u8
+    });
     if !radius.is_finite() {
         return Err(StrokeError::InvalidWidth);
     }
@@ -421,7 +425,11 @@ fn stroke_path_impl(
                     let distance = distance_squared.sqrt();
                     (radius + 0.5 - distance).clamp(0.0, 1.0)
                 };
-                let alpha = (f32::from(color.a) * coverage).round() as u8;
+                let alpha = if antialias {
+                    coverage_alpha[(coverage * 16.0).round() as usize]
+                } else {
+                    (f32::from(color.a) * coverage).round() as u8
+                };
                 if alpha == 0 {
                     continue;
                 }
