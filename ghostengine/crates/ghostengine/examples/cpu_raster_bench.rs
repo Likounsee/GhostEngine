@@ -237,7 +237,7 @@ fn main() {
                 .expect("benchmark path should be valid");
         }),
         measure("Vector path fill AA", iterations, |target| {
-            fill_path_even_odd_aa(target, &path, Color::rgba(245, 130, 45, 220), 0.35)
+            fill_path_even_odd_aa(target, &path, Color::rgba(245, 130, 45, 220), 0.35 * SCALE_F32)
                 .expect("benchmark path should be valid");
         }),
         measure("Vector path stroke", iterations, |target| {
@@ -256,9 +256,9 @@ fn main() {
                 target,
                 &path,
                 Transform2D::IDENTITY,
-                StrokeStyle::new(7.0),
+                StrokeStyle::new(7.0 * SCALE_F32),
                 Color::rgba(90, 220, 130, 230),
-                0.35,
+                0.35 * SCALE_F32,
             )
             .expect("benchmark stroke should be valid");
         }),
