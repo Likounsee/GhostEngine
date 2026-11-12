@@ -119,23 +119,35 @@ pub(crate) fn sample_pixels_bilinear(
     let y = y.clamp(0.0, height as f32 - 1.0);
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
-    let x1 = (x0 + 1).min(width - 1);
-    let y1 = (y0 + 1).min(height - 1);
-    let tx = x - x0 as f32;
-    let ty = y - y0 as f32;
+    sample_bilinear_prepared(
+        pixels,
+        width as usize,
+        x0 as usize,
+        (x0 + 1).min(width - 1) as usize,
+        y0 as usize,
+        (y0 + 1).min(height - 1) as usize,
+        x - x0 as f32,
+        y - y0 as f32,
+    )
+}
 
-    // Fetch directly from the validated row-major storage. The coordinates
-    // have already been clamped, so four Option-based get_pixel calls are
-    // unnecessary in this inner loop.
-    let row_width = width as usize;
-    let top_left = pixels[y0 as usize * row_width + x0 as usize];
-    let top_right = pixels[y0 as usize * row_width + x1 as usize];
-    let bottom_left = pixels[y1 as usize * row_width + x0 as usize];
-    let bottom_right = pixels[y1 as usize * row_width + x1 as usize];
+#[inline]
+fn sample_bilinear_prepared(
+    pixels: &[Color],
+    row_width: usize,
+    x0: usize,
+    x1: usize,
+    y0: usize,
+    y1: usize,
+    tx: f32,
+    ty: f32,
+) -> Color {
+    let top_left = pixels[y0 * row_width + x0];
+    let top_right = pixels[y0 * row_width + x1];
+    let bottom_left = pixels[y1 * row_width + x0];
+    let bottom_right = pixels[y1 * row_width + x1];
 
-    // Bilinear interpolation is linear, so combine all four premultiplied
-    // samples and unpremultiply once instead of doing three intermediate
-    // color conversions and roundings.
+    // Combine premultiplied samples and unpremultiply only once.
     let one_minus_x = 1.0 - tx;
     let one_minus_y = 1.0 - ty;
     let weight_top_left = one_minus_x * one_minus_y;
@@ -143,15 +155,10 @@ pub(crate) fn sample_pixels_bilinear(
     let weight_bottom_left = one_minus_x * ty;
     let weight_bottom_right = tx * ty;
 
-    let alpha_top_left = f32::from(top_left.a);
-    let alpha_top_right = f32::from(top_right.a);
-    let alpha_bottom_left = f32::from(bottom_left.a);
-    let alpha_bottom_right = f32::from(bottom_right.a);
-
-    let weighted_alpha_top_left = alpha_top_left * weight_top_left;
-    let weighted_alpha_top_right = alpha_top_right * weight_top_right;
-    let weighted_alpha_bottom_left = alpha_bottom_left * weight_bottom_left;
-    let weighted_alpha_bottom_right = alpha_bottom_right * weight_bottom_right;
+    let weighted_alpha_top_left = f32::from(top_left.a) * weight_top_left;
+    let weighted_alpha_top_right = f32::from(top_right.a) * weight_top_right;
+    let weighted_alpha_bottom_left = f32::from(bottom_left.a) * weight_bottom_left;
+    let weighted_alpha_bottom_right = f32::from(bottom_right.a) * weight_bottom_right;
 
     let alpha = weighted_alpha_top_left
         + weighted_alpha_top_right
@@ -257,10 +264,41 @@ pub fn draw_texture_clipped(
                 }
             }
         } else {
-            for x in first_x..end_x {
-                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
-                let color = texture.sample_bilinear(source_x - 0.5, source_y - 0.5);
-                let index = x as usize;
+            let source_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+            let y0 = source_y.floor() as usize;
+            let y1 = (y0 + 1).min(texture.height as usize - 1);
+            let ty = source_y - y0 as f32;
+            let row_width = texture.width as usize;
+
+            // Horizontal source coordinates are identical for every destination
+            // row. Prepare their clamped texel indices and interpolation weights
+            // once instead of repeating floor/clamp work for every output pixel.
+            let horizontal_samples = (first_x..end_x)
+                .map(|x| {
+                    let source_x =
+                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+                    let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
+                    let x0 = source_x.floor() as usize;
+                    (
+                        x0,
+                        (x0 + 1).min(row_width - 1),
+                        source_x - x0 as f32,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            for (offset, (x0, x1, tx)) in horizontal_samples.into_iter().enumerate() {
+                let color = sample_bilinear_prepared(
+                    &texture.pixels,
+                    row_width,
+                    x0,
+                    x1,
+                    y0,
+                    y1,
+                    tx,
+                    ty,
+                );
+                let index = first_x as usize + offset;
                 if color.a == 255 {
                     row[index] = color;
                 } else if color.a > 0 {
