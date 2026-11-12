@@ -467,16 +467,17 @@ pub fn fill_rect_radial_gradient(
             let distance_squared = dx * dx + dy * dy;
             // Samples outside the radius always resolve to the final stop;
             // avoid a square root for those pixels.
-            let position = if radius_squared.is_finite() && distance_squared >= outside_radius_squared {
-                1.0
-            } else {
-                let distance = if distance_squared.is_finite() {
-                    distance_squared.sqrt()
+            let position =
+                if radius_squared.is_finite() && distance_squared >= outside_radius_squared {
+                    1.0
                 } else {
-                    dx.hypot(dy)
+                    let distance = if distance_squared.is_finite() {
+                        distance_squared.sqrt()
+                    } else {
+                        dx.hypot(dy)
+                    };
+                    distance * inverse_radius
                 };
-                distance * inverse_radius
-            };
             let color = gradient.sample(position);
             *pixel = if color.a == u8::MAX {
                 color
