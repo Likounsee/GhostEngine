@@ -348,15 +348,19 @@ pub fn draw_texture_clipped(
                         continue;
                     }
                     let inverse_alpha = alpha.recip();
-                    let channel = |index: usize| {
-                        ((top[index] * inverse_y + bottom[index] * ty) * inverse_alpha)
-                            .round()
-                            .clamp(0.0, 255.0) as u8
-                    };
+                    let red = ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    let green = ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    let blue = ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
                     let color = Color::rgba(
-                        channel(0),
-                        channel(1),
-                        channel(2),
+                        red,
+                        green,
+                        blue,
                         alpha.round().clamp(0.0, 255.0) as u8,
                     );
                     if color.a == 255 {
