@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
-> **Project status:** early CPU-renderer implementation. The Rust workspace, foundational geometry/color types, CPU framebuffer, pixel writes, source-over alpha compositing, clipped Bresenham lines, clipped rectangle fills, integer triangle rasterization, clipped circle/ellipse outlines and fills, rectangle outlines, rounded-rectangle fills, polygon outlines and even-odd polygon fills, clipped anti-aliased lines, validated multi-stop linear/radial gradients with alpha compositing, TrueType/OpenType font loading, basic text measurement and CPU glyph drawing, and a headless image example are implemented. Advanced shaping, glyph caching, image decoding, paths/strokes, transforms, layers and the complete 2D/3D pipelines remain future work.
+> **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, layer composition, display lists, retained UI components, TrueType/OpenType glyph rasterization, text layout and shaping. Optional window adapters present completed CPU framebuffers and forward input. Image-file decoding adapters and the software 3D pipeline are not implemented yet. The current 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
 
 ## Vision
 
@@ -177,6 +177,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 cargo run -p ghostengine --example first_image -- first-image.ppm
 cargo run -p ghostengine --features window --example browser_frontend
+cargo run -p ghostengine --features native-window --example native_ui_demo
+cargo run -p ghostengine --release --example cpu_raster_bench -- 5
 ```
 
 The `first_image` example creates a 320×180 PPM image headlessly. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The current CI checks formatting and Clippy, then runs the unit tests.
