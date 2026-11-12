@@ -518,7 +518,10 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 
 #[cfg(test)]
 mod tests {
-    use super::{compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer};
+    use super::{
+        blend_bilinear_over_opaque, compose_layers, compose_layers_in_damage_regions, BlendMode,
+        DamageRegion, Layer,
+    };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
     #[test]
@@ -646,6 +649,47 @@ mod tests {
         compose_layers(&mut target, &[layer]);
 
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
+    }
+
+    #[test]
+    fn fused_bilinear_composition_matches_reference_over_opaque_destinations() {
+        use crate::texture::sample_pixels_bilinear;
+
+        let pixels = vec![
+            Color::rgba(240, 30, 20, 255),
+            Color::rgba(20, 220, 80, 180),
+            Color::TRANSPARENT,
+            Color::rgba(30, 60, 240, 90),
+            Color::rgba(210, 170, 40, 210),
+            Color::rgba(15, 80, 230, 140),
+        ];
+        let width = 3;
+        let height = 2;
+        for opacity in [1, 64, 128, 200, 255] {
+            for y in [0.0, 0.25, 0.5, 0.9] {
+                for x in [0.0, 0.2, 0.75, 1.4, 1.9] {
+                    let mut actual = Color::rgb(37, 91, 163);
+                    let source = sample_pixels_bilinear(&pixels, width, height, x, y);
+                    let alpha =
+                        ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                    let expected = Color::rgba(source.r, source.g, source.b, alpha)
+                        .blend_over(actual);
+                    blend_bilinear_over_opaque(
+                        &pixels,
+                        width,
+                        height,
+                        x,
+                        y,
+                        opacity,
+                        &mut actual,
+                    );
+                    assert!(actual.r.abs_diff(expected.r) <= 1);
+                    assert!(actual.g.abs_diff(expected.g) <= 1);
+                    assert!(actual.b.abs_diff(expected.b) <= 1);
+                    assert_eq!(actual.a, 255);
+                }
+            }
+        }
     }
 
     #[test]
