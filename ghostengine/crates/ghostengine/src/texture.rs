@@ -199,8 +199,8 @@ fn sample_bilinear_prepared(
 }
 
 // The cached bilinear path stores horizontal samples as premultiplied RGBA
-// floats. On x86_64, SSE2 interpolates and composites all four components
-// together instead of running separate scalar arithmetic for each RGB channel.
+// floats. Keep the opaque-destination blend in safe Rust because the crate
+// explicitly forbids unsafe code.
 #[inline]
 fn blend_cached_bilinear_over_opaque(
     top: &[f32; 4],
@@ -209,74 +209,23 @@ fn blend_cached_bilinear_over_opaque(
     ty: f32,
     destination: &mut Color,
 ) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use core::arch::x86_64::*;
-
-        // SSE2 is part of the x86_64 baseline, so no runtime feature check is needed.
-        // The loads point to the four-element cache entries passed by the caller.
-        unsafe {
-            let top_values = _mm_loadu_ps(top.as_ptr());
-            let bottom_values = _mm_loadu_ps(bottom.as_ptr());
-            let interpolated = _mm_add_ps(
-                _mm_mul_ps(top_values, _mm_set1_ps(inverse_y)),
-                _mm_mul_ps(bottom_values, _mm_set1_ps(ty)),
-            );
-            let alpha = _mm_cvtss_f32(_mm_shuffle_ps::<0xff>(interpolated, interpolated));
-            if alpha <= f32::EPSILON {
-                return;
-            }
-
-            // RGB cache values are premultiplied by 8-bit alpha (0..65025).
-            // The opaque-destination source-over equation is:
-            // (premultiplied + destination * (255 - alpha)) / 255.
-            let inverse_alpha = _mm_set1_ps(255.0 - alpha);
-            let background = _mm_setr_ps(
-                f32::from(destination.r),
-                f32::from(destination.g),
-                f32::from(destination.b),
-                0.0,
-            );
-            let composed = _mm_div_ps(
-                _mm_add_ps(interpolated, _mm_mul_ps(background, inverse_alpha)),
-                _mm_set1_ps(255.0),
-            );
-
-            // All output channels are non-negative. Adding 0.5 then truncating
-            // matches f32::round() for this range; pack instructions retain the
-            // saturating u8 conversion semantics of the scalar implementation.
-            let rounded = _mm_cvttps_epi32(_mm_add_ps(composed, _mm_set1_ps(0.5)));
-            let packed = _mm_packus_epi16(
-                _mm_packs_epi32(rounded, _mm_setzero_si128()),
-                _mm_setzero_si128(),
-            );
-            let channels = _mm_cvtsi128_si32(packed) as u32;
-            destination.r = channels as u8;
-            destination.g = (channels >> 8) as u8;
-            destination.b = (channels >> 16) as u8;
-            destination.a = u8::MAX;
-        }
+    let alpha = top[3] * inverse_y + bottom[3] * ty;
+    if alpha <= f32::EPSILON {
+        return;
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        let alpha = top[3] * inverse_y + bottom[3] * ty;
-        if alpha <= f32::EPSILON {
-            return;
-        }
-        let inverse_alpha = 255.0 - alpha;
-        let channel = |index: usize, background: u8| {
-            ((top[index] * inverse_y
-                + bottom[index] * ty
-                + f32::from(background) * inverse_alpha)
-                / 255.0)
-                .round()
-                .clamp(0.0, 255.0) as u8
-        };
-        destination.r = channel(0, destination.r);
-        destination.g = channel(1, destination.g);
-        destination.b = channel(2, destination.b);
-    }
+    let inverse_alpha = 255.0 - alpha;
+    let channel = |index: usize, background: u8| {
+        ((top[index] * inverse_y
+            + bottom[index] * ty
+            + f32::from(background) * inverse_alpha)
+            / 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    destination.r = channel(0, destination.r);
+    destination.g = channel(1, destination.g);
+    destination.b = channel(2, destination.b);
 }
 
 /// Draws a texture into a destination rectangle, scaling and alpha-compositing it.
@@ -443,7 +392,7 @@ pub fn draw_texture_clipped(
                     )
                 {
                     if pixel.a == 255 {
-                        blend_cached_bilinear_over_opaque(top, bottom, inverse_y, ty, pixel);
+                        blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, pixel);
                     } else {
                         let alpha = top[3] * inverse_y + bottom[3] * ty;
                         if alpha <= f32::EPSILON {
