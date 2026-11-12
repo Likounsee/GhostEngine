@@ -542,6 +542,26 @@ impl StrokeSegment {
     /// Uses convexity to prove that the complete pixel sample square is covered.
     #[inline]
     fn fully_covers_pixel(self, x: u32, y: u32, radius_squared: f32) -> bool {
+        // A butt-capped segment is the intersection of two linear strips:
+        // its longitudinal projection lies in [0, length_squared], and its
+        // perpendicular cross product lies within the stroke radius. The
+        // extrema of either linear expression over the sample square are
+        // available directly, avoiding four point constructions and tests.
+        if self.cap == StrokeCap::Butt && self.length_squared > f32::EPSILON {
+            let relative_x = x as f32 + 0.5 - self.a.x;
+            let relative_y = y as f32 + 0.5 - self.a.y;
+            let extent = 0.375 * (self.dx.abs() + self.dy.abs());
+            let projection = relative_x * self.dx + relative_y * self.dy;
+            if projection - extent < 0.0
+                || projection + extent > self.length_squared
+            {
+                return false;
+            }
+            let cross = relative_x * self.dy - relative_y * self.dx;
+            let maximum_cross = cross.abs() + extent;
+            return maximum_cross * maximum_cross <= self.cross_limit_squared;
+        }
+
         let left = x as f32 + 0.125;
         let right = x as f32 + 0.875;
         let top = y as f32 + 0.125;
@@ -1147,6 +1167,72 @@ mod tests {
             .pixels()
             .iter()
             .any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn fast_full_pixel_coverage_matches_four_corner_reference() {
+        let segments = [
+            super::StrokeSegment::new(
+                Vector::new(2.25, 3.75),
+                Vector::new(17.5, 12.125),
+                false,
+                false,
+                StrokeCap::Butt,
+                3.5,
+            ),
+            super::StrokeSegment::new(
+                Vector::new(18.0, 2.0),
+                Vector::new(4.0, 16.0),
+                false,
+                false,
+                StrokeCap::Butt,
+                2.25,
+            ),
+            super::StrokeSegment::new(
+                Vector::new(3.0, 8.0),
+                Vector::new(19.0, 8.0),
+                false,
+                false,
+                StrokeCap::Butt,
+                1.75,
+            ),
+            super::StrokeSegment::new(
+                Vector::new(7.0, 3.0),
+                Vector::new(7.0, 19.0),
+                false,
+                false,
+                StrokeCap::Butt,
+                4.0,
+            ),
+        ];
+
+        for segment in segments {
+            let radius_squared = segment.cross_limit_squared / segment.length_squared;
+            for y in 0..22 {
+                for x in 0..22 {
+                    let left = x as f32 + 0.125;
+                    let right = x as f32 + 0.875;
+                    let top = y as f32 + 0.125;
+                    let bottom = y as f32 + 0.875;
+                    let reference = [
+                        Vector::new(left, top),
+                        Vector::new(right, top),
+                        Vector::new(left, bottom),
+                        Vector::new(right, bottom),
+                    ]
+                    .into_iter()
+                    .all(|point| {
+                        segment.may_cover(point)
+                            && segment.covers_within_radius(point, radius_squared)
+                    });
+                    assert_eq!(
+                        segment.fully_covers_pixel(x, y, radius_squared),
+                        reference,
+                        "full-coverage mismatch at ({x}, {y})"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
