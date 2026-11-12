@@ -1631,7 +1631,6 @@ pub fn fill_ellipse_aa(
         return;
     }
 
-    let inverse_rx = rx.recip();
     let inverse_ry = ry.recip();
     let mut coverage = vec![0_u8; (right - left) as usize];
     for y in top..bottom {
