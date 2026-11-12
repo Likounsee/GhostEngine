@@ -1,6 +1,6 @@
 use std::hint::black_box;
 use std::process::Command;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
@@ -382,51 +382,4 @@ fn main() {
         );
     }
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let report_path = format!("ghostengine-benchmark-{timestamp}.txt");
-    let csv_path = format!("ghostengine-benchmark-{timestamp}.csv");
-
-    let mut report = format!(
-        "GhostEngine global CPU benchmark\nTimestamp (Unix): {timestamp}\nCPU: {}\nRust: {}\nOS: {} {}\nArchitecture: {}\nResolution: {WIDTH}x{HEIGHT}\nIterations/workload: {iterations}\nWarm-up frames: {WARMUP_FRAMES}\nBuild: {}\n\n",
-        cpu_name(),
-        rustc_version(),
-        std::env::consts::OS,
-        std::env::consts::FAMILY,
-        std::env::consts::ARCH,
-        if cfg!(debug_assertions) { "debug" } else { "release" }
-    );
-    report.push_str(&format!(
-        "{:<30} {:>12} {:>14} {:>12}\n",
-        "Workload", "Total (ms)", "ms/frame", "FPS"
-    ));
-    report.push_str(&format!("{}\n", "-".repeat(74)));
-
-    let mut csv = String::from("workload,iterations,total_ms,average_ms_per_frame,fps\n");
-    for row in &rows {
-        report.push_str(&format!(
-            "{:<30} {:>12.3} {:>14.4} {:>12.2}\n",
-            row.name,
-            row.elapsed.as_secs_f64() * 1_000.0,
-            row.average_ms(),
-            row.fps()
-        ));
-        csv.push_str(&format!(
-            "\"{}\",{},{:.3},{:.6},{:.2}\n",
-            row.name,
-            row.iterations,
-            row.elapsed.as_secs_f64() * 1_000.0,
-            row.average_ms(),
-            row.fps()
-        ));
-    }
-
-    std::fs::write(&report_path, report).expect("benchmark text report should be writable");
-    std::fs::write(&csv_path, csv).expect("benchmark CSV report should be writable");
-    println!();
-    println!("Reports written:");
-    println!("  {report_path}");
-    println!("  {csv_path}");
-}
+    // Benchmark results are printed to the console only; do not create report files.
