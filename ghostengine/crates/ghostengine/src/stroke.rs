@@ -296,6 +296,7 @@ fn stroke_path_impl(
         let mut joins = joins;
         joins.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
         let radius_squared = radius * radius;
+        const SAMPLE_OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
         // Keep active geometry in horizontal order as scanlines advance.
         // Each segment/join is inserted once and removed once; sorting a copied
         // active list on every row is unnecessary work for tall paths.
@@ -349,6 +350,9 @@ fn stroke_path_impl(
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
+            // The four vertical sample coordinates are shared by every pixel
+            // on this scanline, so calculate them once instead of per pixel.
+            let sample_y = SAMPLE_OFFSETS.map(|offset| y as f32 + offset);
             // Sweep horizontally through the already x-sorted active geometry.
             // Candidates are added once and retired when their right edge passes.
             let mut next_pixel_segment = 0;
@@ -404,9 +408,7 @@ fn stroke_path_impl(
                     if fully_covered {
                         1.0
                     } else {
-                        const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-                        let sample_x = OFFSETS.map(|offset| x as f32 + offset);
-                        let sample_y = OFFSETS.map(|offset| y as f32 + offset);
+                        let sample_x = SAMPLE_OFFSETS.map(|offset| x as f32 + offset);
                         let mut covered_mask = 0_u16;
 
                         // Build the 4x4 coverage mask one segment at a time.
