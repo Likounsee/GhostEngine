@@ -667,7 +667,8 @@ pub fn draw_texture_transformed_clipped(
 mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
-        draw_texture_transformed_clipped, Texture, TextureError, TextureFilter,
+        draw_texture_transformed_clipped, sample_bilinear_prepared, BilinearCoordinates, Texture,
+        TextureError, TextureFilter,
     };
     use crate::{Color, Framebuffer, Rect};
 
@@ -812,8 +813,38 @@ mod tests {
                 TextureFilter::Bilinear,
             );
 
+            let expected = (0..height)
+                .flat_map(|y| {
+                    let source_y =
+                        ((y as f32 + 0.5) * texture.height() as f32 / height as f32 - 0.5)
+                            .clamp(0.0, texture.height() as f32 - 1.0);
+                    let y0 = source_y.floor() as usize;
+                    let y1 = (y0 + 1).min(texture.height() as usize - 1);
+                    let ty = source_y - y0 as f32;
+                    (0..width).map(move |x| {
+                        let source_x =
+                            ((x as f32 + 0.5) * texture.width() as f32 / width as f32 - 0.5)
+                                .clamp(0.0, texture.width() as f32 - 1.0);
+                        let x0 = source_x.floor() as usize;
+                        let x1 = (x0 + 1).min(texture.width() as usize - 1);
+                        sample_bilinear_prepared(
+                            texture.pixels(),
+                            texture.width() as usize,
+                            BilinearCoordinates {
+                                x0,
+                                x1,
+                                y0,
+                                y1,
+                                tx: source_x - x0 as f32,
+                                ty,
+                            },
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(target.pixels(), expected);
             assert!(target.pixels().iter().all(|pixel| pixel.a == 255));
-            assert_ne!(target.get_pixel(3, height / 2), Some(Color::rgba(20, 40, 60, 120)));
         }
     }
 
