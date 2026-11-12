@@ -447,16 +447,19 @@ fn blend_bilinear_over_opaque(
     // can be crossed; the upper edge is therefore already bounded.
     let x = x.max(0.0);
     let y = y.max(0.0);
+    let row_width = width as usize;
     let x0 = x.floor() as usize;
     let y0 = y.floor() as usize;
-    let x1 = (x0 + 1).min(width as usize - 1);
+    let x1 = (x0 + 1).min(row_width - 1);
     let y1 = (y0 + 1).min(height as usize - 1);
+    let top_offset = y0 * row_width;
+    let bottom_offset = y1 * row_width;
     let tx = x - x0 as f32;
     let ty = y - y0 as f32;
-    let top_left = pixels[y0 * width as usize + x0];
-    let top_right = pixels[y0 * width as usize + x1];
-    let bottom_left = pixels[y1 * width as usize + x0];
-    let bottom_right = pixels[y1 * width as usize + x1];
+    let top_left = pixels[top_offset + x0];
+    let top_right = pixels[top_offset + x1];
+    let bottom_left = pixels[bottom_offset + x0];
+    let bottom_right = pixels[bottom_offset + x1];
 
     let inverse_x = 1.0 - tx;
     let inverse_y = 1.0 - ty;
