@@ -9,6 +9,27 @@ use crate::{Color, Texture, TextureError};
 const MAX_IMAGE_DIMENSION: u32 = 4096;
 const MAX_DECODER_ALLOCATION: u64 = 64 * 1024 * 1024;
 
+/// Resource limits applied while decoding an image.
+///
+/// Width and height limits are strict. The decoder allocation limit is a
+/// best-effort bound provided by the selected codec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageDecodeOptions {
+    pub max_image_width: Option<u32>,
+    pub max_image_height: Option<u32>,
+    pub max_decoder_allocation_bytes: Option<u64>,
+}
+
+impl Default for ImageDecodeOptions {
+    fn default() -> Self {
+        Self {
+            max_image_width: Some(MAX_IMAGE_DIMENSION),
+            max_image_height: Some(MAX_IMAGE_DIMENSION),
+            max_decoder_allocation_bytes: Some(MAX_DECODER_ALLOCATION),
+        }
+    }
+}
+
 /// Errors returned while decoding an image into a GhostEngine texture.
 #[derive(Debug)]
 pub enum ImageDecodeError {
@@ -49,9 +70,19 @@ impl Error for ImageDecodeError {
 /// Decodes BMP, JPEG, PNG, or PNM bytes into an immutable, row-major RGBA texture.
 ///
 /// This adapter is available only with the `image-decoding` feature. The decoder
-/// rejects dimensions above 4096 pixels and applies a 64 MiB decoder allocation
-/// limit before converting the image to GhostEngine's `Color` storage.
+/// uses the default decode limits before converting the image to GhostEngine's
+/// `Color` storage.
 pub fn decode_texture(encoded: &[u8]) -> Result<Texture, ImageDecodeError> {
+    decode_texture_with_options(encoded, ImageDecodeOptions::default())
+}
+
+/// Decodes image bytes with limits supplied by the calling application.
+///
+/// Set any limit to `None` to leave that dimension or allocation unbounded.
+pub fn decode_texture_with_options(
+    encoded: &[u8],
+    options: ImageDecodeOptions,
+) -> Result<Texture, ImageDecodeError> {
     let reader = ::image::io::Reader::new(Cursor::new(encoded))
         .with_guessed_format()
         .map_err(ImageDecodeError::Reader)?;
@@ -64,9 +95,9 @@ pub fn decode_texture(encoded: &[u8]) -> Result<Texture, ImageDecodeError> {
     }
 
     let mut limits = Limits::default();
-    limits.max_image_width = Some(MAX_IMAGE_DIMENSION);
-    limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
-    limits.max_alloc = Some(MAX_DECODER_ALLOCATION);
+    limits.max_image_width = options.max_image_width;
+    limits.max_image_height = options.max_image_height;
+    limits.max_alloc = options.max_decoder_allocation_bytes;
 
     let mut reader = reader;
     reader.limits(limits);
@@ -85,7 +116,9 @@ pub fn decode_texture(encoded: &[u8]) -> Result<Texture, ImageDecodeError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_texture, ImageDecodeError};
+    use super::{
+        decode_texture, decode_texture_with_options, ImageDecodeError, ImageDecodeOptions,
+    };
     use crate::Color;
     use ::image::ImageEncoder;
 
@@ -177,5 +210,26 @@ mod tests {
             decode_texture(&encoded),
             Err(ImageDecodeError::Decode(::image::ImageError::Limits(_)))
         ));
+    }
+
+    #[test]
+    fn custom_limits_can_allow_a_larger_image() {
+        let mut encoded = Vec::new();
+        let width = super::MAX_IMAGE_DIMENSION + 1;
+        let pixels = vec![0; width as usize * 4];
+        ::image::codecs::png::PngEncoder::new(&mut encoded)
+            .write_image(&pixels, width, 1, ::image::ColorType::Rgba8.into())
+            .unwrap();
+
+        let texture = decode_texture_with_options(
+            &encoded,
+            ImageDecodeOptions {
+                max_image_width: Some(width),
+                ..ImageDecodeOptions::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(texture.width(), width);
     }
 }
