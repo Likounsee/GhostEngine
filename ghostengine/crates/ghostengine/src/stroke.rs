@@ -296,41 +296,48 @@ fn stroke_path_impl(
         let mut joins = joins;
         joins.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
         let radius_squared = radius * radius;
-        let mut row_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
-        let mut row_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
+        // Keep active geometry in horizontal order as scanlines advance.
+        // Each segment/join is inserted once and removed once; sorting a copied
+        // active list on every row is unnecessary work for tall paths.
+        let mut row_segments_x: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
+        let mut row_joins_x: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         let mut next_segment = 0;
         let mut next_join = 0;
         let mut pixel_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         let mut pixel_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
-        // Reuse scanline sorting buffers. Cloning active geometry inside every
-        // row allocated two fresh vectors per scanline on complex paths.
-        let mut row_segments_x: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
-        let mut row_joins_x: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top..bottom {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
             let sample_top = y as f32 + 0.125;
             let sample_bottom = y as f32 + 0.875;
             while next_segment < segments.len() && segments[next_segment].min_y <= sample_bottom {
-                row_segments.push(segments[next_segment]);
+                let segment = segments[next_segment];
+                let position = row_segments_x
+                    .binary_search_by(|active| active.min_x.total_cmp(&segment.min_x))
+                    .unwrap_or_else(|position| position);
+                row_segments_x.insert(position, segment);
                 next_segment += 1;
             }
-            row_segments.retain(|segment| segment.max_y >= sample_top);
+            row_segments_x.retain(|segment| segment.max_y >= sample_top);
             while next_join < joins.len() && joins[next_join].min_y <= sample_bottom {
-                row_joins.push(joins[next_join]);
+                let join = joins[next_join];
+                let position = row_joins_x
+                    .binary_search_by(|active| active.min_x.total_cmp(&join.min_x))
+                    .unwrap_or_else(|position| position);
+                row_joins_x.insert(position, join);
                 next_join += 1;
             }
-            row_joins.retain(|join| join.max_y >= sample_top);
-            if row_segments.is_empty() && row_joins.is_empty() {
+            row_joins_x.retain(|join| join.max_y >= sample_top);
+            if row_segments_x.is_empty() && row_joins_x.is_empty() {
                 continue;
             }
             let mut row_min_x = f32::INFINITY;
             let mut row_max_x = f32::NEG_INFINITY;
-            for segment in &row_segments {
+            for segment in &row_segments_x {
                 row_min_x = row_min_x.min(segment.min_x);
                 row_max_x = row_max_x.max(segment.max_x);
             }
-            for join in &row_joins {
+            for join in &row_joins_x {
                 row_min_x = row_min_x.min(join.min_x);
                 row_max_x = row_max_x.max(join.max_x);
             }
@@ -342,16 +349,8 @@ fn stroke_path_impl(
             let Some(row) = target.row_mut(y) else {
                 continue;
             };
-            // Sweep horizontally through the active geometry. Sorting each
-            // scanline by its left edge lets us add candidates once and retire
-            // them when their right edge is passed, instead of rescanning every
-            // segment and join for every pixel in the row.
-            row_segments_x.clear();
-            row_segments_x.extend_from_slice(&row_segments);
-            row_segments_x.sort_unstable_by(|left, right| left.min_x.total_cmp(&right.min_x));
-            row_joins_x.clear();
-            row_joins_x.extend_from_slice(&row_joins);
-            row_joins_x.sort_unstable_by(|left, right| left.min_x.total_cmp(&right.min_x));
+            // Sweep horizontally through the already x-sorted active geometry.
+            // Candidates are added once and retired when their right edge passes.
             let mut next_pixel_segment = 0;
             let mut next_pixel_join = 0;
             pixel_segments.clear();
@@ -419,14 +418,14 @@ fn stroke_path_impl(
                 } else {
                     let sample = Vector::new(x as f32 + 0.5, y as f32 + 0.5);
                     let mut distance_squared = f32::INFINITY;
-                    for segment in &row_segments {
+                    for segment in &row_segments_x {
                         if segment.may_cover(sample) {
                             distance_squared =
                                 distance_squared.min(segment.distance_squared(sample));
                         }
                     }
                     if distance_squared > radius_squared {
-                        for join in &row_joins {
+                        for join in &row_joins_x {
                             if join.contains(sample) {
                                 distance_squared = 0.0;
                                 break;
