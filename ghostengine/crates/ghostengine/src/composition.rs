@@ -352,6 +352,7 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
     let source_step_y = inverse.m21;
     let destination_offset_x = layer.x as f32;
     let destination_offset_y = layer.y as f32;
+    let opacity_factor = f32::from(layer.opacity) / 255.0;
     for y in top..bottom {
         let destination_y = y as f32 + 0.5 - destination_offset_y;
         let mut source_x = inverse.m11 * (left as f32 + 0.5 - destination_offset_x)
@@ -380,7 +381,7 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
                         layer.framebuffer.height(),
                         source_x - 0.5,
                         source_y - 0.5,
-                        layer.opacity,
+                        opacity_factor,
                         destination,
                     );
                 } else {
@@ -435,14 +436,17 @@ fn blend_bilinear_over_opaque(
     height: u32,
     x: f32,
     y: f32,
-    opacity: u8,
+    opacity_factor: f32,
     destination: &mut Color,
 ) {
-    if width == 0 || height == 0 || opacity == 0 {
+    if width == 0 || height == 0 || opacity_factor <= 0.0 {
         return;
     }
-    let x = x.clamp(0.0, width as f32 - 1.0);
-    let y = y.clamp(0.0, height as f32 - 1.0);
+    // The caller has already verified that the unshifted source point is
+    // inside the texture. After the half-texel offset, only the lower edge
+    // can be crossed; the upper edge is therefore already bounded.
+    let x = x.max(0.0);
+    let y = y.max(0.0);
     let x0 = x.floor() as usize;
     let y0 = y.floor() as usize;
     let x1 = (x0 + 1).min(width as usize - 1);
@@ -462,7 +466,7 @@ fn blend_bilinear_over_opaque(
     let bottom_right_alpha = f32::from(bottom_right.a) * tx;
     let alpha_top = top_left_alpha + top_right_alpha;
     let alpha_bottom = bottom_left_alpha + bottom_right_alpha;
-    let alpha = (alpha_top * inverse_y + alpha_bottom * ty) * (f32::from(opacity) / 255.0);
+    let alpha = (alpha_top * inverse_y + alpha_bottom * ty) * opacity_factor;
     if alpha <= f32::EPSILON {
         return;
     }
@@ -470,7 +474,7 @@ fn blend_bilinear_over_opaque(
     let interpolate = |tl: u8, tr: u8, bl: u8, br: u8| {
         let top = f32::from(tl) * top_left_alpha + f32::from(tr) * top_right_alpha;
         let bottom = f32::from(bl) * bottom_left_alpha + f32::from(br) * bottom_right_alpha;
-        (top * inverse_y + bottom * ty) * (f32::from(opacity) / 255.0)
+        (top * inverse_y + bottom * ty) * opacity_factor
     };
     let inverse_alpha = 255.0 - alpha;
     let channel = |premultiplied: f32, background: u8| {
@@ -680,7 +684,7 @@ mod tests {
                         height,
                         x,
                         y,
-                        opacity,
+                        f32::from(opacity) / 255.0,
                         &mut actual,
                     );
                     assert!(actual.r.abs_diff(expected.r) <= 1);
