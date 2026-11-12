@@ -293,6 +293,9 @@ pub struct GradientStop {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gradient {
     stops: Vec<GradientStop>,
+    // A high-resolution lookup table accelerates per-pixel raster sampling.
+    // It is only used when stops are strictly increasing, so hard edges remain exact.
+    lookup: Option<Box<[Color]>>,
 }
 
 /// Errors produced while constructing a gradient.
@@ -316,50 +319,81 @@ impl Gradient {
             return Err(GradientError::InvalidPosition);
         }
         stops.sort_by(|a, b| a.position.total_cmp(&b.position));
-        Ok(Self { stops })
+        let lookup = if stops.windows(2).all(|pair| pair[0].position < pair[1].position) {
+            const LOOKUP_SIZE: usize = 4096;
+            Some(
+                (0..LOOKUP_SIZE)
+                    .map(|index| {
+                        let position = index as f32 / (LOOKUP_SIZE - 1) as f32;
+                        sample_gradient_stops(&stops, position)
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        } else {
+            None
+        };
+        Ok(Self { stops, lookup })
     }
 
     /// Samples the gradient, clamping positions outside its stop range.
     #[must_use]
     pub fn sample(&self, position: f32) -> Color {
+        sample_gradient_stops(&self.stops, position)
+    }
+
+    /// Fast per-pixel sampler. The 4096-entry table introduces at most a
+    /// sub-channel interpolation error for smooth gradients while avoiding
+    /// repeated stop lookup and floating-point channel interpolation.
+    #[inline]
+    fn sample_raster(&self, position: f32) -> Color {
         let position = if position.is_finite() {
             position.clamp(0.0, 1.0)
         } else {
             0.0
         };
-        if position <= self.stops[0].position {
-            return self.stops[0].color;
+        if let Some(lookup) = &self.lookup {
+            let index = (position * (lookup.len() - 1) as f32 + 0.5) as usize;
+            lookup[index.min(lookup.len() - 1)]
+        } else {
+            sample_gradient_stops(&self.stops, position)
         }
-        let last = self.stops.len() - 1;
-        if position >= self.stops[last].position {
-            return self.stops[last].color;
-        }
-        // Gradients with the common two/three-stop shape are sampled for
-        // every covered pixel. Avoid a general binary search for these small,
-        // strictly increasing stop arrays while preserving duplicate-stop
-        // hard-edge semantics through the general path below.
-        let (left, right) =
-            if self.stops.len() == 2 && self.stops[0].position < self.stops[1].position {
-                (self.stops[0], self.stops[1])
-            } else if self.stops.len() == 3
-                && self.stops[0].position < self.stops[1].position
-                && self.stops[1].position < self.stops[2].position
-            {
-                if position < self.stops[1].position {
-                    (self.stops[0], self.stops[1])
-                } else {
-                    (self.stops[1], self.stops[2])
-                }
-            } else {
-                let upper = self.stops.partition_point(|stop| stop.position <= position);
-                (self.stops[upper - 1], self.stops[upper])
-            };
-        let span = right.position - left.position;
-        if span <= f32::EPSILON {
-            return right.color;
-        }
-        interpolate_color(left.color, right.color, (position - left.position) / span)
     }
+}
+
+fn sample_gradient_stops(stops: &[GradientStop], position: f32) -> Color {
+    let position = if position.is_finite() {
+        position.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    if position <= stops[0].position {
+        return stops[0].color;
+    }
+    let last = stops.len() - 1;
+    if position >= stops[last].position {
+        return stops[last].color;
+    }
+    let (left, right) = if stops.len() == 2 && stops[0].position < stops[1].position {
+        (stops[0], stops[1])
+    } else if stops.len() == 3
+        && stops[0].position < stops[1].position
+        && stops[1].position < stops[2].position
+    {
+        if position < stops[1].position {
+            (stops[0], stops[1])
+        } else {
+            (stops[1], stops[2])
+        }
+    } else {
+        let upper = stops.partition_point(|stop| stop.position <= position);
+        (stops[upper - 1], stops[upper])
+    };
+    let span = right.position - left.position;
+    if span <= f32::EPSILON {
+        return right.color;
+    }
+    interpolate_color(left.color, right.color, (position - left.position) / span)
 }
 
 fn interpolate_color(left: Color, right: Color, amount: f32) -> Color {
@@ -415,7 +449,7 @@ pub fn fill_rect_linear_gradient(
         };
         let mut position = row_position;
         for pixel in &mut row[left as usize..right as usize] {
-            let color = gradient.sample(position);
+            let color = gradient.sample_raster(position);
             *pixel = if color.a == u8::MAX {
                 color
             } else if color.a == 0 {
@@ -478,7 +512,7 @@ pub fn fill_rect_radial_gradient(
                     };
                     distance * inverse_radius
                 };
-            let color = gradient.sample(position);
+            let color = gradient.sample_raster(position);
             *pixel = if color.a == u8::MAX {
                 color
             } else if color.a == 0 {
@@ -548,7 +582,7 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
                 (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
                     .clamp(0.0, 1.0)
             };
-            let color = gradient.sample(position);
+            let color = gradient.sample_raster(position);
             let pixel = &mut row[x as usize];
             *pixel = if color.a == u8::MAX {
                 color
@@ -612,7 +646,7 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
             }
             visible = true;
             let position = (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
-            let color = gradient.sample(position);
+            let color = gradient.sample_raster(position);
             let pixel = &mut row[x as usize];
             *pixel = if color.a == u8::MAX {
                 color
@@ -1943,6 +1977,39 @@ mod tests {
             },
         ])
         .unwrap()
+    }
+
+    #[test]
+    fn raster_gradient_lookup_stays_within_one_channel_of_exact_sampling() {
+        let gradient = super::Gradient::new(vec![
+            super::GradientStop { position: 0.0, color: Color::rgb(35, 110, 230) },
+            super::GradientStop { position: 0.5, color: Color::rgb(50, 210, 160) },
+            super::GradientStop { position: 1.0, color: Color::rgb(245, 130, 45) },
+        ]).unwrap();
+
+        for index in 0..=10_000 {
+            let position = index as f32 / 10_000.0;
+            let exact = gradient.sample(position);
+            let fast = gradient.sample_raster(position);
+            for (a, b) in [(exact.r, fast.r), (exact.g, fast.g), (exact.b, fast.b), (exact.a, fast.a)] {
+                assert!(a.abs_diff(b) <= 1, "position {position}: {exact:?} != {fast:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn raster_gradient_lookup_preserves_duplicate_stop_hard_edges() {
+        let gradient = super::Gradient::new(vec![
+            super::GradientStop { position: 0.0, color: Color::RED },
+            super::GradientStop { position: 0.5, color: Color::GREEN },
+            super::GradientStop { position: 0.5, color: Color::BLUE },
+            super::GradientStop { position: 1.0, color: Color::WHITE },
+        ]).unwrap();
+
+        assert!(gradient.lookup.is_none());
+        for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
+            assert_eq!(gradient.sample_raster(position), gradient.sample(position));
+        }
     }
 
     #[test]
