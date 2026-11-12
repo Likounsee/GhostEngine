@@ -296,6 +296,9 @@ pub struct Gradient {
     // A high-resolution lookup table accelerates per-pixel raster sampling.
     // It is only used when stops are strictly increasing, so hard edges remain exact.
     lookup: Option<Box<[Color]>>,
+    // Radial gradients can index directly with normalized squared distance,
+    // avoiding a square root for every destination pixel.
+    radial_lookup: Option<Box<[Color]>>,
 }
 
 /// Errors produced while constructing a gradient.
@@ -336,13 +339,52 @@ impl Gradient {
         } else {
             None
         };
-        Ok(Self { stops, lookup })
+        let radial_lookup = if lookup.is_some() {
+            // Uniform squared-distance steps need a denser table near the
+            // center, where sqrt changes fastest. 65,536 entries keep the
+            // resulting color error within approximately one 8-bit channel.
+            const RADIAL_LOOKUP_SIZE: usize = 65_536;
+            Some(
+                (0..RADIAL_LOOKUP_SIZE)
+                    .map(|index| {
+                        let squared_position =
+                            index as f32 / (RADIAL_LOOKUP_SIZE - 1) as f32;
+                        sample_gradient_stops(&stops, squared_position.sqrt())
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            stops,
+            lookup,
+            radial_lookup,
+        })
     }
 
     /// Samples the gradient, clamping positions outside its stop range.
     #[must_use]
     pub fn sample(&self, position: f32) -> Color {
         sample_gradient_stops(&self.stops, position)
+    }
+
+    /// Samples a radial gradient using normalized squared distance.
+    /// The dedicated table folds sqrt and gradient lookup into one access.
+    #[inline]
+    fn sample_radial_squared(&self, squared_position: f32) -> Color {
+        if let Some(lookup) = &self.radial_lookup {
+            let position = if squared_position.is_finite() {
+                squared_position.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let index = (position * (lookup.len() - 1) as f32 + 0.5) as usize;
+            lookup[index.min(lookup.len() - 1)]
+        } else {
+            self.sample_raster(squared_position.sqrt())
+        }
     }
 
     /// Fast per-pixel sampler. The 4096-entry table introduces at most a
@@ -504,18 +546,18 @@ pub fn fill_rect_radial_gradient(
             let distance_squared = dx * dx + dy * dy;
             // Samples outside the radius always resolve to the final stop;
             // avoid a square root for those pixels.
-            let position =
-                if radius_squared.is_finite() && distance_squared >= outside_radius_squared {
-                    1.0
+            let color = if radius_squared.is_finite()
+                && distance_squared.is_finite()
+            {
+                if distance_squared >= outside_radius_squared {
+                    gradient.sample_raster(1.0)
                 } else {
-                    let distance = if distance_squared.is_finite() {
-                        distance_squared.sqrt()
-                    } else {
-                        dx.hypot(dy)
-                    };
-                    distance * inverse_radius
-                };
-            let color = gradient.sample_raster(position);
+                    gradient.sample_radial_squared(distance_squared / radius_squared)
+                }
+            } else {
+                let distance = dx.hypot(dy);
+                gradient.sample_raster(distance * inverse_radius)
+            };
             *pixel = if color.a == u8::MAX {
                 color
             } else if color.a == 0 {
@@ -2136,6 +2178,42 @@ mod tests {
                 assert!(
                     a.abs_diff(b) <= 1,
                     "position {position}: {exact:?} != {fast:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn radial_gradient_squared_lookup_stays_within_one_channel_of_exact_sampling() {
+        let gradient = super::Gradient::new(vec![
+            super::GradientStop {
+                position: 0.0,
+                color: Color::rgb(35, 110, 230),
+            },
+            super::GradientStop {
+                position: 0.5,
+                color: Color::rgb(50, 210, 160),
+            },
+            super::GradientStop {
+                position: 1.0,
+                color: Color::rgb(245, 130, 45),
+            },
+        ])
+        .unwrap();
+
+        for index in 0..=10_000 {
+            let squared_position = index as f32 / 10_000.0;
+            let exact = gradient.sample(squared_position.sqrt());
+            let fast = gradient.sample_radial_squared(squared_position);
+            for (a, b) in [
+                (exact.r, fast.r),
+                (exact.g, fast.g),
+                (exact.b, fast.b),
+                (exact.a, fast.a),
+            ] {
+                assert!(
+                    a.abs_diff(b) <= 1,
+                    "squared position {squared_position}: {exact:?} != {fast:?}"
                 );
             }
         }
