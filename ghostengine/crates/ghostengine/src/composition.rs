@@ -1157,8 +1157,8 @@ mod tests {
         let mut actual = Framebuffer::new(4, 1, background).unwrap();
         let mut expected = actual.clone();
         let expected_pixels = [
-            Color::RED,
-            Color::RED,
+            Color::rgba(230, 20, 40, 255),
+            Color::rgba(230, 20, 40, 255),
             Color::rgba(30, 210, 70, 128).blend_over(background),
             Color::rgba(30, 210, 70, 128).blend_over(background),
         ];
