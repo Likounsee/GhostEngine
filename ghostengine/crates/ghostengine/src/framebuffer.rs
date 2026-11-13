@@ -1,4 +1,4 @@
-use crate::Color;
+use crate::{Color, Rect};
 use core::fmt;
 
 /// Errors returned when creating a CPU framebuffer.
@@ -103,6 +103,24 @@ impl Framebuffer {
 
     pub fn clear(&mut self, color: Color) {
         self.pixels.fill(color);
+    }
+
+    /// Fills the portion of a rectangle that intersects this framebuffer.
+    ///
+    /// Rows are written as contiguous slices, avoiding one bounds check and
+    /// index calculation per pixel. Rectangles extending beyond the target are
+    /// safely clipped; empty rectangles are ignored.
+    pub fn fill_rect(&mut self, rect: Rect, color: Color) {
+        let Some(clipped) = rect.intersection(Rect::new(0, 0, self.width, self.height)) else {
+            return;
+        };
+        let left = clipped.x as usize;
+        let right = left + clipped.width as usize;
+        for y in clipped.y..clipped.y + clipped.height {
+            if let Some(row) = self.row_mut(y) {
+                row[left..right].fill(color);
+            }
+        }
     }
 
     /// Resizes the framebuffer and initializes every pixel to the supplied color.
@@ -255,6 +273,31 @@ mod tests {
         assert_eq!(framebuffer.get_pixel(1, 0), Some(Color::GREEN));
         assert_eq!(framebuffer.get_pixel(0, 1), Some(Color::BLUE));
         assert_eq!(framebuffer.get_pixel(1, 1), Some(Color::WHITE));
+    }
+
+    #[test]
+    fn fill_rect_clips_to_framebuffer_and_preserves_other_pixels() {
+        let mut framebuffer = Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        framebuffer.fill_rect(crate::Rect::new(2, 1, u32::MAX, 2), Color::RED);
+
+        for y in 0..3 {
+            for x in 0..4 {
+                let expected = if x >= 2 && y >= 1 {
+                    Color::RED
+                } else {
+                    Color::BLACK
+                };
+                assert_eq!(framebuffer.get_pixel(x, y), Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn fill_rect_ignores_empty_and_outside_rectangles() {
+        let mut framebuffer = Framebuffer::new(3, 2, Color::BLUE).unwrap();
+        framebuffer.fill_rect(crate::Rect::new(1, 1, 0, 1), Color::RED);
+        framebuffer.fill_rect(crate::Rect::new(u32::MAX, 0, 2, 2), Color::RED);
+        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color::BLUE));
     }
 
     #[test]
