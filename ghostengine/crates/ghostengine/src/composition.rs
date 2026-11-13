@@ -574,6 +574,12 @@ fn compose_transformed_layer(
         let mut source_y = inverse.m21 * (left as f32 + 0.5 - destination_offset_x)
             + inverse.m22 * destination_y
             + inverse.ty;
+        // With no vertical contribution from destination X, every sample
+        // in this scanline has the same source Y. Reject an out-of-range row
+        // before borrowing the destination or entering the pixel loop.
+        if source_step_y == 0.0 && (source_y < 0.0 || source_y >= source_height) {
+            continue;
+        }
         let Some(destination_row) = target.row_mut(y) else {
             continue;
         };
@@ -1038,6 +1044,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn transformed_layer_skips_scanlines_outside_source_y() {
+        let mut layer = Layer::new(1, 1, Color::RED).unwrap();
+        // The transformed bounds include the destination scanline, but its
+        // pixel center maps exactly to source Y = 1.0, outside the 1px source.
+        layer.set_transform(Transform2D::scale(0.5, 0.5));
+        let mut target = Framebuffer::new(1, 1, Color::BLACK).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
     }
 
     #[test]
