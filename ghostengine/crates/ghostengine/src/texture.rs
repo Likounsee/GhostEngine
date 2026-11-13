@@ -652,13 +652,14 @@ pub fn draw_texture_transformed_clipped(
         let bilinear_y1 = (bilinear_y0 + 1).min(texture_height - 1);
         let bilinear_ty = bilinear_sample_y - bilinear_y0 as f32;
         let row_is_inside = local_y >= local_top && local_y < local_bottom;
+        let mut source_x = (local_x - local_left) * source_scale_x;
+        let source_x_step = inverse.m11 * source_scale_x;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in first_x..end_x {
             if row_is_inside && local_x >= local_left && local_x < local_right {
                 visible = true;
-                let source_x = (local_x - local_left) * source_scale_x;
                 // The transformed path already has validated non-zero texture
                 // dimensions. Sample directly here to avoid repeating generic
                 // dimension checks and to use the cheaper opaque bilinear kernel
@@ -704,9 +705,10 @@ pub fn draw_texture_transformed_clipped(
                     row[index] = color.blend_over(row[index]);
                 }
             }
-            // The inverse affine transform advances by a constant source-space
-            // delta across each destination scanline.
+            // Both destination-space and source-space X advance by a
+            // constant amount across this affine scanline.
             local_x += inverse.m11;
+            source_x += source_x_step;
         }
     }
     visible
