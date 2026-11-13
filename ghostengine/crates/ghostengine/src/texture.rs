@@ -334,6 +334,26 @@ pub fn draw_texture_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
+    draw_texture_clipped_with_scratch(target, texture, destination, filter, clip, &mut TextureDrawScratch::default());
+}
+
+/// Reusable temporary storage for repeated texture draws.
+#[derive(Debug, Default)]
+pub struct TextureDrawScratch {
+    nearest_columns: Vec<usize>,
+    horizontal_samples: Vec<(usize, usize, f32)>,
+    horizontal_cache: Vec<[f32; 4]>,
+}
+
+/// Draws a texture while reusing temporary storage between calls.
+pub fn draw_texture_clipped_with_scratch(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) {
     if destination.width == 0 || destination.height == 0 {
         return;
     }
@@ -361,57 +381,42 @@ pub fn draw_texture_clipped(
     // Nearest-neighbor horizontal coordinates are invariant across scanlines.
     // Prepare them once instead of repeating float mapping and floor conversion
     // for every destination pixel on every row.
-    let nearest_columns = if filter == TextureFilter::Nearest {
-        Some(
-            (first_x..end_x)
-                .map(|x| {
-                    let source_x =
-                        (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
-                    (source_x.floor() as u32).min(texture.width - 1) as usize
-                })
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        None
-    };
-    let horizontal_samples = if filter == TextureFilter::Bilinear {
+    if filter == TextureFilter::Nearest {
+        scratch.nearest_columns.clear();
+        scratch.nearest_columns.reserve((end_x - first_x) as usize);
+        scratch.nearest_columns.extend((first_x..end_x).map(|x| {
+            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+            (source_x.floor() as u32).min(texture.width - 1) as usize
+        }));
+    }
+    if filter == TextureFilter::Bilinear {
         let row_width = texture.width as usize;
-        Some(
-            (first_x..end_x)
-                .map(|x| {
-                    let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
-                    let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
-                    let x0 = source_x.floor() as usize;
-                    (x0, (x0 + 1).min(row_width - 1), source_x - x0 as f32)
-                })
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        None
-    };
-
-    // Build the optional horizontal cache once per draw, never once per scanline.
-    let horizontal_cache = if filter == TextureFilter::Bilinear {
-        let samples = horizontal_samples.as_ref().expect("bilinear samples are prepared");
-        let cache_len = (texture.height as usize).checked_mul(samples.len());
+        scratch.horizontal_samples.clear();
+        scratch.horizontal_samples.extend((first_x..end_x).map(|x| {
+            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+            let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
+            let x0 = source_x.floor() as usize;
+            (x0, (x0 + 1).min(row_width - 1), source_x - x0 as f32)
+        }));
+    }
+    scratch.horizontal_cache.clear();
+    let use_horizontal_cache = if filter == TextureFilter::Bilinear {
+        let cache_len = (texture.height as usize).checked_mul(scratch.horizontal_samples.len());
         let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
-        let use_cache = end_y - first_y >= u64::from(texture.height) * 2
+        let should_cache = end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
-        if use_cache {
-            // The cache is fully overwritten during construction. Reserving
-            // capacity and pushing rows avoids zero-initializing the entire
-            // multi-megabyte buffer before filling it.
-            let mut cache = Vec::with_capacity(cache_len.unwrap());
+        if should_cache {
+            scratch.horizontal_cache.reserve(cache_len.unwrap());
             let row_width = texture.width as usize;
             for source_row in 0..texture.height as usize {
                 let source_offset = source_row * row_width;
-                for &(x0, x1, tx) in samples {
+                for &(x0, x1, tx) in &scratch.horizontal_samples {
                     let left = texture.pixels[source_offset + x0];
                     let right = texture.pixels[source_offset + x1];
                     let inverse_x = 1.0 - tx;
                     let left_alpha = f32::from(left.a) * inverse_x;
                     let right_alpha = f32::from(right.a) * tx;
-                    cache.push([
+                    scratch.horizontal_cache.push([
                         f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
                         f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
                         f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
@@ -419,12 +424,10 @@ pub fn draw_texture_clipped(
                     ]);
                 }
             }
-            Some(cache)
-        } else {
-            None
         }
+        should_cache
     } else {
-        None
+        false
     };
     for y in first_y..end_y {
         let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
@@ -441,14 +444,14 @@ pub fn draw_texture_clipped(
             if texture.fully_opaque {
                 for (pixel, &source_column) in row[first_x as usize..end_x as usize]
                     .iter_mut()
-                    .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
+                    .zip(&scratch.nearest_columns)
                 {
                     *pixel = texture.pixels[source_row + source_column];
                 }
             } else {
                 for (pixel, &source_column) in row[first_x as usize..end_x as usize]
                     .iter_mut()
-                    .zip(nearest_columns.as_ref().expect("nearest columns are prepared"))
+                    .zip(&scratch.nearest_columns)
                 {
                     let color = texture.pixels[source_row + source_column];
                     if color.a == 255 {
@@ -464,11 +467,10 @@ pub fn draw_texture_clipped(
             let y1 = (y0 + 1).min(texture.height as usize - 1);
             let ty = source_y - y0 as f32;
             let row_width = texture.width as usize;
-            let samples = horizontal_samples
-                .as_ref()
-                .expect("bilinear samples are prepared for bilinear filtering");
+            let samples = &scratch.horizontal_samples;
 
-            if let Some(horizontal_cache) = horizontal_cache.as_ref() {
+            if use_horizontal_cache {
+                let horizontal_cache = &scratch.horizontal_cache;
                 let top_offset = y0 * samples.len();
                 let bottom_offset = y1 * samples.len();
                 let inverse_y = 1.0 - ty;
