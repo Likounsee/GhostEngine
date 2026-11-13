@@ -463,6 +463,12 @@ fn compose_layer_clipped(
         let destination =
             &mut destination_row[destination_left as usize..destination_right as usize];
 
+        // Fully transparent scanlines cannot affect the destination.
+        // Skip them before entering the per-pixel blend loop.
+        if source_row.iter().all(|pixel| pixel.a == 0) {
+            continue;
+        }
+
         if layer.blend_mode == BlendMode::SourceOver
             && layer.opacity == u8::MAX
             && source_row.iter().all(|pixel| pixel.a == u8::MAX)
@@ -1241,6 +1247,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn fully_transparent_source_over_rows_leave_destination_unchanged() {
+        let mut layer = Layer::new(4, 2, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().pixels_mut()[4..]
+            .copy_from_slice(&[Color::RED, Color::TRANSPARENT, Color::BLUE, Color::WHITE]);
+        let background = Color::rgb(19, 37, 83);
+        let mut target = Framebuffer::new(4, 2, background).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert!(target.pixels()[..4].iter().all(|pixel| *pixel == background));
+        assert_eq!(target.get_pixel(0, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 1), Some(background));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::WHITE));
     }
 
     #[test]
