@@ -640,6 +640,13 @@ pub fn draw_texture_transformed_clipped(
         let mut local_x = inverse.m11 * (first_x as f32 + 0.5)
             + inverse.m12 * (y as f32 + 0.5)
             + inverse.tx;
+        // Entire scanlines outside the destination quad cannot contribute.
+        // Reject them before preparing sampling coordinates or borrowing the
+        // framebuffer row, instead of repeating a vertical bounds check per pixel.
+        if local_y < local_top || local_y >= local_bottom {
+            continue;
+        }
+
         // The inverse-mapped Y coordinate is constant across a scanline.
         // Prepare its source texel coordinates once rather than recalculating
         // and clamping them for every destination pixel.
@@ -651,14 +658,13 @@ pub fn draw_texture_transformed_clipped(
         let bilinear_y0 = bilinear_sample_y.floor() as usize;
         let bilinear_y1 = (bilinear_y0 + 1).min(texture_height - 1);
         let bilinear_ty = bilinear_sample_y - bilinear_y0 as f32;
-        let row_is_inside = local_y >= local_top && local_y < local_bottom;
         let mut source_x = (local_x - local_left) * source_scale_x;
         let source_x_step = inverse.m11 * source_scale_x;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in first_x..end_x {
-            if row_is_inside && local_x >= local_left && local_x < local_right {
+            if local_x >= local_left && local_x < local_right {
                 visible = true;
                 // The transformed path already has validated non-zero texture
                 // dimensions. Sample directly here to avoid repeating generic
