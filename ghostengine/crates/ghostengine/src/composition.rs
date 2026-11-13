@@ -463,16 +463,25 @@ fn compose_layer_clipped(
         let destination =
             &mut destination_row[destination_left as usize..destination_right as usize];
 
-        // Fully transparent scanlines cannot affect the destination.
-        // Skip them before entering the per-pixel blend loop.
-        if source_row.iter().all(|pixel| pixel.a == 0) {
+        // Classify the row in one pass. This avoids scanning every pixel
+        // twice for transparent and opaque fast paths.
+        let can_copy_opaque = layer.blend_mode == BlendMode::SourceOver
+            && layer.opacity == u8::MAX;
+        let mut has_visible_pixel = false;
+        let mut fully_opaque = can_copy_opaque;
+        for pixel in source_row {
+            has_visible_pixel |= pixel.a != 0;
+            if can_copy_opaque {
+                fully_opaque &= pixel.a == u8::MAX;
+            }
+            if has_visible_pixel && (!can_copy_opaque || !fully_opaque) {
+                break;
+            }
+        }
+        if !has_visible_pixel {
             continue;
         }
-
-        if layer.blend_mode == BlendMode::SourceOver
-            && layer.opacity == u8::MAX
-            && source_row.iter().all(|pixel| pixel.a == u8::MAX)
-        {
+        if fully_opaque {
             destination.copy_from_slice(source_row);
             continue;
         }
