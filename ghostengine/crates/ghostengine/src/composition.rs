@@ -1,6 +1,6 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
-use crate::texture::{sample_pixels_bilinear, sample_pixels_nearest};
+use crate::texture::sample_pixels_bilinear;
 use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
 
 /// A bounded collection of framebuffer regions that need recomposition.
@@ -542,6 +542,8 @@ fn compose_transformed_layer(
 
     let source_width = layer.framebuffer.width() as f32;
     let source_height = layer.framebuffer.height() as f32;
+    let source_width_usize = layer.framebuffer.width() as usize;
+    let source_pixels = layer.framebuffer.pixels();
     // An affine inverse advances by a constant source-space delta for every
     // destination pixel in a row. Calculate the first sample once per row,
     // then use additions instead of rebuilding a Vector and multiplying the
@@ -584,15 +586,17 @@ fn compose_transformed_layer(
                     );
                 } else {
                     let source = match layer.filter {
-                        TextureFilter::Nearest => sample_pixels_nearest(
-                            layer.framebuffer.pixels(),
-                            layer.framebuffer.width(),
-                            layer.framebuffer.height(),
-                            source_x,
-                            source_y,
-                        ),
+                        TextureFilter::Nearest => {
+                            let sample_x = source_x
+                                .floor()
+                                .clamp(0.0, source_width - 1.0) as usize;
+                            let sample_y = source_y
+                                .floor()
+                                .clamp(0.0, source_height - 1.0) as usize;
+                            source_pixels[sample_y * source_width_usize + sample_x]
+                        },
                         TextureFilter::Bilinear => sample_pixels_bilinear(
-                            layer.framebuffer.pixels(),
+                            source_pixels,
                             layer.framebuffer.width(),
                             layer.framebuffer.height(),
                             source_x - 0.5,
