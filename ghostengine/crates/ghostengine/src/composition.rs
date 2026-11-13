@@ -576,7 +576,7 @@ fn compose_transformed_layer(
                     && destination.a == u8::MAX
                 {
                     blend_bilinear_over_opaque(
-                        layer.framebuffer.pixels(),
+                        source_pixels,
                         layer.framebuffer.width(),
                         layer.framebuffer.height(),
                         source_x - 0.5,
