@@ -553,10 +553,18 @@ fn compose_transformed_layer(
     let top = clip.y;
     let bottom = clip.y + clip.height;
 
-    let source_width = layer.framebuffer.width() as f32;
-    let source_height = layer.framebuffer.height() as f32;
-    let source_width_usize = layer.framebuffer.width() as usize;
+    let source_width_u32 = layer.framebuffer.width();
+    let source_height_u32 = layer.framebuffer.height();
+    let source_width = source_width_u32 as f32;
+    let source_height = source_height_u32 as f32;
+    let source_width_usize = source_width_u32 as usize;
     let source_pixels = layer.framebuffer.pixels();
+    // These properties are constant for the entire draw. Keep them out of
+    // the destination-pixel loop rather than repeatedly loading layer state.
+    let filter = layer.filter;
+    let blend_mode = layer.blend_mode;
+    let source_over = blend_mode == BlendMode::SourceOver;
+    let opacity = layer.opacity;
     // An affine inverse advances by a constant source-space delta for every
     // destination pixel in a row. Calculate the first sample once per row,
     // then use additions instead of rebuilding a Vector and multiplying the
@@ -565,7 +573,7 @@ fn compose_transformed_layer(
     let source_step_y = inverse.m21;
     let destination_offset_x = layer.x as f32;
     let destination_offset_y = layer.y as f32;
-    let opacity_factor = f32::from(layer.opacity) / 255.0;
+    let opacity_factor = f32::from(opacity) / 255.0;
     for y in top..bottom {
         let destination_y = y as f32 + 0.5 - destination_offset_y;
         let mut source_x = inverse.m11 * (left as f32 + 0.5 - destination_offset_x)
@@ -590,21 +598,21 @@ fn compose_transformed_layer(
                 && source_y < source_height
             {
                 let destination = &mut destination_row[x as usize];
-                if layer.filter == TextureFilter::Bilinear
-                    && layer.blend_mode == BlendMode::SourceOver
+                if filter == TextureFilter::Bilinear
+                    && source_over
                     && destination.a == u8::MAX
                 {
                     blend_bilinear_over_opaque(
                         source_pixels,
-                        layer.framebuffer.width(),
-                        layer.framebuffer.height(),
+                        source_width_u32,
+                        source_height_u32,
                         source_x - 0.5,
                         source_y - 0.5,
                         opacity_factor,
                         destination,
                     );
                 } else {
-                    let source = match layer.filter {
+                    let source = match filter {
                         TextureFilter::Nearest => {
                             let sample_x = source_x
                                 .floor()
@@ -616,15 +624,15 @@ fn compose_transformed_layer(
                         },
                         TextureFilter::Bilinear => sample_pixels_bilinear(
                             source_pixels,
-                            layer.framebuffer.width(),
-                            layer.framebuffer.height(),
+                            source_width_u32,
+                            source_height_u32,
                             source_x - 0.5,
                             source_y - 0.5,
                         ),
                     };
                     if source.a != 0 {
-                        if layer.blend_mode == BlendMode::SourceOver {
-                            let alpha = ((u16::from(source.a) * u16::from(layer.opacity) + 127)
+                        if source_over {
+                            let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
                                 / 255) as u8;
                             if alpha > 0 {
                                 *destination = Color::rgba(source.r, source.g, source.b, alpha)
@@ -634,8 +642,8 @@ fn compose_transformed_layer(
                             *destination = blend_with_mode(
                                 source,
                                 *destination,
-                                layer.opacity,
-                                layer.blend_mode,
+                                opacity,
+                                blend_mode,
                             );
                         }
                     }
