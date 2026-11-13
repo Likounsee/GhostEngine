@@ -644,21 +644,13 @@ pub fn draw_texture_transformed_clipped(
         // Prepare its source texel coordinates once rather than recalculating
         // and clamping them for every destination pixel.
         let source_y = (local_y - local_top) * source_scale_y;
-        let (nearest_y, bilinear_y) = match filter {
-            TextureFilter::Nearest => (
-                (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize,
-                None,
-            ),
-            TextureFilter::Bilinear => {
-                let sample_y = (source_y - 0.5)
-                    .clamp(0.0, texture.height as f32 - 1.0);
-                let y0 = sample_y.floor() as usize;
-                (
-                    0,
-                    Some((y0, (y0 + 1).min(texture_height - 1), sample_y - y0 as f32)),
-                )
-            }
-        };
+        let nearest_y =
+            (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize;
+        let bilinear_sample_y =
+            (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+        let bilinear_y0 = bilinear_sample_y.floor() as usize;
+        let bilinear_y1 = (bilinear_y0 + 1).min(texture_height - 1);
+        let bilinear_ty = bilinear_sample_y - bilinear_y0 as f32;
         let row_is_inside = local_y >= local_top && local_y < local_bottom;
         let Some(row) = target.row_mut(y) else {
             continue;
@@ -681,14 +673,13 @@ pub fn draw_texture_transformed_clipped(
                         let sample_x = (source_x - 0.5)
                             .clamp(0.0, texture.width as f32 - 1.0);
                         let x0 = sample_x.floor() as usize;
-                        let (y0, y1, ty) = bilinear_y.expect("bilinear row coordinates prepared");
                         let coordinates = BilinearCoordinates {
                             x0,
                             x1: (x0 + 1).min(texture_width - 1),
-                            y0,
-                            y1,
+                            y0: bilinear_y0,
+                            y1: bilinear_y1,
                             tx: sample_x - x0 as f32,
-                            ty,
+                            ty: bilinear_ty,
                         };
                         if texture.fully_opaque {
                             sample_bilinear_opaque_prepared(
