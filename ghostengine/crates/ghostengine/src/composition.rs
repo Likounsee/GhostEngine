@@ -1145,6 +1145,31 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_nearest_source_over_copies_opaque_pixels_directly() {
+        let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().pixels_mut().copy_from_slice(&[
+            Color::rgba(230, 20, 40, 255),
+            Color::rgba(30, 210, 70, 128),
+        ]);
+        layer.set_transform(Transform2D::scale(2.0, 1.0));
+
+        let background = Color::rgb(17, 39, 83);
+        let mut actual = Framebuffer::new(4, 1, background).unwrap();
+        let mut expected = actual.clone();
+        let expected_pixels = [
+            Color::RED,
+            Color::RED,
+            Color::rgba(30, 210, 70, 128).blend_over(background),
+            Color::rgba(30, 210, 70, 128).blend_over(background),
+        ];
+        expected.pixels_mut().copy_from_slice(&expected_pixels);
+
+        compose_layers(&mut actual, &[layer]);
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
     fn transformed_layer_supports_bilinear_filtering() {
         let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
         layer.framebuffer_mut().set_pixel(0, 0, Color::RED);
