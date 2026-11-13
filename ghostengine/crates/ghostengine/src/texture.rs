@@ -631,6 +631,8 @@ pub fn draw_texture_transformed_clipped(
     let mut visible = false;
     let source_scale_x = texture.width as f32 / destination.width as f32;
     let source_scale_y = texture.height as f32 / destination.height as f32;
+    let texture_width = texture.width as usize;
+    let texture_height = texture.height as usize;
     for y in first_y..end_y {
         let local_y = inverse.m21 * (first_x as f32 + 0.5)
             + inverse.m22 * (y as f32 + 0.5)
@@ -654,8 +656,6 @@ pub fn draw_texture_transformed_clipped(
                 // dimensions. Sample directly here to avoid repeating generic
                 // dimension checks and to use the cheaper opaque bilinear kernel
                 // whenever the texture's construction-time alpha summary allows it.
-                let texture_width = texture.width as usize;
-                let texture_height = texture.height as usize;
                 let color = match filter {
                     TextureFilter::Nearest => {
                         let sample_x = source_x.floor().clamp(0.0, texture.width as f32 - 1.0)
