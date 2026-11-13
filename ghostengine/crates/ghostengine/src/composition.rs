@@ -604,11 +604,15 @@ fn compose_transformed_layer(
                     if source.a != 0 {
                         let destination = &mut destination_row[x as usize];
                         if source_over {
-                            let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
-                                / 255) as u8;
-                            if alpha != 0 {
-                                *destination = Color::rgba(source.r, source.g, source.b, alpha)
-                                    .blend_over(*destination);
+                            if opacity == u8::MAX && source.a == u8::MAX {
+                                *destination = source;
+                            } else {
+                                let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
+                                    / 255) as u8;
+                                if alpha != 0 {
+                                    *destination = Color::rgba(source.r, source.g, source.b, alpha)
+                                        .blend_over(*destination);
+                                }
                             }
                         } else {
                             *destination = blend_with_mode(
