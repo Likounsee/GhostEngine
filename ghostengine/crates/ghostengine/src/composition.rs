@@ -58,7 +58,19 @@ impl DamageRegion {
 
         let mut index = 0;
         while index < self.rectangles.len() {
-            if merged.intersection(self.rectangles[index]).is_some() {
+            let current = self.rectangles[index];
+            let overlaps = merged.intersection(current).is_some();
+            let shares_full_horizontal_edge = merged.y == current.y
+                && merged.height == current.height
+                && (u64::from(merged.x) + u64::from(merged.width) == u64::from(current.x)
+                    || u64::from(current.x) + u64::from(current.width)
+                        == u64::from(merged.x));
+            let shares_full_vertical_edge = merged.x == current.x
+                && merged.width == current.width
+                && (u64::from(merged.y) + u64::from(merged.height) == u64::from(current.y)
+                    || u64::from(current.y) + u64::from(current.height)
+                        == u64::from(merged.y));
+            if overlaps || shares_full_horizontal_edge || shares_full_vertical_edge {
                 let current = self.rectangles.swap_remove(index);
                 let left = merged.x.min(current.x);
                 let top = merged.y.min(current.y);
@@ -752,6 +764,28 @@ mod tests {
         assert_eq!(damage.area(), 12);
         assert!(damage.covers_entire_target());
         assert_eq!(damage.bounding_rect(), Some(Rect::new(0, 0, 4, 3)));
+    }
+
+    #[test]
+    fn damage_region_merges_edge_adjacent_rectangles_without_expanding_area() {
+        let mut damage = DamageRegion::new(8, 6);
+        damage.add(Rect::new(0, 0, 2, 2));
+        damage.add(Rect::new(2, 0, 3, 2));
+        damage.add(Rect::new(0, 2, 5, 1));
+
+        assert_eq!(damage.rectangles(), &[Rect::new(0, 0, 5, 3)]);
+        assert_eq!(damage.area(), 15);
+    }
+
+    #[test]
+    fn damage_region_does_not_merge_corner_touching_or_partial_edges() {
+        let mut damage = DamageRegion::new(8, 8);
+        damage.add(Rect::new(0, 0, 2, 2));
+        damage.add(Rect::new(2, 2, 2, 2));
+        damage.add(Rect::new(2, 0, 2, 1));
+
+        assert_eq!(damage.rectangles().len(), 3);
+        assert_eq!(damage.area(), 9);
     }
 
     #[test]
