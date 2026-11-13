@@ -119,6 +119,29 @@ pub struct RenderStats {
     pub commands_skipped: usize,
 }
 
+/// Reusable replay context for applications that render display lists every frame.
+///
+/// The context retains texture-sampling workspace between calls. Keep one
+/// instance alongside an application's render loop and use it to replay
+/// successive display lists without rebuilding those temporary allocations.
+#[derive(Debug, Default)]
+pub struct DisplayListRenderer {
+    texture_scratch: TextureDrawScratch,
+}
+
+impl DisplayListRenderer {
+    /// Creates a replay context with empty reusable workspace.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Replays a display list into a framebuffer, retaining temporary storage.
+    pub fn replay(&mut self, list: &DisplayList, target: &mut Framebuffer) -> RenderStats {
+        list.replay_with_scratch(target, &mut self.texture_scratch)
+    }
+}
+
 /// A reusable, ordered list of CPU drawing operations.
 ///
 /// The list owns no framebuffer or platform resources. Recording and replay
@@ -1153,6 +1176,40 @@ mod tests {
             assert_eq!(actual_stats.commands_skipped, 0);
             assert_eq!(actual.pixels(), expected.pixels());
         }
+    }
+
+    #[test]
+    fn reusable_renderer_replays_successive_frames_consistently() {
+        let texture = crate::Texture::new(
+            2,
+            2,
+            vec![
+                Color::RED,
+                Color::rgba(0, 255, 0, 128),
+                Color::BLUE,
+                Color::WHITE,
+            ],
+        )
+        .unwrap();
+        let mut list = DisplayList::new();
+        list.draw_texture(
+            texture,
+            Rect::new(0, 0, 8, 8),
+            crate::TextureFilter::Bilinear,
+        );
+
+        let mut renderer = super::DisplayListRenderer::new();
+        let mut first = Framebuffer::new(10, 10, Color::BLACK).unwrap();
+        let first_stats = renderer.replay(&list, &mut first);
+        let first_pixels = first.pixels().to_vec();
+
+        let mut second = Framebuffer::new(10, 10, Color::BLACK).unwrap();
+        let second_stats = renderer.replay(&list, &mut second);
+
+        assert_eq!(first_stats, second_stats);
+        assert_eq!(first_pixels, second.pixels());
+        assert_eq!(first_stats.commands_submitted, 1);
+        assert_eq!(first_stats.commands_executed, 1);
     }
 
     #[test]
