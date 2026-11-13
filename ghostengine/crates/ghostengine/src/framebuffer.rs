@@ -115,7 +115,18 @@ impl Framebuffer {
             return;
         };
         let left = clipped.x as usize;
-        let right = left + clipped.width as usize;
+        let clipped_width = clipped.width as usize;
+
+        // A full-width rectangle is one contiguous region in row-major storage.
+        // Fill it in a single slice operation instead of visiting each row.
+        if left == 0 && clipped_width == self.width as usize {
+            let start = clipped.y as usize * self.width as usize;
+            let end = start + clipped.height as usize * self.width as usize;
+            self.pixels[start..end].fill(color);
+            return;
+        }
+
+        let right = left + clipped_width;
         for y in clipped.y..clipped.y + clipped.height {
             if let Some(row) = self.row_mut(y) {
                 row[left..right].fill(color);
