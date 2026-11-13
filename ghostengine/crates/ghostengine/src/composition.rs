@@ -92,6 +92,50 @@ impl DamageRegion {
         self.rectangles.is_empty()
     }
 
+    /// Returns the smallest rectangle enclosing all damaged areas.
+    ///
+    /// The returned rectangle may include undamaged pixels between disjoint
+    /// regions; use rectangles() when exact damage coverage is required.
+    #[must_use]
+    pub fn bounding_rect(&self) -> Option<Rect> {
+        let first = *self.rectangles.first()?;
+        let mut left = first.x;
+        let mut top = first.y;
+        let mut right = u64::from(first.x) + u64::from(first.width);
+        let mut bottom = u64::from(first.y) + u64::from(first.height);
+
+        for rectangle in self.rectangles.iter().skip(1) {
+            left = left.min(rectangle.x);
+            top = top.min(rectangle.y);
+            right = right.max(u64::from(rectangle.x) + u64::from(rectangle.width));
+            bottom = bottom.max(u64::from(rectangle.y) + u64::from(rectangle.height));
+        }
+
+        Some(Rect::new(
+            left,
+            top,
+            (right - u64::from(left)) as u32,
+            (bottom - u64::from(top)) as u32,
+        ))
+    }
+
+    /// Returns the total number of damaged pixels.
+    ///
+    /// Damage rectangles are disjoint, so each pixel is counted once.
+    #[must_use]
+    pub fn area(&self) -> u64 {
+        self.rectangles
+            .iter()
+            .map(|rectangle| u64::from(rectangle.width) * u64::from(rectangle.height))
+            .sum()
+    }
+
+    /// Returns true when the accumulated damage covers the entire framebuffer.
+    #[must_use]
+    pub fn covers_entire_target(&self) -> bool {
+        self.area() == u64::from(self.width) * u64::from(self.height)
+    }
+
     /// Removes all accumulated damage rectangles.
     pub fn clear(&mut self) {
         self.rectangles.clear();
@@ -598,6 +642,37 @@ mod tests {
         DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn damage_region_reports_bounds_area_and_full_coverage() {
+        let mut damage = DamageRegion::new(10, 8);
+        assert_eq!(damage.bounding_rect(), None);
+        assert_eq!(damage.area(), 0);
+        assert!(!damage.covers_entire_target());
+
+        damage.add(Rect::new(1, 1, 2, 3));
+        damage.add(Rect::new(6, 4, 3, 2));
+
+        assert_eq!(damage.bounding_rect(), Some(Rect::new(1, 1, 8, 5)));
+        assert_eq!(damage.area(), 12);
+        assert!(!damage.covers_entire_target());
+
+        damage.clear();
+        damage.add(Rect::new(0, 0, 10, 8));
+        assert_eq!(damage.area(), 80);
+        assert!(damage.covers_entire_target());
+    }
+
+    #[test]
+    fn damage_region_full_coverage_is_correct_after_overlapping_additions() {
+        let mut damage = DamageRegion::new(4, 3);
+        damage.add(Rect::new(0, 0, 3, 3));
+        damage.add(Rect::new(2, 0, 2, 3));
+
+        assert_eq!(damage.area(), 12);
+        assert!(damage.covers_entire_target());
+        assert_eq!(damage.bounding_rect(), Some(Rect::new(0, 0, 4, 3)));
+    }
 
     #[test]
     fn damage_region_reuses_reserved_storage_after_clear() {
