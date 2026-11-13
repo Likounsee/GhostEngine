@@ -311,6 +311,16 @@ fn compose_layers_clipped(target: &mut Framebuffer, layers: &[Layer], clip: Opti
             let destination =
                 &mut destination_row[destination_left as usize..destination_right as usize];
 
+            // Fully opaque source-over scanlines need no per-pixel blending.
+            // Check once per row, then copy the contiguous span in one operation.
+            if layer.blend_mode == BlendMode::SourceOver
+                && layer.opacity == u8::MAX
+                && source_row.iter().all(|pixel| pixel.a == u8::MAX)
+            {
+                destination.copy_from_slice(source_row);
+                continue;
+            }
+
             for (source, destination) in source_row.iter().zip(destination) {
                 if source.a == 0 {
                     continue;
@@ -984,5 +994,43 @@ mod tests {
         compose_layers(&mut target, &[layer]);
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn opaque_source_over_rows_preserve_mixed_alpha_semantics() {
+        let mut layer = Layer::new(3, 2, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::rgba(200, 10, 20, 128),
+            Color::TRANSPARENT,
+            Color::WHITE,
+        ]);
+        let background = Color::rgb(12, 34, 56);
+        let mut target = Framebuffer::new(3, 2, background).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        assert_eq!(&target.pixels()[..3], &[Color::RED, Color::GREEN, Color::BLUE]);
+        assert_eq!(
+            target.get_pixel(0, 1),
+            Some(Color::rgba(200, 10, 20, 128).blend_over(background))
+        );
+        assert_eq!(target.get_pixel(1, 1), Some(background));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::WHITE));
+    }
+
+    #[test]
+    fn opaque_source_over_row_copy_is_disabled_for_partial_opacity() {
+        let mut layer = Layer::new(2, 1, Color::WHITE).unwrap();
+        layer.set_opacity(128);
+        let background = Color::rgb(20, 40, 60);
+        let mut target = Framebuffer::new(2, 1, background).unwrap();
+
+        compose_layers(&mut target, &[layer]);
+
+        let expected = Color::rgba(255, 255, 255, 128).blend_over(background);
+        assert!(target.pixels().iter().all(|pixel| *pixel == expected));
     }
 }
