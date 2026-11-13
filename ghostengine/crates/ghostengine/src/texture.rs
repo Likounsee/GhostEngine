@@ -1024,6 +1024,92 @@ mod tests {
     }
 
     #[test]
+    fn incremental_affine_sampling_matches_direct_inverse_mapping() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 5, 4);
+        let clip = Rect::new(0, 0, 12, 10);
+        let transforms = [
+            Transform2D::rotation(0.37).then(Transform2D::translation(4.0, 2.0)),
+            Transform2D::scale(1.7, 0.8).then(Transform2D::translation(2.0, 1.0)),
+            Transform2D::new(1.0, 0.25, -0.2, 1.0, 3.0, 2.0),
+        ];
+
+        for transform in transforms {
+            for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+                let mut actual = Framebuffer::new(12, 10, Color::rgb(12, 24, 36)).unwrap();
+                let mut expected = actual.clone();
+                assert!(draw_texture_transformed_clipped(
+                    &mut actual,
+                    &texture,
+                    destination,
+                    transform,
+                    filter,
+                    clip,
+                ));
+
+                let inverse = transform.inverse().unwrap();
+                for y in 0..expected.height() {
+                    for x in 0..expected.width() {
+                        let local = inverse.transform_point(crate::Vector::new(
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                        ));
+                        if local.x < destination.x as f32
+                            || local.x >= (destination.x + destination.width) as f32
+                            || local.y < destination.y as f32
+                            || local.y >= (destination.y + destination.height) as f32
+                        {
+                            continue;
+                        }
+                        let source_x = (local.x - destination.x as f32)
+                            * texture.width as f32
+                            / destination.width as f32;
+                        let source_y = (local.y - destination.y as f32)
+                            * texture.height as f32
+                            / destination.height as f32;
+                        let color = match filter {
+                            TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
+                            TextureFilter::Bilinear => {
+                                texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
+                            }
+                        };
+                        if color.a == 255 {
+                            expected.set_pixel(x, y, color);
+                        } else if color.a > 0 {
+                            let background = expected.get_pixel(x, y).unwrap();
+                            expected.set_pixel(x, y, color.blend_over(background));
+                        }
+                    }
+                }
+
+                for (index, (actual, expected)) in
+                    actual.pixels().iter().zip(expected.pixels()).enumerate()
+                {
+                    assert!(
+                        actual.r.abs_diff(expected.r) <= 1
+                            && actual.g.abs_diff(expected.g) <= 1
+                            && actual.b.abs_diff(expected.b) <= 1
+                            && actual.a == expected.a,
+                        "transform: {transform:?}, filter: {filter:?}, pixel {index}: actual={actual:?}, expected={expected:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn affine_texture_transform_supports_rotation_and_sampling() {
         let texture = two_color_texture();
         let transform = crate::Transform2D::rotation(std::f32::consts::FRAC_PI_2)
