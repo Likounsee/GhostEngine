@@ -464,6 +464,12 @@ fn compose_layer_clipped(
     let source_top = (destination_top - i64::from(layer.y)) as usize;
     let source_bottom = (destination_bottom - i64::from(layer.y)) as usize;
 
+    // These layer-wide properties do not change between scanlines. Hoist
+    // them out of both the row classifier and the per-pixel composition loop.
+    let source_over = layer.blend_mode == BlendMode::SourceOver;
+    let full_opacity = layer.opacity == u8::MAX;
+    let can_copy_opaque = source_over && full_opacity;
+
     for source_y in source_top..source_bottom {
         let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
         let source_start = source_y * source_width + source_left;
@@ -477,8 +483,6 @@ fn compose_layer_clipped(
 
         // Classify the row in one pass. This avoids scanning every pixel
         // twice for transparent and opaque fast paths.
-        let can_copy_opaque = layer.blend_mode == BlendMode::SourceOver
-            && layer.opacity == u8::MAX;
         let mut has_visible_pixel = false;
         let mut fully_opaque = can_copy_opaque;
         for pixel in source_row {
@@ -498,28 +502,37 @@ fn compose_layer_clipped(
             continue;
         }
 
-        for (source, destination) in source_row.iter().zip(destination) {
-            if source.a == 0 {
-                continue;
-            }
-            if layer.blend_mode == BlendMode::SourceOver {
-                if layer.opacity == u8::MAX && source.a == u8::MAX {
-                    *destination = *source;
-                    continue;
+        if source_over {
+            if full_opacity {
+                for (source, destination) in source_row.iter().zip(destination) {
+                    if source.a == 0 {
+                        continue;
+                    }
+                    if source.a == u8::MAX {
+                        *destination = *source;
+                    } else {
+                        *destination = source.blend_over(*destination);
+                    }
                 }
-                let alpha = if layer.opacity == u8::MAX {
-                    source.a
-                } else {
-                    ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
-                };
-                if alpha == 0 {
-                    continue;
-                }
-                let source = Color::rgba(source.r, source.g, source.b, alpha);
-                *destination = source.blend_over(*destination);
             } else {
-                *destination =
-                    blend_with_mode(*source, *destination, layer.opacity, layer.blend_mode);
+                for (source, destination) in source_row.iter().zip(destination) {
+                    if source.a == 0 {
+                        continue;
+                    }
+                    let alpha =
+                        ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8;
+                    if alpha != 0 {
+                        let source = Color::rgba(source.r, source.g, source.b, alpha);
+                        *destination = source.blend_over(*destination);
+                    }
+                }
+            }
+        } else {
+            for (source, destination) in source_row.iter().zip(destination) {
+                if source.a != 0 {
+                    *destination =
+                        blend_with_mode(*source, *destination, layer.opacity, layer.blend_mode);
+                }
             }
         }
     }
