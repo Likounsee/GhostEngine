@@ -928,6 +928,45 @@ mod tests {
     }
 
     #[test]
+    fn opaque_one_to_one_nearest_copy_respects_clipped_source_offsets() {
+        let texture = Texture::new(
+            4,
+            3,
+            (0..12)
+                .map(|index| {
+                    Color::rgb(
+                        (index * 17) as u8,
+                        (index * 29) as u8,
+                        (index * 41) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let background = Color::rgb(3, 5, 7);
+        let mut target = Framebuffer::new(6, 5, background).unwrap();
+
+        draw_texture_clipped(
+            &mut target,
+            &texture,
+            Rect::new(1, 1, 4, 3),
+            TextureFilter::Nearest,
+            Rect::new(2, 0, 2, 4),
+        );
+
+        for y in 0..5 {
+            for x in 0..6 {
+                let expected = if (2..4).contains(&x) && (1..4).contains(&y) {
+                    texture.get_pixel(x - 1, y - 1).unwrap()
+                } else {
+                    background
+                };
+                assert_eq!(target.get_pixel(x, y), Some(expected));
+            }
+        }
+    }
+
+    #[test]
     fn bilinear_filter_interpolates_between_texels() {
         let texture = two_color_texture();
         let mut target = Framebuffer::new(3, 1, Color::BLACK).unwrap();
