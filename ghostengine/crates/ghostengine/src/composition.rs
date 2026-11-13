@@ -311,14 +311,6 @@ pub fn compose_layers_in_damage_regions(
     }
 
     let target_bounds = Rect::new(0, 0, target.width(), target.height());
-    let rectangles = damage
-        .rectangles()
-        .iter()
-        .filter_map(|rectangle| rectangle.intersection(target_bounds))
-        .collect::<Vec<_>>();
-    if rectangles.is_empty() {
-        return;
-    }
 
     // Process one layer at a time. In particular, prepare transformed geometry
     // once per layer instead of recalculating its inverse and transformed
@@ -337,8 +329,10 @@ pub fn compose_layers_in_damage_regions(
             continue;
         }
 
-        for rectangle in &rectangles {
-            compose_layer_clipped(target, layer, *rectangle, transformed.as_ref());
+        for rectangle in damage.rectangles() {
+            if let Some(clip) = rectangle.intersection(target_bounds) {
+                compose_layer_clipped(target, layer, clip, transformed.as_ref());
+            }
         }
     }
 }
@@ -1188,6 +1182,65 @@ mod tests {
         );
         assert_eq!(target.get_pixel(1, 1), Some(background));
         assert_eq!(target.get_pixel(2, 1), Some(Color::WHITE));
+    }
+
+    #[test]
+    fn transformed_damage_composition_matches_full_composition_inside_damage() {
+        let mut background = Layer::new(6, 5, Color::rgba(20, 40, 60, 255)).unwrap();
+        background.set_position(-1, 0);
+
+        let mut transformed = Layer::new(3, 2, Color::TRANSPARENT).unwrap();
+        transformed.framebuffer_mut().pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::rgba(20, 220, 80, 180),
+            Color::BLUE,
+            Color::WHITE,
+            Color::rgba(240, 30, 20, 128),
+            Color::TRANSPARENT,
+        ]);
+        transformed.set_position(2, 1);
+        transformed.set_transform(
+            Transform2D::translation(0.25, 0.5)
+                .then(Transform2D::rotation(0.17))
+                .then(Transform2D::scale(1.4, 1.2)),
+        );
+        transformed.set_filter(TextureFilter::Bilinear);
+        transformed.set_opacity(213);
+
+        let mut foreground = Layer::new(2, 3, Color::rgba(40, 80, 160, 150)).unwrap();
+        foreground.set_position(3, 1);
+        foreground.set_blend_mode(BlendMode::Screen);
+        let layers = [background, transformed, foreground];
+
+        let mut damage = DamageRegion::new(8, 6);
+        damage.add(Rect::new(0, 0, 3, 2));
+        damage.add(Rect::new(5, 1, 3, 4));
+        damage.add(Rect::new(2, 4, 3, 2));
+
+        let initial = Color::rgb(9, 17, 25);
+        let mut actual = Framebuffer::new(8, 6, initial).unwrap();
+        let mut expected = actual.clone();
+        compose_layers(&mut expected, &layers);
+        compose_layers_in_damage_regions(&mut actual, &layers, &damage);
+
+        for rectangle in damage.rectangles() {
+            for y in rectangle.y..rectangle.y + rectangle.height {
+                for x in rectangle.x..rectangle.x + rectangle.width {
+                    assert_eq!(
+                        actual.get_pixel(x, y),
+                        expected.get_pixel(x, y),
+                        "mismatch at ({x}, {y})"
+                    );
+                }
+            }
+        }
+        for y in 0..actual.height() {
+            for x in 0..actual.width() {
+                if !damage.rectangles().iter().any(|rect| rect.contains(x, y)) {
+                    assert_eq!(actual.get_pixel(x, y), Some(initial));
+                }
+            }
+        }
     }
 
     #[test]
