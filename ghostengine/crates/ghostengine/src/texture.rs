@@ -1114,4 +1114,101 @@ mod tests {
         assert_eq!(texture.height(), 2);
         assert!(texture.pixels().iter().all(|pixel| *pixel == Color::GREEN));
     }
+    #[test]
+    fn reusable_texture_scratch_matches_standard_draw_for_both_filters() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 6, 6);
+        let clip = Rect::new(2, 0, 5, 7);
+        let mut scratch = TextureDrawScratch::default();
+
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut expected = Framebuffer::new(9, 8, Color::rgb(12, 24, 36)).unwrap();
+            let mut actual = expected.clone();
+            draw_texture_clipped(&mut expected, &texture, destination, filter, clip);
+            draw_texture_clipped_with_scratch(
+                &mut actual,
+                &texture,
+                destination,
+                filter,
+                clip,
+                &mut scratch,
+            );
+            assert_eq!(actual.pixels(), expected.pixels(), "filter: {filter:?}");
+        }
+    }
+
+    #[test]
+    fn reusable_texture_scratch_retains_allocations_between_draws() {
+        let texture = Texture::new(
+            2,
+            2,
+            vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
+        )
+        .unwrap();
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let mut scratch = TextureDrawScratch::default();
+        let clip = Rect::new(0, 0, 8, 8);
+        let destination = Rect::new(0, 0, 8, 8);
+
+        draw_texture_clipped_with_scratch(
+            &mut target,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+            &mut scratch,
+        );
+        let nearest_capacity = scratch.nearest_columns.capacity();
+        let nearest_ptr = scratch.nearest_columns.as_ptr();
+
+        draw_texture_clipped_with_scratch(
+            &mut target,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+            &mut scratch,
+        );
+        assert_eq!(scratch.nearest_columns.capacity(), nearest_capacity);
+        assert_eq!(scratch.nearest_columns.as_ptr(), nearest_ptr);
+
+        draw_texture_clipped_with_scratch(
+            &mut target,
+            &texture,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        let samples_capacity = scratch.horizontal_samples.capacity();
+        let samples_ptr = scratch.horizontal_samples.as_ptr();
+        let cache_capacity = scratch.horizontal_cache.capacity();
+        let cache_ptr = scratch.horizontal_cache.as_ptr();
+
+        draw_texture_clipped_with_scratch(
+            &mut target,
+            &texture,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        assert_eq!(scratch.horizontal_samples.capacity(), samples_capacity);
+        assert_eq!(scratch.horizontal_samples.as_ptr(), samples_ptr);
+        assert_eq!(scratch.horizontal_cache.capacity(), cache_capacity);
+        assert_eq!(scratch.horizontal_cache.as_ptr(), cache_ptr);
+    }
+
 }
