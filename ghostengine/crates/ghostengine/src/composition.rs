@@ -597,24 +597,44 @@ fn compose_transformed_layer(
         // dedicated loop that does not calculate or validate source Y per pixel.
         if filter == TextureFilter::Nearest && source_step_y == 0.0 {
             let source_row_offset = source_y.floor() as usize * source_width_usize;
-            for x in left..right {
-                if source_x >= 0.0 && source_x < source_width {
-                    let source_column = source_x.floor() as usize;
-                    let source = source_pixels[source_row_offset + source_column];
-                    if source.a != 0 {
-                        let destination = &mut destination_row[x as usize];
-                        if source_over {
-                            if opacity == u8::MAX && source.a == u8::MAX {
-                                *destination = source;
-                            } else {
-                                let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
-                                    / 255) as u8;
-                                if alpha != 0 {
-                                    *destination = Color::rgba(source.r, source.g, source.b, alpha)
-                                        .blend_over(*destination);
-                                }
+            if source_over && opacity == u8::MAX {
+                for x in left..right {
+                    if source_x >= 0.0 && source_x < source_width {
+                        let source_column = source_x.floor() as usize;
+                        let source = source_pixels[source_row_offset + source_column];
+                        if source.a == u8::MAX {
+                            destination_row[x as usize] = source;
+                        } else if source.a != 0 {
+                            let destination = &mut destination_row[x as usize];
+                            *destination = source.blend_over(*destination);
+                        }
+                    }
+                    source_x += source_step_x;
+                }
+            } else if source_over {
+                for x in left..right {
+                    if source_x >= 0.0 && source_x < source_width {
+                        let source_column = source_x.floor() as usize;
+                        let source = source_pixels[source_row_offset + source_column];
+                        if source.a != 0 {
+                            let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
+                                / 255) as u8;
+                            if alpha != 0 {
+                                let destination = &mut destination_row[x as usize];
+                                *destination = Color::rgba(source.r, source.g, source.b, alpha)
+                                    .blend_over(*destination);
                             }
-                        } else {
+                        }
+                    }
+                    source_x += source_step_x;
+                }
+            } else {
+                for x in left..right {
+                    if source_x >= 0.0 && source_x < source_width {
+                        let source_column = source_x.floor() as usize;
+                        let source = source_pixels[source_row_offset + source_column];
+                        if source.a != 0 {
+                            let destination = &mut destination_row[x as usize];
                             *destination = blend_with_mode(
                                 source,
                                 *destination,
@@ -623,8 +643,8 @@ fn compose_transformed_layer(
                             );
                         }
                     }
+                    source_x += source_step_x;
                 }
-                source_x += source_step_x;
             }
             continue;
         }
