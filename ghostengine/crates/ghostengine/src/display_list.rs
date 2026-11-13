@@ -727,15 +727,22 @@ impl DisplayList {
                     clip,
                 } => {
                     if *transform == Transform2D::IDENTITY {
-                        draw_texture_clipped_with_scratch(
-                            target,
-                            texture,
-                            *destination,
-                            *filter,
-                            *clip,
-                            scratch,
-                        );
-                        true
+                        let target_bounds = Rect::new(0, 0, target.width(), target.height());
+                        let visible = destination
+                            .intersection(*clip)
+                            .and_then(|rect| rect.intersection(target_bounds))
+                            .is_some_and(|rect| rect.width > 0 && rect.height > 0);
+                        if visible {
+                            draw_texture_clipped_with_scratch(
+                                target,
+                                texture,
+                                *destination,
+                                *filter,
+                                *clip,
+                                scratch,
+                            );
+                        }
+                        visible
                     } else {
                         draw_texture_transformed_clipped(
                             target,
