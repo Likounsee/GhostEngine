@@ -133,7 +133,9 @@ impl DamageRegion {
     /// Returns true when the accumulated damage covers the entire framebuffer.
     #[must_use]
     pub fn covers_entire_target(&self) -> bool {
-        self.area() == u64::from(self.width) * u64::from(self.height)
+        self.width != 0
+            && self.height != 0
+            && self.area() == u64::from(self.width) * u64::from(self.height)
     }
 
     /// Removes all accumulated damage rectangles.
@@ -649,6 +651,7 @@ mod tests {
         assert_eq!(damage.bounding_rect(), None);
         assert_eq!(damage.area(), 0);
         assert!(!damage.covers_entire_target());
+        assert!(!DamageRegion::new(0, 0).covers_entire_target());
 
         damage.add(Rect::new(1, 1, 2, 3));
         damage.add(Rect::new(6, 4, 3, 2));
