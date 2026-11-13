@@ -15,7 +15,10 @@ use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
     prepare_bidi_shaped_text_box, prepare_shaped_text_box, FontFace, FontFamily, TextLayoutOptions,
 };
-use crate::texture::{draw_texture_transformed_clipped, Texture, TextureFilter};
+use crate::texture::{
+    draw_texture_clipped_with_scratch, draw_texture_transformed_clipped, Texture,
+    TextureDrawScratch, TextureFilter,
+};
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
 
@@ -588,7 +591,26 @@ impl DisplayList {
     }
 
     /// Executes commands in submission order and returns basic replay counters.
+    ///
+    /// A temporary texture workspace is created for this replay. Applications
+    /// rendering many frames should prefer `replay_with_scratch` to retain its
+    /// allocations between frames.
     pub fn replay(&self, target: &mut Framebuffer) -> RenderStats {
+        let mut scratch = TextureDrawScratch::default();
+        self.replay_with_scratch(target, &mut scratch)
+    }
+
+    /// Replays commands while reusing caller-owned texture sampling storage.
+    ///
+    /// The workspace can be shared by successive replays targeting different
+    /// framebuffers. This avoids repeatedly allocating the scanline sampling
+    /// buffers used by identity-transform texture commands. Transformed texture
+    /// commands continue to use the affine sampling path.
+    pub fn replay_with_scratch(
+        &self,
+        target: &mut Framebuffer,
+        scratch: &mut TextureDrawScratch,
+    ) -> RenderStats {
         let mut stats = RenderStats {
             commands_submitted: self.commands.len(),
             ..RenderStats::default()
@@ -703,14 +725,28 @@ impl DisplayList {
                     transform,
                     filter,
                     clip,
-                } => draw_texture_transformed_clipped(
-                    target,
-                    texture,
-                    *destination,
-                    *transform,
-                    *filter,
-                    *clip,
-                ),
+                } => {
+                    if *transform == Transform2D::IDENTITY {
+                        draw_texture_clipped_with_scratch(
+                            target,
+                            texture,
+                            *destination,
+                            *filter,
+                            *clip,
+                            scratch,
+                        );
+                        true
+                    } else {
+                        draw_texture_transformed_clipped(
+                            target,
+                            texture,
+                            *destination,
+                            *transform,
+                            *filter,
+                            *clip,
+                        )
+                    }
+                },
                 Command::LinearGradient {
                     rect,
                     start,
@@ -1047,6 +1083,47 @@ mod tests {
             Err(crate::StrokeError::InvalidWidth),
         );
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn replay_with_reusable_scratch_matches_standard_replay() {
+        let texture = crate::Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(1, 0, 6, 5));
+        list.draw_texture(
+            texture.clone(),
+            Rect::new(0, 0, 7, 5),
+            crate::TextureFilter::Bilinear,
+        );
+        list.draw_texture(
+            texture,
+            Rect::new(2, 1, 4, 3),
+            crate::TextureFilter::Nearest,
+        );
+
+        let mut expected = Framebuffer::new(8, 6, Color::rgb(12, 24, 36)).unwrap();
+        let mut actual = expected.clone();
+        let expected_stats = list.replay(&mut expected);
+        let mut scratch = crate::TextureDrawScratch::default();
+
+        for _ in 0..3 {
+            actual.clear(Color::rgb(12, 24, 36));
+            let actual_stats = list.replay_with_scratch(&mut actual, &mut scratch);
+            assert_eq!(actual_stats, expected_stats);
+            assert_eq!(actual.pixels(), expected.pixels());
+        }
     }
 
     #[test]
