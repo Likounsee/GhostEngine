@@ -650,10 +650,48 @@ pub fn draw_texture_transformed_clipped(
                 visible = true;
                 let source_x = (local_x - local_left) * source_scale_x;
                 let source_y = (local_y - local_top) * source_scale_y;
+                // The transformed path already has validated non-zero texture
+                // dimensions. Sample directly here to avoid repeating generic
+                // dimension checks and to use the cheaper opaque bilinear kernel
+                // whenever the texture's construction-time alpha summary allows it.
+                let texture_width = texture.width as usize;
+                let texture_height = texture.height as usize;
                 let color = match filter {
-                    TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
+                    TextureFilter::Nearest => {
+                        let sample_x = source_x.floor().clamp(0.0, texture.width as f32 - 1.0)
+                            as usize;
+                        let sample_y = source_y.floor().clamp(0.0, texture.height as f32 - 1.0)
+                            as usize;
+                        texture.pixels[sample_y * texture_width + sample_x]
+                    }
                     TextureFilter::Bilinear => {
-                        texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
+                        let sample_x = (source_x - 0.5)
+                            .clamp(0.0, texture.width as f32 - 1.0);
+                        let sample_y = (source_y - 0.5)
+                            .clamp(0.0, texture.height as f32 - 1.0);
+                        let x0 = sample_x.floor() as usize;
+                        let y0 = sample_y.floor() as usize;
+                        let coordinates = BilinearCoordinates {
+                            x0,
+                            x1: (x0 + 1).min(texture_width - 1),
+                            y0,
+                            y1: (y0 + 1).min(texture_height - 1),
+                            tx: sample_x - x0 as f32,
+                            ty: sample_y - y0 as f32,
+                        };
+                        if texture.fully_opaque {
+                            sample_bilinear_opaque_prepared(
+                                &texture.pixels,
+                                texture_width,
+                                coordinates,
+                            )
+                        } else {
+                            sample_bilinear_prepared(
+                                &texture.pixels,
+                                texture_width,
+                                coordinates,
+                            )
+                        }
                     }
                 };
                 if texture.fully_opaque || color.a == 255 {
