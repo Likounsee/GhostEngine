@@ -1190,6 +1190,42 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_nearest_source_over_matches_reference_for_all_opacities() {
+        let source_pixels = [
+            Color::rgba(230, 20, 40, 0),
+            Color::rgba(30, 210, 70, 1),
+            Color::rgba(40, 80, 220, 128),
+            Color::rgba(200, 170, 30, 255),
+        ];
+        let background = Color::rgba(17, 39, 83, 255);
+
+        for opacity in [1_u8, 64, 127, 254, 255] {
+            let mut layer = Layer::new(4, 1, Color::TRANSPARENT).unwrap();
+            layer
+                .framebuffer_mut()
+                .pixels_mut()
+                .copy_from_slice(&source_pixels);
+            layer.set_transform(Transform2D::scale(2.0, 1.0));
+            layer.set_opacity(opacity);
+
+            let mut actual = Framebuffer::new(8, 1, background).unwrap();
+            let mut expected = actual.clone();
+            for (source_x, source) in source_pixels.iter().copied().enumerate() {
+                let alpha =
+                    ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                let blended = Color::rgba(source.r, source.g, source.b, alpha)
+                    .blend_over(background);
+                expected.set_pixel((source_x * 2) as u32, 0, blended);
+                expected.set_pixel((source_x * 2 + 1) as u32, 0, blended);
+            }
+
+            compose_layers(&mut actual, &[layer]);
+
+            assert_eq!(actual.pixels(), expected.pixels(), "opacity={opacity}");
+        }
+    }
+
+    #[test]
     fn transformed_layer_supports_bilinear_filtering() {
         let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
         layer.framebuffer_mut().set_pixel(0, 0, Color::RED);
