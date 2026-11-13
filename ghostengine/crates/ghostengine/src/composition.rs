@@ -298,6 +298,18 @@ pub fn compose_layers_in_damage_regions(
     layers: &[Layer],
     damage: &DamageRegion,
 ) {
+    if damage.is_empty() {
+        return;
+    }
+
+    // A fragmented damage set can still cover every target pixel. In that
+    // case, composing once avoids repeating layer traversal and clipping for
+    // each rectangle while producing the same full-frame result.
+    if damage.covers_entire_target() {
+        compose_layers(target, layers);
+        return;
+    }
+
     for rectangle in damage.rectangles() {
         compose_layers_clipped(target, layers, Some(*rectangle));
     }
