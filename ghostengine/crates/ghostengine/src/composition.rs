@@ -1236,7 +1236,7 @@ mod tests {
         }
         for y in 0..actual.height() {
             for x in 0..actual.width() {
-                if !damage.rectangles().iter().any(|rect| rect.contains(x, y)) {
+                if !damage.rectangles().iter().any(|rect| rect.contains(crate::Point::new(x as i32, y as i32))) {
                     assert_eq!(actual.get_pixel(x, y), Some(initial));
                 }
             }
