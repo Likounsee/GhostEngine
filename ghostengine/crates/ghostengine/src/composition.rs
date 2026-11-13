@@ -310,8 +310,36 @@ pub fn compose_layers_in_damage_regions(
         return;
     }
 
-    for rectangle in damage.rectangles() {
-        compose_layers_clipped(target, layers, Some(*rectangle));
+    let target_bounds = Rect::new(0, 0, target.width(), target.height());
+    let rectangles = damage
+        .rectangles()
+        .iter()
+        .filter_map(|rectangle| rectangle.intersection(target_bounds))
+        .collect::<Vec<_>>();
+    if rectangles.is_empty() {
+        return;
+    }
+
+    // Process one layer at a time. In particular, prepare transformed geometry
+    // once per layer instead of recalculating its inverse and transformed
+    // bounds for every disjoint damage rectangle. Damage rectangles do not
+    // overlap, so changing the loop nesting preserves per-pixel layer order.
+    for layer in layers {
+        if !layer.visible || layer.opacity == 0 {
+            continue;
+        }
+        let transformed = if layer.transform == Transform2D::IDENTITY {
+            None
+        } else {
+            prepare_transformed_layer(target, layer)
+        };
+        if layer.transform != Transform2D::IDENTITY && transformed.is_none() {
+            continue;
+        }
+
+        for rectangle in &rectangles {
+            compose_layer_clipped(target, layer, *rectangle, transformed.as_ref());
+        }
     }
 }
 
@@ -326,95 +354,37 @@ fn compose_layers_clipped(target: &mut Framebuffer, layers: &[Layer], clip: Opti
         }
         None => target_bounds,
     };
+
     for layer in layers {
         if !layer.visible || layer.opacity == 0 {
             continue;
         }
-        if layer.transform != Transform2D::IDENTITY {
-            compose_transformed_layer(target, layer, clip);
+        let transformed = if layer.transform == Transform2D::IDENTITY {
+            None
+        } else {
+            prepare_transformed_layer(target, layer)
+        };
+        if layer.transform != Transform2D::IDENTITY && transformed.is_none() {
             continue;
         }
-
-        let destination_left = i64::from(layer.x).max(i64::from(clip.x));
-        let destination_right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
-            .min(i64::from(clip.x) + i64::from(clip.width));
-        if destination_left >= destination_right {
-            continue;
-        }
-        let source_left = (destination_left - i64::from(layer.x)) as usize;
-        let source_right = source_left + (destination_right - destination_left) as usize;
-        let source_width = layer.framebuffer.width() as usize;
-
-        // Intersect vertically before entering the scanline loop. This avoids
-        // visiting every off-screen source row when a large layer is only
-        // partially visible (or almost entirely outside the target).
-        let destination_top = i64::from(layer.y).max(i64::from(clip.y));
-        let destination_bottom = (i64::from(layer.y)
-            + i64::from(layer.framebuffer.height()))
-        .min(i64::from(clip.y) + i64::from(clip.height));
-        if destination_top >= destination_bottom {
-            continue;
-        }
-        let source_top = (destination_top - i64::from(layer.y)) as usize;
-        let source_bottom = (destination_bottom - i64::from(layer.y)) as usize;
-
-        for source_y in source_top..source_bottom {
-            let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
-            let source_start = source_y * source_width + source_left;
-            let source_row = &layer.framebuffer.pixels()
-                [source_start..source_y as usize * source_width + source_right];
-            let Some(destination_row) = target.row_mut(destination_y as u32) else {
-                continue;
-            };
-            let destination =
-                &mut destination_row[destination_left as usize..destination_right as usize];
-
-            // Fully opaque source-over scanlines need no per-pixel blending.
-            // Check once per row, then copy the contiguous span in one operation.
-            if layer.blend_mode == BlendMode::SourceOver
-                && layer.opacity == u8::MAX
-                && source_row.iter().all(|pixel| pixel.a == u8::MAX)
-            {
-                destination.copy_from_slice(source_row);
-                continue;
-            }
-
-            for (source, destination) in source_row.iter().zip(destination) {
-                if source.a == 0 {
-                    continue;
-                }
-                if layer.blend_mode == BlendMode::SourceOver {
-                    if layer.opacity == u8::MAX && source.a == u8::MAX {
-                        *destination = *source;
-                        continue;
-                    }
-                    let alpha = if layer.opacity == u8::MAX {
-                        source.a
-                    } else {
-                        ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
-                    };
-                    if alpha == 0 {
-                        continue;
-                    }
-                    let source = Color::rgba(source.r, source.g, source.b, alpha);
-                    *destination = source.blend_over(*destination);
-                } else {
-                    *destination =
-                        blend_with_mode(*source, *destination, layer.opacity, layer.blend_mode);
-                }
-            }
-        }
+        compose_layer_clipped(target, layer, clip, transformed.as_ref());
     }
 }
 
-fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect) {
-    let Some(inverse) = layer.transform.inverse() else {
-        return;
-    };
-    if target.width() == 0 || target.height() == 0 {
-        return;
-    }
+#[derive(Clone, Copy)]
+struct PreparedTransformedLayer {
+    inverse: Transform2D,
+    bounds: Rect,
+}
 
+fn prepare_transformed_layer(
+    target: &Framebuffer,
+    layer: &Layer,
+) -> Option<PreparedTransformedLayer> {
+    if target.width() == 0 || target.height() == 0 {
+        return None;
+    }
+    let inverse = layer.transform.inverse()?;
     let width = layer.framebuffer.width() as f32;
     let height = layer.framebuffer.height() as f32;
     let corners = [
@@ -431,37 +401,123 @@ fn compose_transformed_layer(target: &mut Framebuffer, layer: &Layer, clip: Rect
         .iter()
         .any(|point| !point.x.is_finite() || !point.y.is_finite())
     {
-        return;
+        return None;
     }
 
-    let min_x = corners
-        .iter()
-        .map(|point| point.x)
-        .fold(f32::INFINITY, f32::min);
-    let max_x = corners
-        .iter()
-        .map(|point| point.x)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let min_y = corners
-        .iter()
-        .map(|point| point.y)
-        .fold(f32::INFINITY, f32::min);
-    let max_y = corners
-        .iter()
-        .map(|point| point.y)
-        .fold(f32::NEG_INFINITY, f32::max);
+    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
+    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
 
-    let clip_left = clip.x as f32;
-    let clip_top = clip.y as f32;
-    let clip_right = (u64::from(clip.x) + u64::from(clip.width)) as f32;
-    let clip_bottom = (u64::from(clip.y) + u64::from(clip.height)) as f32;
-    let left = min_x.floor().clamp(clip_left, clip_right) as u32;
-    let right = max_x.ceil().clamp(clip_left, clip_right) as u32;
-    let top = min_y.floor().clamp(clip_top, clip_bottom) as u32;
-    let bottom = max_y.ceil().clamp(clip_top, clip_bottom) as u32;
+    let target_right = target.width() as f32;
+    let target_bottom = target.height() as f32;
+    let left = min_x.floor().clamp(0.0, target_right) as u32;
+    let right = max_x.ceil().clamp(0.0, target_right) as u32;
+    let top = min_y.floor().clamp(0.0, target_bottom) as u32;
+    let bottom = max_y.ceil().clamp(0.0, target_bottom) as u32;
     if left >= right || top >= bottom {
+        return None;
+    }
+
+    Some(PreparedTransformedLayer {
+        inverse,
+        bounds: Rect::new(left, top, right - left, bottom - top),
+    })
+}
+
+fn compose_layer_clipped(
+    target: &mut Framebuffer,
+    layer: &Layer,
+    clip: Rect,
+    transformed: Option<&PreparedTransformedLayer>,
+) {
+    if layer.transform != Transform2D::IDENTITY {
+        if let Some(transformed) = transformed {
+            compose_transformed_layer(target, layer, clip, *transformed);
+        }
         return;
     }
+
+    let destination_left = i64::from(layer.x).max(i64::from(clip.x));
+    let destination_right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
+        .min(i64::from(clip.x) + i64::from(clip.width));
+    if destination_left >= destination_right {
+        return;
+    }
+    let source_left = (destination_left - i64::from(layer.x)) as usize;
+    let source_right = source_left + (destination_right - destination_left) as usize;
+    let source_width = layer.framebuffer.width() as usize;
+
+    let destination_top = i64::from(layer.y).max(i64::from(clip.y));
+    let destination_bottom = (i64::from(layer.y)
+        + i64::from(layer.framebuffer.height()))
+    .min(i64::from(clip.y) + i64::from(clip.height));
+    if destination_top >= destination_bottom {
+        return;
+    }
+    let source_top = (destination_top - i64::from(layer.y)) as usize;
+    let source_bottom = (destination_bottom - i64::from(layer.y)) as usize;
+
+    for source_y in source_top..source_bottom {
+        let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
+        let source_start = source_y * source_width + source_left;
+        let source_row = &layer.framebuffer.pixels()
+            [source_start..source_y as usize * source_width + source_right];
+        let Some(destination_row) = target.row_mut(destination_y) else {
+            continue;
+        };
+        let destination =
+            &mut destination_row[destination_left as usize..destination_right as usize];
+
+        if layer.blend_mode == BlendMode::SourceOver
+            && layer.opacity == u8::MAX
+            && source_row.iter().all(|pixel| pixel.a == u8::MAX)
+        {
+            destination.copy_from_slice(source_row);
+            continue;
+        }
+
+        for (source, destination) in source_row.iter().zip(destination) {
+            if source.a == 0 {
+                continue;
+            }
+            if layer.blend_mode == BlendMode::SourceOver {
+                if layer.opacity == u8::MAX && source.a == u8::MAX {
+                    *destination = *source;
+                    continue;
+                }
+                let alpha = if layer.opacity == u8::MAX {
+                    source.a
+                } else {
+                    ((u16::from(source.a) * u16::from(layer.opacity) + 127) / 255) as u8
+                };
+                if alpha == 0 {
+                    continue;
+                }
+                let source = Color::rgba(source.r, source.g, source.b, alpha);
+                *destination = source.blend_over(*destination);
+            } else {
+                *destination =
+                    blend_with_mode(*source, *destination, layer.opacity, layer.blend_mode);
+            }
+        }
+    }
+}
+
+fn compose_transformed_layer(
+    target: &mut Framebuffer,
+    layer: &Layer,
+    clip: Rect,
+    prepared: PreparedTransformedLayer,
+) {
+    let Some(clip) = prepared.bounds.intersection(clip) else {
+        return;
+    };
+    let inverse = prepared.inverse;
+    let left = clip.x;
+    let right = clip.x + clip.width;
+    let top = clip.y;
+    let bottom = clip.y + clip.height;
 
     let source_width = layer.framebuffer.width() as f32;
     let source_height = layer.framebuffer.height() as f32;
