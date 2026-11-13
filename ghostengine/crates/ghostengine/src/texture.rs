@@ -629,37 +629,44 @@ pub fn draw_texture_transformed_clipped(
     let local_right = local_left + destination.width as f32;
     let local_bottom = local_top + destination.height as f32;
     let mut visible = false;
+    let source_scale_x = texture.width as f32 / destination.width as f32;
+    let source_scale_y = texture.height as f32 / destination.height as f32;
     for y in first_y..end_y {
+        let local_y = inverse.m21 * (first_x as f32 + 0.5)
+            + inverse.m22 * (y as f32 + 0.5)
+            + inverse.ty;
+        let mut local_x = inverse.m11 * (first_x as f32 + 0.5)
+            + inverse.m12 * (y as f32 + 0.5)
+            + inverse.tx;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in first_x..end_x {
-            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
-            if local.x < local_left
-                || local.x >= local_right
-                || local.y < local_top
-                || local.y >= local_bottom
+            if local_x >= local_left
+                && local_x < local_right
+                && local_y >= local_top
+                && local_y < local_bottom
             {
-                continue;
+                visible = true;
+                let source_x = (local_x - local_left) * source_scale_x;
+                let source_y = (local_y - local_top) * source_scale_y;
+                let color = match filter {
+                    TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
+                    TextureFilter::Bilinear => {
+                        texture.sample_bilinear(source_x - 0.5, source_y - 0.5)
+                    }
+                };
+                if texture.fully_opaque || color.a == 255 {
+                    // Opaque samples replace the destination without blending.
+                    row[x as usize] = color;
+                } else if color.a > 0 {
+                    let index = x as usize;
+                    row[index] = color.blend_over(row[index]);
+                }
             }
-            visible = true;
-            let source_x = (local.x - local_left) * texture.width as f32 / destination.width as f32;
-            let source_y =
-                (local.y - local_top) * texture.height as f32 / destination.height as f32;
-            let color = match filter {
-                TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
-                TextureFilter::Bilinear => texture.sample_bilinear(source_x - 0.5, source_y - 0.5),
-            };
-            if texture.fully_opaque {
-                // Every nearest or bilinear sample is guaranteed opaque, so
-                // transformed draws can replace the destination directly.
-                row[x as usize] = color;
-            } else if color.a == 255 {
-                row[x as usize] = color;
-            } else if color.a > 0 {
-                let index = x as usize;
-                row[index] = color.blend_over(row[index]);
-            }
+            // The inverse affine transform advances by a constant source-space
+            // delta across each destination scanline.
+            local_x += inverse.m11;
         }
     }
     visible
