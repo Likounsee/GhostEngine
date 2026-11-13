@@ -376,6 +376,28 @@ pub fn draw_texture_clipped_with_scratch(
         return;
     }
 
+    // A 1:1 opaque nearest-neighbor draw is a pair of contiguous row
+    // copies. Avoid building sampling coordinates and visiting pixels one by
+    // one; the clipped offsets still refer to the original destination.
+    if filter == TextureFilter::Nearest
+        && texture.fully_opaque
+        && destination.width == texture.width
+        && destination.height == texture.height
+    {
+        let source_x = (first_x - u64::from(destination.x)) as usize;
+        let copy_width = (end_x - first_x) as usize;
+        for y in first_y..end_y {
+            let source_y = (y - u64::from(destination.y)) as usize;
+            let source_offset = source_y * texture.width as usize + source_x;
+            let Some(row) = target.row_mut(y as u32) else {
+                continue;
+            };
+            row[first_x as usize..end_x as usize]
+                .copy_from_slice(&texture.pixels[source_offset..source_offset + copy_width]);
+        }
+        return;
+    }
+
     let source_x_scale = texture.width as f32 / destination.width as f32;
     let source_y_scale = texture.height as f32 / destination.height as f32;
     // Nearest-neighbor horizontal coordinates are invariant across scanlines.
