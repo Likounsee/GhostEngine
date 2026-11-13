@@ -793,6 +793,29 @@ mod tests {
     }
 
     #[test]
+    fn full_coverage_damage_uses_full_frame_composition_semantics() {
+        let mut first = Layer::new(4, 3, Color::rgba(220, 30, 10, 180)).unwrap();
+        first.set_position(-1, 0);
+        let mut second = Layer::new(3, 2, Color::rgba(10, 40, 230, 160)).unwrap();
+        second.set_position(1, 1);
+        second.set_opacity(190);
+        let layers = [first, second];
+
+        let mut damage = DamageRegion::new(4, 3);
+        // Disjoint rectangles whose union covers the complete target.
+        damage.add(Rect::new(0, 0, 2, 3));
+        damage.add(Rect::new(2, 0, 2, 3));
+        assert!(damage.covers_entire_target());
+
+        let mut actual = Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        let mut expected = actual.clone();
+        compose_layers_in_damage_regions(&mut actual, &layers, &damage);
+        compose_layers(&mut expected, &layers);
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
     fn layers_compose_in_back_to_front_order() {
         let mut background = Layer::new(1, 1, Color::RED).unwrap();
         let foreground = Layer::new(1, 1, Color::BLUE).unwrap();
