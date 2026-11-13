@@ -640,18 +640,33 @@ pub fn draw_texture_transformed_clipped(
         let mut local_x = inverse.m11 * (first_x as f32 + 0.5)
             + inverse.m12 * (y as f32 + 0.5)
             + inverse.tx;
+        // The inverse-mapped Y coordinate is constant across a scanline.
+        // Prepare its source texel coordinates once rather than recalculating
+        // and clamping them for every destination pixel.
+        let source_y = (local_y - local_top) * source_scale_y;
+        let (nearest_y, bilinear_y) = match filter {
+            TextureFilter::Nearest => (
+                (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize,
+                None,
+            ),
+            TextureFilter::Bilinear => {
+                let sample_y = (source_y - 0.5)
+                    .clamp(0.0, texture.height as f32 - 1.0);
+                let y0 = sample_y.floor() as usize;
+                (
+                    0,
+                    Some((y0, (y0 + 1).min(texture_height - 1), sample_y - y0 as f32)),
+                )
+            }
+        };
+        let row_is_inside = local_y >= local_top && local_y < local_bottom;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in first_x..end_x {
-            if local_x >= local_left
-                && local_x < local_right
-                && local_y >= local_top
-                && local_y < local_bottom
-            {
+            if row_is_inside && local_x >= local_left && local_x < local_right {
                 visible = true;
                 let source_x = (local_x - local_left) * source_scale_x;
-                let source_y = (local_y - local_top) * source_scale_y;
                 // The transformed path already has validated non-zero texture
                 // dimensions. Sample directly here to avoid repeating generic
                 // dimension checks and to use the cheaper opaque bilinear kernel
@@ -660,24 +675,20 @@ pub fn draw_texture_transformed_clipped(
                     TextureFilter::Nearest => {
                         let sample_x = source_x.floor().clamp(0.0, texture.width as f32 - 1.0)
                             as usize;
-                        let sample_y = source_y.floor().clamp(0.0, texture.height as f32 - 1.0)
-                            as usize;
-                        texture.pixels[sample_y * texture_width + sample_x]
+                        texture.pixels[nearest_y * texture_width + sample_x]
                     }
                     TextureFilter::Bilinear => {
                         let sample_x = (source_x - 0.5)
                             .clamp(0.0, texture.width as f32 - 1.0);
-                        let sample_y = (source_y - 0.5)
-                            .clamp(0.0, texture.height as f32 - 1.0);
                         let x0 = sample_x.floor() as usize;
-                        let y0 = sample_y.floor() as usize;
+                        let (y0, y1, ty) = bilinear_y.expect("bilinear row coordinates prepared");
                         let coordinates = BilinearCoordinates {
                             x0,
                             x1: (x0 + 1).min(texture_width - 1),
                             y0,
-                            y1: (y0 + 1).min(texture_height - 1),
+                            y1,
                             tx: sample_x - x0 as f32,
-                            ty: sample_y - y0 as f32,
+                            ty,
                         };
                         if texture.fully_opaque {
                             sample_bilinear_opaque_prepared(
