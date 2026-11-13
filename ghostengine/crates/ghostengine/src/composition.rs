@@ -96,6 +96,16 @@ impl DamageRegion {
     pub fn clear(&mut self) {
         self.rectangles.clear();
     }
+
+    /// Resets the tracked framebuffer bounds and clears pending damage.
+    ///
+    /// The rectangle allocation is retained, making this suitable for reusing
+    /// one damage tracker across frames and framebuffer resizes.
+    pub fn reset(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+        self.rectangles.clear();
+    }
 }
 
 /// Pixel blend operation used when a layer is composited.
@@ -665,6 +675,21 @@ mod tests {
                 assert_eq!(target.get_pixel(x, y), Some(expected));
             }
         }
+    }
+
+    #[test]
+    fn damage_region_reset_updates_bounds_and_retains_storage() {
+        let mut damage = DamageRegion::with_capacity(8, 8, 4);
+        damage.add(Rect::new(1, 1, 2, 2));
+        let capacity = damage.capacity();
+        assert!(!damage.is_empty());
+
+        damage.reset(3, 2);
+
+        assert!(damage.is_empty());
+        assert_eq!(damage.capacity(), capacity);
+        damage.add(Rect::new(2, 1, 4, 4));
+        assert_eq!(damage.rectangles(), &[Rect::new(2, 1, 1, 1)]);
     }
 
     #[test]
