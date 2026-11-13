@@ -1102,6 +1102,45 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_nearest_sampling_preserves_alpha_and_blend_modes() {
+        let mut layer = Layer::new(2, 2, Color::TRANSPARENT).unwrap();
+        layer.framebuffer_mut().pixels_mut().copy_from_slice(&[
+            Color::rgba(230, 20, 40, 255),
+            Color::rgba(30, 210, 70, 160),
+            Color::rgba(40, 80, 220, 96),
+            Color::rgba(200, 170, 30, 210),
+        ]);
+        layer.set_transform(Transform2D::scale(2.0, 2.0));
+        layer.set_opacity(173);
+        layer.set_blend_mode(BlendMode::Screen);
+
+        let background = Color::rgb(17, 39, 83);
+        let mut actual = Framebuffer::new(4, 4, background).unwrap();
+        let mut expected = actual.clone();
+
+        for y in 0..4 {
+            for x in 0..4 {
+                let source_x = x / 2;
+                let source_y = y / 2;
+                let source = layer
+                    .framebuffer()
+                    .get_pixel(source_x, source_y)
+                    .unwrap();
+                let destination = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(
+                    x,
+                    y,
+                    blend_with_mode(source, destination, layer.opacity, layer.blend_mode),
+                );
+            }
+        }
+
+        compose_layers(&mut actual, &[layer]);
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
     fn transformed_layer_supports_bilinear_filtering() {
         let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
         layer.framebuffer_mut().set_pixel(0, 0, Color::RED);
