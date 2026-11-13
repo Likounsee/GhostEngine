@@ -1121,14 +1121,36 @@ mod tests {
         );
 
         let mut expected = Framebuffer::new(8, 6, Color::rgb(12, 24, 36)).unwrap();
-        let mut actual = expected.clone();
-        let expected_stats = list.replay(&mut expected);
+        crate::draw_texture_clipped(
+            &mut expected,
+            match &list.commands[0] {
+                super::Command::DrawTexture { texture, .. } => texture,
+                _ => panic!("expected first texture command"),
+            },
+            Rect::new(0, 0, 7, 5),
+            crate::TextureFilter::Bilinear,
+            Rect::new(1, 0, 6, 5),
+        );
+        crate::draw_texture_clipped(
+            &mut expected,
+            match &list.commands[1] {
+                super::Command::DrawTexture { texture, .. } => texture,
+                _ => panic!("expected second texture command"),
+            },
+            Rect::new(2, 1, 4, 3),
+            crate::TextureFilter::Nearest,
+            Rect::new(1, 0, 6, 5),
+        );
+
+        let mut actual = Framebuffer::new(8, 6, Color::rgb(12, 24, 36)).unwrap();
         let mut scratch = crate::TextureDrawScratch::default();
 
         for _ in 0..3 {
             actual.clear(Color::rgb(12, 24, 36));
             let actual_stats = list.replay_with_scratch(&mut actual, &mut scratch);
-            assert_eq!(actual_stats, expected_stats);
+            assert_eq!(actual_stats.commands_submitted, 2);
+            assert_eq!(actual_stats.commands_executed, 2);
+            assert_eq!(actual_stats.commands_skipped, 0);
             assert_eq!(actual.pixels(), expected.pixels());
         }
     }
