@@ -47,7 +47,7 @@ pub use components::{
 pub use composition::{
     compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
 };
-pub use display_list::{DisplayList, RenderStats};
+pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
