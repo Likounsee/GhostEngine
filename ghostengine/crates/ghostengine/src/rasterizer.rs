@@ -370,8 +370,7 @@ impl Gradient {
             Some(
                 (0..RADIAL_LOOKUP_SIZE)
                     .map(|index| {
-                        let squared_position =
-                            index as f32 / (RADIAL_LOOKUP_SIZE - 1) as f32;
+                        let squared_position = index as f32 / (RADIAL_LOOKUP_SIZE - 1) as f32;
                         sample_gradient_stops(&stops, squared_position.sqrt())
                     })
                     .collect::<Vec<_>>()
@@ -563,13 +562,12 @@ pub fn fill_rect_radial_gradient(
         let mut dx = left as f32 + 0.5 - center.x;
         for pixel in &mut row[left as usize..right as usize] {
             let distance_squared = dx * dx + dy_squared;
-            let color = if radius_squared.is_finite()
-                && distance_squared.is_finite()
-            {
+            let color = if radius_squared.is_finite() && distance_squared.is_finite() {
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient.sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
+                    gradient
+                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
@@ -1634,8 +1632,8 @@ fn accumulate_ellipse_span(
         return;
     }
 
-    let interior_start = ((span_left - OFFSETS[0]).ceil() as i64)
-        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+    let interior_start =
+        ((span_left - OFFSETS[0]).ceil() as i64).clamp(i64::from(start_x), i64::from(end_x)) as u32;
     let interior_end = ((span_right - OFFSETS[3]).floor() as i64 + 1)
         .clamp(i64::from(start_x), i64::from(end_x)) as u32;
 
@@ -1649,8 +1647,8 @@ fn accumulate_ellipse_span(
                 }
             }
         }
-        for covered in &mut coverage
-            [(interior_start - row_left) as usize..(interior_end - row_left) as usize]
+        for covered in
+            &mut coverage[(interior_start - row_left) as usize..(interior_end - row_left) as usize]
         {
             *covered += 4;
         }
@@ -1759,14 +1757,7 @@ pub fn fill_ellipse_aa(
                 .clamp(i64::from(left), i64::from(right)) as u32;
             let end = ((span_right - SAMPLE_OFFSETS[0]).floor() as i64 + 1)
                 .clamp(i64::from(left), i64::from(right)) as u32;
-            accumulate_ellipse_span(
-                &mut coverage,
-                left,
-                first,
-                end,
-                span_left,
-                span_right,
-            );
+            accumulate_ellipse_span(&mut coverage, left, first, end, span_left, span_right);
         }
 
         let Some(row) = target.row_mut(y) else {
