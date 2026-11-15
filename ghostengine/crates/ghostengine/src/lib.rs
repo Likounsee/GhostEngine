@@ -3,6 +3,7 @@
 //! GhostEngine's backend-independent foundations and CPU rendering primitives.
 //! The crate intentionally has no graphics API or platform dependencies.
 
+pub mod cached_layer;
 pub mod color;
 pub mod components;
 pub mod composition;
@@ -14,6 +15,7 @@ pub mod geometry;
 pub mod image;
 pub mod interaction;
 pub mod layout;
+pub mod mask;
 pub mod mipmap;
 pub mod path;
 pub mod path_cache;
@@ -41,6 +43,7 @@ pub use native_input::{NativeClipboard, NativeClipboardError, NativeInputAdapter
 #[cfg(feature = "native-window")]
 pub use native_window::{NativeWindowError, NativeWindowSurface};
 
+pub use cached_layer::CachedLayer;
 pub use color::Color;
 pub use components::{
     ClipboardAction, ComponentEvents, ComponentId, ComponentKey, ComponentKind, ComponentTree,
@@ -60,6 +63,7 @@ pub use image::{
 };
 pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
+pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path_cache::PathGeometryCache;
 pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
