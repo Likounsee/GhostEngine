@@ -846,8 +846,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
     let horizontal_samples: Vec<_> = if filter == TextureFilter::Bilinear {
         (first_x..end_x)
             .map(|x| {
-                let source_x =
-                    (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
                 let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
                 let x0 = source_x.floor() as usize;
                 BilinearHorizontalSample {
@@ -895,9 +894,8 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let y0 = sample_y.floor() as usize;
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
-                        for (pixel, sample) in row[left..right]
-                            .iter_mut()
-                            .zip(horizontal_samples.iter())
+                        for (pixel, sample) in
+                            row[left..right].iter_mut().zip(horizontal_samples.iter())
                         {
                             let coordinates = BilinearCoordinates {
                                 x0: sample.x0,
