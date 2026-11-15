@@ -105,9 +105,10 @@ mod tests {
         let mut target = Framebuffer::new(3, 1, Color::TRANSPARENT).unwrap();
         target.set_pixel(1, 0, Color::RED);
         apply_box_blur(&mut target, 1, &mut EffectScratch::default());
-        assert_eq!(target.get_pixel(1, 0), Some(Color::RED));
-        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 0).unwrap().a, 85);
         assert_eq!(target.get_pixel(0, 0).unwrap().a, 85);
+        assert_eq!(target.get_pixel(2, 0).unwrap().a, 85);
+        assert!(target.pixels().iter().all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
     }
 
     #[test]
