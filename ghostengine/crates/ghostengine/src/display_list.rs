@@ -933,6 +933,24 @@ mod tests {
     }
 
     #[test]
+    fn rectangle_batches_replay_as_one_command_and_merge_overlap() {
+        let mut list = DisplayList::new();
+        list.fill_rects(
+            &[Rect::new(1, 1, 3, 3), Rect::new(2, 2, 3, 3)],
+            Color::RED,
+        );
+        assert_eq!(list.len(), 1);
+
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
+        assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(4, 4), Some(Color::RED));
+        assert_eq!(target.get_pixel(5, 5), Some(Color::BLACK));
+    }
+
+    #[test]
     fn commands_replay_in_submission_order() {
         let mut list = DisplayList::new();
         list.clear_color(Color::BLACK);
