@@ -40,9 +40,7 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
             scratch.pixels[y * width + x] = color_from_sums(sums, count as u64);
             let remove_x = x.saturating_sub(radius_x);
             let add_x = (x + radius_x + 1).min(width - 1);
-            if x >= radius_x {
-                add_pixel(&mut sums, scratch.source[y * width + remove_x], -1);
-            }
+            add_pixel(&mut sums, scratch.source[y * width + remove_x], -1);
             add_pixel(&mut sums, scratch.source[y * width + add_x], 1);
         }
     }

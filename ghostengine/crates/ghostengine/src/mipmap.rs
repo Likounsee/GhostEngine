@@ -208,8 +208,10 @@ mod tests {
     fn transparent_texels_do_not_bleed_rgb_into_mip_levels() {
         let base = Texture::new(2, 1, vec![Color::RED, Color::TRANSPARENT]).unwrap();
         let chain = MipmapChain::new(&base).unwrap();
-        assert_eq!(chain.levels()[1].get_pixel(0, 0), Some(Color::RED));
-        assert_eq!(chain.levels()[1].get_pixel(0, 0).unwrap().a, 128);
+        assert_eq!(
+            chain.levels()[1].get_pixel(0, 0),
+            Some(Color::rgba(255, 0, 0, 128)),
+        );
     }
 
     #[test]
