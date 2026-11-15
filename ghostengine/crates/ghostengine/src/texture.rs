@@ -1468,5 +1468,4 @@ mod tests {
         assert_eq!(scratch.horizontal_cache.capacity(), cache_capacity);
         assert_eq!(scratch.horizontal_cache.as_ptr(), cache_ptr);
     }
-
 }
