@@ -695,78 +695,71 @@ pub fn draw_texture_transformed_clipped(
     let texture_width = texture.width as usize;
     let texture_height = texture.height as usize;
     for y in first_y..end_y {
-        let local_y =
-            inverse.m21 * (first_x as f32 + 0.5) + inverse.m22 * (y as f32 + 0.5) + inverse.ty;
-        let mut local_x =
-            inverse.m11 * (first_x as f32 + 0.5) + inverse.m12 * (y as f32 + 0.5) + inverse.tx;
-        // Entire scanlines outside the destination quad cannot contribute.
-        // Reject them before preparing sampling coordinates or borrowing the
-        // framebuffer row, instead of repeating a vertical bounds check per pixel.
-        if local_y < local_top || local_y >= local_bottom {
-            continue;
-        }
-
-        // The inverse-mapped Y coordinate is constant across a scanline.
-        // Prepare its source texel coordinates once rather than recalculating
-        // and clamping them for every destination pixel.
-        let source_y = (local_y - local_top) * source_scale_y;
-        let nearest_y = (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize;
-        let bilinear_sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
-        let bilinear_y0 = bilinear_sample_y.floor() as usize;
-        let bilinear_y1 = (bilinear_y0 + 1).min(texture_height - 1);
-        let bilinear_ty = bilinear_sample_y - bilinear_y0 as f32;
-        let mut source_x = (local_x - local_left) * source_scale_x;
-        let source_x_step = inverse.m11 * source_scale_x;
+        let pixel_center_y = y as f32 + 0.5;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in first_x..end_x {
-            if local_x >= local_left && local_x < local_right {
-                visible = true;
-                // The transformed path already has validated non-zero texture
-                // dimensions. Sample directly here to avoid repeating generic
-                // dimension checks and to use the cheaper opaque bilinear kernel
-                // whenever the texture's construction-time alpha summary allows it.
-                let color = match filter {
-                    TextureFilter::Nearest => {
-                        let sample_x =
-                            source_x.floor().clamp(0.0, texture.width as f32 - 1.0) as usize;
-                        texture.pixels[nearest_y * texture_width + sample_x]
-                    }
-                    TextureFilter::Bilinear => {
-                        let sample_x = (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
-                        let x0 = sample_x.floor() as usize;
-                        let coordinates = BilinearCoordinates {
-                            x0,
-                            x1: (x0 + 1).min(texture_width - 1),
-                            y0: bilinear_y0,
-                            y1: bilinear_y1,
-                            tx: sample_x - x0 as f32,
-                            ty: bilinear_ty,
-                        };
-                        if texture.fully_opaque {
-                            sample_bilinear_opaque_prepared(
-                                &texture.pixels,
-                                texture_width,
-                                coordinates,
-                            )
-                        } else {
-                            sample_bilinear_prepared(&texture.pixels, texture_width, coordinates)
-                        }
-                    }
-                };
-                if texture.fully_opaque || color.a == 255 {
-                    // Opaque samples replace the destination without blending.
-                    row[x as usize] = color;
-                } else if color.a > 0 {
-                    let index = x as usize;
-                    row[index] = color.blend_over(row[index]);
-                }
+            // Both inverse-mapped coordinates vary across a scanline for
+            // rotations and shears. Recompute them from the pixel center so
+            // sampling exactly matches the affine transform definition.
+            let pixel_center_x = x as f32 + 0.5;
+            let local_x = inverse.m11 * pixel_center_x
+                + inverse.m12 * pixel_center_y
+                + inverse.tx;
+            let local_y = inverse.m21 * pixel_center_x
+                + inverse.m22 * pixel_center_y
+                + inverse.ty;
+            if local_x < local_left
+                || local_x >= local_right
+                || local_y < local_top
+                || local_y >= local_bottom
+            {
+                continue;
             }
-            // Both destination-space and source-space X advance by a
-            // constant amount across this affine scanline.
-            local_x += inverse.m11;
-            source_x += source_x_step;
+
+            visible = true;
+            let source_x = (local_x - local_left) * source_scale_x;
+            let source_y = (local_y - local_top) * source_scale_y;
+            // Sample directly after validating the transformed source bounds,
+            // using the opaque bilinear kernel whenever possible.
+            let color = match filter {
+                TextureFilter::Nearest => {
+                    let sample_x =
+                        source_x.floor().clamp(0.0, texture.width as f32 - 1.0) as usize;
+                    let sample_y =
+                        source_y.floor().clamp(0.0, texture.height as f32 - 1.0) as usize;
+                    texture.pixels[sample_y * texture_width + sample_x]
+                }
+                TextureFilter::Bilinear => {
+                    let sample_x = (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
+                    let sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+                    let x0 = sample_x.floor() as usize;
+                    let y0 = sample_y.floor() as usize;
+                    let coordinates = BilinearCoordinates {
+                        x0,
+                        x1: (x0 + 1).min(texture_width - 1),
+                        y0,
+                        y1: (y0 + 1).min(texture_height - 1),
+                        tx: sample_x - x0 as f32,
+                        ty: sample_y - y0 as f32,
+                    };
+                    if texture.fully_opaque {
+                        sample_bilinear_opaque_prepared(
+                            &texture.pixels,
+                            texture_width,
+                            coordinates,
+                        )
+                    } else {
+                        sample_bilinear_prepared(&texture.pixels, texture_width, coordinates)
+                    }
+                }
+            };
+            if texture.fully_opaque || color.a == 255 {
+                row[x as usize] = color;
+            } else if color.a > 0 {
+                row[x as usize] = color.blend_over(row[x as usize]);
+            }
         }
     }
     visible

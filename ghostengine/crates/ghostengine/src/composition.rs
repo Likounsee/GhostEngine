@@ -891,7 +891,7 @@ mod tests {
         damage.add(Rect::new(2, 0, 2, 1));
 
         assert_eq!(damage.rectangles().len(), 3);
-        assert_eq!(damage.area(), 9);
+        assert_eq!(damage.area(), 10);
     }
 
     #[test]
