@@ -59,21 +59,13 @@ impl MipmapChain {
         let upper = (lower + 1).min(self.levels.len() - 1);
         let fraction = lod - lower as f32;
         let lower_scale = (1_u32 << lower.min(31)) as f32;
-        let a = sample_bilinear(
-            &self.levels[lower],
-            x / lower_scale,
-            y / lower_scale,
-        );
+        let a = sample_bilinear(&self.levels[lower], x / lower_scale, y / lower_scale);
         if lower == upper || fraction <= 0.0 {
             return a;
         }
 
         let upper_scale = (1_u32 << upper.min(31)) as f32;
-        let b = sample_bilinear(
-            &self.levels[upper],
-            x / upper_scale,
-            y / upper_scale,
-        );
+        let b = sample_bilinear(&self.levels[upper], x / upper_scale, y / upper_scale);
         interpolate_premultiplied(a, b, fraction)
     }
 }
@@ -132,8 +124,7 @@ fn interpolate_premultiplied(a: Color, b: Color, t: f32) -> Color {
     }
 
     let channel = |channel_a: u8, channel_b: u8| {
-        ((f32::from(channel_a) * alpha_a * (1.0 - t)
-            + f32::from(channel_b) * alpha_b * t)
+        ((f32::from(channel_a) * alpha_a * (1.0 - t) + f32::from(channel_b) * alpha_b * t)
             / alpha)
             .round()
             .clamp(0.0, 255.0) as u8
