@@ -193,6 +193,33 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
     }
 }
 
+/// Fills a batch of same-color rectangles, coalescing overlaps before rasterization.
+///
+/// Use this for repeated UI or sprite primitives that share a color and clip.
+/// Overlapping rectangles are merged so covered pixels are written only once.
+pub fn fill_rects_clipped(
+    target: &mut Framebuffer,
+    rectangles: &[Rect],
+    color: Color,
+    clip: Rect,
+) {
+    if rectangles.is_empty() {
+        return;
+    }
+    let mut damage = crate::DamageRegion::with_capacity(target.width(), target.height(), rectangles.len());
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return;
+    };
+    for rectangle in rectangles {
+        if let Some(rectangle) = rectangle.intersection(clip) {
+            damage.add(rectangle);
+        }
+    }
+    for rectangle in damage.rectangles() {
+        fill_rect(target, *rectangle, color);
+    }
+}
+
 /// Fills a rectangle clipped to the framebuffer. Bounds are half-open.
 /// Zero-sized rectangles draw nothing.
 pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
