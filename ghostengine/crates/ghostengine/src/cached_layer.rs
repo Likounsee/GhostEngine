@@ -50,6 +50,56 @@ impl CachedLayer {
         Ok(())
     }
 
+    /// Composites the retained pixels at a new position without rerendering.
+    ///
+    /// Moving a cached page or UI panel only changes this destination offset.
+    /// The cached framebuffer is sampled directly and is never copied.
+    pub fn composite_onto(
+        &self,
+        target: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        opacity: u8,
+        clip: Rect,
+    ) {
+        if opacity == 0 {
+            return;
+        }
+        let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+            return;
+        };
+        let left = i64::from(x).max(i64::from(clip.x));
+        let top = i64::from(y).max(i64::from(clip.y));
+        let right = (i64::from(x) + i64::from(self.framebuffer.width()))
+            .min(i64::from(clip.x) + i64::from(clip.width));
+        let bottom = (i64::from(y) + i64::from(self.framebuffer.height()))
+            .min(i64::from(clip.y) + i64::from(clip.height));
+        if left >= right || top >= bottom {
+            return;
+        }
+
+        for destination_y in top..bottom {
+            let source_y = (destination_y - i64::from(y)) as u32;
+            for destination_x in left..right {
+                let source_x = (destination_x - i64::from(x)) as u32;
+                let mut source = self.framebuffer.get_pixel(source_x, source_y).unwrap();
+                if source.a == 0 {
+                    continue;
+                }
+                source.a = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                if source.a == 0 {
+                    continue;
+                }
+                let background = target.get_pixel(destination_x as u32, destination_y as u32).unwrap();
+                target.set_pixel(
+                    destination_x as u32,
+                    destination_y as u32,
+                    source.blend_over(background),
+                );
+            }
+        }
+    }
+
     /// Runs the renderer only when damage exists, then retains the pixels.
     ///
     /// The callback must redraw all pixels covered by the damage region and
@@ -96,6 +146,19 @@ mod tests {
         }));
         assert_eq!(cache.framebuffer().get_pixel(2, 3), Some(Color::RED));
         assert_eq!(cache.framebuffer().get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn moving_cached_content_does_not_trigger_a_rerender() {
+        let mut cache = CachedLayer::new(2, 1, Color::RED).unwrap();
+        cache.render_if_dirty(|target, _| target.clear(Color::RED));
+        let mut target = Framebuffer::new(6, 2, Color::BLACK).unwrap();
+        cache.composite_onto(&mut target, 0, 0, 255, Rect::new(0, 0, 6, 2));
+        cache.composite_onto(&mut target, 3, 0, 255, Rect::new(0, 0, 6, 2));
+        assert_eq!(cache.rendered_frames(), 1);
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(2, 0), Some(Color::BLACK));
     }
 
     #[test]
