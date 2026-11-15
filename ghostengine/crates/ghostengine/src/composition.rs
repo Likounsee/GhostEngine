@@ -796,9 +796,27 @@ fn blend_bilinear_over_opaque_rows(
             .round()
             .clamp(0.0, 255.0) as u8
     };
-    destination.r = channel(top_left.r, top_right.r, bottom_left.r, bottom_right.r, destination.r);
-    destination.g = channel(top_left.g, top_right.g, bottom_left.g, bottom_right.g, destination.g);
-    destination.b = channel(top_left.b, top_right.b, bottom_left.b, bottom_right.b, destination.b);
+    destination.r = channel(
+        top_left.r,
+        top_right.r,
+        bottom_left.r,
+        bottom_right.r,
+        destination.r,
+    );
+    destination.g = channel(
+        top_left.g,
+        top_right.g,
+        bottom_left.g,
+        bottom_right.g,
+        destination.g,
+    );
+    destination.b = channel(
+        top_left.b,
+        top_right.b,
+        bottom_left.b,
+        bottom_right.b,
+        destination.b,
+    );
 }
 
 #[inline]
@@ -922,8 +940,7 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
-        compose_layers,
-        compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
+        compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
