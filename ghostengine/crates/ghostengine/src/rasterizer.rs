@@ -209,52 +209,157 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
-/// Alpha-composites a clipped rectangle over the framebuffer.
-///
-/// Fully opaque colors use the fast row-fill path; transparent colors are a no-op.
-pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
-    if color.a == 0 {
+
+fn process_rows_mut<F>(rows: &mut [Color], row_width: usize, thread_count: usize, process: F)
+where
+    F: Fn(&mut [Color]) + Sync,
+{
+    let row_count = rows.len() / row_width;
+    let worker_count = thread_count.max(1).min(row_count);
+    if worker_count <= 1 {
+        process(rows);
         return;
     }
-    if color.a == 255 {
-        fill_rect(target, rect, color);
-        return;
-    }
+
+    // A small number of row bands amortizes scoped-thread scheduling while
+    // preserving contiguous writes for the CPU cache and LLVM's optimizers.
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+    std::thread::scope(|scope| {
+        for chunk in rows.chunks_mut(pixels_per_worker) {
+            let process = &process;
+            scope.spawn(move || process(chunk));
+        }
+    });
+}
+
+fn clipped_rect_bounds(
+    target: &Framebuffer,
+    rect: Rect,
+) -> Option<(usize, usize, usize, usize)> {
     let left = u64::from(rect.x).min(u64::from(target.width()));
     let top = u64::from(rect.y).min(u64::from(target.height()));
     let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width()));
     let bottom = (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height()));
-    if left >= right || top >= bottom {
+    (left < right && top < bottom).then_some((
+        left as usize,
+        top as usize,
+        right as usize,
+        bottom as usize,
+    ))
+}
+
+/// Fills a clipped rectangle using safe, disjoint row bands.
+///
+/// The operation is deterministic and pixel-identical to fill_rect.
+/// One worker is used when the operating system reports only one available
+/// processor. Use fill_rect_parallel_with_threads to select a worker count.
+pub fn fill_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
+    let thread_count = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    fill_rect_parallel_with_threads(target, rect, color, thread_count);
+}
+
+/// Fills a clipped rectangle using the requested number of safe workers.
+///
+/// A thread count of zero or one selects the serial path. Rows are partitioned
+/// into exclusive mutable slices, so no locks, atomics, or unsafe code are used.
+pub fn fill_rect_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    thread_count: usize,
+) {
+    let Some((left, top, right, bottom)) = clipped_rect_bounds(target, rect) else {
+        return;
+    };
+    let width = target.width() as usize;
+    let start = top * width;
+    let end = bottom * width;
+    let rows = &mut target.pixels_mut()[start..end];
+    process_rows_mut(rows, width, thread_count, |band| {
+        for row in band.chunks_mut(width) {
+            row[left..right].fill(color);
+        }
+    });
+}
+
+/// Alpha-composites a clipped rectangle over the framebuffer.
+///
+/// Fully opaque colors use the fast row-fill path; transparent colors are a no-op.
+pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
+    blend_rect_with_threads(target, rect, color, 1);
+}
+
+/// Alpha-composites a clipped rectangle using safe, disjoint row bands.
+///
+/// This parallel variant is deterministic and pixel-identical to blend_rect.
+/// It uses the same exact integer rounding and opaque-destination lookup path.
+pub fn blend_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
+    let thread_count = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    blend_rect_with_threads(target, rect, color, thread_count);
+}
+
+/// Alpha-composites a clipped rectangle using the requested number of workers.
+///
+/// A thread count of zero or one selects the serial path. The source-over
+/// arithmetic and rounding are identical to blend_rect.
+pub fn blend_rect_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    thread_count: usize,
+) {
+    blend_rect_with_threads(target, rect, color, thread_count);
+}
+
+fn blend_rect_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    thread_count: usize,
+) {
+    if color.a == 0 {
         return;
     }
-    // For tiny rectangles, building three 256-entry lookup tables costs
-    // more than blending the pixels directly. Keep the scalar path allocation-
-    // free and reserve table setup for workloads large enough to amortize it.
+    if color.a == 255 {
+        fill_rect_parallel_with_threads(target, rect, color, thread_count);
+        return;
+    }
+    let Some((left, top, right, bottom)) = clipped_rect_bounds(target, rect) else {
+        return;
+    };
+    let width = target.width() as usize;
+    let start = top * width;
+    let end = bottom * width;
+    let area = (right - left) as u64 * (bottom - top) as u64;
+    let rows = &mut target.pixels_mut()[start..end];
+
+    // Tiny rectangles are cheaper with the general scalar blend and do not
+    // justify constructing the opaque-channel lookup tables.
     const LOOKUP_TABLE_MIN_PIXELS: u64 = 256;
-    let area = (right - left) * (bottom - top);
     if area < LOOKUP_TABLE_MIN_PIXELS {
-        for y in top..bottom {
-            if let Some(row) = target.row_mut(y as u32) {
-                for pixel in &mut row[left as usize..right as usize] {
+        process_rows_mut(rows, width, thread_count, |band| {
+            for row in band.chunks_mut(width) {
+                for pixel in &mut row[left..right] {
                     *pixel = color.blend_over(*pixel);
                 }
             }
-        }
+        });
         return;
     }
 
-    // Source-dependent terms are constant for the entire rectangle. Compute
-    // them once instead of repeating the same conversions and multiplications
-    // for every destination pixel.
     let source_alpha = u32::from(color.a);
     let inverse_source_alpha = 255 - source_alpha;
     let source_r = u32::from(color.r) * source_alpha * 255;
     let source_g = u32::from(color.g) * source_alpha * 255;
     let source_b = u32::from(color.b) * source_alpha * 255;
 
-    // Opaque destinations are common in CPU raster workloads. Precompute the
-    // exact rounded result for every possible destination channel once, then
-    // replace three multiplies and divisions per pixel with table lookups.
+    // Precompute exact rounded results for opaque destinations once. The
+    // tables are immutable and safely shared by every worker.
     let opaque_channel = |source: u8| {
         let mut table = [0_u8; 256];
         for (destination, output) in table.iter_mut().enumerate() {
@@ -269,14 +374,13 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     let opaque_g = opaque_channel(color.g);
     let opaque_b = opaque_channel(color.b);
 
-    for y in top..bottom {
-        if let Some(row) = target.row_mut(y as u32) {
-            for pixel in &mut row[left as usize..right as usize] {
+    process_rows_mut(rows, width, thread_count, |band| {
+        for row in band.chunks_mut(width) {
+            for pixel in &mut row[left..right] {
                 if pixel.a == 0 {
                     *pixel = color;
                     continue;
                 }
-
                 if pixel.a == 255 {
                     *pixel = Color::rgb(
                         opaque_r[pixel.r as usize],
@@ -293,7 +397,6 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
                     let numerator = source + u32::from(destination) * destination_weight;
                     ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
                 };
-
                 *pixel = Color::rgba(
                     blend_channel(source_r, pixel.r),
                     blend_channel(source_g, pixel.g),
@@ -302,7 +405,7 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
                 );
             }
         }
-    }
+    });
 }
 
 /// A color stop in a linear or radial gradient. Positions are normalized to 0..=1.
@@ -3801,3 +3904,80 @@ mod arc_aa_tests {
         assert!(full.pixels().iter().any(|pixel| pixel.g > 0));
     }
 }
+
+
+#[cfg(test)]
+mod parallel_raster_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn parallel_rectangle_fill_matches_serial_for_clipped_and_empty_regions() {
+        let mut serial = Framebuffer::new(131, 97, Color::rgba(12, 34, 56, 78)).unwrap();
+        let mut parallel = serial.clone();
+        let cases = [
+            (Rect::new(3, 7, 119, 83), Color::rgba(200, 40, 80, 120)),
+            (Rect::new(0, 0, u32::MAX, 2), Color::WHITE),
+            (Rect::new(127, 95, 20, 20), Color::GREEN),
+            (Rect::new(20, 20, 0, 10), Color::RED),
+            (Rect::new(u32::MAX, 0, 2, 2), Color::BLUE),
+        ];
+
+        for (rect, color) in cases {
+            super::fill_rect(&mut serial, rect, color);
+            super::fill_rect_parallel_with_threads(&mut parallel, rect, color, 4);
+            assert_eq!(parallel, serial);
+        }
+    }
+
+    #[test]
+    fn parallel_rectangle_blend_matches_serial_for_every_alpha_class() {
+        let mut serial = Framebuffer::new(129, 91, Color::TRANSPARENT).unwrap();
+        for (index, pixel) in serial.pixels_mut().iter_mut().enumerate() {
+            let alpha = match index % 3 {
+                0 => 0,
+                1 => 255,
+                _ => (index % 254 + 1) as u8,
+            };
+            *pixel = Color::rgba(
+                (index % 251) as u8,
+                (index % 197) as u8,
+                (index % 149) as u8,
+                alpha,
+            );
+        }
+        let mut parallel = serial.clone();
+        let cases = [
+            (Rect::new(2, 3, 124, 85), Color::rgba(210, 70, 35, 127)),
+            (Rect::new(0, 0, 129, 91), Color::rgba(10, 200, 90, 1)),
+            (Rect::new(20, 20, 4, 4), Color::rgba(80, 120, 240, 180)),
+            (Rect::new(0, 0, 40, 30), Color::TRANSPARENT),
+            (Rect::new(40, 40, 50, 40), Color::WHITE),
+        ];
+
+        for (rect, color) in cases {
+            super::blend_rect(&mut serial, rect, color);
+            super::blend_rect_parallel_with_threads(&mut parallel, rect, color, 4);
+            assert_eq!(parallel, serial);
+        }
+    }
+
+    #[test]
+    fn parallel_raster_operations_fall_back_to_serial_for_one_worker() {
+        let mut serial = Framebuffer::new(32, 24, Color::BLACK).unwrap();
+        let mut parallel = serial.clone();
+        let rect = Rect::new(2, 3, 28, 19);
+        super::fill_rect(&mut serial, rect, Color::RED);
+        super::fill_rect_parallel_with_threads(&mut parallel, rect, Color::RED, 1);
+        assert_eq!(parallel, serial);
+
+        super::blend_rect(&mut serial, rect, Color::rgba(20, 180, 90, 128));
+        super::blend_rect_parallel_with_threads(
+            &mut parallel,
+            rect,
+            Color::rgba(20, 180, 90, 128),
+            0,
+        );
+        assert_eq!(parallel, serial);
+    }
+}
+
