@@ -776,7 +776,9 @@ mod tests {
         draw_texture_transformed_clipped, sample_bilinear_prepared, BilinearCoordinates, Texture,
         TextureError, TextureFilter,
     };
-    use crate::{Color, Framebuffer, Rect};
+    use crate::{
+        draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch, Transform2D,
+    };
 
     fn two_color_texture() -> Texture {
         Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap()
@@ -909,23 +911,24 @@ mod tests {
                 TextureFilter::Bilinear,
             );
 
+            let source_width = texture.width();
+            let source_height = texture.height();
+            let source_pixels = texture.pixels();
             let expected = (0..height)
                 .flat_map(|y| {
-                    let source_y = ((y as f32 + 0.5) * texture.height() as f32 / height as f32
-                        - 0.5)
-                        .clamp(0.0, texture.height() as f32 - 1.0);
+                    let source_y = ((y as f32 + 0.5) * source_height as f32 / height as f32 - 0.5)
+                        .clamp(0.0, source_height as f32 - 1.0);
                     let y0 = source_y.floor() as usize;
-                    let y1 = (y0 + 1).min(texture.height() as usize - 1);
+                    let y1 = (y0 + 1).min(source_height as usize - 1);
                     let ty = source_y - y0 as f32;
                     (0..width).map(move |x| {
-                        let source_x = ((x as f32 + 0.5) * texture.width() as f32 / width as f32
-                            - 0.5)
-                            .clamp(0.0, texture.width() as f32 - 1.0);
+                        let source_x = ((x as f32 + 0.5) * source_width as f32 / width as f32 - 0.5)
+                            .clamp(0.0, source_width as f32 - 1.0);
                         let x0 = source_x.floor() as usize;
-                        let x1 = (x0 + 1).min(texture.width() as usize - 1);
+                        let x1 = (x0 + 1).min(source_width as usize - 1);
                         sample_bilinear_prepared(
-                            texture.pixels(),
-                            texture.width() as usize,
+                            source_pixels,
+                            source_width as usize,
                             BilinearCoordinates {
                                 x0,
                                 x1,
