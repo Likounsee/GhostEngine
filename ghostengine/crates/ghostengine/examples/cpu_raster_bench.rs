@@ -8,7 +8,7 @@ use ghostengine::{
     fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureDrawScratch,
-    TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    TextureFilter, Transform2D, UiTheme, Vector, WidgetState, MipmapChain, draw_mipmapped_texture_clipped,
 };
 
 const WIDTH: u32 = 1920;
@@ -176,6 +176,7 @@ fn main() {
         .collect();
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
+    let mipmaps = MipmapChain::new(&texture).expect("benchmark mipmaps should be valid");
     let mut texture_scratch = TextureDrawScratch::default();
 
     let mut background_layer = Layer::new(
@@ -495,6 +496,14 @@ fn main() {
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
                 &mut texture_scratch,
+            );
+        }),
+        measure("Texture mipmap downscale", iterations, |target| {
+            draw_mipmapped_texture_clipped(
+                target,
+                &mipmaps,
+                Rect::new(800, 400, 64, 64),
+                Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),
         measure("Texture bilinear (parallel)", iterations, |target| {
