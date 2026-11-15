@@ -4490,48 +4490,46 @@ mod rasterizer_simd_tests {
     use crate::Color;
 
     #[test]
-    fn simd_opaque_blend_matches_scalar_for_all_alpha_values_and_channel_edges() {
-        let source_colors = [
-            Color::rgba(0, 255, 127, 1),
-            Color::rgba(255, 0, 128, 64),
-            Color::rgba(17, 99, 231, 127),
-            Color::rgba(240, 31, 3, 254),
-        ];
+    fn simd_opaque_blend_matches_scalar_for_every_source_alpha_and_channel_edges() {
+        let source_channels = [(0, 255, 127), (255, 0, 128), (17, 99, 231), (240, 31, 3)];
         let destination_values = [0_u8, 1, 63, 127, 128, 192, 254, 255];
 
-        for source in source_colors {
-            for offset in 0..destination_values.len() {
-                let mut actual = [
-                    Color::rgb(
-                        destination_values[offset],
-                        destination_values[(offset + 1) % 8],
-                        destination_values[(offset + 2) % 8],
-                    ),
-                    Color::rgb(
-                        destination_values[(offset + 3) % 8],
-                        destination_values[(offset + 4) % 8],
-                        destination_values[(offset + 5) % 8],
-                    ),
-                    Color::rgb(
-                        destination_values[(offset + 6) % 8],
-                        destination_values[(offset + 7) % 8],
-                        destination_values[offset],
-                    ),
-                    Color::rgb(
-                        destination_values[(offset + 2) % 8],
-                        destination_values[(offset + 5) % 8],
-                        destination_values[(offset + 7) % 8],
-                    ),
-                ];
-                let expected = actual.map(|background| source.blend_over(background));
-                let source_alpha = u32::from(source.a);
-                super::blend_opaque_quad_simd(
-                    &mut actual,
-                    source,
-                    source_alpha,
-                    255 - source_alpha,
-                );
-                assert_eq!(actual, expected);
+        for alpha in 1..=254 {
+            for (red, green, blue) in source_channels {
+                let source = Color::rgba(red, green, blue, alpha);
+                for offset in 0..destination_values.len() {
+                    let mut actual = [
+                        Color::rgb(
+                            destination_values[offset],
+                            destination_values[(offset + 1) % 8],
+                            destination_values[(offset + 2) % 8],
+                        ),
+                        Color::rgb(
+                            destination_values[(offset + 3) % 8],
+                            destination_values[(offset + 4) % 8],
+                            destination_values[(offset + 5) % 8],
+                        ),
+                        Color::rgb(
+                            destination_values[(offset + 6) % 8],
+                            destination_values[(offset + 7) % 8],
+                            destination_values[offset],
+                        ),
+                        Color::rgb(
+                            destination_values[(offset + 2) % 8],
+                            destination_values[(offset + 5) % 8],
+                            destination_values[(offset + 7) % 8],
+                        ),
+                    ];
+                    let expected = actual.map(|background| source.blend_over(background));
+                    let source_alpha = u32::from(source.a);
+                    super::blend_opaque_quad_simd(
+                        &mut actual,
+                        source,
+                        source_alpha,
+                        255 - source_alpha,
+                    );
+                    assert_eq!(actual, expected, "source alpha {alpha}, channels {red}/{green}/{blue}");
+                }
             }
         }
     }
