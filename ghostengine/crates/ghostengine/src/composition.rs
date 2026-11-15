@@ -63,13 +63,11 @@ impl DamageRegion {
             let shares_full_horizontal_edge = merged.y == current.y
                 && merged.height == current.height
                 && (u64::from(merged.x) + u64::from(merged.width) == u64::from(current.x)
-                    || u64::from(current.x) + u64::from(current.width)
-                        == u64::from(merged.x));
+                    || u64::from(current.x) + u64::from(current.width) == u64::from(merged.x));
             let shares_full_vertical_edge = merged.x == current.x
                 && merged.width == current.width
                 && (u64::from(merged.y) + u64::from(merged.height) == u64::from(current.y)
-                    || u64::from(current.y) + u64::from(current.height)
-                        == u64::from(merged.y));
+                    || u64::from(current.y) + u64::from(current.height) == u64::from(merged.y));
             if overlaps || shares_full_horizontal_edge || shares_full_vertical_edge {
                 let current = self.rectangles.swap_remove(index);
                 let left = merged.x.min(current.x);
@@ -196,7 +194,11 @@ pub struct Layer {
 impl Layer {
     /// Creates a layer with its own framebuffer and an opaque initial visibility.
     pub fn new(width: u32, height: u32, clear_color: Color) -> Result<Self, FramebufferError> {
-        Ok(Self::from_framebuffer(Framebuffer::new(width, height, clear_color)?))
+        Ok(Self::from_framebuffer(Framebuffer::new(
+            width,
+            height,
+            clear_color,
+        )?))
     }
 
     /// Creates a layer by taking ownership of an existing framebuffer.
@@ -410,10 +412,22 @@ fn prepare_transformed_layer(
         return None;
     }
 
-    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
-    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
-    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+    let min_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::INFINITY, f32::min);
+    let max_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::NEG_INFINITY, f32::max);
 
     let target_right = target.width() as f32;
     let target_bottom = target.height() as f32;
@@ -455,9 +469,8 @@ fn compose_layer_clipped(
     let source_width = layer.framebuffer.width() as usize;
 
     let destination_top = i64::from(layer.y).max(i64::from(clip.y));
-    let destination_bottom = (i64::from(layer.y)
-        + i64::from(layer.framebuffer.height()))
-    .min(i64::from(clip.y) + i64::from(clip.height));
+    let destination_bottom = (i64::from(layer.y) + i64::from(layer.framebuffer.height()))
+        .min(i64::from(clip.y) + i64::from(clip.height));
     if destination_top >= destination_bottom {
         return;
     }
@@ -617,8 +630,8 @@ fn compose_transformed_layer(
                         let source_column = source_x.floor() as usize;
                         let source = source_pixels[source_row_offset + source_column];
                         if source.a != 0 {
-                            let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
-                                / 255) as u8;
+                            let alpha =
+                                ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
                             if alpha != 0 {
                                 let destination = &mut destination_row[x as usize];
                                 *destination = Color::rgba(source.r, source.g, source.b, alpha)
@@ -635,12 +648,8 @@ fn compose_transformed_layer(
                         let source = source_pixels[source_row_offset + source_column];
                         if source.a != 0 {
                             let destination = &mut destination_row[x as usize];
-                            *destination = blend_with_mode(
-                                source,
-                                *destination,
-                                opacity,
-                                blend_mode,
-                            );
+                            *destination =
+                                blend_with_mode(source, *destination, opacity, blend_mode);
                         }
                     }
                     source_x += source_step_x;
@@ -656,10 +665,7 @@ fn compose_transformed_layer(
                 && source_y < source_height
             {
                 let destination = &mut destination_row[x as usize];
-                if filter == TextureFilter::Bilinear
-                    && source_over
-                    && destination.a == u8::MAX
-                {
+                if filter == TextureFilter::Bilinear && source_over && destination.a == u8::MAX {
                     blend_bilinear_over_opaque(
                         source_pixels,
                         source_width_u32,
@@ -672,14 +678,11 @@ fn compose_transformed_layer(
                 } else {
                     let source = match filter {
                         TextureFilter::Nearest => {
-                            let sample_x = source_x
-                                .floor()
-                                .clamp(0.0, source_width - 1.0) as usize;
-                            let sample_y = source_y
-                                .floor()
-                                .clamp(0.0, source_height - 1.0) as usize;
+                            let sample_x = source_x.floor().clamp(0.0, source_width - 1.0) as usize;
+                            let sample_y =
+                                source_y.floor().clamp(0.0, source_height - 1.0) as usize;
                             source_pixels[sample_y * source_width_usize + sample_x]
-                        },
+                        }
                         TextureFilter::Bilinear => sample_pixels_bilinear(
                             source_pixels,
                             source_width_u32,
@@ -690,19 +693,15 @@ fn compose_transformed_layer(
                     };
                     if source.a != 0 {
                         if source_over {
-                            let alpha = ((u16::from(source.a) * u16::from(opacity) + 127)
-                                / 255) as u8;
+                            let alpha =
+                                ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
                             if alpha > 0 {
                                 *destination = Color::rgba(source.r, source.g, source.b, alpha)
                                     .blend_over(*destination);
                             }
                         } else {
-                            *destination = blend_with_mode(
-                                source,
-                                *destination,
-                                opacity,
-                                blend_mode,
-                            );
+                            *destination =
+                                blend_with_mode(source, *destination, opacity, blend_mode);
                         }
                     }
                 }
@@ -777,9 +776,27 @@ fn blend_bilinear_over_opaque(
             .round()
             .clamp(0.0, 255.0) as u8
     };
-    destination.r = channel(top_left.r, top_right.r, bottom_left.r, bottom_right.r, destination.r);
-    destination.g = channel(top_left.g, top_right.g, bottom_left.g, bottom_right.g, destination.g);
-    destination.b = channel(top_left.b, top_right.b, bottom_left.b, bottom_right.b, destination.b);
+    destination.r = channel(
+        top_left.r,
+        top_right.r,
+        bottom_left.r,
+        bottom_right.r,
+        destination.r,
+    );
+    destination.g = channel(
+        top_left.g,
+        top_right.g,
+        bottom_left.g,
+        bottom_right.g,
+        destination.g,
+    );
+    destination.b = channel(
+        top_left.b,
+        top_right.b,
+        bottom_left.b,
+        bottom_right.b,
+        destination.b,
+    );
 }
 
 fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMode) -> Color {
@@ -1090,10 +1107,9 @@ mod tests {
                 for x in [0.0, 0.2, 0.75, 1.4, 1.9] {
                     let mut actual = Color::rgb(37, 91, 163);
                     let source = sample_pixels_bilinear(&pixels, width, height, x, y);
-                    let alpha =
-                        ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
-                    let expected = Color::rgba(source.r, source.g, source.b, alpha)
-                        .blend_over(actual);
+                    let alpha = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                    let expected =
+                        Color::rgba(source.r, source.g, source.b, alpha).blend_over(actual);
                     blend_bilinear_over_opaque(
                         &pixels,
                         width,
@@ -1146,10 +1162,7 @@ mod tests {
             for x in 0..4 {
                 let source_x = x / 2;
                 let source_y = y / 2;
-                let source = layer
-                    .framebuffer()
-                    .get_pixel(source_x, source_y)
-                    .unwrap();
+                let source = layer.framebuffer().get_pixel(source_x, source_y).unwrap();
                 let destination = expected.get_pixel(x, y).unwrap();
                 expected.set_pixel(
                     x,
@@ -1167,10 +1180,10 @@ mod tests {
     #[test]
     fn horizontal_nearest_source_over_copies_opaque_pixels_directly() {
         let mut layer = Layer::new(2, 1, Color::TRANSPARENT).unwrap();
-        layer.framebuffer_mut().pixels_mut().copy_from_slice(&[
-            Color::rgba(230, 20, 40, 255),
-            Color::rgba(30, 210, 70, 128),
-        ]);
+        layer
+            .framebuffer_mut()
+            .pixels_mut()
+            .copy_from_slice(&[Color::rgba(230, 20, 40, 255), Color::rgba(30, 210, 70, 128)]);
         layer.set_transform(Transform2D::scale(2.0, 1.0));
 
         let background = Color::rgb(17, 39, 83);
@@ -1211,10 +1224,9 @@ mod tests {
             let mut actual = Framebuffer::new(8, 1, background).unwrap();
             let mut expected = actual.clone();
             for (source_x, source) in source_pixels.iter().copied().enumerate() {
-                let alpha =
-                    ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
-                let blended = Color::rgba(source.r, source.g, source.b, alpha)
-                    .blend_over(background);
+                let alpha = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                let blended =
+                    Color::rgba(source.r, source.g, source.b, alpha).blend_over(background);
                 expected.set_pixel((source_x * 2) as u32, 0, blended);
                 expected.set_pixel((source_x * 2 + 1) as u32, 0, blended);
             }
@@ -1426,7 +1438,10 @@ mod tests {
 
         compose_layers(&mut target, &[layer]);
 
-        assert_eq!(&target.pixels()[..3], &[Color::RED, Color::GREEN, Color::BLUE]);
+        assert_eq!(
+            &target.pixels()[..3],
+            &[Color::RED, Color::GREEN, Color::BLUE]
+        );
         assert_eq!(
             target.get_pixel(0, 1),
             Some(Color::rgba(200, 10, 20, 128).blend_over(background))
@@ -1441,14 +1456,17 @@ mod tests {
         background.set_position(-1, 0);
 
         let mut transformed = Layer::new(3, 2, Color::TRANSPARENT).unwrap();
-        transformed.framebuffer_mut().pixels_mut().copy_from_slice(&[
-            Color::RED,
-            Color::rgba(20, 220, 80, 180),
-            Color::BLUE,
-            Color::WHITE,
-            Color::rgba(240, 30, 20, 128),
-            Color::TRANSPARENT,
-        ]);
+        transformed
+            .framebuffer_mut()
+            .pixels_mut()
+            .copy_from_slice(&[
+                Color::RED,
+                Color::rgba(20, 220, 80, 180),
+                Color::BLUE,
+                Color::WHITE,
+                Color::rgba(240, 30, 20, 128),
+                Color::TRANSPARENT,
+            ]);
         transformed.set_position(2, 1);
         transformed.set_transform(
             Transform2D::translation(0.25, 0.5)
@@ -1487,7 +1505,11 @@ mod tests {
         }
         for y in 0..actual.height() {
             for x in 0..actual.width() {
-                if !damage.rectangles().iter().any(|rect| rect.contains(crate::Point::new(x as i32, y as i32))) {
+                if !damage
+                    .rectangles()
+                    .iter()
+                    .any(|rect| rect.contains(crate::Point::new(x as i32, y as i32)))
+                {
                     assert_eq!(actual.get_pixel(x, y), Some(initial));
                 }
             }
@@ -1497,14 +1519,20 @@ mod tests {
     #[test]
     fn fully_transparent_source_over_rows_leave_destination_unchanged() {
         let mut layer = Layer::new(4, 2, Color::TRANSPARENT).unwrap();
-        layer.framebuffer_mut().pixels_mut()[4..]
-            .copy_from_slice(&[Color::RED, Color::TRANSPARENT, Color::BLUE, Color::WHITE]);
+        layer.framebuffer_mut().pixels_mut()[4..].copy_from_slice(&[
+            Color::RED,
+            Color::TRANSPARENT,
+            Color::BLUE,
+            Color::WHITE,
+        ]);
         let background = Color::rgb(19, 37, 83);
         let mut target = Framebuffer::new(4, 2, background).unwrap();
 
         compose_layers(&mut target, &[layer]);
 
-        assert!(target.pixels()[..4].iter().all(|pixel| *pixel == background));
+        assert!(target.pixels()[..4]
+            .iter()
+            .all(|pixel| *pixel == background));
         assert_eq!(target.get_pixel(0, 1), Some(Color::RED));
         assert_eq!(target.get_pixel(1, 1), Some(background));
         assert_eq!(target.get_pixel(2, 1), Some(Color::BLUE));
