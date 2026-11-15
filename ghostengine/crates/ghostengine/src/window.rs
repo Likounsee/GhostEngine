@@ -18,6 +18,7 @@ pub enum WindowError {
     AllocationFailed,
     Backend(String),
     FramebufferSizeMismatch,
+    FramebufferCreationFailed,
 }
 
 impl fmt::Display for WindowError {
@@ -29,6 +30,9 @@ impl fmt::Display for WindowError {
             Self::Backend(message) => write!(formatter, "window backend error: {message}"),
             Self::FramebufferSizeMismatch => {
                 formatter.write_str("framebuffer dimensions do not match the window")
+            }
+            Self::FramebufferCreationFailed => {
+                formatter.write_str("could not create the resized framebuffer")
             }
         }
     }
@@ -175,6 +179,9 @@ impl WindowSurface {
                 crate::FramebufferError::ZeroDimension => WindowError::ZeroDimensions,
                 crate::FramebufferError::SizeOverflow => WindowError::SizeOverflow,
                 crate::FramebufferError::AllocationFailed => WindowError::AllocationFailed,
+                crate::FramebufferError::PixelCountMismatch => {
+                    WindowError::FramebufferCreationFailed
+                }
             })?;
         copy_framebuffer_overlap(framebuffer, &mut resized);
 
