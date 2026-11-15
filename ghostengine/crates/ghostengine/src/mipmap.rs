@@ -87,7 +87,9 @@ pub fn draw_mipmapped_texture_clipped(
     if destination.width == 0 || destination.height == 0 {
         return;
     }
-    let Some(clip) = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
+    let Some(clip) = clip
+        .intersection(crate::Rect::new(0, 0, target.width(), target.height()))
+        .and_then(|framebuffer_clip| framebuffer_clip.intersection(destination))
     else {
         return;
     };
@@ -124,6 +126,9 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let y = y.clamp(0.0, texture.height() as f32 - 1.0);
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
+    if x == x0 as f32 && y == y0 as f32 {
+        return texture.get_pixel(x0, y0).unwrap();
+    }
     let x1 = (x0 + 1).min(texture.width() - 1);
     let y1 = (y0 + 1).min(texture.height() - 1);
     let tx = x - x0 as f32;
