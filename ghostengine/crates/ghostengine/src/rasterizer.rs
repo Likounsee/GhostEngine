@@ -1672,10 +1672,9 @@ pub fn fill_polygon_aa_with_scratch(
     } = scratch;
 
     edges.clear();
-    edges.extend(
-        (0..vertices.len())
-            .filter_map(|index| PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])),
-    );
+    edges.extend((0..vertices.len()).filter_map(|index| {
+        PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
+    }));
     if edges.is_empty() {
         return;
     }
@@ -1750,12 +1749,7 @@ pub fn fill_polygon_aa_with_scratch(
                     );
                 } else {
                     accumulate_polygon_span_edges(
-                        coverage,
-                        left,
-                        first,
-                        end,
-                        span_left,
-                        span_right,
+                        coverage, left, first, end, span_left, span_right,
                     );
                 }
             }
