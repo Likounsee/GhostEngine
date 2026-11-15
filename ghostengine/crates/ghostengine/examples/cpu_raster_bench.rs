@@ -287,6 +287,30 @@ fn main() {
                 Color::rgba(220, 90, 55, 150),
             );
         }),
+        measure("Rectangle alpha blend (direct)", iterations, |target| {
+            ghostengine::rasterizer::blend_rect_opaque(
+                target,
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
+                Color::rgba(220, 90, 55, 150),
+            );
+        }),
+        measure("Rectangle alpha blend (direct parallel)", iterations, |target| {
+            ghostengine::rasterizer::blend_rect_opaque_parallel(
+                target,
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
+                Color::rgba(220, 90, 55, 150),
+            );
+        }),
         measure("Small rectangle alpha blend", iterations, |target| {
             blend_rect(
                 target,
