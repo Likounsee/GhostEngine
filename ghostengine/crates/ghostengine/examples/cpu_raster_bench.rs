@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, draw_text, draw_texture_clipped_parallel_with_threads,
+    draw_texture_clipped_with_scratch,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureFilter, Transform2D,
-    UiTheme, Vector, WidgetState,
+    TextureDrawScratch, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -176,6 +177,7 @@ fn main() {
         .collect();
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
+    let mut texture_scratch = TextureDrawScratch::default();
 
     let mut background_layer = Layer::new(
         400 * SCALE_U32,
@@ -479,6 +481,21 @@ fn main() {
                     200 * SCALE_U32,
                 ),
                 TextureFilter::Bilinear,
+            );
+        }),
+        measure("Texture bilinear (reused scratch)", iterations, |target| {
+            draw_texture_clipped_with_scratch(
+                target,
+                &texture,
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                &mut texture_scratch,
             );
         }),
         measure("Texture bilinear (parallel)", iterations, |target| {
