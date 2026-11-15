@@ -776,7 +776,7 @@ impl DisplayList {
                             *clip,
                         )
                     }
-                },
+                }
                 Command::LinearGradient {
                     rect,
                     start,
@@ -1233,9 +1233,8 @@ mod tests {
 
     #[test]
     fn shared_texture_commands_reuse_the_same_pixel_storage() {
-        let texture = std::sync::Arc::new(
-            crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap(),
-        );
+        let texture =
+            std::sync::Arc::new(crate::Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap());
         let mut list = DisplayList::new();
         list.draw_shared_texture(
             std::sync::Arc::clone(&texture),
@@ -1261,7 +1260,10 @@ mod tests {
 
         let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
-        assert_eq!(target.pixels(), &[Color::RED, Color::BLUE, Color::RED, Color::BLUE]);
+        assert_eq!(
+            target.pixels(),
+            &[Color::RED, Color::BLUE, Color::RED, Color::BLUE]
+        );
         assert_eq!(stats.commands_executed, 2);
     }
 
