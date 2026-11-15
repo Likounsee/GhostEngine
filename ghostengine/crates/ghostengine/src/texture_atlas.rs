@@ -81,14 +81,20 @@ impl TextureAtlasBuilder {
 
             let content_x = x + self.padding;
             let content_y = y + self.padding;
-            for row in 0..item.texture.height() as usize {
-                let source_start = row * item.texture.width() as usize;
-                let destination_start =
-                    (content_y as usize + row) * self.width as usize + content_x as usize;
-                let source_end = source_start + item.texture.width() as usize;
-                let destination_end = destination_start + item.texture.width() as usize;
-                pixels[destination_start..destination_end]
-                    .copy_from_slice(&item.texture.pixels()[source_start..source_end]);
+            // Extrude edge texels into the padding so bilinear sampling near
+            // sprite boundaries cannot blend with transparent neighboring space.
+            for padded_y in 0..padded_height {
+                let source_y = padded_y.saturating_sub(self.padding)
+                    .min(item.texture.height() - 1);
+                for padded_x in 0..padded_width {
+                    let source_x = padded_x.saturating_sub(self.padding)
+                        .min(item.texture.width() - 1);
+                    let source_index = source_y as usize * item.texture.width() as usize
+                        + source_x as usize;
+                    let destination_index = (y as usize + padded_y as usize)
+                        * self.width as usize + x as usize + padded_x as usize;
+                    pixels[destination_index] = item.texture.pixels()[source_index];
+                }
             }
             regions.push(AtlasRegion {
                 id: item.id,
