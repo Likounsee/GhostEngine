@@ -32,7 +32,11 @@ pub fn apply_alpha_mask_clipped(
             };
             let pixel = target.get_pixel(x, y).unwrap();
             let alpha = (u16::from(pixel.a) * u16::from(coverage) + 127) / 255;
-            target.set_pixel(x, y, crate::Color::rgba(pixel.r, pixel.g, pixel.b, alpha as u8));
+            target.set_pixel(
+                x,
+                y,
+                crate::Color::rgba(pixel.r, pixel.g, pixel.b, alpha as u8),
+            );
         }
     }
 }
