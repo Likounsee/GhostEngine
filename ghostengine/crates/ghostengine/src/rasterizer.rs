@@ -468,18 +468,9 @@ fn blend_opaque_quad_simd(
         ((numerator + u32x4::splat(1) + (numerator >> 8)) >> 8).to_array()
     };
 
-    let red = blend_channel(
-        u32::from(source.r),
-        (*pixels).map(|pixel| u32::from(pixel.r)),
-    );
-    let green = blend_channel(
-        u32::from(source.g),
-        (*pixels).map(|pixel| u32::from(pixel.g)),
-    );
-    let blue = blend_channel(
-        u32::from(source.b),
-        (*pixels).map(|pixel| u32::from(pixel.b)),
-    );
+    let red = blend_channel(u32::from(source.r), (*pixels).map(|pixel| u32::from(pixel.r)));
+    let green = blend_channel(u32::from(source.g), (*pixels).map(|pixel| u32::from(pixel.g)));
+    let blue = blend_channel(u32::from(source.b), (*pixels).map(|pixel| u32::from(pixel.b)));
 
     for index in 0..4 {
         pixels[index] = Color::rgb(red[index] as u8, green[index] as u8, blue[index] as u8);
