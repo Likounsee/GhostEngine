@@ -67,24 +67,24 @@ pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
-pub use path_cache::PathGeometryCache;
-pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
 pub use path::{
     fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
     fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
     fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
+pub use path_cache::PathGeometryCache;
 pub use rasterizer::{
     blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
     draw_arc_aa, draw_circle_aa, draw_ellipse_aa, draw_polygon_aa, draw_rect_aa, draw_rounded_rect,
     draw_rounded_rect_aa, draw_triangle_aa, fill_arc_aa, fill_circle_aa, fill_polygon_aa,
-    fill_polygon_aa_with_scratch, fill_polygon_with_scratch, fill_rect_clipped, fill_rects_clipped,
+    fill_polygon_aa_with_scratch, fill_polygon_with_scratch, fill_rect_clipped,
     fill_rect_linear_gradient_parallel, fill_rect_linear_gradient_parallel_with_threads,
     fill_rect_parallel_with_threads, fill_rect_radial_gradient_parallel,
-    fill_rect_radial_gradient_parallel_with_threads, fill_rounded_rect, fill_rounded_rect_aa,
-    fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
-    fill_triangle_aa, Gradient, GradientError, GradientStop, RasterizerScratch,
+    fill_rect_radial_gradient_parallel_with_threads, fill_rects_clipped, fill_rounded_rect,
+    fill_rounded_rect_aa, fill_transformed_rect_linear_gradient_clipped,
+    fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, Gradient, GradientError,
+    GradientStop, RasterizerScratch,
 };
 pub use shaping::{
     resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError,
@@ -105,10 +105,10 @@ pub use text::{
 pub use texture::{
     draw_texture, draw_texture_clipped, draw_texture_clipped_parallel_with_threads,
     draw_texture_clipped_with_scratch, draw_texture_region_clipped,
-    draw_texture_transformed_clipped,
-    draw_texture_transformed_clipped_parallel_with_threads, Texture, TextureDrawScratch,
-    TextureError, TextureFilter,
+    draw_texture_transformed_clipped, draw_texture_transformed_clipped_parallel_with_threads,
+    Texture, TextureDrawScratch, TextureError, TextureFilter,
 };
+pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
 pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_checkbox, draw_combo_box, draw_divider, draw_label, draw_label_clipped,
