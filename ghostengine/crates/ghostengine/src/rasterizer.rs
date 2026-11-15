@@ -465,9 +465,7 @@ fn blend_opaque_quad_simd(
         let numerator = u32x4::splat(source_channel * source_alpha)
             + u32x4::new(destinations) * u32x4::splat(inverse_source_alpha)
             + u32x4::splat(127);
-        (numerator + u32x4::splat(1) + (numerator >> 8_u32))
-            .shr(8_u32)
-            .to_array()
+        ((numerator + u32x4::splat(1) + (numerator >> 8_u32)) >> 8_u32).to_array()
     };
 
     let red = blend_channel(
