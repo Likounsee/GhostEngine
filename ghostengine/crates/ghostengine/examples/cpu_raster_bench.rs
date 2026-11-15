@@ -7,8 +7,8 @@ use ghostengine::{
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
-    Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureFilter,
-    Transform2D, UiTheme, Vector, WidgetState,
+    Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureFilter, Transform2D,
+    UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -502,17 +502,21 @@ fn main() {
                 raster_threads,
             );
         }),
-        measure("Layer transform bilinear (parallel)", iterations, |target| {
-            draw_texture_transformed_clipped_parallel_with_threads(
-                target,
-                &transformed_texture,
-                Rect::new(0, 0, 640, 360),
-                transformed_texture_transform,
-                TextureFilter::Bilinear,
-                Rect::new(0, 0, WIDTH, HEIGHT),
-                raster_threads,
-            );
-        }),
+        measure(
+            "Layer transform bilinear (parallel)",
+            iterations,
+            |target| {
+                draw_texture_transformed_clipped_parallel_with_threads(
+                    target,
+                    &transformed_texture,
+                    Rect::new(0, 0, 640, 360),
+                    transformed_texture_transform,
+                    TextureFilter::Bilinear,
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                    raster_threads,
+                );
+            },
+        ),
         measure("Layer composition (2 layers)", iterations, |target| {
             ghostengine::compose_layers(target, &layers);
         }),
