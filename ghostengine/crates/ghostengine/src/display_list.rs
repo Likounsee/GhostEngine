@@ -947,6 +947,8 @@ mod tests {
         assert_eq!(stats.commands_executed, 1);
         assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
         assert_eq!(target.get_pixel(4, 4), Some(Color::RED));
+        assert_eq!(target.get_pixel(4, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(1, 4), Some(Color::BLACK));
         assert_eq!(target.get_pixel(5, 5), Some(Color::BLACK));
     }
 
