@@ -388,12 +388,16 @@ pub fn draw_texture_region_clipped(
     let target_width = target.width() as usize;
 
     for y in clip.y..clip.y + clip.height {
-        if y < destination.y || u64::from(y) >= u64::from(destination.y) + u64::from(destination.height) {
+        if y < destination.y
+            || u64::from(y) >= u64::from(destination.y) + u64::from(destination.height)
+        {
             continue;
         }
         let relative_y = (y - destination.y) as f32 / destination.height as f32;
         for x in clip.x..clip.x + clip.width {
-            if x < destination.x || u64::from(x) >= u64::from(destination.x) + u64::from(destination.width) {
+            if x < destination.x
+                || u64::from(x) >= u64::from(destination.x) + u64::from(destination.width)
+            {
                 continue;
             }
             let relative_x = (x - destination.x) as f32 / destination.width as f32;
@@ -401,7 +405,9 @@ pub fn draw_texture_region_clipped(
                 TextureFilter::Nearest => {
                     let sx = source.x + (relative_x * source.width as f32).floor() as u32;
                     let sy = source.y + (relative_y * source.height as f32).floor() as u32;
-                    texture.get_pixel(sx.min(source_right), sy.min(source_bottom)).unwrap()
+                    texture
+                        .get_pixel(sx.min(source_right), sy.min(source_bottom))
+                        .unwrap()
                 }
                 TextureFilter::Bilinear => {
                     let sx = (source.x as f32 + relative_x * source.width as f32 - 0.5)
