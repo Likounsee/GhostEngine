@@ -923,7 +923,8 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let ty = sample_y - y0 as f32;
                         let top_offset = y0 * texture.width as usize;
                         let bottom_offset = y1 * texture.width as usize;
-                        let top_row = &texture.pixels[top_offset..top_offset + texture.width as usize];
+                        let top_row =
+                            &texture.pixels[top_offset..top_offset + texture.width as usize];
                         let bottom_row =
                             &texture.pixels[bottom_offset..bottom_offset + texture.width as usize];
                         for (pixel, sample) in
