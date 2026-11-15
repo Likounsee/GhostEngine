@@ -8,6 +8,7 @@ pub mod color;
 pub mod components;
 pub mod composition;
 pub mod display_list;
+pub mod effects;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
@@ -54,6 +55,7 @@ pub use composition::{
     compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
 };
 pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
+pub use effects::{apply_box_blur, EffectScratch};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
