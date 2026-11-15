@@ -4,6 +4,7 @@
 //! triangles sample pixel centers and use a top-left edge rule.
 
 use crate::{Color, Framebuffer, Point, Rect};
+use wide::u32x4;
 
 /// Writes a pixel without blending. Returns false when outside the target.
 pub fn draw_pixel(target: &mut Framebuffer, point: Point, color: Color) -> bool {
@@ -408,36 +409,119 @@ fn blend_rect_with_threads(
 
     process_rows_mut(rows, width, thread_count, |band| {
         for row in band.chunks_mut(width) {
-            for pixel in &mut row[left..right] {
-                if pixel.a == 0 {
-                    *pixel = color;
-                    continue;
+            let mut pixels = row[left..right].chunks_exact_mut(4);
+            for quad in &mut pixels {
+                if quad.iter().all(|pixel| pixel.a == 255) {
+                    let quad: &mut [Color; 4] = quad
+                        .try_into()
+                        .expect("chunks_exact_mut always yields four pixels");
+                    blend_opaque_quad_simd(quad, color, source_alpha, inverse_source_alpha);
+                } else {
+                    for pixel in quad {
+                        blend_rect_pixel(
+                            pixel,
+                            color,
+                            source_alpha,
+                            inverse_source_alpha,
+                            source_r,
+                            source_g,
+                            source_b,
+                            &opaque_r,
+                            &opaque_g,
+                            &opaque_b,
+                        );
+                    }
                 }
-                if pixel.a == 255 {
-                    *pixel = Color::rgb(
-                        opaque_r[pixel.r as usize],
-                        opaque_g[pixel.g as usize],
-                        opaque_b[pixel.b as usize],
-                    );
-                    continue;
-                }
-
-                let destination_alpha = u32::from(pixel.a);
-                let destination_weight = destination_alpha * inverse_source_alpha;
-                let alpha_numerator = source_alpha * 255 + destination_weight;
-                let blend_channel = |source: u32, destination: u8| -> u8 {
-                    let numerator = source + u32::from(destination) * destination_weight;
-                    ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
-                };
-                *pixel = Color::rgba(
-                    blend_channel(source_r, pixel.r),
-                    blend_channel(source_g, pixel.g),
-                    blend_channel(source_b, pixel.b),
-                    ((alpha_numerator + 127) / 255) as u8,
+            }
+            for pixel in pixels.into_remainder() {
+                blend_rect_pixel(
+                    pixel,
+                    color,
+                    source_alpha,
+                    inverse_source_alpha,
+                    source_r,
+                    source_g,
+                    source_b,
+                    &opaque_r,
+                    &opaque_g,
+                    &opaque_b,
                 );
             }
         }
     });
+}
+
+#[inline]
+fn blend_opaque_quad_simd(
+    pixels: &mut [Color; 4],
+    source: Color,
+    source_alpha: u32,
+    inverse_source_alpha: u32,
+) {
+    // Each SIMD lane represents one pixel channel value across four pixels.
+    // The rounded divide by 255 is expressed with shifts and additions:
+    // floor((n + 127) / 255) == (m + 1 + (m >> 8)) >> 8, m = n + 127.
+    let blend_channel = |source_channel: u32, destinations: [u32; 4]| {
+        let numerator = u32x4::splat(source_channel * source_alpha)
+            + u32x4::new(destinations) * u32x4::splat(inverse_source_alpha)
+            + u32x4::splat(127);
+        ((numerator + u32x4::splat(1) + (numerator >> 8)) >> 8).to_array()
+    };
+
+    let red = blend_channel(
+        u32::from(source.r),
+        pixels.map(|pixel| u32::from(pixel.r)),
+    );
+    let green = blend_channel(
+        u32::from(source.g),
+        pixels.map(|pixel| u32::from(pixel.g)),
+    );
+    let blue = blend_channel(
+        u32::from(source.b),
+        pixels.map(|pixel| u32::from(pixel.b)),
+    );
+
+    for index in 0..4 {
+        pixels[index] = Color::rgb(red[index] as u8, green[index] as u8, blue[index] as u8);
+    }
+}
+
+#[inline]
+fn blend_rect_pixel(
+    pixel: &mut Color,
+    color: Color,
+    source_alpha: u32,
+    inverse_source_alpha: u32,
+    source_r: u32,
+    source_g: u32,
+    source_b: u32,
+    opaque_r: &[u8; 256],
+    opaque_g: &[u8; 256],
+    opaque_b: &[u8; 256],
+) {
+    if pixel.a == 0 {
+        *pixel = color;
+    } else if pixel.a == 255 {
+        *pixel = Color::rgb(
+            opaque_r[pixel.r as usize],
+            opaque_g[pixel.g as usize],
+            opaque_b[pixel.b as usize],
+        );
+    } else {
+        let destination_alpha = u32::from(pixel.a);
+        let destination_weight = destination_alpha * inverse_source_alpha;
+        let alpha_numerator = source_alpha * 255 + destination_weight;
+        let blend_channel = |source: u32, destination: u8| -> u8 {
+            let numerator = source + u32::from(destination) * destination_weight;
+            ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
+        };
+        *pixel = Color::rgba(
+            blend_channel(source_r, pixel.r),
+            blend_channel(source_g, pixel.g),
+            blend_channel(source_b, pixel.b),
+            ((alpha_numerator + 127) / 255) as u8,
+        );
+    }
 }
 
 /// A color stop in a linear or radial gradient. Positions are normalized to 0..=1.
