@@ -203,23 +203,15 @@ pub fn fill_rects_clipped(
     color: Color,
     clip: Rect,
 ) {
-    if rectangles.is_empty() {
-        return;
-    }
-    let mut damage = crate::DamageRegion::with_capacity(target.width(), target.height(), rectangles.len());
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
     };
     for rectangle in rectangles {
         if let Some(rectangle) = rectangle.intersection(clip) {
-            damage.add(rectangle);
+            fill_rect(target, rectangle, color);
         }
     }
-    for rectangle in damage.rectangles() {
-        fill_rect(target, *rectangle, color);
-    }
 }
-
 /// Fills a rectangle clipped to the framebuffer. Bounds are half-open.
 /// Zero-sized rectangles draw nothing.
 pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
