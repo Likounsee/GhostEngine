@@ -788,7 +788,7 @@ fn blend_bilinear_over_opaque_rows(
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
         let premultiplied = (f32::from(tl) * f32::from(top_left.a) * weight_top_left
-            + f32::from(tr) * f32::from(top_left.a) * weight_top_right
+            + f32::from(tr) * f32::from(top_right.a) * weight_top_right
             + f32::from(bl) * f32::from(bottom_left.a) * weight_bottom_left
             + f32::from(br) * f32::from(bottom_right.a) * weight_bottom_right)
             * opacity_factor;
