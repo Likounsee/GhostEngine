@@ -40,7 +40,11 @@ impl PartialEq for SharedFont {
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
-    FillRects { rectangles: Vec<Rect>, color: Color, clip: Rect },
+    FillRects {
+        rectangles: Vec<Rect>,
+        color: Color,
+        clip: Rect,
+    },
     StrokeRect {
         path: Path,
         transform: Transform2D,
@@ -663,7 +667,11 @@ impl DisplayList {
                     target.clear(*color);
                     true
                 }
-                Command::FillRects { rectangles, color, clip } => {
+                Command::FillRects {
+                    rectangles,
+                    color,
+                    clip,
+                } => {
                     fill_rects_clipped(target, rectangles, *color, *clip);
                     !rectangles.is_empty()
                 }
@@ -935,10 +943,7 @@ mod tests {
     #[test]
     fn rectangle_batches_replay_as_one_command_and_merge_overlap() {
         let mut list = DisplayList::new();
-        list.fill_rects(
-            &[Rect::new(1, 1, 3, 3), Rect::new(2, 2, 3, 3)],
-            Color::RED,
-        );
+        list.fill_rects(&[Rect::new(1, 1, 3, 3), Rect::new(2, 2, 3, 3)], Color::RED);
         assert_eq!(list.len(), 1);
 
         let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
