@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   benchmark:
-    name: Release CPU raster benchmark (Ubuntu)
-    runs-on: ubuntu-latest
+    name: Release CPU raster benchmark (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -26,4 +30,13 @@ jobs:
 
       - name: Run CPU raster benchmark
         working-directory: ghostengine
-        run: cargo run --release -p ghostengine --example cpu_raster_bench -- 100
+        shell: bash
+        run: cargo run --release -p ghostengine --example cpu_raster_bench -- 100 | tee benchmark-results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-raster-benchmark-${{ matrix.os }}
+          path: ghostengine/benchmark-results.txt
+          if-no-files-found: error
+          retention-days: 30
