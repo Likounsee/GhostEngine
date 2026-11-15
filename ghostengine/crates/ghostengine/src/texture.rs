@@ -727,6 +727,171 @@ pub fn draw_texture_clipped_parallel_with_threads(
     });
 }
 
+/// Draws an affine-transformed texture using independent destination row bands.
+///
+/// This is the parallel counterpart of draw_texture_transformed_clipped.
+/// It preserves the inverse-mapped pixel-center sampling and blends each pixel
+/// exactly once. Workers own disjoint framebuffer slices; the source texture and
+/// transform are shared read-only.
+pub fn draw_texture_transformed_clipped_parallel_with_threads(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    transform: Transform2D,
+    filter: TextureFilter,
+    clip: Rect,
+    threads: usize,
+) -> bool {
+    if threads <= 1 || destination.width.saturating_mul(destination.height) < 262_144 {
+        return draw_texture_transformed_clipped(
+            target, texture, destination, transform, filter, clip,
+        );
+    }
+    if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
+        return false;
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return false;
+    };
+    if transform == Transform2D::IDENTITY {
+        let Some(visible) = destination.intersection(clip) else {
+            return false;
+        };
+        if visible.width == 0 || visible.height == 0 {
+            return false;
+        }
+        draw_texture_clipped_parallel_with_threads(
+            target, texture, destination, filter, clip, threads,
+        );
+        return true;
+    }
+    let Some(inverse) = transform.inverse() else {
+        return false;
+    };
+
+    let left = destination.x as f32;
+    let top = destination.y as f32;
+    let right = destination.x.saturating_add(destination.width) as f32;
+    let bottom = destination.y.saturating_add(destination.height) as f32;
+    let corners = [
+        transform.transform_point(crate::Vector::new(left, top)),
+        transform.transform_point(crate::Vector::new(right, top)),
+        transform.transform_point(crate::Vector::new(right, bottom)),
+        transform.transform_point(crate::Vector::new(left, bottom)),
+    ];
+    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+        return false;
+    }
+    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
+    let first_x = min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
+    let first_y = min_y.floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let end_x = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let end_y = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    if first_x >= end_x || first_y >= end_y {
+        return false;
+    }
+
+    let local_left = destination.x as f32;
+    let local_top = destination.y as f32;
+    let local_right = local_left + destination.width as f32;
+    let local_bottom = local_top + destination.height as f32;
+    let source_scale_x = texture.width as f32 / destination.width as f32;
+    let source_scale_y = texture.height as f32 / destination.height as f32;
+    let texture_width = texture.width as usize;
+    let texture_height = texture.height as usize;
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let worker_count = threads.min(height).max(1);
+    let rows_per_worker = height.div_ceil(worker_count);
+    let chunk_len = rows_per_worker * width;
+    let mut any_visible = false;
+
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+            let row_start = worker_index * rows_per_worker;
+            let row_end = (row_start + pixels.len() / width).min(height);
+            let first_row = (first_y as usize).max(row_start);
+            let last_row = (end_y as usize).min(row_end);
+            if first_row >= last_row {
+                continue;
+            }
+            handles.push(scope.spawn(move || {
+                let mut worker_visible = false;
+                for y in first_row..last_row {
+                    let pixel_center_y = y as f32 + 0.5;
+                    let local_row = (y - row_start) * width;
+                    let row = &mut pixels[local_row..local_row + width];
+                    for x in first_x..end_x {
+                        let pixel_center_x = x as f32 + 0.5;
+                        let local_x = inverse.m11 * pixel_center_x
+                            + inverse.m12 * pixel_center_y + inverse.tx;
+                        let local_y = inverse.m21 * pixel_center_x
+                            + inverse.m22 * pixel_center_y + inverse.ty;
+                        if local_x < local_left || local_x >= local_right
+                            || local_y < local_top || local_y >= local_bottom
+                        {
+                            continue;
+                        }
+                        worker_visible = true;
+                        let source_x = (local_x - local_left) * source_scale_x;
+                        let source_y = (local_y - local_top) * source_scale_y;
+                        let color = match filter {
+                            TextureFilter::Nearest => {
+                                let sample_x = source_x.floor()
+                                    .clamp(0.0, texture.width as f32 - 1.0) as usize;
+                                let sample_y = source_y.floor()
+                                    .clamp(0.0, texture.height as f32 - 1.0) as usize;
+                                texture.pixels[sample_y * texture_width + sample_x]
+                            }
+                            TextureFilter::Bilinear => {
+                                let sample_x = (source_x - 0.5)
+                                    .clamp(0.0, texture.width as f32 - 1.0);
+                                let sample_y = (source_y - 0.5)
+                                    .clamp(0.0, texture.height as f32 - 1.0);
+                                let x0 = sample_x.floor() as usize;
+                                let y0 = sample_y.floor() as usize;
+                                let coordinates = BilinearCoordinates {
+                                    x0,
+                                    x1: (x0 + 1).min(texture_width - 1),
+                                    y0,
+                                    y1: (y0 + 1).min(texture_height - 1),
+                                    tx: sample_x - x0 as f32,
+                                    ty: sample_y - y0 as f32,
+                                };
+                                if texture.fully_opaque {
+                                    sample_bilinear_opaque_prepared(
+                                        &texture.pixels, texture_width, coordinates,
+                                    )
+                                } else {
+                                    sample_bilinear_prepared(
+                                        &texture.pixels, texture_width, coordinates,
+                                    )
+                                }
+                            }
+                        };
+                        if texture.fully_opaque || color.a == 255 {
+                            row[x as usize] = color;
+                        } else if color.a > 0 {
+                            row[x as usize] = color.blend_over(row[x as usize]);
+                        }
+                    }
+                }
+                worker_visible
+            }));
+        }
+        for handle in handles {
+            any_visible |= handle.join().unwrap_or(false);
+        }
+    });
+    any_visible
+}
+
 /// Draws a texture through an affine transform while preserving source sampling.
 ///
 /// The destination rectangle is defined in local coordinates. The inverse transform
@@ -1399,6 +1564,45 @@ mod tests {
         assert_eq!(target.get_pixel(2, 2), Some(Color::BLUE));
         assert_eq!(target.get_pixel(3, 1), Some(Color::BLACK));
         assert_eq!(target.get_pixel(2, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn parallel_transformed_texture_matches_sequential_for_both_filters() {
+        use super::draw_texture_transformed_clipped_parallel_with_threads;
+
+        let texture = Texture::new(
+            256,
+            192,
+            (0..256 * 192)
+                .map(|index| {
+                    Color::rgba(
+                        (index * 7) as u8,
+                        (index * 19) as u8,
+                        (index * 37) as u8,
+                        (index * 11) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let transform = Transform2D::translation(35.0, 18.0)
+            .then(Transform2D::rotation(0.12))
+            .then(Transform2D::scale(1.8, 1.7));
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut sequential =
+                Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
+            let mut parallel = sequential.clone();
+            let destination = Rect::new(10, 12, 350, 270);
+            let clip = Rect::new(5, 7, 620, 460);
+            let expected_visible = draw_texture_transformed_clipped(
+                &mut sequential, &texture, destination, transform, filter, clip,
+            );
+            let actual_visible = draw_texture_transformed_clipped_parallel_with_threads(
+                &mut parallel, &texture, destination, transform, filter, clip, 4,
+            );
+            assert_eq!(actual_visible, expected_visible);
+            assert_eq!(parallel.pixels(), sequential.pixels());
+        }
     }
 
     #[test]
