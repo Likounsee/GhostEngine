@@ -348,7 +348,6 @@ pub fn blend_rect_parallel_with_threads(
     blend_rect_with_threads(target, rect, color, thread_count);
 }
 
-
 fn blend_rect_with_threads(
     target: &mut Framebuffer,
     rect: Rect,
