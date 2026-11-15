@@ -87,8 +87,7 @@ pub fn draw_mipmapped_texture_clipped(
     if destination.width == 0 || destination.height == 0 {
         return;
     }
-    let Some(clip) =
-        clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
+    let Some(clip) = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
     else {
         return;
     };
@@ -174,8 +173,7 @@ fn interpolate_premultiplied(a: Color, b: Color, t: f32) -> Color {
     }
 
     let channel = |channel_a: u8, channel_b: u8| {
-        ((f32::from(channel_a) * alpha_a * (1.0 - t) + f32::from(channel_b) * alpha_b * t)
-            / alpha)
+        ((f32::from(channel_a) * alpha_a * (1.0 - t) + f32::from(channel_b) * alpha_b * t) / alpha)
             .round()
             .clamp(0.0, 255.0) as u8
     };
