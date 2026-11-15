@@ -4,8 +4,11 @@ use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
-    stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Layer, Path, Point,
-    RasterizerScratch, Rect, StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector,
+    stroke_path_aa, stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient,
+    GradientStop, Layer, Path, Point,
+    draw_texture_clipped_parallel_with_threads,
+    draw_texture_transformed_clipped_parallel_with_threads, RasterizerScratch, Rect, StrokeStyle,
+    Texture, TextureFilter, Transform2D, UiTheme, Vector,
     WidgetState,
 };
 
@@ -212,6 +215,12 @@ fn main() {
     nearest_layer.set_filter(TextureFilter::Nearest);
     let nearest_layers = [nearest_layer];
 
+    let transformed_texture = Texture::from_framebuffer(transformed_layers[0].framebuffer());
+    let transformed_texture_transform = Transform2D::rotation(0.08)
+        .then(Transform2D::scale(1.35, 1.35))
+        .then(Transform2D::translation(500.0, 250.0));
+
+
     let font = FontFace::from_bytes(include_bytes!(
         "../tests/fixtures/NotoSansArabic[wdth,wght].ttf"
     ))
@@ -375,6 +384,18 @@ fn main() {
             )
             .expect("benchmark stroke should be valid");
         }),
+        measure("Vector path stroke AA (parallel)", iterations, |target| {
+            stroke_path_aa_parallel_with_threads(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(7.0 * SCALE_F32),
+                Color::rgba(90, 220, 130, 230),
+                0.35 * SCALE_F32,
+                raster_threads,
+            )
+            .expect("parallel benchmark stroke should be valid");
+        }),
         measure("Linear gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_linear_gradient(
                 target,
@@ -455,6 +476,43 @@ fn main() {
                     200 * SCALE_U32,
                 ),
                 TextureFilter::Bilinear,
+            );
+        }),
+        measure("Texture bilinear (parallel)", iterations, |target| {
+            draw_texture_clipped_parallel_with_threads(
+                target,
+                &texture,
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                raster_threads,
+            );
+        }),
+        measure("Layer transform nearest (parallel)", iterations, |target| {
+            draw_texture_transformed_clipped_parallel_with_threads(
+                target,
+                &transformed_texture,
+                Rect::new(0, 0, 640, 360),
+                transformed_texture_transform,
+                TextureFilter::Nearest,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                raster_threads,
+            );
+        }),
+        measure("Layer transform bilinear (parallel)", iterations, |target| {
+            draw_texture_transformed_clipped_parallel_with_threads(
+                target,
+                &transformed_texture,
+                Rect::new(0, 0, 640, 360),
+                transformed_texture_transform,
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                raster_threads,
             );
         }),
         measure("Layer composition (2 layers)", iterations, |target| {
