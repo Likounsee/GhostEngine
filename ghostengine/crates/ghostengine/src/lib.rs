@@ -60,7 +60,7 @@ pub use image::{
 };
 pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
-pub use mipmap::MipmapChain;
+pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path_cache::PathGeometryCache;
 pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
 pub use path::{
