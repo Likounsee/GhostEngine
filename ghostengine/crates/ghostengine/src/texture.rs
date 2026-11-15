@@ -704,12 +704,8 @@ pub fn draw_texture_transformed_clipped(
             // rotations and shears. Recompute them from the pixel center so
             // sampling exactly matches the affine transform definition.
             let pixel_center_x = x as f32 + 0.5;
-            let local_x = inverse.m11 * pixel_center_x
-                + inverse.m12 * pixel_center_y
-                + inverse.tx;
-            let local_y = inverse.m21 * pixel_center_x
-                + inverse.m22 * pixel_center_y
-                + inverse.ty;
+            let local_x = inverse.m11 * pixel_center_x + inverse.m12 * pixel_center_y + inverse.tx;
+            let local_y = inverse.m21 * pixel_center_x + inverse.m22 * pixel_center_y + inverse.ty;
             if local_x < local_left
                 || local_x >= local_right
                 || local_y < local_top
@@ -725,8 +721,7 @@ pub fn draw_texture_transformed_clipped(
             // using the opaque bilinear kernel whenever possible.
             let color = match filter {
                 TextureFilter::Nearest => {
-                    let sample_x =
-                        source_x.floor().clamp(0.0, texture.width as f32 - 1.0) as usize;
+                    let sample_x = source_x.floor().clamp(0.0, texture.width as f32 - 1.0) as usize;
                     let sample_y =
                         source_y.floor().clamp(0.0, texture.height as f32 - 1.0) as usize;
                     texture.pixels[sample_y * texture_width + sample_x]
