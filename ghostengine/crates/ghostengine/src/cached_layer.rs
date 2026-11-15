@@ -20,30 +20,54 @@ impl CachedLayer {
         let framebuffer = Framebuffer::new(width, height, clear)?;
         let mut damage = DamageRegion::new(width, height);
         damage.add(Rect::new(0, 0, width, height));
-        Ok(Self { framebuffer, damage, rendered_frames: 0 })
+        Ok(Self {
+            framebuffer,
+            damage,
+            rendered_frames: 0,
+        })
     }
 
     #[must_use]
-    pub const fn framebuffer(&self) -> &Framebuffer { &self.framebuffer }
+    pub const fn framebuffer(&self) -> &Framebuffer {
+        &self.framebuffer
+    }
 
-    pub fn framebuffer_mut(&mut self) -> &mut Framebuffer { &mut self.framebuffer }
+    pub fn framebuffer_mut(&mut self) -> &mut Framebuffer {
+        &mut self.framebuffer
+    }
 
     #[must_use]
-    pub fn damage(&self) -> &DamageRegion { &self.damage }
+    pub fn damage(&self) -> &DamageRegion {
+        &self.damage
+    }
 
     #[must_use]
-    pub const fn rendered_frames(&self) -> u64 { self.rendered_frames }
+    pub const fn rendered_frames(&self) -> u64 {
+        self.rendered_frames
+    }
 
     /// Marks a changed rectangle for recomputation on the next render call.
-    pub fn mark_dirty(&mut self, rectangle: Rect) { self.damage.add(rectangle); }
+    pub fn mark_dirty(&mut self, rectangle: Rect) {
+        self.damage.add(rectangle);
+    }
 
     /// Invalidates every pixel, for example after a theme or global style change.
     pub fn mark_dirty_all(&mut self) {
-        self.damage.add(Rect::new(0, 0, self.framebuffer.width(), self.framebuffer.height()));
+        self.damage.add(Rect::new(
+            0,
+            0,
+            self.framebuffer.width(),
+            self.framebuffer.height(),
+        ));
     }
 
     /// Resizes the backing framebuffer and invalidates its complete contents.
-    pub fn resize(&mut self, width: u32, height: u32, clear: Color) -> Result<(), FramebufferError> {
+    pub fn resize(
+        &mut self,
+        width: u32,
+        height: u32,
+        clear: Color,
+    ) -> Result<(), FramebufferError> {
         self.framebuffer.resize_and_clear(width, height, clear)?;
         self.damage.reset(width, height);
         self.mark_dirty_all();
@@ -91,7 +115,9 @@ impl CachedLayer {
                 if source.a == 0 {
                     continue;
                 }
-                let background = target.get_pixel(destination_x as u32, destination_y as u32).unwrap();
+                let background = target
+                    .get_pixel(destination_x as u32, destination_y as u32)
+                    .unwrap();
                 target.set_pixel(
                     destination_x as u32,
                     destination_y as u32,
@@ -109,7 +135,9 @@ impl CachedLayer {
     where
         F: FnOnce(&mut Framebuffer, &DamageRegion),
     {
-        if self.damage.is_empty() { return false; }
+        if self.damage.is_empty() {
+            return false;
+        }
         render(&mut self.framebuffer, &self.damage);
         self.damage.clear();
         self.rendered_frames = self.rendered_frames.saturating_add(1);
@@ -143,7 +171,9 @@ mod tests {
         cache.mark_dirty(Rect::new(2, 3, 2, 2));
         assert!(cache.render_if_dirty(|target, damage| {
             assert_eq!(damage.area(), 4);
-            for rect in damage.rectangles() { target.fill_rect(*rect, Color::RED); }
+            for rect in damage.rectangles() {
+                target.fill_rect(*rect, Color::RED);
+            }
         }));
         assert_eq!(cache.framebuffer().get_pixel(2, 3), Some(Color::RED));
         assert_eq!(cache.framebuffer().get_pixel(0, 0), Some(Color::BLACK));
