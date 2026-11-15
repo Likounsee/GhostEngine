@@ -618,7 +618,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
     clip: Rect,
     threads: usize,
 ) {
-    if threads <= 1 || destination.width.saturating_mul(destination.height) < 262_144 {
+    if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
         draw_texture_clipped(target, texture, destination, filter, clip);
         return;
     }
@@ -638,6 +638,43 @@ pub fn draw_texture_clipped_parallel_with_threads(
     let end_x = destination_right.min(clip_right);
     let end_y = destination_bottom.min(clip_bottom);
     if first_x >= end_x || first_y >= end_y {
+        return;
+    }
+
+    if filter == TextureFilter::Nearest
+        && texture.fully_opaque
+        && destination.width == texture.width
+        && destination.height == texture.height
+    {
+        let source_x = (first_x - u64::from(destination.x)) as usize;
+        let copy_width = (end_x - first_x) as usize;
+        let width = target.width() as usize;
+        let height = target.height() as usize;
+        let worker_count = threads.min(height).max(1);
+        let rows_per_worker = height.div_ceil(worker_count);
+        let chunk_len = rows_per_worker * width;
+        std::thread::scope(|scope| {
+            for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+                let row_start = worker_index * rows_per_worker;
+                let row_end = (row_start + pixels.len() / width).min(height);
+                let first_row = (first_y as usize).max(row_start);
+                let last_row = (end_y as usize).min(row_end);
+                if first_row >= last_row {
+                    continue;
+                }
+                scope.spawn(move || {
+                    for y in first_row..last_row {
+                        let source_y = y - destination.y as usize;
+                        let source_offset = source_y * texture.width as usize + source_x;
+                        let local_row = (y - row_start) * width;
+                        let row = &mut pixels[local_row..local_row + width];
+                        row[left..right].copy_from_slice(
+                            &texture.pixels[source_offset..source_offset + copy_width],
+                        );
+                    }
+                });
+            }
+        });
         return;
     }
 
@@ -742,7 +779,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     clip: Rect,
     threads: usize,
 ) -> bool {
-    if threads <= 1 || destination.width.saturating_mul(destination.height) < 262_144 {
+    if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
         return draw_texture_transformed_clipped(
             target, texture, destination, transform, filter, clip,
         );
@@ -1592,7 +1629,7 @@ mod tests {
             let mut sequential =
                 Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
             let mut parallel = sequential.clone();
-            let destination = Rect::new(10, 12, 350, 270);
+            let destination = Rect::new(10, 12, 400, 350);
             let clip = Rect::new(5, 7, 620, 460);
             let expected_visible = draw_texture_transformed_clipped(
                 &mut sequential, &texture, destination, transform, filter, clip,
