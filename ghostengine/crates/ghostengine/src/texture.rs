@@ -777,7 +777,8 @@ mod tests {
         TextureError, TextureFilter,
     };
     use crate::{
-        draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch, Transform2D,
+        draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch,
+        Transform2D,
     };
 
     fn two_color_texture() -> Texture {
@@ -922,7 +923,8 @@ mod tests {
                     let y1 = (y0 + 1).min(source_height as usize - 1);
                     let ty = source_y - y0 as f32;
                     (0..width).map(move |x| {
-                        let source_x = ((x as f32 + 0.5) * source_width as f32 / width as f32 - 0.5)
+                        let source_x = ((x as f32 + 0.5) * source_width as f32 / width as f32
+                            - 0.5)
                             .clamp(0.0, source_width as f32 - 1.0);
                         let x0 = source_x.floor() as usize;
                         let x1 = (x0 + 1).min(source_width as usize - 1);
