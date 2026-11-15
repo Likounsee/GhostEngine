@@ -3,12 +3,13 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use ghostengine::{
-    blend_rect, draw_text, draw_texture_clipped_parallel_with_threads,
-    draw_texture_clipped_with_scratch, draw_texture_transformed_clipped_parallel_with_threads,
-    fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
+    blend_rect, draw_mipmapped_texture_clipped, draw_text,
+    draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
+    draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
+    fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
-    Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureDrawScratch,
-    TextureFilter, Transform2D, UiTheme, Vector, WidgetState, MipmapChain, draw_mipmapped_texture_clipped,
+    Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
+    TextureDrawScratch, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
