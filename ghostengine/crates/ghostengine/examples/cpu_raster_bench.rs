@@ -9,7 +9,7 @@ use ghostengine::{
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture, TextureDrawScratch,
     TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
-}
+};
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
