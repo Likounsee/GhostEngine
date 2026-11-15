@@ -282,7 +282,6 @@ fn sample_bilinear_prepared(
 }
 
 #[inline]
-#[inline]
 fn sample_bilinear_opaque_rows(
     top_row: &[Color],
     bottom_row: &[Color],
