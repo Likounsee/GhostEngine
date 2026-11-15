@@ -188,9 +188,8 @@ fn main() {
         }
     }
     transformed_layer.set_position(500, 250);
-    transformed_layer.set_transform(
-        Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)),
-    );
+    transformed_layer
+        .set_transform(Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)));
     transformed_layer.set_filter(TextureFilter::Bilinear);
     let transformed_layers = [transformed_layer];
 
