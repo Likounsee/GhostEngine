@@ -407,6 +407,8 @@ pub fn draw_texture_clipped_with_scratch(
     {
         let source_x = (first_x - u64::from(destination.x)) as usize;
         let copy_width = (end_x - first_x) as usize;
+        let left = first_x as usize;
+        let right = end_x as usize;
         for y in first_y..end_y {
             let source_y = (y - u64::from(destination.y)) as usize;
             let source_offset = source_y * texture.width as usize + source_x;
