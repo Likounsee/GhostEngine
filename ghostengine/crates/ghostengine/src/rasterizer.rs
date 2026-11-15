@@ -227,6 +227,22 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     if left >= right || top >= bottom {
         return;
     }
+    // For tiny rectangles, building three 256-entry lookup tables costs
+    // more than blending the pixels directly. Keep the scalar path allocation-
+    // free and reserve table setup for workloads large enough to amortize it.
+    const LOOKUP_TABLE_MIN_PIXELS: u64 = 256;
+    let area = (right - left) * (bottom - top);
+    if area < LOOKUP_TABLE_MIN_PIXELS {
+        for y in top..bottom {
+            if let Some(row) = target.row_mut(y as u32) {
+                for pixel in &mut row[left as usize..right as usize] {
+                    *pixel = color.blend_over(*pixel);
+                }
+            }
+        }
+        return;
+    }
+
     // Source-dependent terms are constant for the entire rectangle. Compute
     // them once instead of repeating the same conversions and multiplications
     // for every destination pixel.
@@ -2193,6 +2209,43 @@ mod tests {
 
     fn target(width: u32, height: u32) -> Framebuffer {
         Framebuffer::new(width, height, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn small_blend_rect_matches_pixel_source_over_for_all_destination_alpha_classes() {
+        let initial = [
+            Color::TRANSPARENT,
+            Color::rgba(20, 40, 60, 1),
+            Color::rgba(80, 100, 120, 127),
+            Color::rgba(140, 160, 180, 254),
+            Color::WHITE,
+            Color::BLACK,
+            Color::rgba(12, 34, 56, 200),
+            Color::rgba(210, 180, 150, 90),
+            Color::rgb(5, 15, 25),
+            Color::rgba(255, 0, 128, 128),
+            Color::rgba(0, 255, 64, 32),
+            Color::rgb(240, 230, 220),
+            Color::TRANSPARENT,
+            Color::rgba(1, 2, 3, 64),
+            Color::rgb(100, 110, 120),
+            Color::rgba(200, 210, 220, 240),
+        ];
+        let source = Color::rgba(235, 91, 47, 137);
+        let mut actual = target(4, 4);
+        actual.copy_pixels_from(&initial).unwrap();
+
+        let mut expected = initial;
+        for y in 1..3 {
+            for x in 1..3 {
+                let index = y * 4 + x;
+                expected[index] = source.blend_over(expected[index]);
+            }
+        }
+
+        super::blend_rect(&mut actual, Rect::new(1, 1, 2, 2), source);
+
+        assert_eq!(actual.pixels(), &expected);
     }
 
     fn test_gradient() -> super::Gradient {
