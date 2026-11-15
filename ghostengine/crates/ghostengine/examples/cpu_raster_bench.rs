@@ -245,6 +245,13 @@ fn main() {
                 Color::rgba(220, 90, 55, 150),
             );
         }),
+        measure("Small rectangle alpha blend", iterations, |target| {
+            blend_rect(
+                target,
+                Rect::new(24 * SCALE_U32, 24 * SCALE_U32, 8 * SCALE_U32, 8 * SCALE_U32),
+                Color::rgba(220, 90, 55, 150),
+            );
+        }),
         measure("Antialiased line", iterations, |target| {
             ghostengine::rasterizer::draw_line_aa(
                 target,
