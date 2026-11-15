@@ -193,10 +193,10 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
     }
 }
 
-/// Fills a batch of same-color rectangles, coalescing overlaps before rasterization.
+/// Fills a batch of same-color rectangles under one shared clip.
 ///
 /// Use this for repeated UI or sprite primitives that share a color and clip.
-/// Overlapping rectangles are merged so covered pixels are written only once.
+/// Rectangle coverage is preserved exactly, including overlapping shapes.
 pub fn fill_rects_clipped(
     target: &mut Framebuffer,
     rectangles: &[Rect],
