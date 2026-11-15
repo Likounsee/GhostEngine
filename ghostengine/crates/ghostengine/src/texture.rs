@@ -707,15 +707,15 @@ pub fn draw_texture_clipped_parallel_with_threads(
                     if filter == TextureFilter::Nearest {
                         let source_row = (source_y.floor() as u32).min(texture.height - 1) as usize
                             * texture.width as usize;
-                        for x in left..right {
+                        for (x, pixel) in row.iter_mut().enumerate().take(right).skip(left) {
                             let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
                             let source_column =
                                 (source_x.floor() as u32).min(texture.width - 1) as usize;
                             let color = texture.pixels[source_row + source_column];
                             if color.a == 255 {
-                                row[x] = color;
+                                *pixel = color;
                             } else if color.a > 0 {
-                                row[x] = color.blend_over(row[x]);
+                                *pixel = color.blend_over(*pixel);
                             }
                         }
                     } else {
@@ -723,7 +723,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let y0 = sample_y.floor() as usize;
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
-                        for x in left..right {
+                        for (x, pixel) in row.iter_mut().enumerate().take(right).skip(left) {
                             let source_x =
                                 (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
                             let sample_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
@@ -750,9 +750,9 @@ pub fn draw_texture_clipped_parallel_with_threads(
                                 )
                             };
                             if texture.fully_opaque || color.a == 255 {
-                                row[x] = color;
+                                *pixel = color;
                             } else if color.a > 0 {
-                                row[x] = color.blend_over(row[x]);
+                                *pixel = color.blend_over(*pixel);
                             }
                         }
                     }
