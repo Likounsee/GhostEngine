@@ -59,13 +59,17 @@ impl MipmapChain {
         let upper = (lower + 1).min(self.levels.len() - 1);
         let fraction = lod - lower as f32;
         let lower_scale = (1_u32 << lower.min(31)) as f32;
-        let a = sample_bilinear(&self.levels[lower], x / lower_scale, y / lower_scale);
+        let lower_x = (x + 0.5) / lower_scale - 0.5;
+        let lower_y = (y + 0.5) / lower_scale - 0.5;
+        let a = sample_bilinear(&self.levels[lower], lower_x, lower_y);
         if lower == upper || fraction <= 0.0 {
             return a;
         }
 
         let upper_scale = (1_u32 << upper.min(31)) as f32;
-        let b = sample_bilinear(&self.levels[upper], x / upper_scale, y / upper_scale);
+        let upper_x = (x + 0.5) / upper_scale - 0.5;
+        let upper_y = (y + 0.5) / upper_scale - 0.5;
+        let b = sample_bilinear(&self.levels[upper], upper_x, upper_y);
         interpolate_premultiplied(a, b, fraction)
     }
 }
