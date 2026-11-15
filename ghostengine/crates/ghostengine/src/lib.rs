@@ -79,9 +79,8 @@ pub use shaping::{
     TextDirection,
 };
 pub use stroke::{
-    stroke_path, stroke_path_aa, stroke_path_aa_clipped,
-    stroke_path_aa_parallel_with_threads, stroke_path_clipped, StrokeCap,
-    StrokeError, StrokeJoin, StrokeStyle,
+    stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_aa_parallel_with_threads,
+    stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle,
 };
 pub use text::{
     draw_text, draw_text_bidi_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped,
