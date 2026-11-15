@@ -98,7 +98,8 @@ pub use text::{
 };
 pub use texture::{
     draw_texture, draw_texture_clipped, draw_texture_clipped_parallel_with_threads,
-    draw_texture_clipped_with_scratch, draw_texture_transformed_clipped,
+    draw_texture_clipped_with_scratch, draw_texture_region_clipped,
+    draw_texture_transformed_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, Texture, TextureDrawScratch,
     TextureError, TextureFilter,
 };
