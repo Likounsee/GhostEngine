@@ -95,6 +95,48 @@ pub fn draw_mipmapped_texture_clipped(
     };
 
     let base = &mipmaps.levels[0];
+
+    // Exact 2:1 downscales land on texel centers of mip level 1. Avoid
+    // per-pixel LOD calculation and bilinear sampling for this common case.
+    if base.width() == destination.width.checked_mul(2).unwrap_or(0)
+        && base.height() == destination.height.checked_mul(2).unwrap_or(0)
+    {
+        if let Some(level) = mipmaps.levels.get(1) {
+            if level.width() == destination.width && level.height() == destination.height {
+                let target_width = target.width() as usize;
+                let source_width = level.width() as usize;
+                let copy_width = clip.width as usize;
+                let source_x = (clip.x - destination.x) as usize;
+                let target_x = clip.x as usize;
+                let source_y = (clip.y - destination.y) as usize;
+
+                for row in 0..clip.height as usize {
+                    let source_start = (source_y + row) * source_width + source_x;
+                    let target_start = (clip.y as usize + row) * target_width + target_x;
+                    let source_row =
+                        &level.pixels()[source_start..source_start + copy_width];
+                    let target_row =
+                        &mut target.pixels_mut()[target_start..target_start + copy_width];
+
+                    if level.is_fully_opaque() {
+                        target_row.copy_from_slice(source_row);
+                    } else {
+                        for (destination_pixel, source_pixel) in
+                            target_row.iter_mut().zip(source_row.iter().copied())
+                        {
+                            if source_pixel.a == 255 {
+                                *destination_pixel = source_pixel;
+                            } else if source_pixel.a > 0 {
+                                *destination_pixel = source_pixel.blend_over(*destination_pixel);
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
+
     let scale_x = base.width() as f32 / destination.width as f32;
     let scale_y = base.height() as f32 / destination.height as f32;
     let lod = scale_x.max(scale_y).log2().max(0.0);
@@ -246,6 +288,65 @@ mod tests {
         );
         assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(128, 128, 128)));
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn exact_two_to_one_opaque_downscale_copies_mip_rows_with_clipping() {
+        let base = Texture::new(
+            4,
+            2,
+            vec![
+                Color::RED,
+                Color::RED,
+                Color::GREEN,
+                Color::GREEN,
+                Color::BLUE,
+                Color::BLUE,
+                Color::WHITE,
+                Color::WHITE,
+            ],
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        let mut actual = crate::Framebuffer::new(4, 3, Color::BLACK).unwrap();
+        let mut expected = actual.clone();
+        let destination = crate::Rect::new(1, 1, 2, 1);
+        let clip = crate::Rect::new(2, 1, 1, 1);
+
+        draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
+
+        let reference = chain.sample_trilinear(3.0, 1.0, 1.0);
+        expected.set_pixel(2, 1, reference);
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
+    fn exact_two_to_one_translucent_downscale_blends_instead_of_replacing() {
+        let base = Texture::new(
+            2,
+            2,
+            vec![
+                Color::rgba(255, 0, 0, 128),
+                Color::rgba(255, 0, 0, 128),
+                Color::rgba(255, 0, 0, 128),
+                Color::rgba(255, 0, 0, 128),
+            ],
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        let mut actual = crate::Framebuffer::new(1, 1, Color::BLUE).unwrap();
+        let mut expected = actual.clone();
+
+        draw_mipmapped_texture_clipped(
+            &mut actual,
+            &chain,
+            crate::Rect::new(0, 0, 1, 1),
+            crate::Rect::new(0, 0, 1, 1),
+        );
+        let source = chain.levels()[1].get_pixel(0, 0).unwrap();
+        expected.set_pixel(0, 0, source.blend_over(Color::BLUE));
+
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
