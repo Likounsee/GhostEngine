@@ -21,9 +21,13 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
     let height = target.height() as usize;
     let radius_x = (radius as usize).min(width.saturating_sub(1));
     let radius_y = (radius as usize).min(height.saturating_sub(1));
-    scratch.source.resize(target.pixels().len(), Color::TRANSPARENT);
+    scratch
+        .source
+        .resize(target.pixels().len(), Color::TRANSPARENT);
     scratch.source.copy_from_slice(target.pixels());
-    scratch.pixels.resize(scratch.source.len(), Color::TRANSPARENT);
+    scratch
+        .pixels
+        .resize(scratch.source.len(), Color::TRANSPARENT);
 
     for y in 0..height {
         let mut sums = [0_u64; 4];
@@ -37,9 +41,9 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
             let remove_x = x.saturating_sub(radius_x);
             let add_x = (x + radius_x + 1).min(width - 1);
             if x >= radius_x {
-                add_pixel(&mut sums, source[y * width + remove_x], -1);
+                add_pixel(&mut sums, scratch.source[y * width + remove_x], -1);
             }
-            add_pixel(&mut sums, source[y * width + add_x], 1);
+            add_pixel(&mut sums, scratch.source[y * width + add_x], 1);
         }
     }
 
@@ -81,9 +85,7 @@ fn color_from_sums(sums: [u64; 4], count: u64) -> Color {
     if sums[3] == 0 {
         return Color::TRANSPARENT;
     }
-    let channel = |premultiplied: u64| {
-        ((premultiplied + sums[3] / 2) / sums[3]).min(255) as u8
-    };
+    let channel = |premultiplied: u64| ((premultiplied + sums[3] / 2) / sums[3]).min(255) as u8;
     let alpha = ((sums[3] + count / 2) / count).min(255) as u8;
     Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
 }
@@ -97,7 +99,10 @@ mod tests {
     fn blur_preserves_uniform_images() {
         let mut target = Framebuffer::new(5, 3, Color::rgba(20, 80, 160, 200)).unwrap();
         apply_box_blur(&mut target, 2, &mut EffectScratch::default());
-        assert!(target.pixels().iter().all(|pixel| *pixel == Color::rgba(20, 80, 160, 200)));
+        assert!(target
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::rgba(20, 80, 160, 200)));
     }
 
     #[test]
@@ -108,7 +113,10 @@ mod tests {
         assert_eq!(target.get_pixel(1, 0).unwrap().a, 85);
         assert_eq!(target.get_pixel(0, 0).unwrap().a, 85);
         assert_eq!(target.get_pixel(2, 0).unwrap().a, 85);
-        assert!(target.pixels().iter().all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
+        assert!(target
+            .pixels()
+            .iter()
+            .all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
     }
 
     #[test]
