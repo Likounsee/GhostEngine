@@ -220,9 +220,24 @@ fn sample_bilinear_prepared(
     };
     let channel = |value: f32| value.round().clamp(0.0, 255.0) as u8;
     Color::rgba(
-        channel(interpolate_premultiplied(top_left.r, top_right.r, bottom_left.r, bottom_right.r)),
-        channel(interpolate_premultiplied(top_left.g, top_right.g, bottom_left.g, bottom_right.g)),
-        channel(interpolate_premultiplied(top_left.b, top_right.b, bottom_left.b, bottom_right.b)),
+        channel(interpolate_premultiplied(
+            top_left.r,
+            top_right.r,
+            bottom_left.r,
+            bottom_right.r,
+        )),
+        channel(interpolate_premultiplied(
+            top_left.g,
+            top_right.g,
+            bottom_left.g,
+            bottom_right.g,
+        )),
+        channel(interpolate_premultiplied(
+            top_left.b,
+            top_right.b,
+            bottom_left.b,
+            bottom_right.b,
+        )),
         channel(alpha),
     )
 }
@@ -251,9 +266,7 @@ fn sample_bilinear_opaque_prepared(
     let interpolate = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
         let top = f32::from(top_left) * inverse_x + f32::from(top_right) * tx;
         let bottom = f32::from(bottom_left) * inverse_x + f32::from(bottom_right) * tx;
-        (top * inverse_y + bottom * ty)
-            .round()
-            .clamp(0.0, 255.0) as u8
+        (top * inverse_y + bottom * ty).round().clamp(0.0, 255.0) as u8
     };
 
     Color::rgb(
@@ -296,9 +309,7 @@ fn blend_cached_bilinear_over_opaque(
 
     let inverse_alpha = 255.0 - alpha;
     let channel = |index: usize, background: u8| {
-        ((top[index] * inverse_y
-            + bottom[index] * ty
-            + f32::from(background) * inverse_alpha)
+        ((top[index] * inverse_y + bottom[index] * ty + f32::from(background) * inverse_alpha)
             / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
@@ -334,7 +345,14 @@ pub fn draw_texture_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
-    draw_texture_clipped_with_scratch(target, texture, destination, filter, clip, &mut TextureDrawScratch::default());
+    draw_texture_clipped_with_scratch(
+        target,
+        texture,
+        destination,
+        filter,
+        clip,
+        &mut TextureDrawScratch::default(),
+    );
 }
 
 /// Reusable temporary storage for repeated texture draws.
@@ -424,7 +442,8 @@ pub fn draw_texture_clipped_with_scratch(
     scratch.horizontal_cache.clear();
     let use_horizontal_cache = if filter == TextureFilter::Bilinear {
         let cache_len = (texture.height as usize).checked_mul(scratch.horizontal_samples.len());
-        let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+        let cache_bytes =
+            cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
         let should_cache = end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
         if should_cache {
@@ -514,9 +533,8 @@ pub fn draw_texture_clipped_with_scratch(
                 let top_offset = y0 * samples.len();
                 let bottom_offset = y1 * samples.len();
                 let inverse_y = 1.0 - ty;
-                for (pixel, (&top, &bottom)) in row[first_x as usize..end_x as usize]
-                    .iter_mut()
-                    .zip(
+                for (pixel, (&top, &bottom)) in
+                    row[first_x as usize..end_x as usize].iter_mut().zip(
                         horizontal_cache[top_offset..top_offset + samples.len()]
                             .iter()
                             .zip(&horizontal_cache[bottom_offset..bottom_offset + samples.len()]),
@@ -674,12 +692,10 @@ pub fn draw_texture_transformed_clipped(
     let texture_width = texture.width as usize;
     let texture_height = texture.height as usize;
     for y in first_y..end_y {
-        let local_y = inverse.m21 * (first_x as f32 + 0.5)
-            + inverse.m22 * (y as f32 + 0.5)
-            + inverse.ty;
-        let mut local_x = inverse.m11 * (first_x as f32 + 0.5)
-            + inverse.m12 * (y as f32 + 0.5)
-            + inverse.tx;
+        let local_y =
+            inverse.m21 * (first_x as f32 + 0.5) + inverse.m22 * (y as f32 + 0.5) + inverse.ty;
+        let mut local_x =
+            inverse.m11 * (first_x as f32 + 0.5) + inverse.m12 * (y as f32 + 0.5) + inverse.tx;
         // Entire scanlines outside the destination quad cannot contribute.
         // Reject them before preparing sampling coordinates or borrowing the
         // framebuffer row, instead of repeating a vertical bounds check per pixel.
@@ -691,10 +707,8 @@ pub fn draw_texture_transformed_clipped(
         // Prepare its source texel coordinates once rather than recalculating
         // and clamping them for every destination pixel.
         let source_y = (local_y - local_top) * source_scale_y;
-        let nearest_y =
-            (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize;
-        let bilinear_sample_y =
-            (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+        let nearest_y = (source_y.floor().clamp(0.0, texture.height as f32 - 1.0)) as usize;
+        let bilinear_sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
         let bilinear_y0 = bilinear_sample_y.floor() as usize;
         let bilinear_y1 = (bilinear_y0 + 1).min(texture_height - 1);
         let bilinear_ty = bilinear_sample_y - bilinear_y0 as f32;
@@ -712,13 +726,12 @@ pub fn draw_texture_transformed_clipped(
                 // whenever the texture's construction-time alpha summary allows it.
                 let color = match filter {
                     TextureFilter::Nearest => {
-                        let sample_x = source_x.floor().clamp(0.0, texture.width as f32 - 1.0)
-                            as usize;
+                        let sample_x =
+                            source_x.floor().clamp(0.0, texture.width as f32 - 1.0) as usize;
                         texture.pixels[nearest_y * texture_width + sample_x]
                     }
                     TextureFilter::Bilinear => {
-                        let sample_x = (source_x - 0.5)
-                            .clamp(0.0, texture.width as f32 - 1.0);
+                        let sample_x = (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
                         let x0 = sample_x.floor() as usize;
                         let coordinates = BilinearCoordinates {
                             x0,
@@ -735,11 +748,7 @@ pub fn draw_texture_transformed_clipped(
                                 coordinates,
                             )
                         } else {
-                            sample_bilinear_prepared(
-                                &texture.pixels,
-                                texture_width,
-                                coordinates,
-                            )
+                            sample_bilinear_prepared(&texture.pixels, texture_width, coordinates)
                         }
                     }
                 };
@@ -818,13 +827,7 @@ mod tests {
             }
 
             let mut actual = initial;
-            blend_cached_bilinear_over_opaque(
-                &top,
-                &bottom,
-                inverse_y,
-                ty,
-                &mut actual,
-            );
+            blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, &mut actual);
             assert_eq!(actual.r, expected.r);
             assert_eq!(actual.g, expected.g);
             assert_eq!(actual.b, expected.b);
@@ -842,14 +845,11 @@ mod tests {
                     continue;
                 }
                 for destination in [0_u8, 1, 64, 127, 200, 254, 255] {
-                    let source = (premultiplied / alpha)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
+                    let source = (premultiplied / alpha).round().clamp(0.0, 255.0) as u8;
                     let source_alpha = alpha.round().clamp(0.0, 255.0) as u8;
                     let expected = Color::rgba(source, source, source, source_alpha)
                         .blend_over(Color::rgb(destination, destination, destination));
-                    let actual = ((premultiplied
-                        + f32::from(destination) * (255.0 - alpha))
+                    let actual = ((premultiplied + f32::from(destination) * (255.0 - alpha))
                         / 255.0)
                         .round()
                         .clamp(0.0, 255.0) as u8;
@@ -901,8 +901,7 @@ mod tests {
         .unwrap();
 
         for (width, height) in [(7, 3), (7, 5)] {
-            let mut target =
-                Framebuffer::new(width, height, Color::rgba(20, 40, 60, 120)).unwrap();
+            let mut target = Framebuffer::new(width, height, Color::rgba(20, 40, 60, 120)).unwrap();
             draw_texture(
                 &mut target,
                 &texture,
@@ -912,16 +911,16 @@ mod tests {
 
             let expected = (0..height)
                 .flat_map(|y| {
-                    let source_y =
-                        ((y as f32 + 0.5) * texture.height() as f32 / height as f32 - 0.5)
-                            .clamp(0.0, texture.height() as f32 - 1.0);
+                    let source_y = ((y as f32 + 0.5) * texture.height() as f32 / height as f32
+                        - 0.5)
+                        .clamp(0.0, texture.height() as f32 - 1.0);
                     let y0 = source_y.floor() as usize;
                     let y1 = (y0 + 1).min(texture.height() as usize - 1);
                     let ty = source_y - y0 as f32;
                     (0..width).map(move |x| {
-                        let source_x =
-                            ((x as f32 + 0.5) * texture.width() as f32 / width as f32 - 0.5)
-                                .clamp(0.0, texture.width() as f32 - 1.0);
+                        let source_x = ((x as f32 + 0.5) * texture.width() as f32 / width as f32
+                            - 0.5)
+                            .clamp(0.0, texture.width() as f32 - 1.0);
                         let x0 = source_x.floor() as usize;
                         let x1 = (x0 + 1).min(texture.width() as usize - 1);
                         sample_bilinear_prepared(
@@ -951,13 +950,7 @@ mod tests {
             4,
             3,
             (0..12)
-                .map(|index| {
-                    Color::rgb(
-                        (index * 17) as u8,
-                        (index * 29) as u8,
-                        (index * 41) as u8,
-                    )
-                })
+                .map(|index| Color::rgb((index * 17) as u8, (index * 29) as u8, (index * 41) as u8))
                 .collect(),
         )
         .unwrap();
@@ -1189,10 +1182,8 @@ mod tests {
                 let inverse = transform.inverse().unwrap();
                 for y in 0..expected.height() {
                     for x in 0..expected.width() {
-                        let local = inverse.transform_point(crate::Vector::new(
-                            x as f32 + 0.5,
-                            y as f32 + 0.5,
-                        ));
+                        let local = inverse
+                            .transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
                         if local.x < destination.x as f32
                             || local.x >= (destination.x + destination.width) as f32
                             || local.y < destination.y as f32
@@ -1200,11 +1191,9 @@ mod tests {
                         {
                             continue;
                         }
-                        let source_x = (local.x - destination.x as f32)
-                            * texture.width as f32
+                        let source_x = (local.x - destination.x as f32) * texture.width as f32
                             / destination.width as f32;
-                        let source_y = (local.y - destination.y as f32)
-                            * texture.height as f32
+                        let source_y = (local.y - destination.y as f32) * texture.height as f32
                             / destination.height as f32;
                         let color = match filter {
                             TextureFilter::Nearest => texture.sample_nearest(source_x, source_y),
@@ -1358,14 +1347,12 @@ mod tests {
         // Independent scalar reference: map each visible destination pixel
         // back to its source texel using pixel-center nearest-neighbor sampling.
         for y in 1..6 {
-            let source_y = (((y as f32 + 0.5 - destination.y as f32)
-                * texture.height() as f32)
+            let source_y = (((y as f32 + 0.5 - destination.y as f32) * texture.height() as f32)
                 / destination.height as f32)
                 .floor()
                 .min(texture.height() as f32 - 1.0) as u32;
             for x in 3..11 {
-                let source_x = (((x as f32 + 0.5 - destination.x as f32)
-                    * texture.width() as f32)
+                let source_x = (((x as f32 + 0.5 - destination.x as f32) * texture.width() as f32)
                     / destination.width as f32)
                     .floor()
                     .min(texture.width() as f32 - 1.0) as u32;
