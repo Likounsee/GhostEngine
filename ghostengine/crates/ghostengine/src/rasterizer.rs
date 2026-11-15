@@ -245,7 +245,6 @@ fn clipped_rect_bounds(target: &Framebuffer, rect: Rect) -> Option<(usize, usize
     ))
 }
 
-
 /// Processes disjoint rows while preserving each row's absolute Y coordinate.
 fn process_rows_with_y_mut<F>(
     rows: &mut [Color],
@@ -328,7 +327,12 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 /// This parallel variant is deterministic and pixel-identical to blend_rect.
 /// It uses the same exact integer rounding and opaque-destination lookup path.
 pub fn blend_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
-    blend_rect_with_threads(target, rect, color, parallel_thread_count_for_rect(target, rect));
+    blend_rect_with_threads(
+        target,
+        rect,
+        color,
+        parallel_thread_count_for_rect(target, rect),
+    );
 }
 
 /// Alpha-composites a clipped rectangle using the requested number of workers.
@@ -777,7 +781,8 @@ fn fill_rect_radial_gradient_with_threads(
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient.sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
+                    gradient
+                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
@@ -4087,16 +4092,24 @@ mod parallel_raster_tests {
     }
 }
 
-
 #[cfg(test)]
 mod parallel_gradient_tests {
     use crate::{Color, Framebuffer, Gradient, GradientStop, Rect, Vector};
 
     fn test_gradient() -> Gradient {
         Gradient::new(vec![
-            GradientStop { position: 0.0, color: Color::rgba(20, 80, 230, 255) },
-            GradientStop { position: 0.45, color: Color::rgba(230, 70, 40, 170) },
-            GradientStop { position: 1.0, color: Color::rgba(40, 210, 120, 0) },
+            GradientStop {
+                position: 0.0,
+                color: Color::rgba(20, 80, 230, 255),
+            },
+            GradientStop {
+                position: 0.45,
+                color: Color::rgba(230, 70, 40, 170),
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::rgba(40, 210, 120, 0),
+            },
         ])
         .unwrap()
     }
@@ -4125,7 +4138,12 @@ mod parallel_gradient_tests {
 
         super::fill_rect_linear_gradient(&mut serial, rect, start, end, &gradient);
         super::fill_rect_linear_gradient_parallel_with_threads(
-            &mut parallel, rect, start, end, &gradient, 4,
+            &mut parallel,
+            rect,
+            start,
+            end,
+            &gradient,
+            4,
         );
         assert_eq!(parallel, serial);
     }
@@ -4141,7 +4159,12 @@ mod parallel_gradient_tests {
 
         super::fill_rect_radial_gradient(&mut serial, rect, center, radius, &gradient);
         super::fill_rect_radial_gradient_parallel_with_threads(
-            &mut parallel, rect, center, radius, &gradient, 4,
+            &mut parallel,
+            rect,
+            center,
+            radius,
+            &gradient,
+            4,
         );
         assert_eq!(parallel, serial);
     }
@@ -4154,23 +4177,37 @@ mod parallel_gradient_tests {
         let before = serial.clone();
 
         super::fill_rect_linear_gradient(
-            &mut serial, Rect::new(0, 0, 80, 80), Vector::new(f32::NAN, 0.0),
-            Vector::new(40.0, 40.0), &gradient,
+            &mut serial,
+            Rect::new(0, 0, 80, 80),
+            Vector::new(f32::NAN, 0.0),
+            Vector::new(40.0, 40.0),
+            &gradient,
         );
         super::fill_rect_linear_gradient_parallel_with_threads(
-            &mut parallel, Rect::new(0, 0, 80, 80), Vector::new(f32::NAN, 0.0),
-            Vector::new(40.0, 40.0), &gradient, 3,
+            &mut parallel,
+            Rect::new(0, 0, 80, 80),
+            Vector::new(f32::NAN, 0.0),
+            Vector::new(40.0, 40.0),
+            &gradient,
+            3,
         );
         super::fill_rect_radial_gradient(
-            &mut serial, Rect::new(0, 0, 80, 80), Vector::new(40.0, 40.0), 0.0, &gradient,
+            &mut serial,
+            Rect::new(0, 0, 80, 80),
+            Vector::new(40.0, 40.0),
+            0.0,
+            &gradient,
         );
         super::fill_rect_radial_gradient_parallel_with_threads(
-            &mut parallel, Rect::new(0, 0, 80, 80), Vector::new(40.0, 40.0), 0.0,
-            &gradient, 3,
+            &mut parallel,
+            Rect::new(0, 0, 80, 80),
+            Vector::new(40.0, 40.0),
+            0.0,
+            &gradient,
+            3,
         );
 
         assert_eq!(serial, before);
         assert_eq!(parallel, before);
     }
 }
-
