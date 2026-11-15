@@ -183,9 +183,7 @@ pub fn stroke_path_aa_parallel_with_threads(
     tolerance: f32,
     threads: usize,
 ) -> Result<(), StrokeError> {
-    if threads <= 1
-        || u64::from(target.width()) * u64::from(target.height()) < 131_072
-    {
+    if threads <= 1 || u64::from(target.width()) * u64::from(target.height()) < 131_072 {
         return stroke_path_aa(target, path, transform, style, color, tolerance);
     }
 
