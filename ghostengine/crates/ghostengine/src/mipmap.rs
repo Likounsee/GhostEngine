@@ -70,6 +70,51 @@ impl MipmapChain {
     }
 }
 
+/// Draws a mipmapped texture into a destination rectangle.
+///
+/// The level of detail is selected from the downscale ratio. Sampling and
+/// compositing are clipped to the destination framebuffer.
+pub fn draw_mipmapped_texture_clipped(
+    target: &mut crate::Framebuffer,
+    mipmaps: &MipmapChain,
+    destination: crate::Rect,
+    clip: crate::Rect,
+) {
+    if destination.width == 0 || destination.height == 0 {
+        return;
+    }
+    let Some(clip) = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
+    else {
+        return;
+    };
+
+    let base = &mipmaps.levels[0];
+    let scale_x = base.width() as f32 / destination.width as f32;
+    let scale_y = base.height() as f32 / destination.height as f32;
+    let lod = scale_x.max(scale_y).log2().max(0.0);
+    let target_width = target.width() as usize;
+
+    for y in clip.y..clip.y + clip.height {
+        let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+            .clamp(0.0, base.height() as f32 - 1.0);
+        for x in clip.x..clip.x + clip.width {
+            let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                .clamp(0.0, base.width() as f32 - 1.0);
+            let source = mipmaps.sample_trilinear(source_x, source_y, lod);
+            if source.a == 0 {
+                continue;
+            }
+            let index = y as usize * target_width + x as usize;
+            let destination = &mut target.pixels_mut()[index];
+            *destination = if source.a == 255 {
+                source
+            } else {
+                source.blend_over(*destination)
+            };
+        }
+    }
+}
+
 fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let x = x.clamp(0.0, texture.width() as f32 - 1.0);
     let y = y.clamp(0.0, texture.height() as f32 - 1.0);
@@ -162,6 +207,26 @@ mod tests {
         let chain = MipmapChain::new(&base).unwrap();
         assert_eq!(chain.levels()[1].get_pixel(0, 0), Some(Color::RED));
         assert_eq!(chain.levels()[1].get_pixel(0, 0).unwrap().a, 128);
+    }
+
+    #[test]
+    fn mipmapped_draw_downscales_and_respects_clipping() {
+        let base = Texture::new(
+            2,
+            2,
+            vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        let mut target = crate::Framebuffer::new(3, 2, Color::BLACK).unwrap();
+        draw_mipmapped_texture_clipped(
+            &mut target,
+            &chain,
+            crate::Rect::new(1, 0, 1, 1),
+            crate::Rect::new(1, 0, 1, 1),
+        );
+        assert_eq!(target.get_pixel(1, 0), Some(Color::rgb(128, 128, 128)));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
     }
 
     #[test]
