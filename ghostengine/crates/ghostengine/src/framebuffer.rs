@@ -16,7 +16,9 @@ impl fmt::Display for FramebufferError {
             Self::ZeroDimension => formatter.write_str("framebuffer dimensions must be non-zero"),
             Self::SizeOverflow => formatter.write_str("framebuffer pixel count overflows usize"),
             Self::AllocationFailed => formatter.write_str("could not allocate framebuffer storage"),
-            Self::PixelCountMismatch => formatter.write_str("source pixel count does not match framebuffer dimensions"),
+            Self::PixelCountMismatch => {
+                formatter.write_str("source pixel count does not match framebuffer dimensions")
+            }
         }
     }
 }
@@ -308,7 +310,10 @@ mod tests {
         let mut framebuffer = Framebuffer::new(3, 2, Color::BLUE).unwrap();
         framebuffer.fill_rect(crate::Rect::new(1, 1, 0, 1), Color::RED);
         framebuffer.fill_rect(crate::Rect::new(u32::MAX, 0, 2, 2), Color::RED);
-        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color::BLUE));
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::BLUE));
     }
 
     #[test]
