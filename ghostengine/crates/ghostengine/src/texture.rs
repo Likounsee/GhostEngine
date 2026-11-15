@@ -870,6 +870,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
             if first_row >= last_row {
                 continue;
             }
+            let horizontal_samples = &horizontal_samples;
             scope.spawn(move || {
                 for y in first_row..last_row {
                     let local_row = (y - row_start) * width;
