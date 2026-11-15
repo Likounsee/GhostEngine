@@ -407,8 +407,6 @@ pub fn draw_texture_clipped_with_scratch(
     {
         let source_x = (first_x - u64::from(destination.x)) as usize;
         let copy_width = (end_x - first_x) as usize;
-        let left = first_x as usize;
-        let right = end_x as usize;
         for y in first_y..end_y {
             let source_y = (y - u64::from(destination.y)) as usize;
             let source_offset = source_y * texture.width as usize + source_x;
@@ -652,6 +650,8 @@ pub fn draw_texture_clipped_parallel_with_threads(
         let copy_width = (end_x - first_x) as usize;
         let width = target.width() as usize;
         let height = target.height() as usize;
+        let left = first_x as usize;
+        let right = end_x as usize;
         let worker_count = threads.min(height).max(1);
         let rows_per_worker = height.div_ceil(worker_count);
         let chunk_len = rows_per_worker * width;
