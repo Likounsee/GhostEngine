@@ -835,7 +835,8 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_bilinear_over_opaque, compose_layers, compose_layers_in_damage_regions, BlendMode,
+        blend_bilinear_over_opaque, blend_with_mode, compose_layers, compose_layers_in_damage_regions,
+        BlendMode,
         DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
