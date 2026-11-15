@@ -358,6 +358,86 @@ pub fn draw_texture_clipped(
     );
 }
 
+/// Draws a rectangular region of a texture or atlas into a destination rectangle.
+///
+/// The source region is validated against the texture bounds. Bilinear sampling
+/// is clamped to the selected region so neighboring atlas entries cannot bleed
+/// into the sprite.
+pub fn draw_texture_region_clipped(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    source: Rect,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+) {
+    if source.width == 0
+        || source.height == 0
+        || destination.width == 0
+        || destination.height == 0
+        || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
+        || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
+    {
+        return;
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return;
+    };
+    let source_right = source.x + source.width - 1;
+    let source_bottom = source.y + source.height - 1;
+    let target_width = target.width() as usize;
+
+    for y in clip.y..clip.y + clip.height {
+        if y < destination.y || u64::from(y) >= u64::from(destination.y) + u64::from(destination.height) {
+            continue;
+        }
+        let relative_y = (y - destination.y) as f32 / destination.height as f32;
+        for x in clip.x..clip.x + clip.width {
+            if x < destination.x || u64::from(x) >= u64::from(destination.x) + u64::from(destination.width) {
+                continue;
+            }
+            let relative_x = (x - destination.x) as f32 / destination.width as f32;
+            let sampled = match filter {
+                TextureFilter::Nearest => {
+                    let sx = source.x + (relative_x * source.width as f32).floor() as u32;
+                    let sy = source.y + (relative_y * source.height as f32).floor() as u32;
+                    texture.get_pixel(sx.min(source_right), sy.min(source_bottom)).unwrap()
+                }
+                TextureFilter::Bilinear => {
+                    let sx = (source.x as f32 + relative_x * source.width as f32 - 0.5)
+                        .clamp(source.x as f32, source_right as f32);
+                    let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
+                        .clamp(source.y as f32, source_bottom as f32);
+                    let x0 = sx.floor() as usize;
+                    let y0 = sy.floor() as usize;
+                    sample_bilinear_prepared(
+                        texture.pixels(),
+                        texture.width() as usize,
+                        BilinearCoordinates {
+                            x0,
+                            x1: (x0 + 1).min(source_right as usize),
+                            y0,
+                            y1: (y0 + 1).min(source_bottom as usize),
+                            tx: sx - x0 as f32,
+                            ty: sy - y0 as f32,
+                        },
+                    )
+                }
+            };
+            if sampled.a == 0 {
+                continue;
+            }
+            let index = y as usize * target_width + x as usize;
+            let pixel = &mut target.pixels_mut()[index];
+            *pixel = if sampled.a == 255 {
+                sampled
+            } else {
+                sampled.blend_over(*pixel)
+            };
+        }
+    }
+}
+
 /// Reusable temporary storage for repeated texture draws.
 #[derive(Debug, Default)]
 pub struct TextureDrawScratch {
@@ -1731,6 +1811,26 @@ mod tests {
             Rect::new(8, 8, 2, 2),
         );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn atlas_region_draw_does_not_sample_neighboring_sprites() {
+        let texture = Texture::new(
+            4,
+            1,
+            vec![Color::RED, Color::RED, Color::BLUE, Color::BLUE],
+        )
+        .unwrap();
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+        super::draw_texture_region_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 2, 1),
+            Rect::new(0, 0, 4, 1),
+            TextureFilter::Bilinear,
+            Rect::new(0, 0, 4, 1),
+        );
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
     }
 
     #[test]
