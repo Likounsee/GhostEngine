@@ -1065,6 +1065,21 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     let worker_count = threads.min(height).max(1);
     let rows_per_worker = height.div_ceil(worker_count);
     let chunk_len = rows_per_worker * width;
+    // The inverse affine transform separates into an X contribution and a
+    // Y contribution. Cache the X terms once for the whole draw so workers
+    // only need two additions per destination pixel instead of repeating
+    // the two X multiplications and pixel-center conversion on every row.
+    // Keeping the same multiplication and addition order preserves the
+    // previous per-pixel coordinates exactly.
+    let horizontal_terms: Vec<(f32, f32)> = (first_x..end_x)
+        .map(|x| {
+            let pixel_center_x = x as f32 + 0.5;
+            (
+                inverse.m11 * pixel_center_x,
+                inverse.m21 * pixel_center_x,
+            )
+        })
+        .collect();
     let mut any_visible = false;
 
     std::thread::scope(|scope| {
@@ -1083,14 +1098,13 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     let pixel_center_y = y as f32 + 0.5;
                     let local_row = (y - row_start) * width;
                     let row = &mut pixels[local_row..local_row + width];
-                    for x in first_x..end_x {
-                        let pixel_center_x = x as f32 + 0.5;
-                        let local_x = inverse.m11 * pixel_center_x
-                            + inverse.m12 * pixel_center_y
-                            + inverse.tx;
-                        let local_y = inverse.m21 * pixel_center_x
-                            + inverse.m22 * pixel_center_y
-                            + inverse.ty;
+                    let vertical_x = inverse.m12 * pixel_center_y + inverse.tx;
+                    let vertical_y = inverse.m22 * pixel_center_y + inverse.ty;
+                    for (x, &(horizontal_x, horizontal_y)) in
+                        (first_x..end_x).zip(horizontal_terms.iter())
+                    {
+                        let local_x = horizontal_x + vertical_x;
+                        let local_y = horizontal_y + vertical_y;
                         if local_x < local_left
                             || local_x >= local_right
                             || local_y < local_top
