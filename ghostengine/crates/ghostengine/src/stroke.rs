@@ -1106,11 +1106,9 @@ mod tests {
         let mut path = Path::new();
         path.move_to(Vector::new(12.25, 80.375))
             .line_to(Vector::new(590.75, 390.625));
-        let transform = Transform2D::translation(3.25, 2.5)
-            .then(Transform2D::rotation(0.015));
+        let transform = Transform2D::translation(3.25, 2.5).then(Transform2D::rotation(0.015));
         let style = StrokeStyle::new(7.5).with_cap(StrokeCap::Round);
-        let mut sequential =
-            Framebuffer::new(640, 480, Color::rgba(17, 31, 47, 255)).unwrap();
+        let mut sequential = Framebuffer::new(640, 480, Color::rgba(17, 31, 47, 255)).unwrap();
         let mut parallel = sequential.clone();
 
         super::stroke_path_aa(
