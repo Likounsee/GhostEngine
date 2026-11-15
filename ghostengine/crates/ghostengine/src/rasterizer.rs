@@ -197,12 +197,7 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
 ///
 /// Use this for repeated UI or sprite primitives that share a color and clip.
 /// Rectangle coverage is preserved exactly, including overlapping shapes.
-pub fn fill_rects_clipped(
-    target: &mut Framebuffer,
-    rectangles: &[Rect],
-    color: Color,
-    clip: Rect,
-) {
+pub fn fill_rects_clipped(target: &mut Framebuffer, rectangles: &[Rect], color: Color, clip: Rect) {
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
     };
