@@ -282,6 +282,33 @@ fn sample_bilinear_prepared(
 }
 
 #[inline]
+#[inline]
+fn sample_bilinear_opaque_rows(
+    top_row: &[Color],
+    bottom_row: &[Color],
+    sample: BilinearHorizontalSample,
+    ty: f32,
+) -> Color {
+    let top_left = top_row[sample.x0];
+    let top_right = top_row[sample.x1];
+    let bottom_left = bottom_row[sample.x0];
+    let bottom_right = bottom_row[sample.x1];
+
+    let inverse_x = 1.0 - sample.tx;
+    let inverse_y = 1.0 - ty;
+    let interpolate = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
+        let top = f32::from(top_left) * inverse_x + f32::from(top_right) * sample.tx;
+        let bottom = f32::from(bottom_left) * inverse_x + f32::from(bottom_right) * sample.tx;
+        (top * inverse_y + bottom * ty).round().clamp(0.0, 255.0) as u8
+    };
+
+    Color::rgb(
+        interpolate(top_left.r, top_right.r, bottom_left.r, bottom_right.r),
+        interpolate(top_left.g, top_right.g, bottom_left.g, bottom_right.g),
+        interpolate(top_left.b, top_right.b, bottom_left.b, bottom_right.b),
+    )
+}
+
 fn sample_bilinear_opaque_prepared(
     pixels: &[Color],
     row_width: usize,
@@ -894,28 +921,28 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let y0 = sample_y.floor() as usize;
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
+                        let top_offset = y0 * texture.width as usize;
+                        let bottom_offset = y1 * texture.width as usize;
+                        let top_row = &texture.pixels[top_offset..top_offset + texture.width as usize];
+                        let bottom_row =
+                            &texture.pixels[bottom_offset..bottom_offset + texture.width as usize];
                         for (pixel, sample) in
                             row[left..right].iter_mut().zip(horizontal_samples.iter())
                         {
-                            let coordinates = BilinearCoordinates {
-                                x0: sample.x0,
-                                x1: sample.x1,
-                                y0,
-                                y1,
-                                tx: sample.tx,
-                                ty,
-                            };
                             let color = if texture.fully_opaque {
-                                sample_bilinear_opaque_prepared(
-                                    &texture.pixels,
-                                    texture.width as usize,
-                                    coordinates,
-                                )
+                                sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty)
                             } else {
                                 sample_bilinear_prepared(
                                     &texture.pixels,
                                     texture.width as usize,
-                                    coordinates,
+                                    BilinearCoordinates {
+                                        x0: sample.x0,
+                                        x1: sample.x1,
+                                        y0,
+                                        y1,
+                                        tx: sample.tx,
+                                        ty,
+                                    },
                                 )
                             };
                             if texture.fully_opaque || color.a == 255 {
