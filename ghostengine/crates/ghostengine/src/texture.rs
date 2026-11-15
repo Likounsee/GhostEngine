@@ -708,8 +708,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let source_row = (source_y.floor() as u32).min(texture.height - 1) as usize
                             * texture.width as usize;
                         for x in left..right {
-                            let source_x =
-                                (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+                            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
                             let source_column =
                                 (source_x.floor() as u32).min(texture.width - 1) as usize;
                             let color = texture.pixels[source_row + source_column];
@@ -725,9 +724,8 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
                         for x in left..right {
-                            let source_x = (x as f32 + 0.5 - destination.x as f32)
-                                * source_x_scale
-                                - 0.5;
+                            let source_x =
+                                (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
                             let sample_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
                             let x0 = sample_x.floor() as usize;
                             let coordinates = BilinearCoordinates {
@@ -781,7 +779,12 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
 ) -> bool {
     if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
         return draw_texture_transformed_clipped(
-            target, texture, destination, transform, filter, clip,
+            target,
+            texture,
+            destination,
+            transform,
+            filter,
+            clip,
         );
     }
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
@@ -798,7 +801,12 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
             return false;
         }
         draw_texture_clipped_parallel_with_threads(
-            target, texture, destination, filter, clip, threads,
+            target,
+            texture,
+            destination,
+            filter,
+            clip,
+            threads,
         );
         return true;
     }
@@ -908,8 +916,10 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                                 texture.pixels[sample_y * texture_width + sample_x]
                             }
                             TextureFilter::Bilinear => {
-                                let sample_x = (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
-                                let sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+                                let sample_x =
+                                    (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
+                                let sample_y =
+                                    (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
                                 let x0 = sample_x.floor() as usize;
                                 let y0 = sample_y.floor() as usize;
                                 let coordinates = BilinearCoordinates {
