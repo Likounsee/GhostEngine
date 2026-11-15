@@ -168,12 +168,12 @@ pub fn stroke_path_aa_clipped(
     )
 }
 
-/// Strokes an antialiased path in parallel using independent framebuffer row bands.
+/// Strokes an antialiased path in parallel using disjoint mutable row bands.
 ///
-/// Each worker renders into a temporary band-sized framebuffer, then the completed
-/// bands are copied back once all workers succeed. This avoids mutable aliasing and
-/// keeps the existing rasterizer as the single source of stroke-coverage behavior.
-/// Small targets use the sequential implementation to avoid thread and copy overhead.
+/// Each worker runs the same scanline rasterizer over its own slice of framebuffer
+/// storage. Geometry is evaluated in global framebuffer coordinates, so sampling,
+/// clipping, and pixel blending remain identical to the sequential implementation.
+/// Small targets use the sequential path to avoid thread overhead.
 pub fn stroke_path_aa_parallel_with_threads(
     target: &mut Framebuffer,
     path: &Path,
@@ -183,91 +183,84 @@ pub fn stroke_path_aa_parallel_with_threads(
     tolerance: f32,
     threads: usize,
 ) -> Result<(), StrokeError> {
-    if threads <= 1 || u64::from(target.width()) * u64::from(target.height()) < 131_072 {
+    if threads <= 1
+        || u64::from(target.width()) * u64::from(target.height()) < 131_072
+    {
         return stroke_path_aa(target, path, transform, style, color, tolerance);
     }
-    if target.width() == 0 || target.height() == 0 {
-        return Ok(());
-    }
 
-    let framebuffer_width = target.width();
-    let width = framebuffer_width as usize;
-    let height = target.height() as usize;
-    let worker_count = threads.min(height).max(1);
-    let rows_per_worker = height.div_ceil(worker_count);
-    let clip = Rect::new(0, 0, target.width(), target.height());
-    let source_pixels = target.pixels();
-    let mut rendered = Vec::with_capacity(worker_count);
+    let width = target.width();
+    let height = target.height();
+    let width_usize = width as usize;
+    let height_usize = height as usize;
+    let worker_count = threads.min(height_usize).max(1);
+    let rows_per_worker = height_usize.div_ceil(worker_count);
+    let chunk_len = rows_per_worker * width_usize;
+    let clip = Rect::new(0, 0, width, height);
 
     std::thread::scope(|scope| {
         let mut handles = Vec::with_capacity(worker_count);
-        for worker_index in 0..worker_count {
+        for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
-            let row_end = (row_start + rows_per_worker).min(height);
-            if row_start >= row_end {
-                continue;
-            }
-            let band_rect = Rect::new(
-                0,
-                row_start as u32,
-                target.width(),
-                (row_end - row_start) as u32,
-            );
-            let Some(band_clip) = clip.intersection(band_rect) else {
-                continue;
-            };
-            let local_clip = Rect::new(
-                band_clip.x,
-                band_clip.y - row_start as u32,
-                band_clip.width,
-                band_clip.height,
-            );
-            let source_band = &source_pixels[row_start * width..row_end * width];
-            let band_transform = transform.then(Transform2D::translation(0.0, -(row_start as f32)));
+            let row_end = (row_start + pixels.len() / width_usize).min(height_usize);
             handles.push(scope.spawn(move || {
-                let mut band = Framebuffer::new(
-                    framebuffer_width,
-                    (row_end - row_start) as u32,
-                    Color::TRANSPARENT,
-                )
-                .ok()?;
-                band.copy_pixels_from(source_band).ok()?;
-                let result = stroke_path_aa_clipped(
-                    &mut band,
+                stroke_path_impl_rows(
+                    pixels,
+                    width,
+                    height,
+                    row_start as u32,
+                    row_end as u32,
                     path,
-                    band_transform,
+                    transform,
                     style,
                     color,
                     tolerance,
-                    local_clip,
-                );
-                Some((row_start, band, result))
+                    StrokeOptions {
+                        clip,
+                        antialias: true,
+                    },
+                )
             }));
         }
         for handle in handles {
-            rendered.push(handle.join().ok().flatten());
+            handle.join().expect("stroke worker panicked")?;
         }
-    });
-
-    if rendered.iter().any(Option::is_none) {
-        return stroke_path_aa(target, path, transform, style, color, tolerance);
-    }
-    let mut bands = Vec::with_capacity(rendered.len());
-    for result in rendered.into_iter().flatten() {
-        let (row_start, band, result) = result;
-        result?;
-        bands.push((row_start, band));
-    }
-    for (row_start, band) in bands {
-        let start = row_start * width;
-        let end = start + band.pixels().len();
-        target.pixels_mut()[start..end].copy_from_slice(band.pixels());
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn stroke_path_impl(
     target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    options: StrokeOptions,
+) -> Result<(), StrokeError> {
+    let width = target.width();
+    let height = target.height();
+    stroke_path_impl_rows(
+        target.pixels_mut(),
+        width,
+        height,
+        0,
+        height,
+        path,
+        transform,
+        style,
+        color,
+        tolerance,
+        options,
+    )
+}
+
+fn stroke_path_impl_rows(
+    target: &mut [Color],
+    target_width: u32,
+    target_height: u32,
+    row_origin: u32,
+    row_end: u32,
     path: &Path,
     transform: Transform2D,
     style: StrokeStyle,
@@ -288,10 +281,10 @@ fn stroke_path_impl(
         return Err(StrokeError::InvalidTransform);
     }
     let flattened = path.flatten(tolerance)?.transformed(transform)?;
-    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target_width, target_height)) else {
         return Ok(());
     };
-    if target.width() == 0 || target.height() == 0 {
+    if target_width == 0 || target_height == 0 {
         return Ok(());
     }
     let clip_right = clip.x.saturating_add(clip.width);
@@ -423,7 +416,7 @@ fn stroke_path_impl(
         let mut next_join = 0;
         let mut pixel_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
         let mut pixel_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
-        for y in top..bottom {
+        for y in top.max(row_origin)..bottom.min(row_end) {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
             let sample_top = y as f32 + 0.125;
@@ -464,7 +457,9 @@ fn stroke_path_impl(
             if row_left >= row_right {
                 continue;
             }
-            let Some(row) = target.row_mut(y) else {
+            let row_start = (y - row_origin) as usize * target_width as usize;
+            let row_end = row_start + target_width as usize;
+            let Some(row) = target.get_mut(row_start..row_end) else {
                 continue;
             };
             // The four vertical sample coordinates are shared by every pixel
