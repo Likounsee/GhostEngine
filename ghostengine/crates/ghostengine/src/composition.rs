@@ -921,7 +921,8 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
 #[cfg(test)]
 mod tests {
     use super::{
-        blend_bilinear_over_opaque, blend_with_mode, compose_layers,
+        blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
+        compose_layers,
         compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
@@ -1209,6 +1210,46 @@ mod tests {
                     assert!(actual.g.abs_diff(expected.g) <= 1);
                     assert!(actual.b.abs_diff(expected.b) <= 1);
                     assert_eq!(actual.a, 255);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn axis_aligned_bilinear_rows_match_general_sampling_path() {
+        let pixels = [
+            Color::rgba(240, 30, 20, 255),
+            Color::rgba(20, 220, 80, 180),
+            Color::TRANSPARENT,
+            Color::rgba(30, 60, 240, 90),
+            Color::rgba(210, 170, 40, 210),
+            Color::rgba(15, 80, 230, 140),
+        ];
+        let top_row = &pixels[..3];
+        let bottom_row = &pixels[3..];
+        for opacity in [1_u8, 64, 128, 200, 255] {
+            for ty in [0.0, 0.25, 0.5, 0.9] {
+                for x in [0.0, 0.2, 0.75, 1.4, 1.9] {
+                    let mut expected = Color::rgb(37, 91, 163);
+                    let mut actual = expected;
+                    blend_bilinear_over_opaque(
+                        &pixels,
+                        3,
+                        2,
+                        x,
+                        ty,
+                        f32::from(opacity) / 255.0,
+                        &mut expected,
+                    );
+                    blend_bilinear_over_opaque_rows(
+                        top_row,
+                        bottom_row,
+                        x,
+                        ty,
+                        f32::from(opacity) / 255.0,
+                        &mut actual,
+                    );
+                    assert_eq!(actual, expected, "x={x}, y={ty}, opacity={opacity}");
                 }
             }
         }
