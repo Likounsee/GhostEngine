@@ -9,6 +9,7 @@ on:
       - "ghostengine/crates/ghostengine/src/**"
       - "ghostengine/crates/ghostengine/examples/cpu_raster_bench.rs"
       - "ghostengine/crates/ghostengine/Cargo.toml"
+      - "ghostengine/Cargo.toml"
 
 permissions:
   contents: read
