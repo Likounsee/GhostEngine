@@ -70,12 +70,12 @@ impl TextureAtlasBuilder {
             if padded_width > self.width || padded_height > self.height {
                 return Err(TextureAtlasError::AtlasFull);
             }
-            if x.checked_add(padded_width).is_none_or(|right| right > self.width) {
+            if x.checked_add(padded_width).map_or(true, |right| right > self.width) {
                 x = 0;
                 y = y.checked_add(shelf_height).ok_or(TextureAtlasError::AtlasFull)?;
                 shelf_height = 0;
             }
-            if y.checked_add(padded_height).is_none_or(|bottom| bottom > self.height) {
+            if y.checked_add(padded_height).map_or(true, |bottom| bottom > self.height) {
                 return Err(TextureAtlasError::AtlasFull);
             }
 
