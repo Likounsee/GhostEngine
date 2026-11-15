@@ -740,11 +740,7 @@ pub fn draw_texture_transformed_clipped(
                         ty: sample_y - y0 as f32,
                     };
                     if texture.fully_opaque {
-                        sample_bilinear_opaque_prepared(
-                            &texture.pixels,
-                            texture_width,
-                            coordinates,
-                        )
+                        sample_bilinear_opaque_prepared(&texture.pixels, texture_width, coordinates)
                     } else {
                         sample_bilinear_prepared(&texture.pixels, texture_width, coordinates)
                     }
