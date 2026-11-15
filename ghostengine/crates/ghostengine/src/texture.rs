@@ -1821,12 +1821,8 @@ mod tests {
 
     #[test]
     fn atlas_region_draw_does_not_sample_neighboring_sprites() {
-        let texture = Texture::new(
-            4,
-            1,
-            vec![Color::RED, Color::RED, Color::BLUE, Color::BLUE],
-        )
-        .unwrap();
+        let texture =
+            Texture::new(4, 1, vec![Color::RED, Color::RED, Color::BLUE, Color::BLUE]).unwrap();
         let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
         super::draw_texture_region_clipped(
             &mut target,
