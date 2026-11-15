@@ -168,6 +168,100 @@ pub fn stroke_path_aa_clipped(
     )
 }
 
+/// Strokes an antialiased path in parallel using independent framebuffer row bands.
+///
+/// Each worker renders into a temporary band-sized framebuffer, then the completed
+/// bands are copied back once all workers succeed. This avoids mutable aliasing and
+/// keeps the existing rasterizer as the single source of stroke-coverage behavior.
+/// Small targets use the sequential implementation to avoid thread and copy overhead.
+pub fn stroke_path_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    threads: usize,
+) -> Result<(), StrokeError> {
+    if threads <= 1 || target.width() as u64 * target.height() as u64 < 131_072 {
+        return stroke_path_aa(target, path, transform, style, color, tolerance);
+    }
+    if target.width() == 0 || target.height() == 0 {
+        return Ok(());
+    }
+
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let worker_count = threads.min(height).max(1);
+    let rows_per_worker = height.div_ceil(worker_count);
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    let source_pixels = target.pixels();
+    let mut rendered = Vec::with_capacity(worker_count);
+
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for worker_index in 0..worker_count {
+            let row_start = worker_index * rows_per_worker;
+            let row_end = (row_start + rows_per_worker).min(height);
+            if row_start >= row_end {
+                continue;
+            }
+            let band_rect = Rect::new(0, row_start as u32, target.width(), (row_end - row_start) as u32);
+            let Some(band_clip) = clip.intersection(band_rect) else {
+                continue;
+            };
+            let local_clip = Rect::new(
+                band_clip.x,
+                band_clip.y - row_start as u32,
+                band_clip.width,
+                band_clip.height,
+            );
+            let source_band =
+                &source_pixels[row_start * width..row_end * width];
+            let band_transform =
+                transform.then(Transform2D::translation(0.0, -(row_start as f32)));
+            handles.push(scope.spawn(move || {
+                let mut band = Framebuffer::new(
+                    target.width(),
+                    (row_end - row_start) as u32,
+                    Color::TRANSPARENT,
+                )
+                .ok()?;
+                band.copy_pixels_from(source_band).ok()?;
+                let result = stroke_path_aa_clipped(
+                    &mut band,
+                    path,
+                    band_transform,
+                    style,
+                    color,
+                    tolerance,
+                    local_clip,
+                );
+                Some((row_start, band, result))
+            }));
+        }
+        for handle in handles {
+            rendered.push(handle.join().ok().flatten());
+        }
+    });
+
+    if rendered.iter().any(Option::is_none) {
+        return stroke_path_aa(target, path, transform, style, color, tolerance);
+    }
+    let mut bands = Vec::with_capacity(rendered.len());
+    for result in rendered.into_iter().flatten() {
+        let (row_start, band, result) = result;
+        result?;
+        bands.push((row_start, band));
+    }
+    for (row_start, band) in bands {
+        let start = row_start * width;
+        let end = start + band.pixels().len();
+        target.pixels_mut()[start..end].copy_from_slice(band.pixels());
+    }
+    Ok(())
+}
+
 fn stroke_path_impl(
     target: &mut Framebuffer,
     path: &Path,
@@ -1004,6 +1098,43 @@ mod tests {
         )
         .unwrap();
         assert!(fb.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn parallel_antialiased_stroke_matches_sequential_pixels() {
+        use super::stroke_path_aa_parallel_with_threads;
+
+        let mut path = Path::new();
+        path.move_to(Vector::new(12.25, 80.375))
+            .line_to(Vector::new(590.75, 390.625));
+        let transform = Transform2D::translation(3.25, 2.5)
+            .then(Transform2D::rotation(0.015));
+        let style = StrokeStyle::new(7.5).with_cap(StrokeCap::Round);
+        let mut sequential =
+            Framebuffer::new(640, 480, Color::rgba(17, 31, 47, 255)).unwrap();
+        let mut parallel = sequential.clone();
+
+        super::stroke_path_aa(
+            &mut sequential,
+            &path,
+            transform,
+            style,
+            Color::rgba(240, 80, 30, 190),
+            0.2,
+        )
+        .unwrap();
+        stroke_path_aa_parallel_with_threads(
+            &mut parallel,
+            &path,
+            transform,
+            style,
+            Color::rgba(240, 80, 30, 190),
+            0.2,
+            4,
+        )
+        .unwrap();
+
+        assert_eq!(parallel.pixels(), sequential.pixels());
     }
 
     #[test]
