@@ -87,7 +87,8 @@ pub fn draw_mipmapped_texture_clipped(
     if destination.width == 0 || destination.height == 0 {
         return;
     }
-    let Some(clip) = clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
+    let Some(clip) =
+        clip.intersection(crate::Rect::new(0, 0, target.width(), target.height()))
     else {
         return;
     };
