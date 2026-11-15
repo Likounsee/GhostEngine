@@ -604,6 +604,129 @@ pub fn draw_texture_clipped_with_scratch(
     }
 }
 
+/// Draws a clipped texture using independent row bands on scoped worker threads.
+///
+/// The operation preserves the sequential sampler's pixel results. It splits the
+/// destination storage into disjoint mutable slices, so workers never share mutable
+/// pixels and no framebuffer copy is made. Small workloads and a single requested
+/// worker use the established sequential implementation.
+pub fn draw_texture_clipped_parallel_with_threads(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    threads: usize,
+) {
+    if threads <= 1 || destination.width.saturating_mul(destination.height) < 262_144 {
+        draw_texture_clipped(target, texture, destination, filter, clip);
+        return;
+    }
+    if destination.width == 0 || destination.height == 0 {
+        return;
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return;
+    };
+
+    let destination_right = u64::from(destination.x) + u64::from(destination.width);
+    let destination_bottom = u64::from(destination.y) + u64::from(destination.height);
+    let clip_right = u64::from(clip.x) + u64::from(clip.width);
+    let clip_bottom = u64::from(clip.y) + u64::from(clip.height);
+    let first_x = u64::from(destination.x).max(u64::from(clip.x));
+    let first_y = u64::from(destination.y).max(u64::from(clip.y));
+    let end_x = destination_right.min(clip_right);
+    let end_y = destination_bottom.min(clip_bottom);
+    if first_x >= end_x || first_y >= end_y {
+        return;
+    }
+
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let worker_count = threads.min(height).max(1);
+    let rows_per_worker = height.div_ceil(worker_count);
+    let chunk_len = rows_per_worker * width;
+    let source_x_scale = texture.width as f32 / destination.width as f32;
+    let source_y_scale = texture.height as f32 / destination.height as f32;
+    let left = first_x as usize;
+    let right = end_x as usize;
+
+    std::thread::scope(|scope| {
+        for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+            let row_start = worker_index * rows_per_worker;
+            let row_end = (row_start + pixels.len() / width).min(height);
+            let first_row = (first_y as usize).max(row_start);
+            let last_row = (end_y as usize).min(row_end);
+            if first_row >= last_row {
+                continue;
+            }
+            scope.spawn(move || {
+                for y in first_row..last_row {
+                    let local_row = (y - row_start) * width;
+                    let row = &mut pixels[local_row..local_row + width];
+                    let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
+                    if filter == TextureFilter::Nearest {
+                        let source_row = (source_y.floor() as u32).min(texture.height - 1) as usize
+                            * texture.width as usize;
+                        for x in left..right {
+                            let source_x =
+                                (x as f32 + 0.5 - destination.x as f32) * source_x_scale;
+                            let source_column =
+                                (source_x.floor() as u32).min(texture.width - 1) as usize;
+                            let color = texture.pixels[source_row + source_column];
+                            if color.a == 255 {
+                                row[x] = color;
+                            } else if color.a > 0 {
+                                row[x] = color.blend_over(row[x]);
+                            }
+                        }
+                    } else {
+                        let sample_y =
+                            (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+                        let y0 = sample_y.floor() as usize;
+                        let y1 = (y0 + 1).min(texture.height as usize - 1);
+                        let ty = sample_y - y0 as f32;
+                        for x in left..right {
+                            let source_x = (x as f32 + 0.5 - destination.x as f32)
+                                * source_x_scale
+                                - 0.5;
+                            let sample_x =
+                                source_x.clamp(0.0, texture.width as f32 - 1.0);
+                            let x0 = sample_x.floor() as usize;
+                            let coordinates = BilinearCoordinates {
+                                x0,
+                                x1: (x0 + 1).min(texture.width as usize - 1),
+                                y0,
+                                y1,
+                                tx: sample_x - x0 as f32,
+                                ty,
+                            };
+                            let color = if texture.fully_opaque {
+                                sample_bilinear_opaque_prepared(
+                                    &texture.pixels,
+                                    texture.width as usize,
+                                    coordinates,
+                                )
+                            } else {
+                                sample_bilinear_prepared(
+                                    &texture.pixels,
+                                    texture.width as usize,
+                                    coordinates,
+                                )
+                            };
+                            if texture.fully_opaque || color.a == 255 {
+                                row[x] = color;
+                            } else if color.a > 0 {
+                                row[x] = color.blend_over(row[x]);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+}
+
 /// Draws a texture through an affine transform while preserving source sampling.
 ///
 /// The destination rectangle is defined in local coordinates. The inverse transform
@@ -846,6 +969,47 @@ mod tests {
                     assert!(actual.abs_diff(expected.r) <= 1);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn parallel_texture_draw_matches_sequential_for_both_filters_and_alpha() {
+        use super::draw_texture_clipped_parallel_with_threads;
+
+        let texture = Texture::new(
+            257,
+            193,
+            (0..257 * 193)
+                .map(|index| {
+                    Color::rgba(
+                        (index * 17) as u8,
+                        (index * 31) as u8,
+                        (index * 47) as u8,
+                        (index * 13) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut sequential =
+                Framebuffer::new(640, 480, Color::rgba(12, 34, 56, 190)).unwrap();
+            let mut parallel = sequential.clone();
+            let destination = Rect::new(23, 17, 580, 430);
+            let clip = Rect::new(41, 29, 511, 401);
+
+            draw_texture_clipped(&mut sequential, &texture, destination, filter, clip);
+            draw_texture_clipped_parallel_with_threads(
+                &mut parallel,
+                &texture,
+                destination,
+                filter,
+                clip,
+                4,
+            );
+
+            assert_eq!(parallel.pixels(), sequential.pixels());
         }
     }
 
