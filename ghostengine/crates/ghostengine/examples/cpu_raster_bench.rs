@@ -48,17 +48,22 @@ where
         black_box(target.pixels());
     }
 
-    let start = Instant::now();
+    // Measure the raster operation itself, not the full-frame reset.
+    // Clearing remains outside the timed section so small workloads are not
+    // hidden by the cost of resetting the 1920x1080 destination.
+    let mut elapsed = Duration::ZERO;
     for _ in 0..iterations {
         target.clear(Color::BLACK);
+        let start = Instant::now();
         render(&mut target);
         black_box(target.pixels());
+        elapsed += start.elapsed();
     }
 
     ResultRow {
         name,
         iterations,
-        elapsed: start.elapsed(),
+        elapsed,
     }
 }
 
@@ -232,7 +237,7 @@ fn main() {
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
-    println!("Protocol: identical workload set and iteration count on every runner");
+    println!("Protocol: identical workloads; framebuffer reset excluded from operation timings");
     println!("OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
