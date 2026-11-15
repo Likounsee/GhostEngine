@@ -77,6 +77,19 @@ fn cpu_name() -> String {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    if let Ok(output) = Command::new("sysctl")
+        .args(["-n", "machdep.cpu.brand_string"])
+        .output()
+    {
+        if output.status.success() {
+            let model = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if !model.is_empty() {
+                return model;
+            }
+        }
+    }
+
     "Not reported by operating system".to_owned()
 }
 
@@ -207,6 +220,7 @@ fn main() {
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
+    println!("OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
     println!(
