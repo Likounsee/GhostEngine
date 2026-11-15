@@ -1489,6 +1489,7 @@ pub fn fill_polygon_with_scratch(
         polygon_edges: edges,
         active_edges,
         intersections,
+        ..
     } = scratch;
 
     // Refill existing buffers without discarding their allocations.
@@ -1729,7 +1730,7 @@ pub fn fill_polygon_aa_with_scratch(
 
                 if interior_start < interior_end {
                     accumulate_polygon_span_edges(
-                        &mut coverage,
+                        coverage,
                         left,
                         first,
                         interior_start,
@@ -1740,7 +1741,7 @@ pub fn fill_polygon_aa_with_scratch(
                         .iter_mut()
                         .for_each(|covered| *covered += 4);
                     accumulate_polygon_span_edges(
-                        &mut coverage,
+                        coverage,
                         left,
                         interior_end,
                         end,
@@ -1749,7 +1750,7 @@ pub fn fill_polygon_aa_with_scratch(
                     );
                 } else {
                     accumulate_polygon_span_edges(
-                        &mut coverage,
+                        coverage,
                         left,
                         first,
                         end,
@@ -2035,7 +2036,7 @@ pub fn fill_ellipse_aa(
                 .clamp(i64::from(left), i64::from(right)) as u32;
             let end = ((span_right - SAMPLE_OFFSETS[0]).floor() as i64 + 1)
                 .clamp(i64::from(left), i64::from(right)) as u32;
-            accumulate_ellipse_span(&mut coverage, left, first, end, span_left, span_right);
+            accumulate_ellipse_span(coverage, left, first, end, span_left, span_right);
         }
 
         let Some(row) = target.row_mut(y) else {
