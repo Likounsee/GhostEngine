@@ -1451,6 +1451,11 @@ pub struct RasterizerScratch {
     polygon_edges: Vec<PolygonScanEdge>,
     active_edges: Vec<usize>,
     intersections: Vec<f64>,
+    aa_edges: Vec<PolygonEdge>,
+    aa_edge_order: Vec<usize>,
+    aa_active_edges: Vec<usize>,
+    aa_intersections: Vec<f64>,
+    aa_coverage: Vec<u8>,
 }
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
@@ -1599,6 +1604,20 @@ fn accumulate_polygon_span_edges(
 
 /// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
 pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    fill_polygon_aa_with_scratch(target, vertices, color, &mut scratch);
+}
+
+/// Fills an antialiased polygon while reusing caller-owned edge and scanline buffers.
+///
+/// Reusing the same scratch value avoids allocating polygon edges, edge ordering,
+/// active edges, intersections, and per-row coverage for every draw call.
+pub fn fill_polygon_aa_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
@@ -1642,11 +1661,20 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         return;
     }
 
-    let edges = (0..vertices.len())
-        .filter_map(|index| {
-            PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
-        })
-        .collect::<Vec<_>>();
+    let RasterizerScratch {
+        aa_edges: edges,
+        aa_edge_order: edge_order,
+        aa_active_edges: active_edges,
+        aa_intersections: intersections,
+        aa_coverage: coverage,
+        ..
+    } = scratch;
+
+    edges.clear();
+    edges.extend(
+        (0..vertices.len())
+            .filter_map(|index| PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])),
+    );
     if edges.is_empty() {
         return;
     }
@@ -1654,14 +1682,14 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     // Keep edges ordered by their first covered sub-scanline. The four
     // vertical samples advance monotonically, so an active list avoids
     // checking every polygon edge for every sample.
-    let mut edge_order = (0..edges.len()).collect::<Vec<_>>();
+    edge_order.clear();
+    edge_order.extend(0..edges.len());
     edge_order.sort_unstable_by(|&a, &b| edges[a].min_y.total_cmp(&edges[b].min_y));
-    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
-    let mut next_edge = 0;
+    active_edges.clear();
+    intersections.clear();
     let row_width = (right - left) as usize;
-    let mut coverage = vec![0_u8; row_width];
-    // Reuse one intersection buffer for every sub-scanline.
-    let mut intersections = Vec::with_capacity(edges.len());
+    coverage.resize(row_width, 0);
+    let mut next_edge = 0;
     for y in top..bottom {
         coverage.fill(0);
         for offset_y in OFFSETS {
@@ -4296,6 +4324,73 @@ mod rasterizer_scratch_tests {
         assert_eq!(scratch.polygon_edges.capacity(), edge_capacity);
         assert_eq!(scratch.active_edges.capacity(), active_capacity);
         assert_eq!(scratch.intersections.capacity(), intersection_capacity);
+    }
+
+    #[test]
+    fn antialiased_polygon_fill_with_reused_scratch_is_pixel_identical() {
+        let polygons: [&[Point]; 3] = [
+            &[
+                Point::new(3, 2),
+                Point::new(24, 5),
+                Point::new(18, 19),
+                Point::new(7, 23),
+                Point::new(1, 12),
+            ],
+            &[
+                Point::new(2, 2),
+                Point::new(27, 2),
+                Point::new(27, 22),
+                Point::new(2, 22),
+            ],
+            &[
+                Point::new(4, 4),
+                Point::new(24, 24),
+                Point::new(4, 24),
+                Point::new(24, 4),
+            ],
+        ];
+        let colors = [
+            Color::rgba(220, 40, 80, 190),
+            Color::rgba(20, 120, 240, 255),
+            Color::rgba(180, 210, 30, 127),
+        ];
+        let mut scratch = RasterizerScratch::default();
+
+        for (vertices, color) in polygons.iter().zip(colors) {
+            let mut expected = Framebuffer::new(31, 27, Color::BLACK).unwrap();
+            let mut actual = expected.clone();
+            super::fill_polygon_aa(&mut expected, vertices, color);
+            super::fill_polygon_aa_with_scratch(&mut actual, vertices, color, &mut scratch);
+            assert_eq!(actual, expected);
+        }
+
+        let capacities = (
+            scratch.aa_edges.capacity(),
+            scratch.aa_edge_order.capacity(),
+            scratch.aa_active_edges.capacity(),
+            scratch.aa_intersections.capacity(),
+            scratch.aa_coverage.capacity(),
+        );
+        let mut target = Framebuffer::new(31, 27, Color::BLACK).unwrap();
+        for _ in 0..8 {
+            target.clear(Color::BLACK);
+            super::fill_polygon_aa_with_scratch(
+                &mut target,
+                polygons[0],
+                Color::rgba(90, 180, 240, 210),
+                &mut scratch,
+            );
+        }
+        assert_eq!(
+            capacities,
+            (
+                scratch.aa_edges.capacity(),
+                scratch.aa_edge_order.capacity(),
+                scratch.aa_active_edges.capacity(),
+                scratch.aa_intersections.capacity(),
+                scratch.aa_coverage.capacity(),
+            )
+        );
     }
 
     #[test]

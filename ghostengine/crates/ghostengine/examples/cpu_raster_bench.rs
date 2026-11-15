@@ -318,6 +318,14 @@ fn main() {
         measure("Polygon fill AA (10 vertices)", iterations, |target| {
             fill_polygon_aa(target, &polygon, Color::rgba(40, 170, 245, 210));
         }),
+        measure("Polygon fill AA (reused scratch)", iterations, |target| {
+            ghostengine::rasterizer::fill_polygon_aa_with_scratch(
+                target,
+                &polygon,
+                Color::rgba(40, 170, 245, 210),
+                &mut polygon_scratch,
+            );
+        }),
         measure("Ellipse fill AA", iterations, |target| {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
