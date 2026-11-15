@@ -216,6 +216,9 @@ fn main() {
     .expect("bundled benchmark font should load");
     let theme = UiTheme::default();
     let text = "مرحبا GhostEngine — CPU benchmark";
+    let raster_threads = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
 
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
@@ -260,7 +263,7 @@ fn main() {
             );
         }),
         measure("Rectangle fill (parallel)", iterations, |target| {
-            ghostengine::rasterizer::fill_rect_parallel(
+            ghostengine::rasterizer::fill_rect_parallel_with_threads(
                 target,
                 Rect::new(
                     24 * SCALE_U32,
@@ -269,6 +272,7 @@ fn main() {
                     220 * SCALE_U32,
                 ),
                 Color::rgb(45, 130, 220),
+                raster_threads,
             );
         }),
         measure("Rectangle alpha blend (parallel)", iterations, |target| {

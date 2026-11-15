@@ -209,7 +209,6 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     }
 }
 
-
 fn process_rows_mut<F>(rows: &mut [Color], row_width: usize, thread_count: usize, process: F)
 where
     F: Fn(&mut [Color]) + Sync,
@@ -233,10 +232,7 @@ where
     });
 }
 
-fn clipped_rect_bounds(
-    target: &Framebuffer,
-    rect: Rect,
-) -> Option<(usize, usize, usize, usize)> {
+fn clipped_rect_bounds(target: &Framebuffer, rect: Rect) -> Option<(usize, usize, usize, usize)> {
     let left = u64::from(rect.x).min(u64::from(target.width()));
     let top = u64::from(rect.y).min(u64::from(target.height()));
     let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width()));
@@ -247,18 +243,6 @@ fn clipped_rect_bounds(
         right as usize,
         bottom as usize,
     ))
-}
-
-/// Fills a clipped rectangle using safe, disjoint row bands.
-///
-/// The operation is deterministic and pixel-identical to fill_rect.
-/// One worker is used when the operating system reports only one available
-/// processor. Use fill_rect_parallel_with_threads to select a worker count.
-pub fn fill_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
-    let thread_count = std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1);
-    fill_rect_parallel_with_threads(target, rect, color, thread_count);
 }
 
 /// Fills a clipped rectangle using the requested number of safe workers.
@@ -297,9 +281,13 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 /// This parallel variant is deterministic and pixel-identical to blend_rect.
 /// It uses the same exact integer rounding and opaque-destination lookup path.
 pub fn blend_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
-    let thread_count = std::thread::available_parallelism()
+    let available_threads = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1);
+    let area = clipped_rect_bounds(target, rect)
+        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
+        .unwrap_or(0);
+    let thread_count = if area >= 16_384 { available_threads } else { 1 };
     blend_rect_with_threads(target, rect, color, thread_count);
 }
 
@@ -326,7 +314,7 @@ fn blend_rect_with_threads(
         return;
     }
     if color.a == 255 {
-        fill_rect_parallel_with_threads(target, rect, color, thread_count);
+        fill_rect(target, rect, color);
         return;
     }
     let Some((left, top, right, bottom)) = clipped_rect_bounds(target, rect) else {
@@ -3905,7 +3893,6 @@ mod arc_aa_tests {
     }
 }
 
-
 #[cfg(test)]
 mod parallel_raster_tests {
     use crate::{Color, Framebuffer, Rect};
@@ -3980,4 +3967,3 @@ mod parallel_raster_tests {
         assert_eq!(parallel, serial);
     }
 }
-

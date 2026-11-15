@@ -64,9 +64,10 @@ pub use path::{
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use rasterizer::{
-    blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads, draw_arc_aa, draw_circle_aa, draw_ellipse_aa, draw_polygon_aa,
-    draw_rect_aa, draw_rounded_rect, draw_rounded_rect_aa, draw_triangle_aa, fill_arc_aa,
-    fill_circle_aa, fill_polygon_aa, fill_rect_clipped, fill_rect_parallel, fill_rect_parallel_with_threads, fill_rounded_rect, fill_rounded_rect_aa,
+    blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
+    draw_arc_aa, draw_circle_aa, draw_ellipse_aa, draw_polygon_aa, draw_rect_aa, draw_rounded_rect,
+    draw_rounded_rect_aa, draw_triangle_aa, fill_arc_aa, fill_circle_aa, fill_polygon_aa,
+    fill_rect_clipped, fill_rect_parallel_with_threads, fill_rounded_rect, fill_rounded_rect_aa,
     fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
     fill_triangle_aa, Gradient, GradientError, GradientStop,
 };
