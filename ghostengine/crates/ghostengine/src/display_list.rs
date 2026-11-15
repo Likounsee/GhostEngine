@@ -6,7 +6,7 @@
 
 use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
 use crate::rasterizer::{
-    draw_line, fill_transformed_rect_linear_gradient_clipped,
+    draw_line, fill_rects_clipped, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
@@ -40,6 +40,7 @@ impl PartialEq for SharedFont {
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
+    FillRects { rectangles: Vec<Rect>, color: Color, clip: Rect },
     StrokeRect {
         path: Path,
         transform: Transform2D,
@@ -265,6 +266,23 @@ impl DisplayList {
     /// Records a filled rectangle as a transformed vector contour.
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
         let _ = self.fill_path(rectangle_path(rect), Transform2D::IDENTITY, color, 0.25);
+    }
+
+    /// Records multiple same-color rectangles as one batch command.
+    ///
+    /// Overlapping and adjacent rectangles are coalesced during replay, reducing
+    /// command dispatch and duplicate pixel writes for repeated UI primitives.
+    pub fn fill_rects(&mut self, rectangles: &[Rect], color: Color) {
+        if rectangles.is_empty() {
+            return;
+        }
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::FillRects {
+                rectangles: rectangles.to_vec(),
+                color,
+                clip,
+            });
+        }
     }
 
     /// Records a one-pixel rectangle outline using the active affine transform.
@@ -644,6 +662,10 @@ impl DisplayList {
                 Command::Clear(color) => {
                     target.clear(*color);
                     true
+                }
+                Command::FillRects { rectangles, color, clip } => {
+                    fill_rects_clipped(target, rectangles, *color, *clip);
+                    !rectangles.is_empty()
                 }
                 Command::StrokeRect {
                     path,
