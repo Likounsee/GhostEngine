@@ -1440,8 +1440,36 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
     }
 }
 
+type PolygonScanEdge = (f64, f64, f64, f64, f64, f64);
+
+/// Reusable temporary storage for CPU rasterization operations.
+///
+/// Keep one scratch value alongside a renderer and pass it to repeated polygon
+/// fills to reuse edge and intersection allocations across frames.
+#[derive(Debug, Default)]
+pub struct RasterizerScratch {
+    polygon_edges: Vec<PolygonScanEdge>,
+    active_edges: Vec<usize>,
+    intersections: Vec<f64>,
+}
+
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
 pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    fill_polygon_with_scratch(target, vertices, color, &mut scratch);
+}
+
+/// Fills a polygon using caller-owned reusable scratch storage.
+///
+/// The output is pixel-identical to fill_polygon. Reusing the same scratch
+/// value avoids allocating edge, active-edge, and intersection vectors for
+/// every draw call.
+pub fn fill_polygon_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
     if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
         return;
     }
@@ -1451,31 +1479,38 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
         return;
     }
     let max_y = (max_y as u32).min(target.height() - 1);
-    // Convert vertices and discard horizontal edges once. Scan conversion
-    // then works on compact f64 edge records without repeated indexing,
-    // modulo operations, or integer-to-float conversions on every row.
-    let mut edges = (0..vertices.len())
-        .filter_map(|index| {
-            let a = vertices[index];
-            let b = vertices[(index + 1) % vertices.len()];
-            let (ax, ay, bx, by) = (
-                f64::from(a.x),
-                f64::from(a.y),
-                f64::from(b.x),
-                f64::from(b.y),
-            );
-            (ay != by).then_some((ay.min(by), ay.max(by), ax, ay, bx, by))
-        })
-        .collect::<Vec<_>>();
+
+    let RasterizerScratch {
+        polygon_edges: edges,
+        active_edges,
+        intersections,
+    } = scratch;
+
+    // Refill existing buffers without discarding their allocations.
+    edges.clear();
+    for index in 0..vertices.len() {
+        let a = vertices[index];
+        let b = vertices[(index + 1) % vertices.len()];
+        let (ax, ay, bx, by) = (
+            f64::from(a.x),
+            f64::from(a.y),
+            f64::from(b.x),
+            f64::from(b.y),
+        );
+        if ay != by {
+            edges.push((ay.min(by), ay.max(by), ax, ay, bx, by));
+        }
+    }
     if edges.is_empty() {
         return;
     }
+
     // Activate only edges crossing the current scanline. Sorting by their
     // first covered y avoids revisiting every polygon edge on every row.
     edges.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
-    let mut active_edges: Vec<usize> = Vec::with_capacity(edges.len());
+    active_edges.clear();
+    intersections.clear();
     let mut next_edge = 0;
-    let mut intersections = Vec::with_capacity(edges.len());
     let target_width = target.width();
 
     for y in min_y..=max_y {
@@ -1488,7 +1523,7 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
             }
             next_edge += 1;
         }
-        for &index in &active_edges {
+        for &index in active_edges.iter() {
             let (_, _, ax, ay, bx, by) = edges[index];
             let t = (scan_y - ay) / (by - ay);
             intersections.push(ax + t * (bx - ax));
@@ -4211,3 +4246,78 @@ mod parallel_gradient_tests {
         assert_eq!(parallel, before);
     }
 }
+
+
+#[cfg(test)]
+mod rasterizer_scratch_tests {
+    use crate::{Color, Framebuffer, Point, RasterizerScratch};
+
+    #[test]
+    fn polygon_fill_with_reused_scratch_is_pixel_identical() {
+        let polygons = [
+            [
+                Point::new(3, 2),
+                Point::new(24, 5),
+                Point::new(18, 19),
+                Point::new(7, 23),
+                Point::new(1, 12),
+            ],
+            [
+                Point::new(2, 2),
+                Point::new(27, 2),
+                Point::new(27, 22),
+                Point::new(2, 22),
+            ],
+            [
+                Point::new(4, 4),
+                Point::new(24, 24),
+                Point::new(4, 24),
+                Point::new(24, 4),
+            ],
+        ];
+        let colors = [Color::RED, Color::rgba(20, 120, 240, 190), Color::WHITE];
+        let mut scratch = RasterizerScratch::default();
+
+        for (vertices, color) in polygons.iter().zip(colors) {
+            let mut expected = Framebuffer::new(31, 27, Color::BLACK).unwrap();
+            let mut actual = expected.clone();
+            super::fill_polygon(&mut expected, vertices, color);
+            super::fill_polygon_with_scratch(&mut actual, vertices, color, &mut scratch);
+            assert_eq!(actual, expected);
+        }
+
+        let edge_capacity = scratch.polygon_edges.capacity();
+        let active_capacity = scratch.active_edges.capacity();
+        let intersection_capacity = scratch.intersections.capacity();
+        let mut target = Framebuffer::new(31, 27, Color::BLACK).unwrap();
+        for _ in 0..8 {
+            target.clear(Color::BLACK);
+            super::fill_polygon_with_scratch(
+                &mut target,
+                &polygons[0],
+                Color::GREEN,
+                &mut scratch,
+            );
+        }
+        assert_eq!(scratch.polygon_edges.capacity(), edge_capacity);
+        assert_eq!(scratch.active_edges.capacity(), active_capacity);
+        assert_eq!(scratch.intersections.capacity(), intersection_capacity);
+    }
+
+    #[test]
+    fn invalid_polygon_does_not_corrupt_reusable_scratch() {
+        let mut scratch = RasterizerScratch::default();
+        let mut target = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        let triangle = [
+            Point::new(2, 2),
+            Point::new(13, 3),
+            Point::new(7, 14),
+        ];
+        super::fill_polygon_with_scratch(&mut target, &triangle, Color::RED, &mut scratch);
+        let expected = target.clone();
+
+        super::fill_polygon_with_scratch(&mut target, &triangle[..2], Color::GREEN, &mut scratch);
+        assert_eq!(target, expected);
+    }
+}
+

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use ghostengine::{
     blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
     stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Layer, Path, Point, Rect,
-    StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    RasterizerScratch, StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -122,6 +122,7 @@ fn main() {
         Point::new(98 * SCALE, 104 * SCALE),
         Point::new(194 * SCALE, 96 * SCALE),
     ];
+    let mut polygon_scratch = RasterizerScratch::default();
 
     let mut path = Path::new();
     path.move_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
@@ -304,6 +305,14 @@ fn main() {
         }),
         measure("Polygon fill (10 vertices)", iterations, |target| {
             ghostengine::rasterizer::fill_polygon(target, &polygon, Color::rgba(40, 170, 245, 210));
+        }),
+        measure("Polygon fill (reused scratch)", iterations, |target| {
+            ghostengine::rasterizer::fill_polygon_with_scratch(
+                target,
+                &polygon,
+                Color::rgba(40, 170, 245, 210),
+                &mut polygon_scratch,
+            );
         }),
         measure("Polygon fill AA (10 vertices)", iterations, |target| {
             fill_polygon_aa(target, &polygon, Color::rgba(40, 170, 245, 210));
