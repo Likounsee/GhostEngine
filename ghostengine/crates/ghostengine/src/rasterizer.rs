@@ -4519,8 +4519,7 @@ mod rasterizer_simd_tests {
                         255 - source_alpha,
                     );
                     assert_eq!(
-                        actual,
-                        expected,
+                        actual, expected,
                         "source alpha {alpha}, channels {red}/{green}/{blue}"
                     );
                 }
