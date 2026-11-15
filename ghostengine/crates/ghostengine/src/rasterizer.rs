@@ -406,6 +406,17 @@ fn blend_rect_with_threads(
     let opaque_r = opaque_channel(color.r);
     let opaque_g = opaque_channel(color.g);
     let opaque_b = opaque_channel(color.b);
+    let context = BlendRectPixelContext {
+        color,
+        source_alpha,
+        inverse_source_alpha,
+        source_r,
+        source_g,
+        source_b,
+        opaque_r: &opaque_r,
+        opaque_g: &opaque_g,
+        opaque_b: &opaque_b,
+    };
 
     process_rows_mut(rows, width, thread_count, |band| {
         for row in band.chunks_mut(width) {
@@ -418,34 +429,12 @@ fn blend_rect_with_threads(
                     blend_opaque_quad_simd(quad, color, source_alpha, inverse_source_alpha);
                 } else {
                     for pixel in quad {
-                        blend_rect_pixel(
-                            pixel,
-                            color,
-                            source_alpha,
-                            inverse_source_alpha,
-                            source_r,
-                            source_g,
-                            source_b,
-                            &opaque_r,
-                            &opaque_g,
-                            &opaque_b,
-                        );
+                        blend_rect_pixel(pixel, &context);
                     }
                 }
             }
             for pixel in pixels.into_remainder() {
-                blend_rect_pixel(
-                    pixel,
-                    color,
-                    source_alpha,
-                    inverse_source_alpha,
-                    source_r,
-                    source_g,
-                    source_b,
-                    &opaque_r,
-                    &opaque_g,
-                    &opaque_b,
-                );
+                blend_rect_pixel(pixel, &context);
             }
         }
     });
@@ -486,39 +475,40 @@ fn blend_opaque_quad_simd(
     }
 }
 
-#[inline]
-fn blend_rect_pixel(
-    pixel: &mut Color,
+struct BlendRectPixelContext<'a> {
     color: Color,
     source_alpha: u32,
     inverse_source_alpha: u32,
     source_r: u32,
     source_g: u32,
     source_b: u32,
-    opaque_r: &[u8; 256],
-    opaque_g: &[u8; 256],
-    opaque_b: &[u8; 256],
-) {
+    opaque_r: &'a [u8; 256],
+    opaque_g: &'a [u8; 256],
+    opaque_b: &'a [u8; 256],
+}
+
+#[inline]
+fn blend_rect_pixel(pixel: &mut Color, context: &BlendRectPixelContext<'_>) {
     if pixel.a == 0 {
-        *pixel = color;
+        *pixel = context.color;
     } else if pixel.a == 255 {
         *pixel = Color::rgb(
-            opaque_r[pixel.r as usize],
-            opaque_g[pixel.g as usize],
-            opaque_b[pixel.b as usize],
+            context.opaque_r[pixel.r as usize],
+            context.opaque_g[pixel.g as usize],
+            context.opaque_b[pixel.b as usize],
         );
     } else {
         let destination_alpha = u32::from(pixel.a);
-        let destination_weight = destination_alpha * inverse_source_alpha;
-        let alpha_numerator = source_alpha * 255 + destination_weight;
+        let destination_weight = destination_alpha * context.inverse_source_alpha;
+        let alpha_numerator = context.source_alpha * 255 + destination_weight;
         let blend_channel = |source: u32, destination: u8| -> u8 {
             let numerator = source + u32::from(destination) * destination_weight;
             ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
         };
         *pixel = Color::rgba(
-            blend_channel(source_r, pixel.r),
-            blend_channel(source_g, pixel.g),
-            blend_channel(source_b, pixel.b),
+            blend_channel(context.source_r, pixel.r),
+            blend_channel(context.source_g, pixel.g),
+            blend_channel(context.source_b, pixel.b),
             ((alpha_numerator + 127) / 255) as u8,
         );
     }
