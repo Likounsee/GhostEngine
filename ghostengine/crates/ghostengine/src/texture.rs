@@ -718,8 +718,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
                             }
                         }
                     } else {
-                        let sample_y =
-                            (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
+                        let sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
                         let y0 = sample_y.floor() as usize;
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
@@ -727,8 +726,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
                             let source_x = (x as f32 + 0.5 - destination.x as f32)
                                 * source_x_scale
                                 - 0.5;
-                            let sample_x =
-                                source_x.clamp(0.0, texture.width as f32 - 1.0);
+                            let sample_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
                             let x0 = sample_x.floor() as usize;
                             let coordinates = BilinearCoordinates {
                                 x0,
@@ -816,13 +814,28 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
         transform.transform_point(crate::Vector::new(right, bottom)),
         transform.transform_point(crate::Vector::new(left, bottom)),
     ];
-    if corners.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
         return false;
     }
-    let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
-    let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-    let max_x = corners.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
-    let max_y = corners.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+    let min_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::INFINITY, f32::min);
+    let min_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f32::NEG_INFINITY, f32::max);
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
     let first_x = min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
@@ -867,11 +880,15 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     for x in first_x..end_x {
                         let pixel_center_x = x as f32 + 0.5;
                         let local_x = inverse.m11 * pixel_center_x
-                            + inverse.m12 * pixel_center_y + inverse.tx;
+                            + inverse.m12 * pixel_center_y
+                            + inverse.tx;
                         let local_y = inverse.m21 * pixel_center_x
-                            + inverse.m22 * pixel_center_y + inverse.ty;
-                        if local_x < local_left || local_x >= local_right
-                            || local_y < local_top || local_y >= local_bottom
+                            + inverse.m22 * pixel_center_y
+                            + inverse.ty;
+                        if local_x < local_left
+                            || local_x >= local_right
+                            || local_y < local_top
+                            || local_y >= local_bottom
                         {
                             continue;
                         }
@@ -880,17 +897,17 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                         let source_y = (local_y - local_top) * source_scale_y;
                         let color = match filter {
                             TextureFilter::Nearest => {
-                                let sample_x = source_x.floor()
-                                    .clamp(0.0, texture.width as f32 - 1.0) as usize;
-                                let sample_y = source_y.floor()
-                                    .clamp(0.0, texture.height as f32 - 1.0) as usize;
+                                let sample_x =
+                                    source_x.floor().clamp(0.0, texture.width as f32 - 1.0)
+                                        as usize;
+                                let sample_y =
+                                    source_y.floor().clamp(0.0, texture.height as f32 - 1.0)
+                                        as usize;
                                 texture.pixels[sample_y * texture_width + sample_x]
                             }
                             TextureFilter::Bilinear => {
-                                let sample_x = (source_x - 0.5)
-                                    .clamp(0.0, texture.width as f32 - 1.0);
-                                let sample_y = (source_y - 0.5)
-                                    .clamp(0.0, texture.height as f32 - 1.0);
+                                let sample_x = (source_x - 0.5).clamp(0.0, texture.width as f32 - 1.0);
+                                let sample_y = (source_y - 0.5).clamp(0.0, texture.height as f32 - 1.0);
                                 let x0 = sample_x.floor() as usize;
                                 let y0 = sample_y.floor() as usize;
                                 let coordinates = BilinearCoordinates {
@@ -903,11 +920,15 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                                 };
                                 if texture.fully_opaque {
                                     sample_bilinear_opaque_prepared(
-                                        &texture.pixels, texture_width, coordinates,
+                                        &texture.pixels,
+                                        texture_width,
+                                        coordinates,
                                     )
                                 } else {
                                     sample_bilinear_prepared(
-                                        &texture.pixels, texture_width, coordinates,
+                                        &texture.pixels,
+                                        texture_width,
+                                        coordinates,
                                     )
                                 }
                             }
@@ -1195,8 +1216,7 @@ mod tests {
         .unwrap();
 
         for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
-            let mut sequential =
-                Framebuffer::new(640, 480, Color::rgba(12, 34, 56, 190)).unwrap();
+            let mut sequential = Framebuffer::new(640, 480, Color::rgba(12, 34, 56, 190)).unwrap();
             let mut parallel = sequential.clone();
             let destination = Rect::new(23, 17, 580, 430);
             let clip = Rect::new(41, 29, 511, 401);
@@ -1626,16 +1646,26 @@ mod tests {
             .then(Transform2D::rotation(0.12))
             .then(Transform2D::scale(1.8, 1.7));
         for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
-            let mut sequential =
-                Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
+            let mut sequential = Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
             let mut parallel = sequential.clone();
             let destination = Rect::new(10, 12, 400, 350);
             let clip = Rect::new(5, 7, 620, 460);
             let expected_visible = draw_texture_transformed_clipped(
-                &mut sequential, &texture, destination, transform, filter, clip,
+                &mut sequential,
+                &texture,
+                destination,
+                transform,
+                filter,
+                clip,
             );
             let actual_visible = draw_texture_transformed_clipped_parallel_with_threads(
-                &mut parallel, &texture, destination, transform, filter, clip, 4,
+                &mut parallel,
+                &texture,
+                destination,
+                transform,
+                filter,
+                clip,
+                4,
             );
             assert_eq!(actual_visible, expected_visible);
             assert_eq!(parallel.pixels(), sequential.pixels());
