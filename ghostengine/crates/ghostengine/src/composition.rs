@@ -601,6 +601,29 @@ fn compose_transformed_layer(
         if source_step_y == 0.0 && (source_y < 0.0 || source_y >= source_height) {
             continue;
         }
+        // Bilinear sampling on an axis-aligned scanline uses the same two
+        // source rows for every destination pixel. Resolve their slices and
+        // the vertical interpolation factor once instead of recalculating
+        // row indices and offsets for every pixel.
+        let bilinear_rows = if filter == TextureFilter::Bilinear
+            && source_over
+            && source_step_y == 0.0
+            && source_width_u32 != 0
+            && source_height_u32 != 0
+        {
+            let sample_y = (source_y - 0.5).max(0.0);
+            let y0 = sample_y.floor() as usize;
+            let y1 = (y0 + 1).min(source_height_u32 as usize - 1);
+            let row_start = y0 * source_width_usize;
+            let next_row_start = y1 * source_width_usize;
+            Some((
+                &source_pixels[row_start..row_start + source_width_usize],
+                &source_pixels[next_row_start..next_row_start + source_width_usize],
+                sample_y - y0 as f32,
+            ))
+        } else {
+            None
+        };
         let Some(destination_row) = target.row_mut(y) else {
             continue;
         };
@@ -666,15 +689,26 @@ fn compose_transformed_layer(
             {
                 let destination = &mut destination_row[x as usize];
                 if filter == TextureFilter::Bilinear && source_over && destination.a == u8::MAX {
-                    blend_bilinear_over_opaque(
-                        source_pixels,
-                        source_width_u32,
-                        source_height_u32,
-                        source_x - 0.5,
-                        source_y - 0.5,
-                        opacity_factor,
-                        destination,
-                    );
+                    if let Some((top_row, bottom_row, ty)) = bilinear_rows {
+                        blend_bilinear_over_opaque_rows(
+                            top_row,
+                            bottom_row,
+                            source_x - 0.5,
+                            ty,
+                            opacity_factor,
+                            destination,
+                        );
+                    } else {
+                        blend_bilinear_over_opaque(
+                            source_pixels,
+                            source_width_u32,
+                            source_height_u32,
+                            source_x - 0.5,
+                            source_y - 0.5,
+                            opacity_factor,
+                            destination,
+                        );
+                    }
                 } else {
                     let source = match filter {
                         TextureFilter::Nearest => {
@@ -715,6 +749,58 @@ fn compose_transformed_layer(
 // Bilinear source-over over an opaque destination can be performed directly
 // from interpolated premultiplied channels. This avoids unpremultiplying into an
 // intermediate 8-bit Color and blending it again.
+#[inline]
+fn blend_bilinear_over_opaque_rows(
+    top_row: &[Color],
+    bottom_row: &[Color],
+    x: f32,
+    ty: f32,
+    opacity_factor: f32,
+    destination: &mut Color,
+) {
+    if top_row.is_empty() || opacity_factor <= 0.0 {
+        return;
+    }
+    let x = x.max(0.0);
+    let x0 = x.floor() as usize;
+    let x1 = (x0 + 1).min(top_row.len() - 1);
+    let tx = x - x0 as f32;
+    let top_left = top_row[x0];
+    let top_right = top_row[x1];
+    let bottom_left = bottom_row[x0];
+    let bottom_right = bottom_row[x1];
+
+    let inverse_x = 1.0 - tx;
+    let inverse_y = 1.0 - ty;
+    let weight_top_left = inverse_x * inverse_y;
+    let weight_top_right = tx * inverse_y;
+    let weight_bottom_left = inverse_x * ty;
+    let weight_bottom_right = tx * ty;
+    let alpha = (f32::from(top_left.a) * weight_top_left
+        + f32::from(top_right.a) * weight_top_right
+        + f32::from(bottom_left.a) * weight_bottom_left
+        + f32::from(bottom_right.a) * weight_bottom_right)
+        * opacity_factor;
+    if alpha <= f32::EPSILON {
+        return;
+    }
+
+    let inverse_alpha = 255.0 - alpha;
+    let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
+        let premultiplied = (f32::from(tl) * f32::from(top_left.a) * weight_top_left
+            + f32::from(tr) * f32::from(top_left.a) * weight_top_right
+            + f32::from(bl) * f32::from(bottom_left.a) * weight_bottom_left
+            + f32::from(br) * f32::from(bottom_right.a) * weight_bottom_right)
+            * opacity_factor;
+        ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    destination.r = channel(top_left.r, top_right.r, bottom_left.r, bottom_right.r, destination.r);
+    destination.g = channel(top_left.g, top_right.g, bottom_left.g, bottom_right.g, destination.g);
+    destination.b = channel(top_left.b, top_right.b, bottom_left.b, bottom_right.b, destination.b);
+}
+
 #[inline]
 fn blend_bilinear_over_opaque(
     pixels: &[Color],
