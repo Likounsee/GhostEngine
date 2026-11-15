@@ -479,6 +479,18 @@ pub struct TextureDrawScratch {
     nearest_columns: Vec<usize>,
     horizontal_samples: Vec<(usize, usize, f32)>,
     horizontal_cache: Vec<[f32; 4]>,
+    cached_texture_pixels: Vec<Color>,
+    cached_bilinear_key: Option<BilinearCacheKey>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BilinearCacheKey {
+    texture_width: u32,
+    texture_height: u32,
+    destination_x: u32,
+    destination_width: u32,
+    first_x: u64,
+    end_x: u64,
 }
 
 /// Draws a texture while reusing temporary storage between calls.
@@ -557,7 +569,6 @@ pub fn draw_texture_clipped_with_scratch(
             (x0, (x0 + 1).min(row_width - 1), source_x - x0 as f32)
         }));
     }
-    scratch.horizontal_cache.clear();
     let use_horizontal_cache = if filter == TextureFilter::Bilinear {
         let cache_len = (texture.height as usize).checked_mul(scratch.horizontal_samples.len());
         let cache_bytes =
@@ -565,24 +576,43 @@ pub fn draw_texture_clipped_with_scratch(
         let should_cache = end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
         if should_cache {
-            scratch.horizontal_cache.reserve(cache_len.unwrap());
-            let row_width = texture.width as usize;
-            for source_row in 0..texture.height as usize {
-                let source_offset = source_row * row_width;
-                for &(x0, x1, tx) in &scratch.horizontal_samples {
-                    let left = texture.pixels[source_offset + x0];
-                    let right = texture.pixels[source_offset + x1];
-                    let inverse_x = 1.0 - tx;
-                    let left_alpha = f32::from(left.a) * inverse_x;
-                    let right_alpha = f32::from(right.a) * tx;
-                    scratch.horizontal_cache.push([
-                        f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
-                        f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
-                        f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
-                        left_alpha + right_alpha,
-                    ]);
+            let key = BilinearCacheKey {
+                texture_width: texture.width,
+                texture_height: texture.height,
+                destination_x: destination.x,
+                destination_width: destination.width,
+                first_x,
+                end_x,
+            };
+            let cache_is_valid = scratch.cached_bilinear_key == Some(key)
+                && scratch.cached_texture_pixels == texture.pixels;
+            if !cache_is_valid {
+                scratch.horizontal_cache.clear();
+                scratch.horizontal_cache.reserve(cache_len.unwrap());
+                let row_width = texture.width as usize;
+                for source_row in 0..texture.height as usize {
+                    let source_offset = source_row * row_width;
+                    for &(x0, x1, tx) in &scratch.horizontal_samples {
+                        let left = texture.pixels[source_offset + x0];
+                        let right = texture.pixels[source_offset + x1];
+                        let inverse_x = 1.0 - tx;
+                        let left_alpha = f32::from(left.a) * inverse_x;
+                        let right_alpha = f32::from(right.a) * tx;
+                        scratch.horizontal_cache.push([
+                            f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                            f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                            f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                            left_alpha + right_alpha,
+                        ]);
+                    }
                 }
+                scratch.cached_texture_pixels.clone_from(&texture.pixels);
+                scratch.cached_bilinear_key = Some(key);
             }
+        } else {
+            scratch.cached_bilinear_key = None;
+            scratch.cached_texture_pixels.clear();
+            scratch.horizontal_cache.clear();
         }
         should_cache
     } else {
