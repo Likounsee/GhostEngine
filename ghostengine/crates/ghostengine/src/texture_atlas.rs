@@ -38,14 +38,22 @@ pub struct TextureAtlasBuilder {
 impl TextureAtlasBuilder {
     #[must_use]
     pub fn new(width: u32, height: u32, padding: u32) -> Self {
-        Self { width, height, padding, items: Vec::new() }
+        Self {
+            width,
+            height,
+            padding,
+            items: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, id: u64, texture: &Texture) -> Result<(), TextureAtlasError> {
         if self.items.iter().any(|item| item.id == id) {
             return Err(TextureAtlasError::DuplicateId);
         }
-        self.items.push(AtlasItem { id, texture: texture.clone() });
+        self.items.push(AtlasItem {
+            id,
+            texture: texture.clone(),
+        });
         Ok(())
     }
 
@@ -63,19 +71,32 @@ impl TextureAtlasBuilder {
         let mut shelf_height = 0_u32;
 
         for item in self.items {
-            let padded_width = item.texture.width().checked_add(self.padding.saturating_mul(2))
+            let padding = self.padding.saturating_mul(2);
+            let padded_width = item
+                .texture
+                .width()
+                .checked_add(padding)
                 .ok_or(TextureAtlasError::AtlasFull)?;
-            let padded_height = item.texture.height().checked_add(self.padding.saturating_mul(2))
+            let padded_height = item
+                .texture
+                .height()
+                .checked_add(padding)
                 .ok_or(TextureAtlasError::AtlasFull)?;
             if padded_width > self.width || padded_height > self.height {
                 return Err(TextureAtlasError::AtlasFull);
             }
-            if x.checked_add(padded_width).map_or(true, |right| right > self.width) {
+            if x.checked_add(padded_width)
+                .map_or(true, |right| right > self.width)
+            {
                 x = 0;
-                y = y.checked_add(shelf_height).ok_or(TextureAtlasError::AtlasFull)?;
+                y = y
+                    .checked_add(shelf_height)
+                    .ok_or(TextureAtlasError::AtlasFull)?;
                 shelf_height = 0;
             }
-            if y.checked_add(padded_height).map_or(true, |bottom| bottom > self.height) {
+            if y.checked_add(padded_height)
+                .map_or(true, |bottom| bottom > self.height)
+            {
                 return Err(TextureAtlasError::AtlasFull);
             }
 
@@ -84,28 +105,37 @@ impl TextureAtlasBuilder {
             // Extrude edge texels into the padding so bilinear sampling near
             // sprite boundaries cannot blend with transparent neighboring space.
             for padded_y in 0..padded_height {
-                let source_y = padded_y.saturating_sub(self.padding)
+                let source_y = padded_y
+                    .saturating_sub(self.padding)
                     .min(item.texture.height() - 1);
                 for padded_x in 0..padded_width {
-                    let source_x = padded_x.saturating_sub(self.padding)
+                    let source_x = padded_x
+                        .saturating_sub(self.padding)
                         .min(item.texture.width() - 1);
-                    let source_index = source_y as usize * item.texture.width() as usize
-                        + source_x as usize;
+                    let source_index =
+                        source_y as usize * item.texture.width() as usize + source_x as usize;
                     let destination_index = (y as usize + padded_y as usize)
-                        * self.width as usize + x as usize + padded_x as usize;
+                        * self.width as usize
+                        + x as usize
+                        + padded_x as usize;
                     pixels[destination_index] = item.texture.pixels()[source_index];
                 }
             }
             regions.push(AtlasRegion {
                 id: item.id,
-                rect: Rect::new(content_x, content_y, item.texture.width(), item.texture.height()),
+                rect: Rect::new(
+                    content_x,
+                    content_y,
+                    item.texture.width(),
+                    item.texture.height(),
+                ),
             });
             x += padded_width;
             shelf_height = shelf_height.max(padded_height);
         }
 
-        let texture = Texture::new(self.width, self.height, pixels)
-            .map_err(TextureAtlasError::Texture)?;
+        let texture =
+            Texture::new(self.width, self.height, pixels).map_err(TextureAtlasError::Texture)?;
         Ok((texture, regions))
     }
 }
@@ -122,11 +152,24 @@ mod tests {
         builder.add(10, &red).unwrap();
         builder.add(20, &blue).unwrap();
         let (atlas, regions) = builder.build().unwrap();
+
         assert_eq!(regions[0].id, 10);
-        assert_eq!(atlas.get_pixel(regions[0].rect.x, regions[0].rect.y), Some(Color::RED));
-        assert_eq!(atlas.get_pixel(regions[0].rect.x + 1, regions[0].rect.y), Some(Color::GREEN));
-        assert_eq!(atlas.get_pixel(regions[1].rect.x, regions[1].rect.y + 1), Some(Color::WHITE));
-        assert_eq!(atlas.get_pixel(regions[0].rect.x - 1, regions[0].rect.y), Some(Color::RED));
+        assert_eq!(
+            atlas.get_pixel(regions[0].rect.x, regions[0].rect.y),
+            Some(Color::RED)
+        );
+        assert_eq!(
+            atlas.get_pixel(regions[0].rect.x + 1, regions[0].rect.y),
+            Some(Color::GREEN)
+        );
+        assert_eq!(
+            atlas.get_pixel(regions[1].rect.x, regions[1].rect.y + 1),
+            Some(Color::WHITE)
+        );
+        assert_eq!(
+            atlas.get_pixel(regions[0].rect.x - 1, regions[0].rect.y),
+            Some(Color::RED)
+        );
     }
 
     #[test]
@@ -134,9 +177,14 @@ mod tests {
         let texture = Texture::new(1, 1, vec![Color::RED]).unwrap();
         let mut builder = TextureAtlasBuilder::new(2, 2, 0);
         builder.add(1, &texture).unwrap();
-        assert_eq!(builder.add(1, &texture), Err(TextureAtlasError::DuplicateId));
+        assert_eq!(
+            builder.add(1, &texture),
+            Err(TextureAtlasError::DuplicateId)
+        );
+
         let mut full = TextureAtlasBuilder::new(1, 1, 0);
-        full.add(2, &Texture::new(2, 1, vec![Color::RED; 2]).unwrap()).unwrap();
+        full.add(2, &Texture::new(2, 1, vec![Color::RED; 2]).unwrap())
+            .unwrap();
         assert_eq!(full.build().unwrap_err(), TextureAtlasError::AtlasFull);
     }
 }
