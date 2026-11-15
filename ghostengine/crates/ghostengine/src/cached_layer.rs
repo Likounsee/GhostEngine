@@ -52,7 +52,8 @@ impl CachedLayer {
 
     /// Composites the retained pixels at a new position without rerendering.
     ///
-    /// Moving a cached page or UI panel only changes this destination offset.
+    /// Call render_if_dirty first when content has been invalidated. Moving a
+    /// cached page or UI panel only changes this destination offset.
     /// The cached framebuffer is sampled directly and is never copied.
     pub fn composite_onto(
         &self,
