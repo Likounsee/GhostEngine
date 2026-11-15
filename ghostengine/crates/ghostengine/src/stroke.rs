@@ -190,7 +190,8 @@ pub fn stroke_path_aa_parallel_with_threads(
         return Ok(());
     }
 
-    let width = target.width() as usize;
+    let framebuffer_width = target.width();
+    let width = framebuffer_width as usize;
     let height = target.height() as usize;
     let worker_count = threads.min(height).max(1);
     let rows_per_worker = height.div_ceil(worker_count);
@@ -225,7 +226,7 @@ pub fn stroke_path_aa_parallel_with_threads(
             let band_transform = transform.then(Transform2D::translation(0.0, -(row_start as f32)));
             handles.push(scope.spawn(move || {
                 let mut band = Framebuffer::new(
-                    target.width(),
+                    framebuffer_width,
                     (row_end - row_start) as u32,
                     Color::TRANSPARENT,
                 )
