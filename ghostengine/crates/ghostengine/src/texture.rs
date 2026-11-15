@@ -463,7 +463,25 @@ pub fn draw_texture_clipped_with_scratch(
             // avoiding the generic floating-point sampler for every pixel.
             let source_row =
                 (source_y.floor() as u32).min(texture.height - 1) as usize * texture.width as usize;
-            if texture.fully_opaque {
+            if texture.fully_opaque && destination.width > texture.width {
+                // During horizontal upscaling, several adjacent destination
+                // pixels commonly select the same source texel. Fill each run
+                // as a slice rather than repeating a source lookup per pixel.
+                let visible_row = &mut row[first_x as usize..end_x as usize];
+                let mut run_start = 0;
+                while run_start < scratch.nearest_columns.len() {
+                    let source_column = scratch.nearest_columns[run_start];
+                    let mut run_end = run_start + 1;
+                    while run_end < scratch.nearest_columns.len()
+                        && scratch.nearest_columns[run_end] == source_column
+                    {
+                        run_end += 1;
+                    }
+                    visible_row[run_start..run_end]
+                        .fill(texture.pixels[source_row + source_column]);
+                    run_start = run_end;
+                }
+            } else if texture.fully_opaque {
                 for (pixel, &source_column) in row[first_x as usize..end_x as usize]
                     .iter_mut()
                     .zip(&scratch.nearest_columns)
@@ -1316,6 +1334,46 @@ mod tests {
         assert_eq!(texture.height(), 2);
         assert!(texture.pixels().iter().all(|pixel| *pixel == Color::GREEN));
     }
+    #[test]
+    fn opaque_nearest_upscale_run_fill_matches_reference_when_clipped() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::RED,
+                Color::GREEN,
+                Color::BLUE,
+                Color::WHITE,
+                Color::rgb(20, 40, 60),
+                Color::rgb(80, 100, 120),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 11, 5);
+        let clip = Rect::new(3, 0, 8, 6);
+        let mut expected = Framebuffer::new(13, 7, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let mut scratch = super::TextureDrawScratch::default();
+
+        draw_texture_clipped(
+            &mut expected,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+        );
+        super::draw_texture_clipped_with_scratch(
+            &mut actual,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+            &mut scratch,
+        );
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
     #[test]
     fn reusable_texture_scratch_matches_standard_draw_for_both_filters() {
         let texture = Texture::new(
