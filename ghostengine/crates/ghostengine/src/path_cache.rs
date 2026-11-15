@@ -45,9 +45,11 @@ impl PathGeometryCache {
     ) -> Result<&FlattenedPath, PathError> {
         self.clock = self.clock.wrapping_add(1);
         let tolerance_bits = tolerance.to_bits();
-        if let Some(index) = self.entries.iter().position(|entry| {
-            entry.key == key && entry.tolerance_bits == tolerance_bits
-        }) {
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.key == key && entry.tolerance_bits == tolerance_bits)
+        {
             self.hits = self.hits.saturating_add(1);
             self.entries[index].last_used = self.clock;
             return Ok(&self.entries[index].geometry);
