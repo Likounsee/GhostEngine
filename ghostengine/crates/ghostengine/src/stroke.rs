@@ -183,7 +183,7 @@ pub fn stroke_path_aa_parallel_with_threads(
     tolerance: f32,
     threads: usize,
 ) -> Result<(), StrokeError> {
-    if threads <= 1 || target.width() as u64 * target.height() as u64 < 131_072 {
+    if threads <= 1 || u64::from(target.width()) * u64::from(target.height()) < 131_072 {
         return stroke_path_aa(target, path, transform, style, color, tolerance);
     }
     if target.width() == 0 || target.height() == 0 {
@@ -206,7 +206,12 @@ pub fn stroke_path_aa_parallel_with_threads(
             if row_start >= row_end {
                 continue;
             }
-            let band_rect = Rect::new(0, row_start as u32, target.width(), (row_end - row_start) as u32);
+            let band_rect = Rect::new(
+                0,
+                row_start as u32,
+                target.width(),
+                (row_end - row_start) as u32,
+            );
             let Some(band_clip) = clip.intersection(band_rect) else {
                 continue;
             };
@@ -216,10 +221,8 @@ pub fn stroke_path_aa_parallel_with_threads(
                 band_clip.width,
                 band_clip.height,
             );
-            let source_band =
-                &source_pixels[row_start * width..row_end * width];
-            let band_transform =
-                transform.then(Transform2D::translation(0.0, -(row_start as f32)));
+            let source_band = &source_pixels[row_start * width..row_end * width];
+            let band_transform = transform.then(Transform2D::translation(0.0, -(row_start as f32)));
             handles.push(scope.spawn(move || {
                 let mut band = Framebuffer::new(
                     target.width(),
