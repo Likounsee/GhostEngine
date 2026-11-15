@@ -114,8 +114,7 @@ impl TextureAtlasBuilder {
                         .min(item.texture.width() - 1);
                     let source_index =
                         source_y as usize * item.texture.width() as usize + source_x as usize;
-                    let destination_index = (y as usize + padded_y as usize)
-                        * self.width as usize
+                    let destination_index = (y as usize + padded_y as usize) * self.width as usize
                         + x as usize
                         + padded_x as usize;
                     pixels[destination_index] = item.texture.pixels()[source_index];
