@@ -470,15 +470,15 @@ fn blend_opaque_quad_simd(
 
     let red = blend_channel(
         u32::from(source.r),
-        pixels.map(|pixel| u32::from(pixel.r)),
+        (*pixels).map(|pixel| u32::from(pixel.r)),
     );
     let green = blend_channel(
         u32::from(source.g),
-        pixels.map(|pixel| u32::from(pixel.g)),
+        (*pixels).map(|pixel| u32::from(pixel.g)),
     );
     let blue = blend_channel(
         u32::from(source.b),
-        pixels.map(|pixel| u32::from(pixel.b)),
+        (*pixels).map(|pixel| u32::from(pixel.b)),
     );
 
     for index in 0..4 {
@@ -4482,5 +4482,58 @@ mod rasterizer_scratch_tests {
 
         super::fill_polygon_with_scratch(&mut target, &triangle[..2], Color::GREEN, &mut scratch);
         assert_eq!(target, expected);
+    }
+}
+
+
+#[cfg(test)]
+mod rasterizer_simd_tests {
+    use crate::Color;
+
+    #[test]
+    fn simd_opaque_blend_matches_scalar_for_all_alpha_values_and_channel_edges() {
+        let source_colors = [
+            Color::rgba(0, 255, 127, 1),
+            Color::rgba(255, 0, 128, 64),
+            Color::rgba(17, 99, 231, 127),
+            Color::rgba(240, 31, 3, 254),
+        ];
+        let destination_values = [0_u8, 1, 63, 127, 128, 192, 254, 255];
+
+        for source in source_colors {
+            for offset in 0..destination_values.len() {
+                let mut actual = [
+                    Color::rgb(
+                        destination_values[offset],
+                        destination_values[(offset + 1) % 8],
+                        destination_values[(offset + 2) % 8],
+                    ),
+                    Color::rgb(
+                        destination_values[(offset + 3) % 8],
+                        destination_values[(offset + 4) % 8],
+                        destination_values[(offset + 5) % 8],
+                    ),
+                    Color::rgb(
+                        destination_values[(offset + 6) % 8],
+                        destination_values[(offset + 7) % 8],
+                        destination_values[offset],
+                    ),
+                    Color::rgb(
+                        destination_values[(offset + 2) % 8],
+                        destination_values[(offset + 5) % 8],
+                        destination_values[(offset + 7) % 8],
+                    ),
+                ];
+                let expected = actual.map(|background| source.blend_over(background));
+                let source_alpha = u32::from(source.a);
+                super::blend_opaque_quad_simd(
+                    &mut actual,
+                    source,
+                    source_alpha,
+                    255 - source_alpha,
+                );
+                assert_eq!(actual, expected);
+            }
+        }
     }
 }
