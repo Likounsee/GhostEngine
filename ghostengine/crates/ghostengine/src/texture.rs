@@ -897,7 +897,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let ty = sample_y - y0 as f32;
                         for (pixel, sample) in row[left..right]
                             .iter_mut()
-                            .zip(&horizontal_samples)
+                            .zip(horizontal_samples.iter())
                         {
                             let coordinates = BilinearCoordinates {
                                 x0: sample.x0,
