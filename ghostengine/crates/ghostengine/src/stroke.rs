@@ -602,9 +602,7 @@ impl StrokeSegment {
             let relative_y = y as f32 + 0.5 - self.a.y;
             let extent = 0.375 * (self.dx.abs() + self.dy.abs());
             let projection = relative_x * self.dx + relative_y * self.dy;
-            if projection - extent < 0.0
-                || projection + extent > self.length_squared
-            {
+            if projection - extent < 0.0 || projection + extent > self.length_squared {
                 return false;
             }
             let cross = relative_x * self.dy - relative_y * self.dx;
@@ -884,7 +882,9 @@ impl PreparedJoin {
             return dx * dx + dy * dy <= self.radius_squared;
         }
         self.bevel.contains_xy(x, y)
-            || self.miter.is_some_and(|triangle| triangle.contains_xy(x, y))
+            || self
+                .miter
+                .is_some_and(|triangle| triangle.contains_xy(x, y))
     }
 }
 
@@ -1385,11 +1385,15 @@ mod tests {
                         let expected = segments
                             .iter()
                             .any(|segment| segment.distance_squared(sample) <= radius_squared)
-                            || joins.iter().any(|join| join.contains_xy(sample.x, sample.y));
+                            || joins
+                                .iter()
+                                .any(|join| join.contains_xy(sample.x, sample.y));
                         let actual = row_segments.iter().any(|segment| {
                             segment.may_cover(sample)
                                 && segment.distance_squared(sample) <= radius_squared
-                        }) || row_joins.iter().any(|join| join.contains_xy(sample.x, sample.y));
+                        }) || row_joins
+                            .iter()
+                            .any(|join| join.contains_xy(sample.x, sample.y));
 
                         assert_eq!(
                             actual, expected,
