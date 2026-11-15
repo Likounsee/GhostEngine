@@ -113,8 +113,7 @@ pub fn draw_mipmapped_texture_clipped(
                 for row in 0..clip.height as usize {
                     let source_start = (source_y + row) * source_width + source_x;
                     let target_start = (clip.y as usize + row) * target_width + target_x;
-                    let source_row =
-                        &level.pixels()[source_start..source_start + copy_width];
+                    let source_row = &level.pixels()[source_start..source_start + copy_width];
                     let target_row =
                         &mut target.pixels_mut()[target_start..target_start + copy_width];
 
