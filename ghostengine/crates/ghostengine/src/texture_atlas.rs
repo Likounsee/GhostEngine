@@ -1,6 +1,6 @@
 //! Simple deterministic CPU texture atlas packing.
 //!
-//! The builder uses shelf packing with configurable transparent padding. It is
+//! The builder uses shelf packing with configurable edge-extruded padding. It is
 //! intended for UI sprites and small immutable assets; callers retain stable
 //! region IDs and can rebuild an atlas when their asset set changes.
 
@@ -126,6 +126,7 @@ mod tests {
         assert_eq!(atlas.get_pixel(regions[0].rect.x, regions[0].rect.y), Some(Color::RED));
         assert_eq!(atlas.get_pixel(regions[0].rect.x + 1, regions[0].rect.y), Some(Color::GREEN));
         assert_eq!(atlas.get_pixel(regions[1].rect.x, regions[1].rect.y + 1), Some(Color::WHITE));
+        assert_eq!(atlas.get_pixel(regions[0].rect.x - 1, regions[0].rect.y), Some(Color::RED));
     }
 
     #[test]
