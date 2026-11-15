@@ -270,8 +270,8 @@ impl DisplayList {
 
     /// Records multiple same-color rectangles as one batch command.
     ///
-    /// Overlapping and adjacent rectangles are coalesced during replay, reducing
-    /// command dispatch and duplicate pixel writes for repeated UI primitives.
+    /// Replay preserves the exact coverage of each rectangle while reducing
+    /// display-list command dispatch for repeated UI primitives.
     pub fn fill_rects(&mut self, rectangles: &[Rect], color: Color) {
         if rectangles.is_empty() {
             return;
