@@ -124,6 +124,15 @@ pub fn draw_mipmapped_texture_clipped(
 fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let x = x.clamp(0.0, texture.width() as f32 - 1.0);
     let y = y.clamp(0.0, texture.height() as f32 - 1.0);
+    if texture.is_fully_opaque() {
+        return crate::texture::sample_pixels_bilinear_opaque(
+            texture.pixels(),
+            texture.width(),
+            texture.height(),
+            x,
+            y,
+        );
+    }
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
     if x == x0 as f32 && y == y0 as f32 {

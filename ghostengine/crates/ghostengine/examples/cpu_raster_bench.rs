@@ -178,32 +178,6 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
     let mipmaps = MipmapChain::new(&texture).expect("benchmark mipmaps should be valid");
-
-    // A genuine full-HD workload: downscale a 4K source over every output
-    // pixel. Keep source creation and mipmap generation outside frame timings.
-    const FULL_HD_SOURCE_WIDTH: u32 = 3840;
-    const FULL_HD_SOURCE_HEIGHT: u32 = 2160;
-    let full_hd_source = Texture::new(
-        FULL_HD_SOURCE_WIDTH,
-        FULL_HD_SOURCE_HEIGHT,
-        (0..FULL_HD_SOURCE_WIDTH * FULL_HD_SOURCE_HEIGHT)
-            .map(|index| {
-                let x = index % FULL_HD_SOURCE_WIDTH;
-                let y = index / FULL_HD_SOURCE_WIDTH;
-                Color::rgb(
-                    ((x * 13 + y * 3) & 255) as u8,
-                    ((x * 5 + y * 11) & 255) as u8,
-                    ((x * 7 + y * 17) & 255) as u8,
-                )
-            })
-            .collect(),
-    )
-    .expect("4K benchmark texture should be valid");
-    let mipmap_build_start = Instant::now();
-    let full_hd_mipmaps =
-        MipmapChain::new(&full_hd_source).expect("4K benchmark mipmaps should be valid");
-    let mipmap_build_elapsed = mipmap_build_start.elapsed();
-    let full_hd_iterations = iterations.min(20);
     let mut texture_scratch = TextureDrawScratch::default();
 
     let mut background_layer = Layer::new(
@@ -267,15 +241,6 @@ fn main() {
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
     println!("Protocol: identical workloads; framebuffer reset excluded from operation timings");
-    println!(
-        "Full-HD workload: {}x{} -> {}x{} | mipmap build: {:.3} ms (setup, excluded) | measured frames: {}",
-        FULL_HD_SOURCE_WIDTH,
-        FULL_HD_SOURCE_HEIGHT,
-        WIDTH,
-        HEIGHT,
-        mipmap_build_elapsed.as_secs_f64() * 1_000.0,
-        full_hd_iterations
-    );
     println!("OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
@@ -539,14 +504,6 @@ fn main() {
                 target,
                 &mipmaps,
                 Rect::new(800, 400, 64, 64),
-                Rect::new(0, 0, WIDTH, HEIGHT),
-            );
-        }),
-        measure("Mipmap 4K -> full 1080p", full_hd_iterations, |target| {
-            draw_mipmapped_texture_clipped(
-                target,
-                &full_hd_mipmaps,
-                Rect::new(0, 0, WIDTH, HEIGHT),
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),

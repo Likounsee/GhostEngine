@@ -165,6 +165,35 @@ pub(crate) fn sample_pixels_bilinear(
     )
 }
 
+/// Bilinear sampling for images known to contain only opaque texels.
+pub(crate) fn sample_pixels_bilinear_opaque(
+    pixels: &[Color],
+    width: u32,
+    height: u32,
+    x: f32,
+    y: f32,
+) -> Color {
+    if width == 0 || height == 0 {
+        return Color::TRANSPARENT;
+    }
+    let x = x.clamp(0.0, width as f32 - 1.0);
+    let y = y.clamp(0.0, height as f32 - 1.0);
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    sample_bilinear_opaque_prepared(
+        pixels,
+        width as usize,
+        BilinearCoordinates {
+            x0: x0 as usize,
+            x1: (x0 + 1).min(width - 1) as usize,
+            y0: y0 as usize,
+            y1: (y0 + 1).min(height - 1) as usize,
+            tx: x - x0 as f32,
+            ty: y - y0 as f32,
+        },
+    )
+}
+
 #[derive(Clone, Copy)]
 struct BilinearCoordinates {
     x0: usize,
