@@ -371,8 +371,36 @@ fn main() {
                 &gradient,
             );
         }),
+        measure("Linear gradient (parallel)", iterations, |target| {
+            ghostengine::rasterizer::fill_rect_linear_gradient_parallel(
+                target,
+                Rect::new(
+                    12 * SCALE_U32,
+                    12 * SCALE_U32,
+                    456 * SCALE_U32,
+                    246 * SCALE_U32,
+                ),
+                Vector::new(12.0 * SCALE_F32, 12.0 * SCALE_F32),
+                Vector::new(468.0 * SCALE_F32, 258.0 * SCALE_F32),
+                &gradient,
+            );
+        }),
         measure("Radial gradient", iterations, |target| {
             ghostengine::rasterizer::fill_rect_radial_gradient(
+                target,
+                Rect::new(
+                    12 * SCALE_U32,
+                    12 * SCALE_U32,
+                    456 * SCALE_U32,
+                    246 * SCALE_U32,
+                ),
+                Vector::new(240.0 * SCALE_F32, 135.0 * SCALE_F32),
+                190.0 * SCALE_F32,
+                &gradient,
+            );
+        }),
+        measure("Radial gradient (parallel)", iterations, |target| {
+            ghostengine::rasterizer::fill_rect_radial_gradient_parallel(
                 target,
                 Rect::new(
                     12 * SCALE_U32,

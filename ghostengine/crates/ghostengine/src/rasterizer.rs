@@ -245,6 +245,53 @@ fn clipped_rect_bounds(target: &Framebuffer, rect: Rect) -> Option<(usize, usize
     ))
 }
 
+
+/// Processes disjoint rows while preserving each row's absolute Y coordinate.
+fn process_rows_with_y_mut<F>(
+    rows: &mut [Color],
+    row_width: usize,
+    first_y: usize,
+    thread_count: usize,
+    process: F,
+) where
+    F: Fn(&mut [Color], usize) + Sync,
+{
+    let row_count = rows.len() / row_width;
+    let worker_count = thread_count.max(1).min(row_count);
+    if worker_count <= 1 {
+        for (offset, row) in rows.chunks_mut(row_width).enumerate() {
+            process(row, first_y + offset);
+        }
+        return;
+    }
+
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+            let process = &process;
+            let chunk_first_y = first_y + chunk_index * rows_per_worker;
+            scope.spawn(move || {
+                for (offset, row) in chunk.chunks_mut(row_width).enumerate() {
+                    process(row, chunk_first_y + offset);
+                }
+            });
+        }
+    });
+}
+
+fn parallel_thread_count_for_rect(target: &Framebuffer, rect: Rect) -> usize {
+    let area = clipped_rect_bounds(target, rect)
+        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
+        .unwrap_or(0);
+    if area < 16_384 {
+        return 1;
+    }
+    std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+}
+
 /// Fills a clipped rectangle using the requested number of safe workers.
 ///
 /// A thread count of zero or one selects the serial path. Rows are partitioned
@@ -281,14 +328,7 @@ pub fn blend_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 /// This parallel variant is deterministic and pixel-identical to blend_rect.
 /// It uses the same exact integer rounding and opaque-destination lookup path.
 pub fn blend_rect_parallel(target: &mut Framebuffer, rect: Rect, color: Color) {
-    let available_threads = std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1);
-    let area = clipped_rect_bounds(target, rect)
-        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
-        .unwrap_or(0);
-    let thread_count = if area >= 16_384 { available_threads } else { 1 };
-    blend_rect_with_threads(target, rect, color, thread_count);
+    blend_rect_with_threads(target, rect, color, parallel_thread_count_for_rect(target, rect));
 }
 
 /// Alpha-composites a clipped rectangle using the requested number of workers.
@@ -572,17 +612,55 @@ pub fn fill_rect_linear_gradient(
     end: crate::Vector,
     gradient: &Gradient,
 ) {
+    fill_rect_linear_gradient_with_threads(target, rect, start, end, gradient, 1);
+}
+
+/// Fills a clipped linear gradient using safe parallel row bands.
+///
+/// Small rectangles remain serial to avoid thread scheduling overhead. Sampling
+/// and alpha rounding are identical to fill_rect_linear_gradient.
+pub fn fill_rect_linear_gradient_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    start: crate::Vector,
+    end: crate::Vector,
+    gradient: &Gradient,
+) {
+    let thread_count = parallel_thread_count_for_rect(target, rect);
+    fill_rect_linear_gradient_with_threads(target, rect, start, end, gradient, thread_count);
+}
+
+/// Fills a clipped linear gradient using the requested number of safe workers.
+pub fn fill_rect_linear_gradient_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    start: crate::Vector,
+    end: crate::Vector,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
+    fill_rect_linear_gradient_with_threads(target, rect, start, end, gradient, thread_count);
+}
+
+fn fill_rect_linear_gradient_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    start: crate::Vector,
+    end: crate::Vector,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
     if !start.x.is_finite() || !start.y.is_finite() || !end.x.is_finite() || !end.y.is_finite() {
         return;
     }
     let dx = end.x - start.x;
     let dy = end.y - start.y;
     let length_squared = dx * dx + dy * dy;
-    let left = rect.x.min(target.width());
-    let top = rect.y.min(target.height());
-    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
+    let left = rect.x.min(target.width()) as usize;
+    let top = rect.y.min(target.height()) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as usize;
     let bottom =
-        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as usize;
     if left >= right || top >= bottom {
         return;
     }
@@ -592,18 +670,20 @@ pub fn fill_rect_linear_gradient(
         length_squared.recip()
     };
     let horizontal_step = dx * inverse_length_squared;
-    for y in top..bottom {
+    let width = target.width() as usize;
+    let start_index = top * width;
+    let end_index = bottom * width;
+    let rows = &mut target.pixels_mut()[start_index..end_index];
+
+    process_rows_with_y_mut(rows, width, top, thread_count, |row, y| {
         let row_position = if inverse_length_squared == 0.0 {
             0.0
         } else {
             ((left as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
                 * inverse_length_squared
         };
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
         let mut position = row_position;
-        for pixel in &mut row[left as usize..right as usize] {
+        for pixel in &mut row[left..right] {
             let color = gradient.sample_raster(position);
             *pixel = if color.a == u8::MAX {
                 color
@@ -614,7 +694,7 @@ pub fn fill_rect_linear_gradient(
             };
             position += horizontal_step;
         }
-    }
+    });
 }
 
 /// Fills a clipped rectangle with a radial gradient sampled by distance from its center.
@@ -626,14 +706,52 @@ pub fn fill_rect_radial_gradient(
     radius: f32,
     gradient: &Gradient,
 ) {
+    fill_rect_radial_gradient_with_threads(target, rect, center, radius, gradient, 1);
+}
+
+/// Fills a clipped radial gradient using safe parallel row bands.
+///
+/// Small rectangles remain serial to avoid thread scheduling overhead. The
+/// radial lookup and floating-point edge handling match the serial path.
+pub fn fill_rect_radial_gradient_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    radius: f32,
+    gradient: &Gradient,
+) {
+    let thread_count = parallel_thread_count_for_rect(target, rect);
+    fill_rect_radial_gradient_with_threads(target, rect, center, radius, gradient, thread_count);
+}
+
+/// Fills a clipped radial gradient using the requested number of safe workers.
+pub fn fill_rect_radial_gradient_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    radius: f32,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
+    fill_rect_radial_gradient_with_threads(target, rect, center, radius, gradient, thread_count);
+}
+
+fn fill_rect_radial_gradient_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    radius: f32,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
     if !center.x.is_finite() || !center.y.is_finite() || !radius.is_finite() || radius <= 0.0 {
         return;
     }
-    let left = rect.x.min(target.width());
-    let top = rect.y.min(target.height());
-    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as u32;
+    let left = rect.x.min(target.width()) as usize;
+    let top = rect.y.min(target.height()) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as usize;
     let bottom =
-        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as u32;
+        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as usize;
     if left >= right || top >= bottom {
         return;
     }
@@ -644,21 +762,22 @@ pub fn fill_rect_radial_gradient(
     // resolve to the final stop instead of a rounded inner lookup entry.
     let outside_radius_squared = radius_squared * (1.0 + 4.0 * f32::EPSILON);
     let outside_color = gradient.sample_raster(1.0);
-    for y in top..bottom {
+    let width = target.width() as usize;
+    let start_index = top * width;
+    let end_index = bottom * width;
+    let rows = &mut target.pixels_mut()[start_index..end_index];
+
+    process_rows_with_y_mut(rows, width, top, thread_count, |row, y| {
         let dy = y as f32 + 0.5 - center.y;
         let dy_squared = dy * dy;
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
         let mut dx = left as f32 + 0.5 - center.x;
-        for pixel in &mut row[left as usize..right as usize] {
+        for pixel in &mut row[left..right] {
             let distance_squared = dx * dx + dy_squared;
             let color = if radius_squared.is_finite() && distance_squared.is_finite() {
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient
-                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
+                    gradient.sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
@@ -673,7 +792,7 @@ pub fn fill_rect_radial_gradient(
             };
             dx += 1.0;
         }
-    }
+    });
 }
 
 /// Fills an affine-transformed rectangle with a linear gradient.
@@ -3967,3 +4086,91 @@ mod parallel_raster_tests {
         assert_eq!(parallel, serial);
     }
 }
+
+
+#[cfg(test)]
+mod parallel_gradient_tests {
+    use crate::{Color, Framebuffer, Gradient, GradientStop, Rect, Vector};
+
+    fn test_gradient() -> Gradient {
+        Gradient::new(vec![
+            GradientStop { position: 0.0, color: Color::rgba(20, 80, 230, 255) },
+            GradientStop { position: 0.45, color: Color::rgba(230, 70, 40, 170) },
+            GradientStop { position: 1.0, color: Color::rgba(40, 210, 120, 0) },
+        ])
+        .unwrap()
+    }
+
+    fn patterned_frame() -> Framebuffer {
+        let mut target = Framebuffer::new(173, 119, Color::BLACK).unwrap();
+        for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
+            *pixel = Color::rgba(
+                (index % 251) as u8,
+                (index % 193) as u8,
+                (index % 157) as u8,
+                (index % 256) as u8,
+            );
+        }
+        target
+    }
+
+    #[test]
+    fn parallel_linear_gradient_matches_serial_exactly() {
+        let gradient = test_gradient();
+        let mut serial = patterned_frame();
+        let mut parallel = serial.clone();
+        let rect = Rect::new(7, 9, 159, 103);
+        let start = Vector::new(2.25, 5.5);
+        let end = Vector::new(168.0, 111.75);
+
+        super::fill_rect_linear_gradient(&mut serial, rect, start, end, &gradient);
+        super::fill_rect_linear_gradient_parallel_with_threads(
+            &mut parallel, rect, start, end, &gradient, 4,
+        );
+        assert_eq!(parallel, serial);
+    }
+
+    #[test]
+    fn parallel_radial_gradient_matches_serial_exactly() {
+        let gradient = test_gradient();
+        let mut serial = patterned_frame();
+        let mut parallel = serial.clone();
+        let rect = Rect::new(5, 4, 166, 111);
+        let center = Vector::new(83.5, 56.25);
+        let radius = 62.75;
+
+        super::fill_rect_radial_gradient(&mut serial, rect, center, radius, &gradient);
+        super::fill_rect_radial_gradient_parallel_with_threads(
+            &mut parallel, rect, center, radius, &gradient, 4,
+        );
+        assert_eq!(parallel, serial);
+    }
+
+    #[test]
+    fn parallel_gradient_operations_keep_invalid_inputs_as_no_ops() {
+        let gradient = test_gradient();
+        let mut serial = patterned_frame();
+        let mut parallel = serial.clone();
+        let before = serial.clone();
+
+        super::fill_rect_linear_gradient(
+            &mut serial, Rect::new(0, 0, 80, 80), Vector::new(f32::NAN, 0.0),
+            Vector::new(40.0, 40.0), &gradient,
+        );
+        super::fill_rect_linear_gradient_parallel_with_threads(
+            &mut parallel, Rect::new(0, 0, 80, 80), Vector::new(f32::NAN, 0.0),
+            Vector::new(40.0, 40.0), &gradient, 3,
+        );
+        super::fill_rect_radial_gradient(
+            &mut serial, Rect::new(0, 0, 80, 80), Vector::new(40.0, 40.0), 0.0, &gradient,
+        );
+        super::fill_rect_radial_gradient_parallel_with_threads(
+            &mut parallel, Rect::new(0, 0, 80, 80), Vector::new(40.0, 40.0), 0.0,
+            &gradient, 3,
+        );
+
+        assert_eq!(serial, before);
+        assert_eq!(parallel, before);
+    }
+}
+
