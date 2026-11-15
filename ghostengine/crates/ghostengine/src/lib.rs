@@ -14,12 +14,15 @@ pub mod geometry;
 pub mod image;
 pub mod interaction;
 pub mod layout;
+pub mod mipmap;
 pub mod path;
+pub mod path_cache;
 pub mod rasterizer;
 pub mod shaping;
 pub mod stroke;
 pub mod text;
 pub mod texture;
+pub mod texture_atlas;
 pub mod transform;
 pub mod ui;
 
@@ -57,6 +60,9 @@ pub use image::{
 };
 pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
+pub use mipmap::MipmapChain;
+pub use path_cache::PathGeometryCache;
+pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
 pub use path::{
     fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
     fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
