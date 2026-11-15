@@ -4247,28 +4247,27 @@ mod parallel_gradient_tests {
     }
 }
 
-
 #[cfg(test)]
 mod rasterizer_scratch_tests {
     use crate::{Color, Framebuffer, Point, RasterizerScratch};
 
     #[test]
     fn polygon_fill_with_reused_scratch_is_pixel_identical() {
-        let polygons = [
-            [
+        let polygons: [&[Point]; 3] = [
+            &[
                 Point::new(3, 2),
                 Point::new(24, 5),
                 Point::new(18, 19),
                 Point::new(7, 23),
                 Point::new(1, 12),
             ],
-            [
+            &[
                 Point::new(2, 2),
                 Point::new(27, 2),
                 Point::new(27, 22),
                 Point::new(2, 22),
             ],
-            [
+            &[
                 Point::new(4, 4),
                 Point::new(24, 24),
                 Point::new(4, 24),
@@ -4292,12 +4291,7 @@ mod rasterizer_scratch_tests {
         let mut target = Framebuffer::new(31, 27, Color::BLACK).unwrap();
         for _ in 0..8 {
             target.clear(Color::BLACK);
-            super::fill_polygon_with_scratch(
-                &mut target,
-                &polygons[0],
-                Color::GREEN,
-                &mut scratch,
-            );
+            super::fill_polygon_with_scratch(&mut target, polygons[0], Color::GREEN, &mut scratch);
         }
         assert_eq!(scratch.polygon_edges.capacity(), edge_capacity);
         assert_eq!(scratch.active_edges.capacity(), active_capacity);
@@ -4308,11 +4302,7 @@ mod rasterizer_scratch_tests {
     fn invalid_polygon_does_not_corrupt_reusable_scratch() {
         let mut scratch = RasterizerScratch::default();
         let mut target = Framebuffer::new(16, 16, Color::BLACK).unwrap();
-        let triangle = [
-            Point::new(2, 2),
-            Point::new(13, 3),
-            Point::new(7, 14),
-        ];
+        let triangle = [Point::new(2, 2), Point::new(13, 3), Point::new(7, 14)];
         super::fill_polygon_with_scratch(&mut target, &triangle, Color::RED, &mut scratch);
         let expected = target.clone();
 
@@ -4320,4 +4310,3 @@ mod rasterizer_scratch_tests {
         assert_eq!(target, expected);
     }
 }
-

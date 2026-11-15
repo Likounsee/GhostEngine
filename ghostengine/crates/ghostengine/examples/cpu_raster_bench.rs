@@ -4,8 +4,9 @@ use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, draw_text, fill_path_even_odd, fill_path_even_odd_aa, fill_polygon_aa, stroke_path,
-    stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Layer, Path, Point, Rect,
-    RasterizerScratch, StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    stroke_path_aa, Color, FontFace, Framebuffer, Gradient, GradientStop, Layer, Path, Point,
+    RasterizerScratch, Rect, StrokeStyle, Texture, TextureFilter, Transform2D, UiTheme, Vector,
+    WidgetState,
 };
 
 const WIDTH: u32 = 1920;
