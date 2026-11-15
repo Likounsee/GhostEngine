@@ -315,7 +315,7 @@ mod tests {
 
         draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
 
-        let reference = chain.sample_trilinear(3.0, 1.0, 1.0);
+        let reference = chain.sample_trilinear(2.5, 0.5, 1.0);
         expected.set_pixel(2, 1, reference);
         assert_eq!(actual.pixels(), expected.pixels());
     }
