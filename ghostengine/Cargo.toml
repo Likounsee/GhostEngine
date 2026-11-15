@@ -1,3 +1,9 @@
 [workspace]
 members = ["crates/ghostengine"]
 resolver = "2"
+
+# Let LLVM optimize across crate boundaries and specialize hot rasterizer kernels
+# without target-specific intrinsics, nightly features, or unsafe code.
+[profile.release]
+lto = "thin"
+codegen-units = 1
