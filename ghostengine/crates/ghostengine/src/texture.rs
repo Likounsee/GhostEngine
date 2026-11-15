@@ -1355,13 +1355,24 @@ mod tests {
         let mut actual = expected.clone();
         let mut scratch = super::TextureDrawScratch::default();
 
-        draw_texture_clipped(
-            &mut expected,
-            &texture,
-            destination,
-            TextureFilter::Nearest,
-            clip,
-        );
+        // Independent scalar reference: map each visible destination pixel
+        // back to its source texel using pixel-center nearest-neighbor sampling.
+        for y in 1..6 {
+            let source_y = (((y as f32 + 0.5 - destination.y as f32)
+                * texture.height() as f32)
+                / destination.height as f32)
+                .floor()
+                .min(texture.height() as f32 - 1.0) as u32;
+            for x in 3..11 {
+                let source_x = (((x as f32 + 0.5 - destination.x as f32)
+                    * texture.width() as f32)
+                    / destination.width as f32)
+                    .floor()
+                    .min(texture.width() as f32 - 1.0) as u32;
+                expected.set_pixel(x, y, texture.get_pixel(source_x, source_y).unwrap());
+            }
+        }
+
         super::draw_texture_clipped_with_scratch(
             &mut actual,
             &texture,
