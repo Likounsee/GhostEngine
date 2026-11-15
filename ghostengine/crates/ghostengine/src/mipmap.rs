@@ -13,8 +13,8 @@ impl MipmapChain {
         let mut levels = vec![base.clone()];
         while levels.last().is_some_and(|level| level.width() > 1 || level.height() > 1) {
             let previous = levels.last().expect("base mip level always exists");
-            let width = (previous.width() / 2).max(1);
-            let height = (previous.height() / 2).max(1);
+            let width = previous.width().div_ceil(2);
+            let height = previous.height().div_ceil(2);
             let mut pixels = Vec::with_capacity(width as usize * height as usize);
             for y in 0..height {
                 for x in 0..width {
