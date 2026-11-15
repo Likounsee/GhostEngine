@@ -109,7 +109,6 @@ impl Texture {
             .get((y as usize) * (self.width as usize) + (x as usize))
             .copied()
     }
-
 }
 
 #[derive(Clone, Copy)]

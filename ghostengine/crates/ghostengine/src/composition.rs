@@ -486,8 +486,8 @@ fn compose_layer_clipped(
     for source_y in source_top..source_bottom {
         let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
         let source_start = source_y * source_width + source_left;
-        let source_row = &layer.framebuffer.pixels()
-            [source_start..source_y * source_width + source_right];
+        let source_row =
+            &layer.framebuffer.pixels()[source_start..source_y * source_width + source_right];
         let Some(destination_row) = target.row_mut(destination_y) else {
             continue;
         };
