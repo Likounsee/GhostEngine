@@ -195,6 +195,13 @@ pub(crate) fn sample_pixels_bilinear_opaque(
 }
 
 #[derive(Clone, Copy)]
+struct BilinearHorizontalSample {
+    x0: usize,
+    x1: usize,
+    tx: f32,
+}
+
+#[derive(Clone, Copy)]
 struct BilinearCoordinates {
     x0: usize,
     x1: usize,
@@ -834,6 +841,25 @@ pub fn draw_texture_clipped_parallel_with_threads(
     let source_y_scale = texture.height as f32 / destination.height as f32;
     let left = first_x as usize;
     let right = end_x as usize;
+    // Horizontal bilinear coordinates are constant for every scanline.
+    // Compute them once, then let all workers reuse the immutable lookup table.
+    let horizontal_samples: Vec<_> = if filter == TextureFilter::Bilinear {
+        (first_x..end_x)
+            .map(|x| {
+                let source_x =
+                    (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+                let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
+                let x0 = source_x.floor() as usize;
+                BilinearHorizontalSample {
+                    x0,
+                    x1: (x0 + 1).min(texture.width as usize - 1),
+                    tx: source_x - x0 as f32,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     std::thread::scope(|scope| {
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
@@ -868,17 +894,16 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         let y0 = sample_y.floor() as usize;
                         let y1 = (y0 + 1).min(texture.height as usize - 1);
                         let ty = sample_y - y0 as f32;
-                        for (x, pixel) in row.iter_mut().enumerate().take(right).skip(left) {
-                            let source_x =
-                                (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
-                            let sample_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
-                            let x0 = sample_x.floor() as usize;
+                        for (pixel, sample) in row[left..right]
+                            .iter_mut()
+                            .zip(&horizontal_samples)
+                        {
                             let coordinates = BilinearCoordinates {
-                                x0,
-                                x1: (x0 + 1).min(texture.width as usize - 1),
+                                x0: sample.x0,
+                                x1: sample.x1,
                                 y0,
                                 y1,
-                                tx: sample_x - x0 as f32,
+                                tx: sample.tx,
                                 ty,
                             };
                             let color = if texture.fully_opaque {
