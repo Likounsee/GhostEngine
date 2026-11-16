@@ -1761,6 +1761,7 @@ pub fn draw_polygon_aa_with_scratch(
             }
         }
     }
+}
 
 type PolygonScanEdge = (f64, f64, f64, f64, f64, f64);
 
