@@ -2006,35 +2006,13 @@ pub fn fill_polygon_aa_with_scratch(
             continue;
         };
         let row_pixels = &mut row[left as usize..right as usize];
-        let vectorized_len = row_pixels.len() / 4 * 4;
-        let (vectorized, tail) = row_pixels.split_at_mut(vectorized_len);
-
-        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
-            let coverage_start = quad_index * 4;
-            let covered = &coverage[coverage_start..coverage_start + 4];
-            if covered.iter().all(|count| *count == 0) {
-                continue;
-            }
-            if destinations.iter().all(|pixel| pixel.a == u8::MAX) {
-                let sources = core::array::from_fn(|lane| {
-                    coverage_colors[coverage[coverage_start + lane] as usize]
-                });
-                let mut quad = [
-                    destinations[0],
-                    destinations[1],
-                    destinations[2],
-                    destinations[3],
-                ];
-                blend_variable_opaque_quad(&mut quad, sources);
-                destinations.copy_from_slice(&quad);
-            } else {
-                for lane in 0..4 {
-                    let covered = coverage[coverage_start + lane];
-                    if covered == 0 {
-                        continue;
-                    }
+        let mut index = 0;
+        while index < row_pixels.len() {
+            if row_pixels[index].a != u8::MAX {
+                let covered = coverage[index];
+                if covered != 0 {
                     let source = coverage_colors[covered as usize];
-                    let pixel = &mut destinations[lane];
+                    let pixel = &mut row_pixels[index];
                     *pixel = if source.a == u8::MAX {
                         source
                     } else if source.a == 0 {
@@ -2043,23 +2021,49 @@ pub fn fill_polygon_aa_with_scratch(
                         source.blend_over(*pixel)
                     };
                 }
-            }
-        }
-
-        for (pixel, covered) in tail.iter_mut().zip(
-            coverage[vectorized_len..].iter().copied(),
-        ) {
-            if covered == 0 {
+                index += 1;
                 continue;
             }
-            let source = coverage_colors[covered as usize];
-            *pixel = if source.a == u8::MAX {
-                source
-            } else if source.a == 0 {
-                *pixel
-            } else {
-                source.blend_over(*pixel)
-            };
+
+            // Vectorize opaque destination runs independently. A single
+            // translucent destination must not scalarize neighboring pixels.
+            let run_start = index;
+            while index < row_pixels.len() && row_pixels[index].a == u8::MAX {
+                index += 1;
+            }
+            let run_end = index;
+            let mut offset = run_start;
+            while offset + 4 <= run_end {
+                let sources = core::array::from_fn(|lane| {
+                    coverage_colors[coverage[offset + lane] as usize]
+                });
+                let mut quad = [
+                    row_pixels[offset],
+                    row_pixels[offset + 1],
+                    row_pixels[offset + 2],
+                    row_pixels[offset + 3],
+                ];
+                blend_variable_opaque_quad(&mut quad, sources);
+                row_pixels[offset..offset + 4].copy_from_slice(&quad);
+                offset += 4;
+            }
+
+            // Scalar remainder of this opaque run.
+            while offset < run_end {
+                let covered = coverage[offset];
+                if covered != 0 {
+                    let source = coverage_colors[covered as usize];
+                    let pixel = &mut row_pixels[offset];
+                    *pixel = if source.a == u8::MAX {
+                        source
+                    } else if source.a == 0 {
+                        *pixel
+                    } else {
+                        source.blend_over(*pixel)
+                    };
+                }
+                offset += 1;
+            }
         }
     }
 }
