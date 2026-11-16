@@ -902,9 +902,8 @@ fn fill_rect_radial_gradient_with_threads(
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient.sample_radial_squared_in_range(
-                        distance_squared * inverse_radius_squared,
-                    )
+                    gradient
+                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 }
             } else {
                 let distance = dx.hypot(dy);
@@ -973,18 +972,15 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
             for lane in 0..4 {
-                let local = inverse.transform_point(crate::Vector::new(
-                    (x + lane) as f32 + 0.5,
-                    y as f32 + 0.5,
-                ));
+                let local = inverse
+                    .transform_point(crate::Vector::new((x + lane) as f32 + 0.5, y as f32 + 0.5));
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
                     let position = if length_squared <= f32::EPSILON {
                         0.0
                     } else {
-                        (((local.x - start.x) * dx + (local.y - start.y) * dy)
-                            / length_squared)
+                        (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
                             .clamp(0.0, 1.0)
                     };
                     sources[lane] = gradient.sample_raster(position);
@@ -995,7 +991,12 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
             if inside.iter().all(|is_inside| *is_inside)
                 && destinations.iter().all(|pixel| pixel.a == u8::MAX)
             {
-                let mut quad = [destinations[0], destinations[1], destinations[2], destinations[3]];
+                let mut quad = [
+                    destinations[0],
+                    destinations[1],
+                    destinations[2],
+                    destinations[3],
+                ];
                 blend_variable_opaque_quad(&mut quad, sources);
                 destinations.copy_from_slice(&quad);
             } else {
@@ -4412,8 +4413,8 @@ mod parallel_gradient_tests {
         let dy = end.y - start.y;
         let inverse_length_squared = (dx * dx + dy * dy).recip();
         for y in 1..7 {
-            let mut position = ((2.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
-                * inverse_length_squared;
+            let mut position =
+                ((2.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy) * inverse_length_squared;
             for x in 2..19 {
                 let source = gradient.sample_raster(position);
                 let pixel = expected.get_pixel(x, y).unwrap();
@@ -4627,4 +4628,3 @@ mod rasterizer_scratch_tests {
         assert_eq!(target, expected);
     }
 }
-
