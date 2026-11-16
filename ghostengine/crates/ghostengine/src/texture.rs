@@ -1460,6 +1460,22 @@ pub fn draw_texture_transformed_clipped(
                     };
                     if texture.fully_opaque {
                         sample_bilinear_opaque_prepared(&texture.pixels, texture_width, coordinates)
+                    } else if row[x as usize].a == 255 {
+                        let top_offset = y0 * texture_width;
+                        let bottom_offset = y1 * texture_width;
+                        let sample = BilinearHorizontalSample {
+                            x0,
+                            x1: (x0 + 1).min(texture_width - 1),
+                            tx: sample_x - x0 as f32,
+                        };
+                        blend_bilinear_rows_over_opaque(
+                            &texture.pixels[top_offset..top_offset + texture_width],
+                            &texture.pixels[bottom_offset..bottom_offset + texture_width],
+                            sample,
+                            coordinates.ty,
+                            &mut row[x as usize],
+                        );
+                        continue;
                     } else {
                         sample_bilinear_prepared(&texture.pixels, texture_width, coordinates)
                     }
