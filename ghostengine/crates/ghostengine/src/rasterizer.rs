@@ -3829,6 +3829,51 @@ mod tests {
     }
 
     #[test]
+    fn parallel_antialiased_ellipse_fill_matches_serial_for_worker_counts() {
+        for (center, radius_x, radius_y, color, background) in [
+            (
+                Point::new(20, 18),
+                12,
+                8,
+                Color::rgba(230, 70, 120, 177),
+                Color::rgba(12, 20, 28, 255),
+            ),
+            (
+                Point::new(42, 25),
+                19,
+                11,
+                Color::rgba(40, 190, 210, 129),
+                Color::rgba(30, 50, 70, 120),
+            ),
+            (
+                Point::new(3, 7),
+                8,
+                6,
+                Color::rgba(170, 90, 30, 211),
+                Color::TRANSPARENT,
+            ),
+        ] {
+            let mut expected = Framebuffer::new(67, 43, background).unwrap();
+            super::fill_ellipse_aa(&mut expected, center, radius_x, radius_y, color);
+            for workers in [0, 1, 2, 4, 8, 64] {
+                let mut actual = Framebuffer::new(67, 43, background).unwrap();
+                super::fill_ellipse_aa_parallel_with_threads(
+                    &mut actual, center, radius_x, radius_y, color, workers,
+                );
+                assert_eq!(
+                    actual, expected,
+                    "worker count: {workers}, center: {center:?}, radii: {radius_x}/{radius_y}"
+                );
+            }
+            let mut automatic = Framebuffer::new(67, 43, background).unwrap();
+            super::fill_ellipse_aa_parallel(
+                &mut automatic, center, radius_x, radius_y, color,
+            );
+            assert_eq!(automatic, expected);
+        }
+    }
+
+    #[test]
     fn ellipse_aa_reuses_scratch_coverage_across_draws() {
         let mut scratch = super::RasterizerScratch::default();
         let mut actual = Framebuffer::new(67, 43, Color::TRANSPARENT).unwrap();
