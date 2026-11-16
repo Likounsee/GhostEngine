@@ -2341,51 +2341,51 @@ pub fn fill_ellipse_aa(
             continue;
         };
         let row_pixels = &mut row[left as usize..right as usize];
-        let vectorized_len = row_pixels.len() / 4 * 4;
-        let (vectorized, tail) = row_pixels.split_at_mut(vectorized_len);
-
-        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
-            let coverage_start = quad_index * 4;
-            let covered = &coverage[coverage_start..coverage_start + 4];
-            if covered.iter().all(|count| *count == 0) {
+        let mut index = 0;
+        while index < row_pixels.len() {
+            let covered = coverage[index];
+            if covered == 0 {
+                index += 1;
                 continue;
             }
-
-            if destinations.iter().all(|pixel| pixel.a == u8::MAX) {
-                let sources = core::array::from_fn(|lane| {
-                    coverage_colors[usize::from(covered[lane])]
-                });
-                let mut quad = [
-                    destinations[0],
-                    destinations[1],
-                    destinations[2],
-                    destinations[3],
-                ];
-                blend_variable_opaque_quad(&mut quad, sources);
-                destinations.copy_from_slice(&quad);
-            } else {
-                for lane in 0..4 {
-                    let count = covered[lane];
-                    if count == 0 {
-                        continue;
-                    }
-                    let source = coverage_colors[usize::from(count)];
-                    if source.a != 0 {
-                        destinations[lane] = source.blend_over(destinations[lane]);
-                    }
+            if row_pixels[index].a != u8::MAX {
+                let source = coverage_colors[usize::from(covered)];
+                if source.a != 0 {
+                    row_pixels[index] = if row_pixels[index].a == 0 {
+                        source
+                    } else {
+                        source.blend_over(row_pixels[index])
+                    };
                 }
-            }
-        }
-
-        for (pixel, count) in tail.iter_mut().zip(
-            coverage[vectorized_len..].iter().copied(),
-        ) {
-            if count == 0 {
+                index += 1;
                 continue;
             }
-            let source = coverage_colors[usize::from(count)];
-            if source.a != 0 {
-                *pixel = source.blend_over(*pixel);
+
+            // Form SIMD batches from contiguous opaque pixels that actually
+            // receive coverage, instead of being limited to fixed row quads.
+            let run_start = index;
+            while index < row_pixels.len()
+                && row_pixels[index].a == u8::MAX
+                && coverage[index] != 0
+            {
+                index += 1;
+            }
+            let run_end = index;
+            let mut offset = run_start;
+            while offset + 4 <= run_end {
+                let sources = core::array::from_fn(|lane| {
+                    coverage_colors[usize::from(coverage[offset + lane])]
+                });
+                let destination_quad: &mut [Color; 4] = row_pixels[offset..offset + 4]
+                    .try_into()
+                    .expect("four destination pixels");
+                blend_variable_opaque_quad(destination_quad, sources);
+                offset += 4;
+            }
+            while offset < run_end {
+                let source = coverage_colors[usize::from(coverage[offset])];
+                row_pixels[offset] = source.blend_over(row_pixels[offset]);
+                offset += 1;
             }
         }
     }
