@@ -3991,6 +3991,173 @@ fn draw_arc_aa_parallel_rows(
     }
 }
 
+/// Fills an antialiased circular sector using disjoint framebuffer row bands.
+pub fn fill_arc_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+    thread_count: usize,
+) {
+    use core::f64::consts::TAU;
+
+    if color.a == 0 || target.width() == 0 || target.height() == 0
+        || !start_angle.is_finite() || !end_angle.is_finite()
+    {
+        return;
+    }
+    let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
+    if raw_sweep == 0.0 {
+        return;
+    }
+    if thread_count <= 1 {
+        fill_arc_aa(target, center, radius, start_angle, end_angle, color);
+        return;
+    }
+    let full_circle = raw_sweep.abs() >= TAU;
+    let start = f64::from(start_angle).rem_euclid(TAU);
+    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+    let radius_f = f64::from(radius);
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let left = (cx - radius_f - 1.0).floor().max(0.0) as u32;
+    let top = (cy - radius_f - 1.0).floor().max(0.0) as u32;
+    let right = (cx + radius_f + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + radius_f + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+    if radius == 0 {
+        fill_arc_aa(target, center, radius, start_angle, end_angle, color);
+        return;
+    }
+
+    let row_width = target.width() as usize;
+    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
+    let row_count = (bottom - top) as usize;
+    let worker_count = thread_count.min(row_count).max(1);
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+            let first_y = top as usize + chunk_index * rows_per_worker;
+            scope.spawn(move || {
+                fill_arc_aa_parallel_rows(
+                    chunk, row_width, first_y, left, right, cx, cy, radius_f,
+                    start, sweep, full_circle, color,
+                );
+            });
+        }
+    });
+}
+
+/// Automatically selects workers for sufficiently large antialiased sectors.
+pub fn fill_arc_aa_parallel(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+) {
+    let diameter = u64::from(radius).saturating_mul(2).saturating_add(2);
+    let workers = if diameter.saturating_mul(diameter) < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism().map(usize::from).unwrap_or(1)
+    };
+    fill_arc_aa_parallel_with_threads(target, center, radius, start_angle, end_angle, color, workers);
+}
+
+fn fill_arc_aa_parallel_rows(
+    rows: &mut [Color],
+    row_width: usize,
+    first_y: usize,
+    left: u32,
+    right: u32,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    start: f64,
+    sweep: f64,
+    full_circle: bool,
+    color: Color,
+) {
+    use core::f64::consts::TAU;
+    const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
+    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+    }
+
+    for (row_index, row_pixels) in rows.chunks_mut(row_width).enumerate() {
+        let y = first_y + row_index;
+        sources.fill(Color::TRANSPARENT);
+        for (index, source) in sources.iter_mut().enumerate() {
+            let x = left + index as u32;
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = y as f64 + offset_y - cy;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    if dx.hypot(dy) > radius {
+                        continue;
+                    }
+                    if !full_circle {
+                        let angle = dy.atan2(dx).rem_euclid(TAU);
+                        if (angle - start).rem_euclid(TAU) > sweep {
+                            continue;
+                        }
+                    }
+                    covered += 1;
+                }
+            }
+            if covered != 0 {
+                *source = coverage_colors[covered as usize];
+            }
+        }
+
+        let destinations = &mut row_pixels[left as usize..right as usize];
+        let mut index = 0;
+        while index < destinations.len() {
+            if sources[index].a == 0 {
+                index += 1;
+                continue;
+            }
+            if destinations[index].a != u8::MAX {
+                destinations[index] = sources[index].blend_over(destinations[index]);
+                index += 1;
+                continue;
+            }
+            let run_start = index;
+            while index < destinations.len()
+                && destinations[index].a == u8::MAX
+                && sources[index].a != 0
+            {
+                index += 1;
+            }
+            let mut quad_start = run_start;
+            while quad_start + 4 <= index {
+                let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
+                    .try_into().expect("four source pixels");
+                let destination_quad: &mut [Color; 4] =
+                    destinations[quad_start..quad_start + 4]
+                        .try_into().expect("four destination pixels");
+                blend_variable_opaque_quad(destination_quad, source_quad);
+                quad_start += 4;
+            }
+            for pixel_index in quad_start..index {
+                destinations[pixel_index] =
+                    sources[pixel_index].blend_over(destinations[pixel_index]);
+            }
+        }
+    }
+}
+
 /// Fills a circle with anti-aliased edge coverage.
 pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     fill_ellipse_aa(target, center, radius, radius, color);
@@ -7381,6 +7548,36 @@ mod blend_rect_transparent_run_tests {
                 }
                 let mut automatic = initial;
                 super::draw_arc_aa_parallel(
+                    &mut automatic, center, radius, start, end, color,
+                );
+                assert_eq!(automatic, expected);
+            }
+        }
+    }
+
+
+    #[test]
+    fn parallel_antialiased_arc_sector_matches_serial_for_worker_counts() {
+        for background in [Color::TRANSPARENT, Color::BLACK, Color::rgba(30, 70, 120, 113)] {
+            for (center, radius, start, end, color) in [
+                (Point::new(31, 24), 17, 0.2, 2.7, Color::rgba(230, 70, 120, 177)),
+                (Point::new(42, 25), 19, 5.4, 1.1, Color::rgba(40, 190, 210, 129)),
+                (Point::new(3, 7), 8, 4.8, 7.2, Color::rgba(170, 90, 30, 211)),
+                (Point::new(31, 24), 17, -1.0, 8.0, Color::WHITE),
+                (Point::new(31, 24), 0, 0.0, 1.5, Color::WHITE),
+            ] {
+                let initial = Framebuffer::new(67, 49, background).unwrap();
+                let mut expected = initial.clone();
+                super::fill_arc_aa(&mut expected, center, radius, start, end, color);
+                for workers in [0, 1, 2, 4, 8, 64] {
+                    let mut actual = initial.clone();
+                    super::fill_arc_aa_parallel_with_threads(
+                        &mut actual, center, radius, start, end, color, workers,
+                    );
+                    assert_eq!(actual, expected, "worker_count={workers}");
+                }
+                let mut automatic = initial;
+                super::fill_arc_aa_parallel(
                     &mut automatic, center, radius, start, end, color,
                 );
                 assert_eq!(automatic, expected);
