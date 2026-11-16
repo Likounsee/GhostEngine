@@ -1291,7 +1291,8 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                                     };
                                     blend_bilinear_rows_over_opaque(
                                         &texture.pixels[top_offset..top_offset + texture_width],
-                                        &texture.pixels[bottom_offset..bottom_offset + texture_width],
+                                        &texture.pixels
+                                            [bottom_offset..bottom_offset + texture_width],
                                         sample,
                                         coordinates.ty,
                                         &mut row[x as usize],
