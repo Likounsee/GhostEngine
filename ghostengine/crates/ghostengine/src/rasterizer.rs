@@ -1097,8 +1097,7 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
-                    let position =
-                        (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
+                    let position = (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
                     sources[lane] = gradient.sample_raster(position);
                 }
             }
@@ -4748,7 +4747,8 @@ mod transformed_radial_gradient_simd_tests {
 
             for y in 0..expected.height() {
                 for x in 0..expected.width() {
-                    let local = inverse.transform_point(Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+                    let local =
+                        inverse.transform_point(Vector::new(x as f32 + 0.5, y as f32 + 0.5));
                     if local.x < rect.x as f32
                         || local.y < rect.y as f32
                         || local.x >= rect.x.saturating_add(rect.width) as f32
