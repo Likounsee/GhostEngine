@@ -1,6 +1,6 @@
 //! CPU-side image storage and scaled texture compositing.
 
-use crate::{Color, Framebuffer, Rect, Transform2D};
+use crate::{simd::blend_variable_opaque_quad, Color, Framebuffer, Rect, Transform2D};
 use core::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEXTURE_ID: AtomicU64 = AtomicU64::new(1);
