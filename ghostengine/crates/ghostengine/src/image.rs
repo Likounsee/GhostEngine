@@ -4,7 +4,7 @@ use std::{error::Error, fmt, io::Cursor};
 
 use ::image::{io::Limits, ImageFormat};
 
-use crate::{Color, Texture, TextureError};
+use crate::{Color, Texture, TextureCache, TextureCacheError, TextureError, TextureHandle};
 
 const MAX_IMAGE_DIMENSION: u32 = 4096;
 const MAX_DECODER_ALLOCATION: u64 = 64 * 1024 * 1024;
@@ -41,6 +41,7 @@ pub enum ImageDecodeError {
     Reader(std::io::Error),
     Decode(::image::ImageError),
     Texture(TextureError),
+    Cache(TextureCacheError),
 }
 
 impl fmt::Display for ImageDecodeError {
@@ -53,6 +54,7 @@ impl fmt::Display for ImageDecodeError {
             Self::Reader(error) => write!(formatter, "could not read image header: {error}"),
             Self::Decode(error) => write!(formatter, "could not decode image: {error}"),
             Self::Texture(error) => write!(formatter, "invalid decoded texture: {error:?}"),
+            Self::Cache(error) => write!(formatter, "could not cache decoded texture: {error:?}"),
         }
     }
 }
@@ -62,7 +64,7 @@ impl Error for ImageDecodeError {
         match self {
             Self::Reader(error) => Some(error),
             Self::Decode(error) => Some(error),
-            Self::UnknownFormat | Self::UnsupportedFormat(_) | Self::Texture(_) => None,
+            Self::UnknownFormat | Self::UnsupportedFormat(_) | Self::Texture(_) | Self::Cache(_) => None,
         }
     }
 }
@@ -74,6 +76,27 @@ impl Error for ImageDecodeError {
 /// `Color` storage.
 pub fn decode_texture(encoded: &[u8]) -> Result<Texture, ImageDecodeError> {
     decode_texture_with_options(encoded, ImageDecodeOptions::default())
+}
+
+/// Decodes an image and inserts it into a bounded texture cache.
+pub fn decode_texture_into_cache(
+    encoded: &[u8],
+    cache: &mut TextureCache,
+) -> Result<TextureHandle, ImageDecodeError> {
+    decode_texture_with_options_into_cache(encoded, ImageDecodeOptions::default(), cache)
+}
+
+/// Decodes an image with custom limits and inserts it into a bounded texture cache.
+///
+/// If the decoded texture exceeds the cache budget, insertion fails without
+/// evicting existing cached textures.
+pub fn decode_texture_with_options_into_cache(
+    encoded: &[u8],
+    options: ImageDecodeOptions,
+    cache: &mut TextureCache,
+) -> Result<TextureHandle, ImageDecodeError> {
+    let texture = decode_texture_with_options(encoded, options)?;
+    cache.insert(texture).map_err(ImageDecodeError::Cache)
 }
 
 /// Decodes image bytes with limits supplied by the calling application.
@@ -142,6 +165,35 @@ mod tests {
         assert_eq!((texture.width(), texture.height()), (2, 1));
         assert_eq!(texture.get_pixel(0, 0), Some(Color::rgba(255, 20, 10, 255)));
         assert_eq!(texture.get_pixel(1, 0), Some(Color::rgba(5, 40, 230, 128)));
+    }
+
+    #[test]
+    fn decodes_png_directly_into_texture_cache() {
+        let mut cache = crate::TextureCache::new(64);
+        let handle = super::decode_texture_into_cache(&encode_png(), &mut cache).unwrap();
+
+        let texture = cache.get(handle).unwrap();
+        assert_eq!((texture.width(), texture.height()), (2, 1));
+        assert_eq!(texture.get_pixel(0, 0), Some(Color::rgba(255, 20, 10, 255)));
+        assert_eq!(cache.stats().entries, 1);
+        assert_eq!(cache.stats().used_bytes, 8);
+    }
+
+    #[test]
+    fn cache_budget_error_does_not_evict_existing_textures() {
+        let mut cache = crate::TextureCache::new(8);
+        let existing = cache.insert(crate::Texture::new(
+            2, 1, vec![Color::RED; 2]
+        )).unwrap();
+
+        assert!(matches!(
+            super::decode_texture_into_cache(&encode_png(), &mut cache),
+            Err(ImageDecodeError::Cache(
+                crate::TextureCacheError::TextureExceedsBudget { .. }
+            ))
+        ));
+        assert!(cache.peek(existing).is_some());
+        assert_eq!(cache.stats().entries, 1);
     }
 
     #[test]
