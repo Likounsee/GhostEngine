@@ -117,7 +117,8 @@ pub use texture::{
     NineSliceMargins, TextureError, TextureFilter,
 };
 pub use texture_atlas::{
-    draw_atlas_region_clipped, AtlasRegion, TextureAtlasBuilder, TextureAtlasError,
+    draw_atlas_region_clipped, AtlasRegion, TextureAtlas, TextureAtlasBuilder,
+    TextureAtlasError,
 };
 pub use transform::Transform2D;
 pub use ui::{
