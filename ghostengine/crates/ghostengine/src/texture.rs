@@ -533,6 +533,8 @@ pub fn draw_texture_region_clipped(
         || source.height == 0
         || destination.width == 0
         || destination.height == 0
+        || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
+        || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
         || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
         || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
     {
@@ -1883,8 +1885,8 @@ mod tests {
 
         let colors = [
             Color::RED, Color::GREEN, Color::BLUE,
-            Color::YELLOW, Color::WHITE, Color::MAGENTA,
-            Color::CYAN, Color::rgb(90, 100, 110), Color::rgb(120, 130, 140),
+            Color::rgb(255, 255, 0), Color::WHITE, Color::rgb(255, 0, 255),
+            Color::rgb(0, 255, 255), Color::rgb(90, 100, 110), Color::rgb(120, 130, 140),
         ];
         let texture = Texture::new(3, 3, colors.to_vec()).unwrap();
         let mut target = Framebuffer::new(7, 7, Color::BLACK).unwrap();
