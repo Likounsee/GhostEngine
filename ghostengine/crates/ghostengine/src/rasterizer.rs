@@ -1410,6 +1410,100 @@ pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
 ///
 /// The rectangle uses half-open bounds, clamps the corner radius to its dimensions,
 /// clips work to the framebuffer, and composites translucent coverage source-over.
+#[inline]
+fn rounded_rect_aa_coverage(
+    x: u32,
+    y: usize,
+    center_x: f64,
+    center_y: f64,
+    inner_width: f64,
+    inner_height: f64,
+    corner_radius: f64,
+) -> usize {
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
+    let sample_ys = SAMPLE_OFFSETS.map(|offset| y as f64 + offset - center_y);
+    let mut covered = 0;
+    for py in sample_ys {
+        for px in sample_xs {
+            let qx = px.abs() - inner_width;
+            let qy = py.abs() - inner_height;
+            let outside_x = qx.max(0.0);
+            let outside_y = qy.max(0.0);
+            let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+            if distance <= 0.0 {
+                covered += 1;
+            }
+        }
+    }
+    covered
+}
+
+#[inline]
+fn blend_rounded_rect_aa_row(
+    row: &mut [Color],
+    y: usize,
+    clip_left: u32,
+    clip_right: u32,
+    center_x: f64,
+    center_y: f64,
+    inner_width: f64,
+    inner_height: f64,
+    corner_radius: f64,
+    coverage_colors: &[Color; 17],
+) {
+    let mut x = clip_left;
+    while x + 4 <= clip_right {
+        let mut sources = [Color::TRANSPARENT; 4];
+        for (lane, source) in sources.iter_mut().enumerate() {
+            let covered = rounded_rect_aa_coverage(
+                x + lane as u32,
+                y,
+                center_x,
+                center_y,
+                inner_width,
+                inner_height,
+                corner_radius,
+            );
+            *source = coverage_colors[covered];
+        }
+
+        let start = x as usize;
+        let destinations = &mut row[start..start + 4];
+        if sources.iter().all(|source| source.a == 0) {
+            // Fully uncovered SIMD groups need no framebuffer writes.
+        } else if destinations.iter().all(|pixel| pixel.a == 255) {
+            let mut quad = [destinations[0], destinations[1], destinations[2], destinations[3]];
+            crate::simd::blend_variable_opaque_quad(&mut quad, sources);
+            destinations.copy_from_slice(&quad);
+        } else {
+            for (destination, source) in destinations.iter_mut().zip(sources) {
+                if source.a != 0 {
+                    *destination = source.blend_over(*destination);
+                }
+            }
+        }
+        x += 4;
+    }
+
+    for x in x..clip_right {
+        let covered = rounded_rect_aa_coverage(
+            x,
+            y,
+            center_x,
+            center_y,
+            inner_width,
+            inner_height,
+            corner_radius,
+        );
+        let source = coverage_colors[covered];
+        if source.a != 0 {
+            let pixel = &mut row[x as usize];
+            *pixel = source.blend_over(*pixel);
+        }
+    }
+}
+
 pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
     if rect.width == 0
         || rect.height == 0
@@ -1451,28 +1545,18 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in clip_left..clip_right {
-            let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
-            let mut covered = 0_usize;
-            for py in sample_ys {
-                for px in sample_xs {
-                    let qx = px.abs() - inner_width;
-                    let qy = py.abs() - inner_height;
-                    let outside_x = qx.max(0.0);
-                    let outside_y = qy.max(0.0);
-                    let distance = outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
-                    if distance <= 0.0 {
-                        covered += 1;
-                    }
-                }
-            }
-            if covered != 0 {
-                let source = coverage_colors[covered];
-                if source.a != 0 {
-                    row[x as usize] = source.blend_over(row[x as usize]);
-                }
-            }
-        }
+        blend_rounded_rect_aa_row(
+            row,
+            y as usize,
+            clip_left,
+            clip_right,
+            center_x,
+            center_y,
+            inner_width,
+            inner_height,
+            corner_radius,
+            &coverage_colors,
+        );
     }
 }
 
@@ -1532,30 +1616,18 @@ pub fn fill_rounded_rect_aa_parallel_with_threads(
         thread_count,
         |row, y| {
             let sample_ys = SAMPLE_OFFSETS.map(|offset| y as f64 + offset - center_y);
-            for x in clip_left..clip_right {
-                let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
-                let mut covered = 0_usize;
-                for py in sample_ys {
-                    for px in sample_xs {
-                        let qx = px.abs() - inner_width;
-                        let qy = py.abs() - inner_height;
-                        let outside_x = qx.max(0.0);
-                        let outside_y = qy.max(0.0);
-                        let distance =
-                            outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
-                        if distance <= 0.0 {
-                            covered += 1;
-                        }
-                    }
-                }
-                if covered != 0 {
-                    let source = coverage_colors[covered];
-                    if source.a != 0 {
-                        let pixel = &mut row[x as usize];
-                        *pixel = source.blend_over(*pixel);
-                    }
-                }
-            }
+            blend_rounded_rect_aa_row(
+                row,
+                y as usize,
+                clip_left,
+                clip_right,
+                center_x,
+                center_y,
+                inner_width,
+                inner_height,
+                corner_radius,
+                &coverage_colors,
+            );
         },
     );
 }
