@@ -4,7 +4,9 @@
 //! intended for UI sprites and small immutable assets; callers retain stable
 //! region IDs and can rebuild an atlas when their asset set changes.
 
-use crate::{Color, Rect, Texture, TextureError};
+use crate::{
+    draw_texture_region_clipped, Color, Framebuffer, Rect, Texture, TextureError, TextureFilter,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureAtlasError {
@@ -24,6 +26,18 @@ pub struct AtlasRegion {
 struct AtlasItem {
     id: u64,
     texture: Texture,
+}
+
+/// Draws one atlas entry without sampling pixels from adjacent entries.
+pub fn draw_atlas_region_clipped(
+    target: &mut Framebuffer,
+    atlas: &Texture,
+    region: AtlasRegion,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+) {
+    draw_texture_region_clipped(target, atlas, region.rect, destination, filter, clip);
 }
 
 /// Packs textures into one immutable texture using row-based shelf packing.
@@ -230,6 +244,50 @@ mod tests {
                 texture.get_pixel(0, 0)
             );
         }
+    }
+
+    #[test]
+    fn atlas_region_draw_uses_region_bounds_and_clip() {
+        let red = Texture::new(2, 2, vec![Color::RED; 4]).unwrap();
+        let blue = Texture::new(2, 2, vec![Color::BLUE; 4]).unwrap();
+        let mut builder = TextureAtlasBuilder::new(8, 4, 1);
+        builder.add(10, &red).unwrap();
+        builder.add(20, &blue).unwrap();
+        let (atlas, regions) = builder.build().unwrap();
+        let blue_region = *regions.iter().find(|region| region.id == 20).unwrap();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        draw_atlas_region_clipped(
+            &mut target,
+            &atlas,
+            blue_region,
+            Rect::new(0, 0, 4, 4),
+            TextureFilter::Bilinear,
+            Rect::new(1, 1, 2, 2),
+        );
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn atlas_region_draw_rejects_invalid_region() {
+        let atlas = Texture::new(2, 2, vec![Color::RED; 4]).unwrap();
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        draw_atlas_region_clipped(
+            &mut target,
+            &atlas,
+            AtlasRegion {
+                id: 7,
+                rect: Rect::new(1, 1, 2, 2),
+            },
+            Rect::new(0, 0, 2, 2),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 2, 2),
+        );
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
