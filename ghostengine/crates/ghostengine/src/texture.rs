@@ -783,9 +783,35 @@ pub fn draw_texture_clipped_with_scratch(
                     *pixel = texture.pixels[source_row + source_column];
                 }
             } else {
-                for (pixel, &source_column) in row[first_x as usize..end_x as usize]
+                let mut destination_quads = row[first_x as usize..end_x as usize].chunks_exact_mut(4);
+                let mut source_quads = scratch.nearest_columns.chunks_exact(4);
+                for (destinations, columns) in destination_quads.by_ref().zip(source_quads.by_ref()) {
+                    if destinations.iter().all(|pixel| pixel.a == 255) {
+                        let sources = [
+                            texture.pixels[source_row + columns[0]],
+                            texture.pixels[source_row + columns[1]],
+                            texture.pixels[source_row + columns[2]],
+                            texture.pixels[source_row + columns[3]],
+                        ];
+                        let destinations: &mut [Color; 4] = destinations
+                            .try_into()
+                            .expect("chunks_exact_mut always yields four pixels");
+                        blend_variable_opaque_quad(destinations, sources);
+                    } else {
+                        for (pixel, &source_column) in destinations.iter_mut().zip(columns) {
+                            let color = texture.pixels[source_row + source_column];
+                            if color.a == 255 {
+                                *pixel = color;
+                            } else if color.a > 0 {
+                                *pixel = color.blend_over(*pixel);
+                            }
+                        }
+                    }
+                }
+                for (pixel, &source_column) in destination_quads
+                    .into_remainder()
                     .iter_mut()
-                    .zip(&scratch.nearest_columns)
+                    .zip(source_quads.remainder())
                 {
                     let color = texture.pixels[source_row + source_column];
                     if color.a == 255 {
