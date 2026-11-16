@@ -45,10 +45,7 @@ pub(crate) fn blend_opaque_quad(
 
 /// Composites four varying source pixels over four opaque destinations.
 #[inline]
-pub(crate) fn blend_variable_opaque_quad(
-    destinations: &mut [Color; 4],
-    sources: [Color; 4],
-) {
+pub(crate) fn blend_variable_opaque_quad(destinations: &mut [Color; 4], sources: [Color; 4]) {
     let source_alpha = sources.map(|color| u32::from(color.a));
     let inverse_alpha = source_alpha.map(|alpha| 255 - alpha);
     let blend_channel = |source: [u32; 4], destination: [u32; 4]| {
@@ -77,7 +74,6 @@ pub(crate) fn blend_variable_opaque_quad(
 #[cfg(test)]
 mod tests {
     use crate::Color;
-
 
     #[test]
     fn variable_source_simd_blend_matches_scalar_for_opaque_destinations() {
@@ -136,12 +132,7 @@ mod tests {
                     ];
                     let expected = actual.map(|background| source.blend_over(background));
                     let source_alpha = u32::from(source.a);
-                    super::blend_opaque_quad(
-                        &mut actual,
-                        source,
-                        source_alpha,
-                        255 - source_alpha,
-                    );
+                    super::blend_opaque_quad(&mut actual, source, source_alpha, 255 - source_alpha);
                     assert_eq!(
                         actual, expected,
                         "source alpha {alpha}, channels {red}/{green}/{blue}"
