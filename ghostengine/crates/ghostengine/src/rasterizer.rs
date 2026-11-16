@@ -4350,6 +4350,62 @@ mod parallel_gradient_tests {
     }
 
     #[test]
+    fn simd_gradient_compositing_matches_scalar_source_over() {
+        let gradient = test_gradient();
+        let rect = Rect::new(2, 1, 17, 6);
+        let start = Vector::new(1.25, 0.5);
+        let end = Vector::new(18.0, 6.75);
+        let mut actual = patterned_frame();
+        let mut expected = actual.clone();
+
+        super::fill_rect_linear_gradient(&mut actual, rect, start, end, &gradient);
+        let dx = end.x - start.x;
+        let dy = end.y - start.y;
+        let inverse_length_squared = (dx * dx + dy * dy).recip();
+        for y in 1..7 {
+            let mut position = ((2.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
+                * inverse_length_squared;
+            for x in 2..19 {
+                let source = gradient.sample_raster(position);
+                let pixel = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(x, y, source.blend_over(pixel));
+                position += dx * inverse_length_squared;
+            }
+        }
+        assert_eq!(actual, expected);
+
+        let center = Vector::new(9.25, 4.0);
+        let radius = 8.5;
+        let mut actual = patterned_frame();
+        let mut expected = actual.clone();
+        super::fill_rect_radial_gradient(&mut actual, rect, center, radius, &gradient);
+        let inverse_radius = radius.recip();
+        let radius_squared = radius * radius;
+        let inverse_radius_squared = radius_squared.recip();
+        let outside_radius_squared = radius_squared * (1.0 + 4.0 * f32::EPSILON);
+        let outside_color = gradient.sample_raster(1.0);
+        for y in 1..7 {
+            let dy = y as f32 + 0.5 - center.y;
+            let dy_squared = dy * dy;
+            let mut dx = 2.5 - center.x;
+            for x in 2..19 {
+                let distance_squared = dx * dx + dy_squared;
+                let source = if distance_squared >= outside_radius_squared {
+                    outside_color
+                } else {
+                    gradient.sample_radial_squared_in_range(
+                        distance_squared * inverse_radius_squared,
+                    )
+                };
+                let pixel = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(x, y, source.blend_over(pixel));
+                dx += 1.0;
+            }
+        }
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn parallel_gradient_operations_keep_invalid_inputs_as_no_ops() {
         let gradient = test_gradient();
         let mut serial = patterned_frame();
