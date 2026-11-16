@@ -783,10 +783,15 @@ pub fn draw_texture_clipped_with_scratch(
                     *pixel = texture.pixels[source_row + source_column];
                 }
             } else {
-                let mut destination_quads =
-                    row[first_x as usize..end_x as usize].chunks_exact_mut(4);
-                let mut source_quads = scratch.nearest_columns.chunks_exact(4);
-                for (destinations, columns) in destination_quads.by_ref().zip(source_quads.by_ref())
+                let visible_row = &mut row[first_x as usize..end_x as usize];
+                let vectorized_len = visible_row.len() / 4 * 4;
+                let (vectorized_pixels, remainder_pixels) =
+                    visible_row.split_at_mut(vectorized_len);
+                let (vectorized_columns, remainder_columns) =
+                    scratch.nearest_columns.split_at(vectorized_len);
+                for (destinations, columns) in vectorized_pixels
+                    .chunks_exact_mut(4)
+                    .zip(vectorized_columns.chunks_exact(4))
                 {
                     if destinations.iter().all(|pixel| pixel.a == 255) {
                         let sources = [
@@ -810,11 +815,7 @@ pub fn draw_texture_clipped_with_scratch(
                         }
                     }
                 }
-                for (pixel, &source_column) in destination_quads
-                    .into_remainder()
-                    .iter_mut()
-                    .zip(source_quads.remainder())
-                {
+                for (pixel, &source_column) in remainder_pixels.iter_mut().zip(remainder_columns) {
                     let color = texture.pixels[source_row + source_column];
                     if color.a == 255 {
                         *pixel = color;
@@ -889,11 +890,14 @@ pub fn draw_texture_clipped_with_scratch(
                     );
                 }
             } else {
-                let mut pixel_quads =
-                    row[first_x as usize..end_x as usize].chunks_exact_mut(4);
-                let mut sample_quads = samples.chunks_exact(4);
-                for (pixels, coordinates) in
-                    pixel_quads.by_ref().zip(sample_quads.by_ref())
+                let visible_row = &mut row[first_x as usize..end_x as usize];
+                let vectorized_len = visible_row.len() / 4 * 4;
+                let (vectorized_pixels, remainder_pixels) =
+                    visible_row.split_at_mut(vectorized_len);
+                let (vectorized_samples, remainder_samples) = samples.split_at(vectorized_len);
+                for (pixels, coordinates) in vectorized_pixels
+                    .chunks_exact_mut(4)
+                    .zip(vectorized_samples.chunks_exact(4))
                 {
                     if pixels.iter().all(|pixel| pixel.a == 255) {
                         let sample = |&(x0, x1, tx): &(usize, usize, f32)| {
@@ -942,10 +946,8 @@ pub fn draw_texture_clipped_with_scratch(
                         }
                     }
                 }
-                for (pixel, &(x0, x1, tx)) in pixel_quads
-                    .into_remainder()
-                    .iter_mut()
-                    .zip(sample_quads.remainder())
+                for (pixel, &(x0, x1, tx)) in
+                    remainder_pixels.iter_mut().zip(remainder_samples)
                 {
                     let color = sample_bilinear_prepared(
                         &texture.pixels,
