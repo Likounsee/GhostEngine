@@ -3,8 +3,7 @@
 //! Lines are clipped before rasterization; rectangles use half-open bounds;
 //! triangles sample pixel centers and use a top-left edge rule.
 
-use crate::{Color, Framebuffer, Point, Rect};
-use crate::simd::blend_opaque_quad;
+use crate::{simd::blend_opaque_quad, Color, Framebuffer, Point, Rect};
 
 /// Writes a pixel without blending. Returns false when outside the target.
 pub fn draw_pixel(target: &mut Framebuffer, point: Point, color: Color) -> bool {
