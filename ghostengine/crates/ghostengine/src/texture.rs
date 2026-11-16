@@ -373,15 +373,18 @@ fn blend_cached_bilinear_over_opaque(
     }
 
     let inverse_alpha = 255.0 - alpha;
-    let channel = |index: usize, background: u8| {
-        ((top[index] * inverse_y + bottom[index] * ty + f32::from(background) * inverse_alpha)
-            / 255.0)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    };
-    destination.r = channel(0, destination.r);
-    destination.g = channel(1, destination.g);
-    destination.b = channel(2, destination.b);
+    let red = (top[0] * inverse_y + bottom[0] * ty
+        + f32::from(destination.r) * inverse_alpha)
+        * (1.0 / 255.0);
+    let green = (top[1] * inverse_y + bottom[1] * ty
+        + f32::from(destination.g) * inverse_alpha)
+        * (1.0 / 255.0);
+    let blue = (top[2] * inverse_y + bottom[2] * ty
+        + f32::from(destination.b) * inverse_alpha)
+        * (1.0 / 255.0);
+    destination.r = red.round().clamp(0.0, 255.0) as u8;
+    destination.g = green.round().clamp(0.0, 255.0) as u8;
+    destination.b = blue.round().clamp(0.0, 255.0) as u8;
 }
 
 // Parallel scanlines cannot share the sequential renderer's persistent
