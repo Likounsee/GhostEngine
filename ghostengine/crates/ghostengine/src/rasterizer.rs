@@ -1643,6 +1643,17 @@ pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
 /// Segment coverage is accumulated as a union, so shared vertices are blended
 /// only once and translucent outlines do not become darker at their corners.
 pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    draw_polygon_aa_with_scratch(target, vertices, color, &mut scratch);
+}
+
+/// Draws an antialiased polygon outline while reusing caller-owned buffers.
+pub fn draw_polygon_aa_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
     if vertices.len() < 2 || color.a == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
@@ -1668,7 +1679,9 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         return;
     }
 
-    let segments = (0..vertices.len())
+    let segments = &mut scratch.aa_outline_segments;
+    segments.clear();
+    segments.extend((0..vertices.len())
         .map(|index| {
             let a = vertices[index];
             let b = vertices[(index + 1) % vertices.len()];
@@ -1685,8 +1698,7 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
                 ay.min(f64::from(b.y)) - 0.5,
                 ay.max(f64::from(b.y)) + 0.5,
             )
-        })
-        .collect::<Vec<_>>();
+        }));
 
     let coverage = &mut scratch.aa_coverage;
     coverage.resize((right - left) as usize, 0);
@@ -1737,7 +1749,6 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
             }
         }
     }
-}
 
 type PolygonScanEdge = (f64, f64, f64, f64, f64, f64);
 
@@ -1755,6 +1766,7 @@ pub struct RasterizerScratch {
     aa_active_edges: Vec<usize>,
     aa_intersections: Vec<f64>,
     aa_coverage: Vec<u8>,
+    aa_outline_segments: Vec<(f64, f64, f64, f64, f64, f64, f64, f64, f64)>,
     ellipse_aa_coverage: Vec<u8>,
     arc_aa_sources: Vec<Color>,
     ellipse_aa_sources: Vec<Color>,
@@ -5840,6 +5852,29 @@ mod blend_rect_transparent_run_tests {
         assert_eq!(actual, expected);
         assert!(scratch.ellipse_aa_coverage.capacity() >= 41);
         assert!(scratch.ellipse_aa_sources.capacity() >= 41);
+    }
+
+    #[test]
+    fn polygon_outline_aa_reuses_scratch_buffers() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(73, 59, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+        let polygons = [
+            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
+            vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
+        ];
+        for vertices in &polygons {
+            super::draw_polygon_aa_with_scratch(
+                &mut actual, vertices, Color::rgba(190, 80, 220, 173), &mut scratch,
+            );
+            super::draw_polygon_aa(
+                &mut expected, vertices, Color::rgba(190, 80, 220, 173),
+            );
+        }
+        assert_eq!(actual, expected);
+        assert!(scratch.aa_outline_segments.capacity() >= 4);
+        assert!(scratch.aa_coverage.capacity() >= 73);
     }
 
 }
