@@ -1453,7 +1453,7 @@ fn blend_rounded_rect_aa_row(
     coverage_colors: &[Color; 17],
 ) {
     let mut x = clip_left;
-    while x + 4 <= clip_right {
+    while x <= clip_right.saturating_sub(4) {
         let mut sources = [Color::TRANSPARENT; 4];
         for (lane, source) in sources.iter_mut().enumerate() {
             let covered = rounded_rect_aa_coverage(
@@ -1526,7 +1526,6 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
         return;
     }
 
-    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let center_x = (left + right - 1) as f64 * 0.5;
     let center_y = (top + bottom - 1) as f64 * 0.5;
     let half_width = (f64::from(rect.width) - 1.0) * 0.5;
@@ -1541,7 +1540,6 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
     });
 
     for y in clip_top..clip_bottom {
-        let sample_ys = SAMPLE_OFFSETS.map(|offset| f64::from(y) + offset - center_y);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
@@ -1593,7 +1591,6 @@ pub fn fill_rounded_rect_aa_parallel_with_threads(
         return;
     }
 
-    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let center_x = (left + right - 1) as f64 * 0.5;
     let center_y = (top + bottom - 1) as f64 * 0.5;
     let half_width = (f64::from(rect.width) - 1.0) * 0.5;
@@ -1615,7 +1612,6 @@ pub fn fill_rounded_rect_aa_parallel_with_threads(
         clip_top as usize,
         thread_count,
         |row, y| {
-            let sample_ys = SAMPLE_OFFSETS.map(|offset| y as f64 + offset - center_y);
             blend_rounded_rect_aa_row(
                 row,
                 y as usize,
