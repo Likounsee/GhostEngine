@@ -1669,6 +1669,56 @@ pub fn fill_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     }
 }
 
+/// Fills a rounded rectangle in disjoint scanline bands using safe worker threads.
+///
+/// The output is pixel-identical to [`fill_rounded_rect`]. A thread count of
+/// zero or one selects serial execution.
+pub fn fill_rounded_rect_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let Some((left, top, right, bottom)) = clipped_rect_bounds(target, rect) else {
+        return;
+    };
+    let row_width = target.width() as usize;
+    let start = top * row_width;
+    let end = bottom * row_width;
+    process_rows_with_y_mut(
+        &mut target.pixels_mut()[start..end],
+        row_width,
+        top,
+        thread_count,
+        |row, y| {
+            let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y as i64)
+            else {
+                return;
+            };
+            let first_x = (first_x.max(left as i64)) as usize;
+            let last_x = (last_x.min(right as i64 - 1)) as usize;
+            if first_x <= last_x {
+                row[first_x..=last_x].fill(color);
+            }
+        },
+    );
+}
+
+/// Automatically parallelizes large rounded-rectangle fills.
+pub fn fill_rounded_rect_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+) {
+    let thread_count = parallel_thread_count_for_rect(target, rect);
+    fill_rounded_rect_parallel_with_threads(target, rect, radius, color, thread_count);
+}
+
 /// Draws the outline of a rounded rectangle with clipped scanline endpoints.
 ///
 /// The radius is clamped to half the smaller dimension. Unlike drawing four
@@ -5912,6 +5962,50 @@ mod polygon_aa_opaque_run_tests {
     }
 }
 
+
+#[cfg(test)]
+mod rounded_rect_parallel_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn parallel_rounded_rect_matches_serial_for_clipping_and_thread_counts() {
+        let cases = [
+            (Rect::new(3, 4, 71, 39), 12),
+            (Rect::new(-9, 7, 48, 31), 10),
+            (Rect::new(62, 48, 35, 29), 8),
+            (Rect::new(14, 13, 1, 1), 0),
+            (Rect::new(0, 0, 96, 64), 32),
+        ];
+        for (rect, radius) in cases {
+            let mut expected =
+                Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
+            super::fill_rounded_rect(&mut expected, rect, radius, Color::rgba(211, 87, 43, 173));
+            for threads in [0, 1, 2, 4, 8] {
+                let mut actual =
+                    Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
+                super::fill_rounded_rect_parallel_with_threads(
+                    &mut actual,
+                    rect,
+                    radius,
+                    Color::rgba(211, 87, 43, 173),
+                    threads,
+                );
+                assert_eq!(actual, expected, "thread count {threads}, rect {rect:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_parallel_rounded_rect_matches_serial() {
+        let rect = Rect::new(-5, 8, 180, 96);
+        let color = Color::rgba(40, 180, 220, 201);
+        let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        super::fill_rounded_rect(&mut expected, rect, 27, color);
+        super::fill_rounded_rect_parallel(&mut actual, rect, 27, color);
+        assert_eq!(actual, expected);
+    }
+}
 
 #[cfg(test)]
 mod blend_rect_transparent_run_tests {
