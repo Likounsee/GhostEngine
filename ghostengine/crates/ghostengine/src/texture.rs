@@ -1569,11 +1569,6 @@ pub fn draw_texture_transformed_clipped(
         .collect();
     for y in first_y..end_y {
         let pixel_center_y = y as f32 + 0.5;
-        let vertical_x = inverse.m12 * pixel_center_y;
-        let vertical_y = inverse.m22 * pixel_center_y;
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
         let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(
             inverse,
             pixel_center_y,
@@ -1586,6 +1581,11 @@ pub fn draw_texture_transformed_clipped(
             local_right,
             local_bottom,
         ) else {
+            continue;
+        };
+        let vertical_x = inverse.m12 * pixel_center_y;
+        let vertical_y = inverse.m22 * pixel_center_y;
+        let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in row_first_x..row_end_x {
