@@ -479,6 +479,67 @@ pub fn draw_label_clipped(
 /// The baseline marks the first line. Wrapping, horizontal alignment and line
 /// spacing are controlled by `options`; the returned metrics describe the full block.
 #[allow(clippy::too_many_arguments)]
+/// Draws a single-line label and truncates its end with an ellipsis when it exceeds the clip width.
+pub fn draw_label_ellipsized(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    text: &str,
+    baseline: Point,
+    pixel_size: f32,
+    color: Color,
+    clip: Rect,
+) -> TextMetrics {
+    if text.is_empty()
+        || !pixel_size.is_finite()
+        || pixel_size <= 0.0
+        || clip.width == 0
+        || clip.height == 0
+    {
+        return TextMetrics::default();
+    }
+
+    let available_right = u64::from(clip.x) + u64::from(clip.width);
+    let available_width = (available_right as f32 - baseline.x as f32).max(0.0);
+    if available_width <= 0.0 {
+        return TextMetrics::default();
+    }
+
+    let full_metrics = font.measure(text, pixel_size);
+    let rendered = if full_metrics.width <= available_width {
+        text.to_owned()
+    } else {
+        const ELLIPSIS: &str = "…";
+        let ellipsis_width = font.measure(ELLIPSIS, pixel_size).width;
+        if ellipsis_width > available_width {
+            return TextMetrics::default();
+        }
+        let graphemes = text.graphemes(true).collect::<Vec<_>>();
+        let mut low = 0_usize;
+        let mut high = graphemes.len();
+        while low < high {
+            let middle = low + (high - low + 1) / 2;
+            let mut candidate = graphemes[..middle].concat();
+            candidate.push_str(ELLIPSIS);
+            if font.measure(&candidate, pixel_size).width <= available_width {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        let mut candidate = graphemes[..low].concat();
+        candidate.push_str(ELLIPSIS);
+        candidate
+    };
+
+    let metrics = font.measure(&rendered, pixel_size);
+    draw_text_clipped(target, font, &rendered, baseline, pixel_size, color, clip);
+    TextMetrics {
+        width: metrics.width,
+        height: font.line_height(pixel_size),
+        line_count: 1,
+    }
+}
+
 pub fn draw_label_wrapped(
     target: &mut Framebuffer,
     font: &FontFace,
