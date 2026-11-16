@@ -1490,22 +1490,24 @@ mod tests {
         .unwrap();
 
         for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
-            let mut sequential = Framebuffer::new(640, 480, Color::rgba(12, 34, 56, 190)).unwrap();
-            let mut parallel = sequential.clone();
-            let destination = Rect::new(23, 17, 580, 430);
-            let clip = Rect::new(41, 29, 511, 401);
+            for background in [Color::rgb(12, 34, 56), Color::rgba(12, 34, 56, 190)] {
+                let mut sequential = Framebuffer::new(640, 480, background).unwrap();
+                let mut parallel = sequential.clone();
+                let destination = Rect::new(23, 17, 580, 430);
+                let clip = Rect::new(41, 29, 511, 401);
 
-            draw_texture_clipped(&mut sequential, &texture, destination, filter, clip);
-            draw_texture_clipped_parallel_with_threads(
-                &mut parallel,
-                &texture,
-                destination,
-                filter,
-                clip,
-                4,
-            );
+                draw_texture_clipped(&mut sequential, &texture, destination, filter, clip);
+                draw_texture_clipped_parallel_with_threads(
+                    &mut parallel,
+                    &texture,
+                    destination,
+                    filter,
+                    clip,
+                    4,
+                );
 
-            assert_eq!(parallel.pixels(), sequential.pixels());
+                assert_eq!(parallel.pixels(), sequential.pixels());
+            }
         }
     }
 
