@@ -275,7 +275,9 @@ fn main() {
 
     let mut nested_group = ghostengine::LayerGroup::new(640, 360)
         .expect("nested benchmark group should allocate");
-    nested_group.add_layer(transformed_layers[0].clone());
+    let mut nested_child = transformed_layers[0].clone();
+    nested_child.set_position(0, 0);
+    nested_group.add_layer(nested_child);
     nested_group.set_position(520, 280);
     nested_group.set_opacity(220);
     let mut layer_group = ghostengine::LayerGroup::new(WIDTH, HEIGHT)
