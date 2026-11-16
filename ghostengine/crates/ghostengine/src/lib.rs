@@ -71,10 +71,11 @@ pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path::{
     fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
-    fill_path_non_zero, fill_path_non_zero_clipped,
+    fill_path_non_zero, fill_path_non_zero_aa, fill_path_non_zero_aa_clipped, fill_path_non_zero_clipped,
     fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
     fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
-    fill_transformed_path_non_zero, fill_transformed_path_non_zero_clipped,
+    fill_transformed_path_non_zero, fill_transformed_path_non_zero_aa,
+    fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped,
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use path_cache::PathGeometryCache;
