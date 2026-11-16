@@ -1341,7 +1341,7 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_button_aa, draw_checkbox, draw_divider, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
+        draw_checkbox, draw_divider, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
         TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
@@ -1359,7 +1359,7 @@ mod tests {
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
         assert!(target.pixels().iter().any(|pixel| *pixel == theme.panel_border));
         assert!(target.pixels().iter().any(|pixel| {
-            pixel.a > 0 && pixel.a < 255
+            *pixel != Color::BLACK && *pixel != theme.panel && *pixel != theme.panel_border
         }));
     }
 
