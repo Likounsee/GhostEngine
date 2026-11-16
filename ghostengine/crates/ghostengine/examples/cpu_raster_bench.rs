@@ -3,7 +3,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use ghostengine::{
-    blend_rect, draw_mipmapped_texture_clipped, draw_text,
+    blend_rect, draw_mipmapped_texture_clipped, draw_text, draw_texture_clipped_auto,
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
@@ -564,6 +564,20 @@ fn main() {
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
                 raster_threads,
+            );
+        }),
+        measure("Texture bilinear (auto)", iterations, |target| {
+            draw_texture_clipped_auto(
+                target,
+                &texture,
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),
         measure("Layer transform nearest (parallel)", iterations, |target| {
