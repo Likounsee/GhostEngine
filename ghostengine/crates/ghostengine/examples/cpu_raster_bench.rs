@@ -628,18 +628,30 @@ fn main() {
         }),
     ];
 
+    // Treat 60 FPS (16.67 ms) as the per-operation CPU budget on
+    // low-end systems. This is a diagnostic target, not a claim that every
+    // operation can consume the whole frame when combined in a real scene.
+    const CPU_60_FPS_BUDGET_MS: f64 = 1_000.0 / 60.0;
+
     println!(
-        "{:<30} {:>12} {:>14} {:>12}",
-        "Workload", "Total (ms)", "ms/frame", "FPS"
+        "{:<30} {:>12} {:>14} {:>12} {:>10}",
+        "Workload", "Total (ms)", "ms/frame", "FPS", "60 FPS"
     );
-    println!("{}", "-".repeat(74));
+    println!("{}", "-".repeat(86));
     for row in &rows {
+        let average_ms = row.average_ms();
+        let budget_status = if average_ms <= CPU_60_FPS_BUDGET_MS {
+            "within"
+        } else {
+            "over"
+        };
         println!(
-            "{:<30} {:>12.3} {:>14.4} {:>12.2}",
+            "{:<30} {:>12.3} {:>14.4} {:>12.2} {:>10}",
             row.name,
             row.elapsed.as_secs_f64() * 1_000.0,
-            row.average_ms(),
-            row.fps()
+            average_ms,
+            row.fps(),
+            budget_status
         );
     }
 
