@@ -1688,7 +1688,8 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         })
         .collect::<Vec<_>>();
 
-    let mut coverage = vec![0_u8; (right - left) as usize];
+    let coverage = &mut scratch.ellipse_aa_coverage;
+    coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
         coverage.fill(0);
         for offset_y in OFFSETS {
@@ -1754,6 +1755,7 @@ pub struct RasterizerScratch {
     aa_active_edges: Vec<usize>,
     aa_intersections: Vec<f64>,
     aa_coverage: Vec<u8>,
+    ellipse_aa_coverage: Vec<u8>,
 }
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
@@ -2306,6 +2308,21 @@ pub fn fill_ellipse_aa(
     radius_x: u32,
     radius_y: u32,
     color: Color,
+) {
+    let mut scratch = RasterizerScratch::default();
+    fill_ellipse_aa_with_scratch(target, center, radius_x, radius_y, color, &mut scratch);
+}
+
+/// Fills an antialiased ellipse while reusing caller-owned scanline coverage storage.
+///
+/// Reusing the scratch value avoids allocating the coverage row for every ellipse.
+pub fn fill_ellipse_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
 ) {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return;
