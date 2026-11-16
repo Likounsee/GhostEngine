@@ -2939,6 +2939,44 @@ mod tests {
     }
 
     #[test]
+    fn polygon_span_fast_path_matches_four_sample_reference() {
+        const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+        let row_left = 3_u32;
+        let start_x = 5_u32;
+        let end_x = 24_u32;
+        for left_step in 0..32 {
+            for width_step in 1..28 {
+                let span_left = 4.0 + f64::from(left_step) * 0.137;
+                let span_right = span_left + f64::from(width_step) * 0.113;
+                let mut actual = vec![2_u8; 32];
+                let mut expected = actual.clone();
+
+                super::accumulate_polygon_span_edges(
+                    &mut actual,
+                    row_left,
+                    start_x,
+                    end_x,
+                    span_left,
+                    span_right,
+                );
+
+                for x in start_x..end_x {
+                    let mut covered = 0_u8;
+                    for offset in OFFSETS {
+                        let sample_x = f64::from(x) + offset;
+                        covered += u8::from(sample_x >= span_left && sample_x < span_right);
+                    }
+                    expected[(x - row_left) as usize] += covered;
+                }
+                assert_eq!(
+                    actual, expected,
+                    "span [{span_left}, {span_right})"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn small_blend_rect_matches_pixel_source_over_for_all_destination_alpha_classes() {
         let initial = [
             Color::TRANSPARENT,
