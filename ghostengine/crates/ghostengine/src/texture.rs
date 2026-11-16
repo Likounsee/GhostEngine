@@ -964,6 +964,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
         Vec::new()
     };
     let use_horizontal_cache = !horizontal_cache.is_empty();
+    let horizontal_cache = &horizontal_cache;
 
     std::thread::scope(|scope| {
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
