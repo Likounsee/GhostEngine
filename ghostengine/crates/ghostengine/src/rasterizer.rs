@@ -4490,9 +4490,8 @@ mod parallel_gradient_tests {
                 let source = if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient.sample_radial_squared_in_range(
-                        distance_squared * inverse_radius_squared,
-                    )
+                    gradient
+                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
                 };
                 let pixel = expected.get_pixel(x, y).unwrap();
                 expected.set_pixel(x, y, source.blend_over(pixel));
