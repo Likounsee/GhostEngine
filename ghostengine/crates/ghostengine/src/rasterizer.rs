@@ -6151,6 +6151,53 @@ mod polygon_aa_opaque_run_tests {
 
 
 #[cfg(test)]
+mod polygon_parallel_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn parallel_polygon_matches_serial_for_clipping_and_thread_counts() {
+        let polygons = [
+            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
+            vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
+            vec![Point::new(12, 12), Point::new(12, 12), Point::new(12, 12)],
+            vec![Point::new(-30, -20), Point::new(120, -15), Point::new(40, 90)],
+        ];
+        for vertices in &polygons {
+            let mut expected =
+                Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
+            super::fill_polygon(&mut expected, vertices, Color::rgba(190, 80, 220, 173));
+            for threads in [0, 1, 2, 4, 8] {
+                let mut actual =
+                    Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
+                super::fill_polygon_parallel_with_threads(
+                    &mut actual,
+                    vertices,
+                    Color::rgba(190, 80, 220, 173),
+                    threads,
+                );
+                assert_eq!(actual, expected, "threads {threads}, vertices {vertices:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_parallel_polygon_matches_serial() {
+        let vertices = [
+            Point::new(-12, 8),
+            Point::new(181, 14),
+            Point::new(154, 117),
+            Point::new(23, 101),
+        ];
+        let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        super::fill_polygon(&mut expected, &vertices, Color::WHITE);
+        super::fill_polygon_parallel(&mut actual, &vertices, Color::WHITE);
+        assert_eq!(actual, expected);
+    }
+}
+
+#[cfg(test)]
 mod rounded_rect_outline_parallel_tests {
     use crate::{Color, Framebuffer, Rect};
 
