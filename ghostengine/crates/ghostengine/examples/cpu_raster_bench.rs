@@ -273,6 +273,20 @@ fn main() {
         .map(usize::from)
         .unwrap_or(1);
 
+    let mut nested_group = ghostengine::LayerGroup::new(640, 360)
+        .expect("nested benchmark group should allocate");
+    nested_group.add_layer(transformed_layers[0].clone());
+    nested_group.set_position(520, 280);
+    nested_group.set_opacity(220);
+    let mut layer_group = ghostengine::LayerGroup::new(WIDTH, HEIGHT)
+        .expect("benchmark group should allocate");
+    for layer in &layers {
+        layer_group.add_layer(layer.clone());
+    }
+    layer_group.add_group(nested_group);
+    layer_group.set_opacity(235);
+    let mut layer_group_scratch = ghostengine::LayerGroupScratch::default();
+
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
     println!("Iterations/workload: {iterations} | warm-up: {WARMUP_FRAMES}");
@@ -635,6 +649,14 @@ fn main() {
         ),
         measure("Layer composition (2 layers)", iterations, |target| {
             ghostengine::compose_layers(target, &layers);
+        }),
+        measure("Nested layer groups (reused scratch)", iterations, |target| {
+            ghostengine::compose_layer_groups_with_scratch(
+                target,
+                std::slice::from_ref(&layer_group),
+                &mut layer_group_scratch,
+            )
+            .expect("group benchmark composition should succeed");
         }),
         measure("Transformed layer (nearest)", iterations, |target| {
             ghostengine::compose_layers(target, &nearest_layers);
