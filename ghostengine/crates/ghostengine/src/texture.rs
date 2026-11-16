@@ -464,6 +464,41 @@ pub fn draw_texture_clipped(
     );
 }
 
+/// Draws a texture using an automatic CPU strategy.
+///
+/// Large destination regions use the parallel row-band compositor; smaller
+/// regions stay on the sequential path to avoid thread scheduling overhead.
+pub fn draw_texture_auto(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+) {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    draw_texture_clipped_auto(target, texture, destination, filter, clip);
+}
+
+/// Draws a clipped texture using the automatic CPU strategy.
+pub fn draw_texture_clipped_auto(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+) {
+    let threads = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    draw_texture_clipped_parallel_with_threads(
+        target,
+        texture,
+        destination,
+        filter,
+        clip,
+        threads,
+    );
+}
+
 /// Draws a rectangular region of a texture or atlas into a destination rectangle.
 ///
 /// The source region is validated against the texture bounds. Bilinear sampling
