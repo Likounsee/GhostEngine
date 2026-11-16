@@ -1209,8 +1209,12 @@ pub enum LayerGroupChild {
 impl LayerGroup {
     /// Creates an isolated group surface with transparent initial contents.
     pub fn new(width: u32, height: u32) -> Result<Self, FramebufferError> {
-        // Validate dimensions at construction so invalid groups cannot enter a scene.
-        Framebuffer::new(width, height, Color::TRANSPARENT)?;
+        if width == 0 || height == 0 {
+            return Err(FramebufferError::ZeroDimension);
+        }
+        (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(FramebufferError::SizeOverflow)?;
         Ok(Self {
             width,
             height,
@@ -1332,7 +1336,9 @@ fn render_layer_group(group: &LayerGroup) -> Result<Framebuffer, FramebufferErro
     let mut surface = Framebuffer::new(group.width, group.height, Color::TRANSPARENT)?;
     for child in &group.children {
         match child {
-            LayerGroupChild::Layer(layer) => compose_layers(&mut surface, std::slice::from_ref(layer)),
+            LayerGroupChild::Layer(layer) => {
+                compose_layers(&mut surface, std::slice::from_ref(layer));
+            }
             LayerGroupChild::Group(nested) => {
                 if !nested.visible || nested.opacity == 0 {
                     continue;
@@ -1355,7 +1361,8 @@ fn render_layer_group(group: &LayerGroup) -> Result<Framebuffer, FramebufferErro
 mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
-        compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
+        compose_layer_groups, compose_layers, compose_layers_in_damage_regions, BlendMode,
+        DamageRegion, Layer, LayerGroup,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
@@ -1388,7 +1395,10 @@ mod tests {
         children[1].set_opacity(128);
         let mut per_child = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
         compose_layers(&mut per_child, &children);
-        assert_ne!(actual.get_pixel(0, 0), Some(per_child.get_pixel(0, 0).unwrap().blend_over(background)));
+        assert_ne!(
+            actual.get_pixel(0, 0),
+            Some(per_child.get_pixel(0, 0).unwrap().blend_over(background))
+        );
     }
 
     #[test]
