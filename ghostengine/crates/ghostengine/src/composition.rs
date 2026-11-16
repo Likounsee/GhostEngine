@@ -1489,6 +1489,12 @@ fn transformed_damage(
     offset_y: i32,
     transform: Transform2D,
 ) -> Option<DamageRegion> {
+    if transform == Transform2D::IDENTITY {
+        return Some(translated_damage(
+            source, width, height, offset_x, offset_y,
+        ));
+    }
+
     let inverse = transform.inverse()?;
     let mut local = DamageRegion::new(width, height);
 
