@@ -2440,7 +2440,6 @@ pub fn fill_polygon_aa_parallel_with_threads(
     }
 
     let row_width = target.width() as usize;
-    let span_width = (right - left) as usize;
     let start = top as usize * row_width;
     let end = bottom as usize * row_width;
     let rows = &mut target.pixels_mut()[start..end];
