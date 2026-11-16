@@ -138,9 +138,44 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         return;
     };
 
-    // Integer-aligned opaque horizontal and vertical strokes have full
-    // coverage. Reuse the span/column path and skip floating-point Wu sampling.
-    if color.a == u8::MAX && (y0 == y1 || x0 == x1) {
+    // Integer-aligned horizontal strokes have full coverage for every
+    // source alpha. Composite the contiguous row in four-pixel SIMD batches.
+    if y0 == y1 {
+        if color.a == u8::MAX {
+            draw_line(target, start, end, color);
+            return;
+        }
+        if color.a == 0 {
+            return;
+        }
+        let left = x0.min(x1) as usize;
+        let right = x0.max(x1) as usize;
+        if let Some(row) = target.row_mut(y0 as u32) {
+            let mut pixels = row[left..=right].chunks_exact_mut(4);
+            let source_alpha = u32::from(color.a);
+            for quad in &mut pixels {
+                if quad.iter().all(|pixel| pixel.a == u8::MAX) {
+                    blend_opaque_quad(
+                        quad.try_into().expect("four destination pixels"),
+                        color,
+                        source_alpha,
+                        255 - source_alpha,
+                    );
+                } else {
+                    for pixel in quad {
+                        *pixel = color.blend_over(*pixel);
+                    }
+                }
+            }
+            for pixel in pixels.into_remainder() {
+                *pixel = color.blend_over(*pixel);
+            }
+        }
+        return;
+    }
+
+    // Integer-aligned opaque vertical strokes also have full coverage.
+    if color.a == u8::MAX && x0 == x1 {
         draw_line(target, start, end, color);
         return;
     }
@@ -5169,5 +5204,73 @@ mod arc_simd_tests {
             assert_eq!(fill, before);
             assert_eq!(outline, before);
         }
+    }
+}
+
+
+#[cfg(test)]
+mod horizontal_line_simd_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn simd_horizontal_aa_line_matches_scalar_source_over() {
+        let cases = [
+            (Point::new(2, 5), Point::new(30, 5)),
+            (Point::new(0, 0), Point::new(18, 0)),
+            (Point::new(7, 11), Point::new(35, 11)),
+        ];
+        for destination_alpha in [255, 127] {
+            for source_alpha in [255, 173, 1, 0] {
+                for (start, end) in cases {
+                    let mut actual = Framebuffer::new(37, 13, Color::BLACK).unwrap();
+                    for (index, pixel) in actual.pixels_mut().iter_mut().enumerate() {
+                        *pixel = Color::rgba(
+                            (index * 13 % 256) as u8,
+                            (index * 29 % 256) as u8,
+                            (index * 47 % 256) as u8,
+                            if destination_alpha == 255 {
+                                255
+                            } else {
+                                (index * 17 % 256) as u8
+                            },
+                        );
+                    }
+                    let mut expected = actual.clone();
+                    let color = Color::rgba(211, 83, 149, source_alpha);
+                    let y = start.y as u32;
+                    let left = start.x.min(end.x).max(0) as u32;
+                    let right = start.x.max(end.x).min(36) as u32;
+                    if start.y >= 0 && start.y < 13 {
+                        let row = expected.row_mut(y).unwrap();
+                        for pixel in &mut row[left as usize..=right as usize] {
+                            *pixel = color.blend_over(*pixel);
+                        }
+                    }
+
+                    super::draw_line_aa(&mut actual, start, end, color);
+                    assert_eq!(
+                        actual, expected,
+                        "destination alpha {destination_alpha}, source alpha {source_alpha}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simd_horizontal_aa_line_preserves_clipping_and_tail_pixels() {
+        let mut actual = Framebuffer::new(11, 3, Color::rgb(20, 30, 40)).unwrap();
+        let mut expected = actual.clone();
+        let color = Color::rgba(230, 90, 40, 127);
+        for pixel in expected.row_mut(1).unwrap() {
+            *pixel = color.blend_over(*pixel);
+        }
+        super::draw_line_aa(
+            &mut actual,
+            Point::new(-8, 1),
+            Point::new(18, 1),
+            color,
+        );
+        assert_eq!(actual, expected);
     }
 }
