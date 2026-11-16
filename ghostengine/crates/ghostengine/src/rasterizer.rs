@@ -5063,9 +5063,9 @@ mod arc_simd_tests {
             let row = target.row_mut(y).unwrap();
             for x in left..right {
                 let mut covered = 0_u32;
-                for offset_y in offsets {
+                for &offset_y in offsets {
                     let dy = f64::from(y) + offset_y - cy;
-                    for offset_x in offsets {
+                    for &offset_x in offsets {
                         let dx = f64::from(x) + offset_x - cx;
                         let distance = dx.hypot(dy);
                         let inside = if outline {
