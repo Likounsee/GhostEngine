@@ -5431,3 +5431,41 @@ mod polygon_aa_opaque_run_tests {
         assert_eq!(actual, expected);
     }
 }
+
+
+#[cfg(test)]
+mod blend_rect_transparent_run_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn transparent_destination_runs_match_scalar_source_over() {
+        let mut initial = Framebuffer::new(47, 11, Color::BLACK).unwrap();
+        for (index, pixel) in initial.pixels_mut().iter_mut().enumerate() {
+            let alpha = match index % 13 {
+                0..=4 => 0,
+                5..=9 => 255,
+                _ => (index * 31 % 254 + 1) as u8,
+            };
+            *pixel = Color::rgba(
+                (index * 17 % 256) as u8,
+                (index * 37 % 256) as u8,
+                (index * 59 % 256) as u8,
+                alpha,
+            );
+        }
+
+        let source = Color::rgba(213, 91, 147, 137);
+        let rect = Rect::new(2, 1, 43, 9);
+        let mut expected = initial.clone();
+        for y in 1..10 {
+            for x in 2..45 {
+                let destination = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(x, y, source.blend_over(destination));
+            }
+        }
+
+        let mut actual = initial;
+        super::blend_rect(&mut actual, rect, source);
+        assert_eq!(actual, expected);
+    }
+}
