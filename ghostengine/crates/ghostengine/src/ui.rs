@@ -1341,13 +1341,26 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_progress_bar, state_for_pointer, ListState,
+        draw_button_aa, draw_checkbox, draw_divider, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
         TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn antialiased_panel_draws_fill_and_rounded_border() {
+        let mut target = target();
+        let theme = UiTheme::default();
+        draw_panel_aa(&mut target, Rect::new(4, 4, 20, 14), 5, &theme);
+        assert_eq!(target.get_pixel(12, 10), Some(theme.panel));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| *pixel == theme.panel_border));
+        assert!(target.pixels().iter().any(|pixel| {
+            pixel.a > 0 && pixel.a < 255
+        }));
     }
 
     #[test]
