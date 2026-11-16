@@ -107,7 +107,7 @@ impl TextureCache {
         let reclaimable_bytes = self.entries.values()
             .filter(|entry| entry.retain_count == 0)
             .map(|entry| entry.bytes)
-            .sum::<usize>();
+            .fold(0usize, usize::saturating_add);
         if reclaimable_bytes < required_bytes {
             return Err(TextureCacheError::CacheFullyRetained);
         }
@@ -190,13 +190,22 @@ impl TextureCache {
     }
 
     /// Changes the memory budget, immediately evicting entries if required.
-    pub fn set_budget_bytes(&mut self, budget_bytes: usize) {
+    pub fn set_budget_bytes(&mut self, budget_bytes: usize) -> Result<(), TextureCacheError> {
+        let required_bytes = self.used_bytes.saturating_sub(budget_bytes);
+        let reclaimable_bytes = self.entries.values()
+            .filter(|entry| entry.retain_count == 0)
+            .map(|entry| entry.bytes)
+            .fold(0usize, usize::saturating_add);
+        if reclaimable_bytes < required_bytes {
+            return Err(TextureCacheError::CacheFullyRetained);
+        }
+
         self.budget_bytes = budget_bytes;
         while self.used_bytes > self.budget_bytes {
-            if !self.evict_least_recently_used() {
-                break;
-            }
+            let evicted = self.evict_least_recently_used();
+            debug_assert!(evicted, "reclaimable cache capacity was precomputed");
         }
+        Ok(())
     }
 
     /// Removes every cached texture while preserving counters and handle IDs.
@@ -307,12 +316,29 @@ mod tests {
         let mut cache = TextureCache::new(32);
         let first = cache.insert(texture(Color::RED, 2)).unwrap();
         let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
-        cache.set_budget_bytes(8);
+        cache.set_budget_bytes(8).unwrap();
 
         assert!(cache.peek(first).is_none());
         assert!(cache.peek(second).is_some());
         assert_eq!(cache.stats().used_bytes, 8);
         assert_eq!(cache.stats().budget_bytes, 8);
+    }
+
+    #[test]
+    fn shrinking_budget_fails_atomically_when_retained_entries_prevent_it() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        assert!(cache.retain(first));
+        assert!(cache.retain(second));
+
+        assert_eq!(
+            cache.set_budget_bytes(8),
+            Err(TextureCacheError::CacheFullyRetained)
+        );
+        assert_eq!(cache.stats().budget_bytes, 16);
+        assert_eq!(cache.stats().used_bytes, 16);
+        assert_eq!(cache.stats().entries, 2);
     }
 
     #[test]
