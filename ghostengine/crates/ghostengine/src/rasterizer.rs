@@ -2859,10 +2859,34 @@ pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, colo
     fill_ellipse_aa(target, center, radius, radius, color);
 }
 
+/// Fills an antialiased circle while reusing caller-owned ellipse coverage storage.
+pub fn fill_circle_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    fill_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
+}
+
+
 /// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
 pub fn draw_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     draw_ellipse_aa(target, center, radius, radius, color);
 }
+
+/// Draws an antialiased circle outline while reusing caller-owned ellipse scanline storage.
+pub fn draw_circle_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    draw_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
+}
+
 
 /// Draws an ellipse outline from its center and horizontal/vertical radii.
 /// The result is symmetric and clipped, including when the center is off-screen.
@@ -5791,6 +5815,31 @@ mod blend_rect_transparent_run_tests {
             &mut actual, Point::new(30, 20), 10, 6, Color::WHITE, &mut scratch,
         );
         assert_eq!(scratch.ellipse_aa_sources.capacity(), capacity);
+    }
+
+    #[test]
+    fn circle_aa_scratch_variants_match_compatibility_wrappers() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(61, 47, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+
+        for (center, radius, color) in [
+            (Point::new(18, 17), 12, Color::rgba(230, 70, 120, 177)),
+            (Point::new(42, 25), 19, Color::rgba(40, 190, 210, 129)),
+            (Point::new(3, 7), 8, Color::rgba(170, 90, 30, 211)),
+        ] {
+            super::fill_circle_aa_with_scratch(
+                &mut actual, center, radius, color, &mut scratch,
+            );
+            super::fill_circle_aa(&mut expected, center, radius, color);
+            super::draw_circle_aa_with_scratch(
+                &mut actual, center, radius, color, &mut scratch,
+            );
+            super::draw_circle_aa(&mut expected, center, radius, color);
+        }
+        assert_eq!(actual, expected);
+        assert!(scratch.ellipse_aa_coverage.capacity() >= 41);
+        assert!(scratch.ellipse_aa_sources.capacity() >= 41);
     }
 
 }
