@@ -71,12 +71,12 @@ pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path::{
     fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
-    fill_path_non_zero, fill_path_non_zero_aa, fill_path_non_zero_aa_clipped, fill_path_non_zero_clipped,
-    fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
-    fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
-    fill_transformed_path_non_zero, fill_transformed_path_non_zero_aa,
-    fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped,
-    FlattenedPath, FlattenedSubpath, Path, PathError,
+    fill_path_non_zero, fill_path_non_zero_aa, fill_path_non_zero_aa_clipped,
+    fill_path_non_zero_clipped, fill_transformed_path_even_odd,
+    fill_transformed_path_even_odd_aa, fill_transformed_path_even_odd_aa_clipped,
+    fill_transformed_path_even_odd_clipped, fill_transformed_path_non_zero,
+    fill_transformed_path_non_zero_aa, fill_transformed_path_non_zero_aa_clipped,
+    fill_transformed_path_non_zero_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use path_cache::PathGeometryCache;
 pub use rasterizer::{
@@ -118,9 +118,9 @@ pub use texture::{
 pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
 pub use transform::Transform2D;
 pub use ui::{
-    draw_button, draw_button_aa, draw_checkbox, draw_combo_box, draw_divider, draw_label, draw_label_clipped, draw_label_ellipsized,
-    draw_label_with_fallback, draw_label_wrapped, draw_list, draw_panel, draw_panel_aa, draw_progress_bar,
-    draw_radio_button, draw_slider, draw_switch, draw_tabs, draw_text_input, state_for_pointer,
-    ComboBoxState, ListOptions, ListState, TabsState, TextInputOptions, TextInputState, UiTheme,
-    WidgetState,
+    draw_button, draw_button_aa, draw_checkbox, draw_combo_box, draw_divider, draw_label,
+    draw_label_clipped, draw_label_ellipsized, draw_label_with_fallback, draw_label_wrapped,
+    draw_list, draw_panel, draw_panel_aa, draw_progress_bar, draw_radio_button, draw_slider,
+    draw_switch, draw_tabs, draw_text_input, state_for_pointer, ComboBoxState, ListOptions,
+    ListState, TabsState, TextInputOptions, TextInputState, UiTheme, WidgetState,
 };
