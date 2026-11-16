@@ -3249,6 +3249,174 @@ pub fn fill_ellipse_aa_with_scratch(
     }
 }
 
+/// Draws an antialiased ellipse outline using disjoint row bands.
+pub fn draw_ellipse_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if radius_x == 0 || radius_y == 0 || thread_count <= 1 {
+        draw_ellipse_aa(target, center, radius_x, radius_y, color);
+        return;
+    }
+
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let rx = f64::from(radius_x);
+    let ry = f64::from(radius_y);
+    let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+    let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+    let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let inverse_rx_squared = 1.0 / (rx * rx);
+    let inverse_ry_squared = 1.0 / (ry * ry);
+    let row_width = target.width() as usize;
+    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
+    let row_count = (bottom - top) as usize;
+    let worker_count = thread_count.max(1).min(row_count);
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+            let first_y = top as usize + chunk_index * rows_per_worker;
+            scope.spawn(move || {
+                draw_ellipse_aa_parallel_rows(
+                    chunk,
+                    row_width,
+                    first_y,
+                    left,
+                    right,
+                    cx,
+                    cy,
+                    inverse_rx_squared,
+                    inverse_ry_squared,
+                    color,
+                );
+            });
+        }
+    });
+}
+
+/// Automatically selects workers for sufficiently large antialiased ellipse outlines.
+pub fn draw_ellipse_aa_parallel(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    let area = u64::from(radius_x.saturating_mul(2).saturating_add(2))
+        .saturating_mul(u64::from(radius_y.saturating_mul(2).saturating_add(2)));
+    let workers = if area < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    };
+    draw_ellipse_aa_parallel_with_threads(target, center, radius_x, radius_y, color, workers);
+}
+
+fn draw_ellipse_aa_parallel_rows(
+    rows: &mut [Color],
+    row_width: usize,
+    first_y: usize,
+    left: u32,
+    right: u32,
+    cx: f64,
+    cy: f64,
+    inverse_rx_squared: f64,
+    inverse_ry_squared: f64,
+    color: Color,
+) {
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+    }
+
+    for (row_index, row_pixels) in rows.chunks_mut(row_width).enumerate() {
+        let y = first_y + row_index;
+        sources.fill(Color::TRANSPARENT);
+        for (index, source) in sources.iter_mut().enumerate() {
+            let x = left + index as u32;
+            let mut covered = 0_u32;
+            for offset_y in SAMPLE_OFFSETS {
+                let dy = y as f64 + offset_y - cy;
+                let normalized_y = dy * dy * inverse_ry_squared;
+                for offset_x in SAMPLE_OFFSETS {
+                    let dx = f64::from(x) + offset_x - cx;
+                    let normalized_x = dx * dx * inverse_rx_squared;
+                    let radius = (normalized_x + normalized_y).sqrt();
+                    if radius == 0.0 {
+                        continue;
+                    }
+                    let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
+                        + dy * dy * inverse_ry_squared * inverse_ry_squared)
+                        .sqrt()
+                        / radius;
+                    if ((radius - 1.0) / gradient.max(f64::EPSILON)).abs() <= 0.5 {
+                        covered += 1;
+                    }
+                }
+            }
+            if covered != 0 {
+                *source = coverage_colors[covered as usize];
+            }
+        }
+
+        let destinations = &mut row_pixels[left as usize..right as usize];
+        let mut index = 0;
+        while index < destinations.len() {
+            if sources[index].a == 0 {
+                index += 1;
+                continue;
+            }
+            if destinations[index].a != u8::MAX {
+                destinations[index] = sources[index].blend_over(destinations[index]);
+                index += 1;
+                continue;
+            }
+            let run_start = index;
+            while index < destinations.len()
+                && destinations[index].a == u8::MAX
+                && sources[index].a != 0
+            {
+                index += 1;
+            }
+            let mut quad_start = run_start;
+            while quad_start + 4 <= index {
+                let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four source pixels");
+                let destination_quad: &mut [Color; 4] =
+                    destinations[quad_start..quad_start + 4]
+                        .try_into()
+                        .expect("four destination pixels");
+                blend_variable_opaque_quad(destination_quad, source_quad);
+                quad_start += 4;
+            }
+            for pixel_index in quad_start..index {
+                destinations[pixel_index] =
+                    sources[pixel_index].blend_over(destinations[pixel_index]);
+            }
+        }
+    }
+}
+
 /// Draws a one-pixel anti-aliased ellipse outline using 4x4 coverage sampling.
 pub fn draw_ellipse_aa(
     target: &mut Framebuffer,
@@ -3867,6 +4035,51 @@ mod tests {
             }
             let mut automatic = Framebuffer::new(67, 43, background).unwrap();
             super::fill_ellipse_aa_parallel(
+                &mut automatic, center, radius_x, radius_y, color,
+            );
+            assert_eq!(automatic, expected);
+        }
+    }
+
+    #[test]
+    fn parallel_antialiased_ellipse_outline_matches_serial_for_worker_counts() {
+        for (center, radius_x, radius_y, color, background) in [
+            (
+                Point::new(20, 18),
+                12,
+                8,
+                Color::rgba(230, 70, 120, 177),
+                Color::rgba(12, 20, 28, 255),
+            ),
+            (
+                Point::new(42, 25),
+                19,
+                11,
+                Color::rgba(40, 190, 210, 129),
+                Color::rgba(30, 50, 70, 120),
+            ),
+            (
+                Point::new(3, 7),
+                8,
+                6,
+                Color::rgba(170, 90, 30, 211),
+                Color::TRANSPARENT,
+            ),
+        ] {
+            let mut expected = Framebuffer::new(67, 43, background).unwrap();
+            super::draw_ellipse_aa(&mut expected, center, radius_x, radius_y, color);
+            for workers in [0, 1, 2, 4, 8, 64] {
+                let mut actual = Framebuffer::new(67, 43, background).unwrap();
+                super::draw_ellipse_aa_parallel_with_threads(
+                    &mut actual, center, radius_x, radius_y, color, workers,
+                );
+                assert_eq!(
+                    actual, expected,
+                    "worker count: {workers}, center: {center:?}, radii: {radius_x}/{radius_y}"
+                );
+            }
+            let mut automatic = Framebuffer::new(67, 43, background).unwrap();
+            super::draw_ellipse_aa_parallel(
                 &mut automatic, center, radius_x, radius_y, color,
             );
             assert_eq!(automatic, expected);
