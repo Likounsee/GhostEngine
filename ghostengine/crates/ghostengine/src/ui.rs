@@ -1402,8 +1402,8 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_label_ellipsized, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
-        TextInputState, UiTheme, WidgetState,
+        draw_checkbox, draw_divider, draw_label_ellipsized, draw_panel, draw_panel_aa,
+        draw_progress_bar, state_for_pointer, ListState, TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
 
