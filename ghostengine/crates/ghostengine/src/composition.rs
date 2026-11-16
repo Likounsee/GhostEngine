@@ -1404,11 +1404,11 @@ fn render_layer_group_into(
 mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
-        compose_layer_groups, compose_layers, compose_layers_in_damage_regions, BlendMode,
+        compose_layer_groups, compose_layer_groups_with_scratch, compose_layers,
+        compose_layers_in_damage_regions, BlendMode,
         DamageRegion, Layer, LayerGroup, LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
-
 
     #[test]
     fn group_scratch_reuses_surfaces_across_frames_and_nested_depths() {
