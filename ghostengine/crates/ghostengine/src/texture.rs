@@ -602,6 +602,105 @@ pub fn draw_texture_region_clipped(
     }
 }
 
+
+/// Fixed-size border widths for nine-slice image scaling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NineSliceMargins {
+    pub left: u32,
+    pub top: u32,
+    pub right: u32,
+    pub bottom: u32,
+}
+
+impl NineSliceMargins {
+    #[must_use]
+    pub const fn new(left: u32, top: u32, right: u32, bottom: u32) -> Self {
+        Self { left, top, right, bottom }
+    }
+}
+
+/// Draws a nine-slice image, preserving corner dimensions while stretching edges
+/// and the center. If the destination is smaller than the combined borders, the
+/// opposing destination borders are proportionally reduced to fit.
+///
+/// Invalid source rectangles or margins larger than the source are ignored.
+pub fn draw_texture_nine_slice_clipped(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    source: Rect,
+    destination: Rect,
+    margins: NineSliceMargins,
+    filter: TextureFilter,
+    clip: Rect,
+) {
+    if source.width == 0
+        || source.height == 0
+        || destination.width == 0
+        || destination.height == 0
+        || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
+        || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
+        || u64::from(margins.left) + u64::from(margins.right) > u64::from(source.width)
+        || u64::from(margins.top) + u64::from(margins.bottom) > u64::from(source.height)
+    {
+        return;
+    }
+
+    let fit_borders = |first: u32, second: u32, available: u32| {
+        let total = u64::from(first) + u64::from(second);
+        if total <= u64::from(available) {
+            (first, second)
+        } else if total == 0 {
+            (0, 0)
+        } else {
+            let fitted_first = (u64::from(available) * u64::from(first) / total) as u32;
+            (fitted_first, available - fitted_first)
+        }
+    };
+    let (left_dst, right_dst) =
+        fit_borders(margins.left, margins.right, destination.width);
+    let (top_dst, bottom_dst) =
+        fit_borders(margins.top, margins.bottom, destination.height);
+
+    let source_x = [source.x, source.x + margins.left, source.x + source.width - margins.right];
+    let source_y = [source.y, source.y + margins.top, source.y + source.height - margins.bottom];
+    let source_widths = [margins.left, source.width - margins.left - margins.right, margins.right];
+    let source_heights = [margins.top, source.height - margins.top - margins.bottom, margins.bottom];
+    let destination_x = [destination.x, destination.x + left_dst, destination.x + destination.width - right_dst];
+    let destination_y = [destination.y, destination.y + top_dst, destination.y + destination.height - bottom_dst];
+    let destination_widths = [left_dst, destination.width - left_dst - right_dst, right_dst];
+    let destination_heights = [top_dst, destination.height - top_dst - bottom_dst, bottom_dst];
+
+    for row in 0..3 {
+        for column in 0..3 {
+            if source_widths[column] == 0
+                || source_heights[row] == 0
+                || destination_widths[column] == 0
+                || destination_heights[row] == 0
+            {
+                continue;
+            }
+            draw_texture_region_clipped(
+                target,
+                texture,
+                Rect::new(
+                    source_x[column],
+                    source_y[row],
+                    source_widths[column],
+                    source_heights[row],
+                ),
+                Rect::new(
+                    destination_x[column],
+                    destination_y[row],
+                    destination_widths[column],
+                    destination_heights[row],
+                ),
+                filter,
+                clip,
+            );
+        }
+    }
+}
+
 /// Reusable temporary storage for repeated texture draws.
 #[derive(Debug, Default)]
 pub struct TextureDrawScratch {
@@ -1775,6 +1874,79 @@ mod tests {
 
     fn two_color_texture() -> Texture {
         Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap()
+    }
+
+ 
+    #[test]
+    fn nine_slice_preserves_corners_and_stretches_center() {
+        use super::{draw_texture_nine_slice_clipped, NineSliceMargins};
+
+        let colors = [
+            Color::RED, Color::GREEN, Color::BLUE,
+            Color::YELLOW, Color::WHITE, Color::MAGENTA,
+            Color::CYAN, Color::rgb(90, 100, 110), Color::rgb(120, 130, 140),
+        ];
+        let texture = Texture::new(3, 3, colors.to_vec()).unwrap();
+        let mut target = Framebuffer::new(7, 7, Color::BLACK).unwrap();
+        draw_texture_nine_slice_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 3, 3),
+            Rect::new(0, 0, 7, 7),
+            NineSliceMargins::new(1, 1, 1, 1),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 7, 7),
+        );
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(6, 0), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(0, 6), Some(Color::CYAN));
+        assert_eq!(target.get_pixel(6, 6), Some(colors[8]));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(3, 0), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(0, 3), Some(Color::YELLOW));
+    }
+
+    #[test]
+    fn nine_slice_compresses_borders_when_destination_is_too_small() {
+        use super::{draw_texture_nine_slice_clipped, NineSliceMargins};
+
+        let texture = Texture::new(
+            3,
+            3,
+            vec![Color::RED, Color::GREEN, Color::BLUE,
+                 Color::YELLOW, Color::WHITE, Color::MAGENTA,
+                 Color::CYAN, Color::rgb(90, 100, 110), Color::rgb(120, 130, 140)],
+        ).unwrap();
+        let mut target = Framebuffer::new(1, 1, Color::BLACK).unwrap();
+        draw_texture_nine_slice_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 3, 3),
+            Rect::new(0, 0, 1, 1),
+            NineSliceMargins::new(1, 1, 1, 1),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 1, 1),
+        );
+        assert_ne!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn nine_slice_rejects_invalid_margins_without_writing() {
+        use super::{draw_texture_nine_slice_clipped, NineSliceMargins};
+
+        let texture = two_color_texture();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        draw_texture_nine_slice_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 2, 1),
+            Rect::new(0, 0, 4, 4),
+            NineSliceMargins::new(2, 0, 1, 0),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 4, 4),
+        );
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
