@@ -107,6 +107,8 @@ This is not part of the initial implementation plan. The CPU renderer remains th
 
 ## 7. Production readiness
 
+Performance targets and benchmark interpretation are defined in [`docs/PERFORMANCE.md`](PERFORMANCE.md): the CPU renderer targets a 16.67 ms isolated-operation budget on low-end reference systems, while full-scene frame time remains the real 60 FPS acceptance measure. Future GPU targets are separate and must be established with real hardware measurements.
+
 **Deliverables**
 - Resource lifetime, memory budgets and cache policies.
 - Performance benchmarks and profiling guidance.
