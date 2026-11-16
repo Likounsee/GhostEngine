@@ -422,6 +422,15 @@ fn main() {
             )
             .expect("benchmark non-zero path should be valid");
         }),
+        measure("Vector path fill AA (non-zero)", iterations, |target| {
+            ghostengine::fill_path_non_zero_aa(
+                target,
+                &path,
+                Color::rgba(245, 130, 45, 220),
+                0.35 * SCALE_F32,
+            )
+            .expect("benchmark antialiased non-zero path should be valid");
+        }),
         measure("Vector path stroke", iterations, |target| {
             stroke_path(
                 target,
