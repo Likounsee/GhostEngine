@@ -1254,8 +1254,16 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     let Some(inverse) = transform.inverse() else {
         return false;
     };
-    let reciprocal_m11 = if inverse.m11 == 0.0 { 0.0 } else { inverse.m11.recip() };
-    let reciprocal_m21 = if inverse.m21 == 0.0 { 0.0 } else { inverse.m21.recip() };
+    let reciprocal_m11 = if inverse.m11 == 0.0 {
+        0.0
+    } else {
+        inverse.m11.recip()
+    };
+    let reciprocal_m21 = if inverse.m21 == 0.0 {
+        0.0
+    } else {
+        inverse.m21.recip()
+    };
 
     let left = destination.x as f32;
     let top = destination.y as f32;
