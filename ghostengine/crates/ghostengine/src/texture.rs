@@ -1142,6 +1142,65 @@ pub fn draw_texture_clipped_parallel_with_threads(
     });
 }
 
+// Returns a conservative horizontal interval for one inverse-mapped scanline.
+// The final per-pixel bounds check remains authoritative; the one-pixel padding
+// here prevents floating-point rounding at transformed edges from dropping pixels.
+#[inline]
+fn conservative_scanline_axis_range(
+    first_x: u32,
+    end_x: u32,
+    coefficient: f32,
+    offset: f32,
+    minimum: f32,
+    maximum: f32,
+) -> Option<(u32, u32)> {
+    if coefficient == 0.0 {
+        return (offset >= minimum && offset < maximum).then_some((first_x, end_x));
+    }
+
+    let first_intersection = (minimum - offset) / coefficient;
+    let second_intersection = (maximum - offset) / coefficient;
+    let lower = first_intersection.min(second_intersection);
+    let upper = first_intersection.max(second_intersection);
+    let start = ((lower - 0.5).floor() as i64 - 1).max(i64::from(first_x));
+    let end = ((upper - 0.5).ceil() as i64 + 2).min(i64::from(end_x));
+    (start < end).then_some((start as u32, end as u32))
+}
+
+#[inline]
+fn transformed_scanline_x_range(
+    inverse: Transform2D,
+    pixel_center_y: f32,
+    first_x: u32,
+    end_x: u32,
+    local_left: f32,
+    local_top: f32,
+    local_right: f32,
+    local_bottom: f32,
+) -> Option<(u32, u32)> {
+    let x_offset = inverse.m12 * pixel_center_y + inverse.tx;
+    let y_offset = inverse.m22 * pixel_center_y + inverse.ty;
+    let (x_start, x_end) = conservative_scanline_axis_range(
+        first_x,
+        end_x,
+        inverse.m11,
+        x_offset,
+        local_left,
+        local_right,
+    )?;
+    let (y_start, y_end) = conservative_scanline_axis_range(
+        first_x,
+        end_x,
+        inverse.m21,
+        y_offset,
+        local_top,
+        local_bottom,
+    )?;
+    let start = x_start.max(y_start);
+    let end = x_end.min(y_end);
+    (start < end).then_some((start, end))
+}
+
 /// Draws an affine-transformed texture using independent destination row bands.
 ///
 /// This is the parallel counterpart of draw_texture_transformed_clipped.
@@ -1282,9 +1341,21 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     let row = &mut pixels[local_row..local_row + width];
                     let vertical_x = inverse.m12 * pixel_center_y;
                     let vertical_y = inverse.m22 * pixel_center_y;
-                    for (x, &(horizontal_x, horizontal_y)) in
-                        (first_x..end_x).zip(horizontal_terms.iter())
-                    {
+                    let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(
+                        inverse,
+                        pixel_center_y,
+                        first_x,
+                        end_x,
+                        local_left,
+                        local_top,
+                        local_right,
+                        local_bottom,
+                    ) else {
+                        continue;
+                    };
+                    for x in row_first_x..row_end_x {
+                        let (horizontal_x, horizontal_y) =
+                            horizontal_terms[(x - first_x) as usize];
                         // Preserve the sequential renderer's left-to-right
                         // floating-point addition order exactly.
                         let local_x = (horizontal_x + vertical_x) + inverse.tx;
@@ -1479,7 +1550,20 @@ pub fn draw_texture_transformed_clipped(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for (x, &(horizontal_x, horizontal_y)) in (first_x..end_x).zip(horizontal_terms.iter()) {
+        let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(
+            inverse,
+            pixel_center_y,
+            first_x,
+            end_x,
+            local_left,
+            local_top,
+            local_right,
+            local_bottom,
+        ) else {
+            continue;
+        };
+        for x in row_first_x..row_end_x {
+            let (horizontal_x, horizontal_y) = horizontal_terms[(x - first_x) as usize];
             let local_x = (horizontal_x + vertical_x) + inverse.tx;
             let local_y = (horizontal_y + vertical_y) + inverse.ty;
             if local_x < local_left
