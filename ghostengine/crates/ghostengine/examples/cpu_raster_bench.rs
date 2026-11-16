@@ -688,6 +688,22 @@ fn main() {
                 &theme,
             );
         }),
+        measure("UI ellipsized label", iterations, |target| {
+            ghostengine::draw_label_ellipsized(
+                target,
+                &font,
+                "GhostEngine application interface — long label",
+                Point::new(80 * SCALE, 170 * SCALE),
+                22.0 * SCALE_F32,
+                Color::WHITE,
+                Rect::new(
+                    80 * SCALE_U32,
+                    145 * SCALE_U32,
+                    260 * SCALE_U32,
+                    45 * SCALE_U32,
+                ),
+            );
+        }),
     ];
 
     // Treat 60 FPS (16.67 ms) as the per-operation CPU budget on
