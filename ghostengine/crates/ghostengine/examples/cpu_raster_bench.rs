@@ -245,6 +245,19 @@ fn main() {
     transformed_layer.set_filter(TextureFilter::Bilinear);
     let transformed_layers = [transformed_layer];
 
+    // A small transformed sprite on the same large target checks that the
+    // automatic compositor avoids parallel-worker overhead for tiny workloads.
+    let mut small_transformed_layer = Layer::new(
+        64,
+        64,
+        Color::rgba(120, 180, 220, 200),
+    )
+    .expect("small transformed benchmark layer should allocate");
+    small_transformed_layer.set_position(120, 90);
+    small_transformed_layer.set_transform(Transform2D::rotation(0.08));
+    small_transformed_layer.set_filter(TextureFilter::Bilinear);
+    let small_transformed_layers = [small_transformed_layer];
+
     let mut nearest_layer = transformed_layers[0].clone();
     nearest_layer.set_filter(TextureFilter::Nearest);
     let nearest_layers = [nearest_layer];
@@ -620,6 +633,9 @@ fn main() {
         }),
         measure("Transformed layer (bilinear auto)", iterations, |target| {
             compose_layers_auto(target, &transformed_layers);
+        }),
+        measure("Small transformed layer (auto)", iterations, |target| {
+            compose_layers_auto(target, &small_transformed_layers);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
             draw_text(
