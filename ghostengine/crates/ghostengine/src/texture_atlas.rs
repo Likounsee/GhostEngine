@@ -40,6 +40,49 @@ pub fn draw_atlas_region_clipped(
     draw_texture_region_clipped(target, atlas, region.rect, destination, filter, clip);
 }
 
+/// A built texture atlas with stable ID-based region lookup.
+#[derive(Debug, Clone)]
+pub struct TextureAtlas {
+    texture: Texture,
+    regions: Vec<AtlasRegion>,
+}
+
+impl TextureAtlas {
+    /// Returns the packed atlas texture.
+    #[must_use]
+    pub const fn texture(&self) -> &Texture {
+        &self.texture
+    }
+
+    /// Returns all packed regions in packing order.
+    #[must_use]
+    pub fn regions(&self) -> &[AtlasRegion] {
+        &self.regions
+    }
+
+    /// Finds a sprite region by its stable application-defined ID.
+    #[must_use]
+    pub fn region(&self, id: u64) -> Option<AtlasRegion> {
+        self.regions.iter().copied().find(|region| region.id == id)
+    }
+
+    /// Draws a sprite by ID. Returns false when the ID is not present.
+    pub fn draw_region(
+        &self,
+        target: &mut Framebuffer,
+        id: u64,
+        destination: Rect,
+        filter: TextureFilter,
+        clip: Rect,
+    ) -> bool {
+        let Some(region) = self.region(id) else {
+            return false;
+        };
+        draw_atlas_region_clipped(target, &self.texture, region, destination, filter, clip);
+        true
+    }
+}
+
 /// Packs textures into one immutable texture using row-based shelf packing.
 #[derive(Debug)]
 pub struct TextureAtlasBuilder {
@@ -73,6 +116,18 @@ impl TextureAtlasBuilder {
 
     pub fn build(self) -> Result<(Texture, Vec<AtlasRegion>), TextureAtlasError> {
         self.build_with_order(false)
+    }
+
+    /// Builds an atlas object with direct ID-based sprite lookup.
+    pub fn build_atlas(self) -> Result<TextureAtlas, TextureAtlasError> {
+        let (texture, regions) = self.build()?;
+        Ok(TextureAtlas { texture, regions })
+    }
+
+    /// Optimized packing variant returning an ID-addressable atlas object.
+    pub fn build_atlas_optimized(self) -> Result<TextureAtlas, TextureAtlasError> {
+        let (texture, regions) = self.build_optimized()?;
+        Ok(TextureAtlas { texture, regions })
     }
 
     /// Packs larger sprites first to reduce shelf fragmentation.
@@ -288,6 +343,37 @@ mod tests {
             Rect::new(0, 0, 2, 2),
         );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn atlas_object_resolves_and_draws_regions_by_stable_id() {
+        let red = Texture::new(2, 2, vec![Color::RED; 4]).unwrap();
+        let blue = Texture::new(2, 2, vec![Color::BLUE; 4]).unwrap();
+        let mut builder = TextureAtlasBuilder::new(8, 4, 1);
+        builder.add(41, &red).unwrap();
+        builder.add(99, &blue).unwrap();
+        let atlas = builder.build_atlas_optimized().unwrap();
+
+        assert_eq!(atlas.regions().len(), 2);
+        assert_eq!(atlas.region(99).unwrap().rect.width, 2);
+        assert!(atlas.region(1234).is_none());
+
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        assert!(atlas.draw_region(
+            &mut target,
+            99,
+            Rect::new(0, 0, 4, 4),
+            TextureFilter::Bilinear,
+            Rect::new(0, 0, 4, 4),
+        ));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLUE));
+        assert!(!atlas.draw_region(
+            &mut target,
+            1234,
+            Rect::new(0, 0, 4, 4),
+            TextureFilter::Nearest,
+            Rect::new(0, 0, 4, 4),
+        ));
     }
 
     #[test]
