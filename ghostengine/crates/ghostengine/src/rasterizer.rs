@@ -5004,3 +5004,170 @@ mod ellipse_outline_simd_tests {
         assert_eq!(actual, expected);
     }
 }
+
+
+#[cfg(test)]
+mod arc_simd_tests {
+    use core::f64::consts::TAU;
+
+    use crate::{Color, Framebuffer, Point};
+
+    const FILL_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
+    const OUTLINE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+
+    fn scalar_arc(
+        target: &mut Framebuffer,
+        center: Point,
+        radius: u32,
+        start_angle: f32,
+        end_angle: f32,
+        color: Color,
+        outline: bool,
+    ) {
+        if color.a == 0
+            || target.width() == 0
+            || target.height() == 0
+            || !start_angle.is_finite()
+            || !end_angle.is_finite()
+        {
+            return;
+        }
+
+        let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
+        if raw_sweep == 0.0 {
+            return;
+        }
+        let full_circle = raw_sweep.abs() >= TAU;
+        let start = f64::from(start_angle).rem_euclid(TAU);
+        let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+        let radius = f64::from(radius);
+        let cx = f64::from(center.x);
+        let cy = f64::from(center.y);
+        let left = (cx - radius - 1.0).floor().max(0.0) as u32;
+        let top = (cy - radius - 1.0).floor().max(0.0) as u32;
+        let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
+        let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
+        if left >= right || top >= bottom {
+            return;
+        }
+
+        if outline && radius == 0.0 {
+            if full_circle || sweep > 0.0 {
+                super::draw_pixel(target, center, color);
+            }
+            return;
+        }
+
+        let offsets = if outline { &OUTLINE_OFFSETS } else { &FILL_OFFSETS };
+        for y in top..bottom {
+            let row = target.row_mut(y).unwrap();
+            for x in left..right {
+                let mut covered = 0_u32;
+                for offset_y in offsets {
+                    let dy = f64::from(y) + offset_y - cy;
+                    for offset_x in offsets {
+                        let dx = f64::from(x) + offset_x - cx;
+                        let distance = dx.hypot(dy);
+                        let inside = if outline {
+                            (distance - radius).abs() <= 0.5
+                        } else {
+                            distance <= radius
+                        };
+                        if !inside {
+                            continue;
+                        }
+                        if !full_circle {
+                            let angle = dy.atan2(dx).rem_euclid(TAU);
+                            if (angle - start).rem_euclid(TAU) > sweep {
+                                continue;
+                            }
+                        }
+                        covered += 1;
+                    }
+                }
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                if alpha != 0 {
+                    let source = Color::rgba(color.r, color.g, color.b, alpha);
+                    row[x as usize] = source.blend_over(row[x as usize]);
+                }
+            }
+        }
+    }
+
+    fn initialized_target(alpha_mode: u8) -> Framebuffer {
+        let mut target = Framebuffer::new(37, 29, Color::BLACK).unwrap();
+        for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
+            let alpha = if alpha_mode == 255 { 255 } else { (index * 37 % 256) as u8 };
+            *pixel = Color::rgba(
+                (index * 13 % 256) as u8,
+                (index * 29 % 256) as u8,
+                (index * 47 % 256) as u8,
+                alpha,
+            );
+        }
+        target
+    }
+
+    #[test]
+    fn simd_arc_fill_matches_scalar_for_clipping_wrap_and_full_circle() {
+        let cases = [
+            (Point::new(18, 14), 10, 0.2, 2.4),
+            (Point::new(2, 14), 9, 5.2, 1.1),
+            (Point::new(18, 14), 11, -1.0, 8.0),
+            (Point::new(18, 14), 0, 0.0, 1.0),
+        ];
+        for alpha_mode in [255, 127] {
+            for source_alpha in [255, 173, 1] {
+                for (center, radius, start, end) in cases {
+                    let mut actual = initialized_target(alpha_mode);
+                    let mut expected = actual.clone();
+                    let color = Color::rgba(215, 71, 139, source_alpha);
+                    super::fill_arc_aa(&mut actual, center, radius, start, end, color);
+                    scalar_arc(&mut expected, center, radius, start, end, color, false);
+                    assert_eq!(
+                        actual, expected,
+                        "fill alpha mode {alpha_mode}, source alpha {source_alpha}, radius {radius}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simd_arc_outline_matches_scalar_for_clipping_wrap_and_full_circle() {
+        let cases = [
+            (Point::new(18, 14), 10, 0.2, 2.4),
+            (Point::new(2, 14), 9, 5.2, 1.1),
+            (Point::new(18, 14), 11, -1.0, 8.0),
+            (Point::new(18, 14), 0, 0.0, 1.0),
+        ];
+        for alpha_mode in [255, 127] {
+            for source_alpha in [255, 173, 1] {
+                for (center, radius, start, end) in cases {
+                    let mut actual = initialized_target(alpha_mode);
+                    let mut expected = actual.clone();
+                    let color = Color::rgba(215, 71, 139, source_alpha);
+                    super::draw_arc_aa(&mut actual, center, radius, start, end, color);
+                    scalar_arc(&mut expected, center, radius, start, end, color, true);
+                    assert_eq!(
+                        actual, expected,
+                        "outline alpha mode {alpha_mode}, source alpha {source_alpha}, radius {radius}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simd_arcs_ignore_zero_and_non_finite_sweeps() {
+        for (start, end) in [(1.0, 1.0), (f32::NAN, 2.0), (0.0, f32::INFINITY)] {
+            let mut fill = initialized_target(255);
+            let mut outline = fill.clone();
+            let before = fill.clone();
+            super::fill_arc_aa(&mut fill, Point::new(18, 14), 8, start, end, Color::WHITE);
+            super::draw_arc_aa(&mut outline, Point::new(18, 14), 8, start, end, Color::WHITE);
+            assert_eq!(fill, before);
+            assert_eq!(outline, before);
+        }
+    }
+}
