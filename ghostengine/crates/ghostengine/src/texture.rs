@@ -617,7 +617,12 @@ pub struct NineSliceMargins {
 impl NineSliceMargins {
     #[must_use]
     pub const fn new(left: u32, top: u32, right: u32, bottom: u32) -> Self {
-        Self { left, top, right, bottom }
+        Self {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 }
 
@@ -639,6 +644,8 @@ pub fn draw_texture_nine_slice_clipped(
         || source.height == 0
         || destination.width == 0
         || destination.height == 0
+        || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
+        || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
         || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
         || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
         || u64::from(margins.left) + u64::from(margins.right) > u64::from(source.width)
@@ -663,14 +670,46 @@ pub fn draw_texture_nine_slice_clipped(
     let (top_dst, bottom_dst) =
         fit_borders(margins.top, margins.bottom, destination.height);
 
-    let source_x = [source.x, source.x + margins.left, source.x + source.width - margins.right];
-    let source_y = [source.y, source.y + margins.top, source.y + source.height - margins.bottom];
-    let source_widths = [margins.left, source.width - margins.left - margins.right, margins.right];
-    let source_heights = [margins.top, source.height - margins.top - margins.bottom, margins.bottom];
-    let destination_x = [destination.x, destination.x + left_dst, destination.x + destination.width - right_dst];
-    let destination_y = [destination.y, destination.y + top_dst, destination.y + destination.height - bottom_dst];
-    let destination_widths = [left_dst, destination.width - left_dst - right_dst, right_dst];
-    let destination_heights = [top_dst, destination.height - top_dst - bottom_dst, bottom_dst];
+    let source_x = [
+        source.x,
+        source.x + margins.left,
+        source.x + source.width - margins.right,
+    ];
+    let source_y = [
+        source.y,
+        source.y + margins.top,
+        source.y + source.height - margins.bottom,
+    ];
+    let source_widths = [
+        margins.left,
+        source.width - margins.left - margins.right,
+        margins.right,
+    ];
+    let source_heights = [
+        margins.top,
+        source.height - margins.top - margins.bottom,
+        margins.bottom,
+    ];
+    let destination_x = [
+        destination.x,
+        destination.x + left_dst,
+        destination.x + destination.width - right_dst,
+    ];
+    let destination_y = [
+        destination.y,
+        destination.y + top_dst,
+        destination.y + destination.height - bottom_dst,
+    ];
+    let destination_widths = [
+        left_dst,
+        destination.width - left_dst - right_dst,
+        right_dst,
+    ];
+    let destination_heights = [
+        top_dst,
+        destination.height - top_dst - bottom_dst,
+        bottom_dst,
+    ];
 
     for row in 0..3 {
         for column in 0..3 {
@@ -1884,9 +1923,15 @@ mod tests {
         use super::{draw_texture_nine_slice_clipped, NineSliceMargins};
 
         let colors = [
-            Color::RED, Color::GREEN, Color::BLUE,
-            Color::rgb(255, 255, 0), Color::WHITE, Color::rgb(255, 0, 255),
-            Color::rgb(0, 255, 255), Color::rgb(90, 100, 110), Color::rgb(120, 130, 140),
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::rgb(255, 255, 0),
+            Color::WHITE,
+            Color::rgb(255, 0, 255),
+            Color::rgb(0, 255, 255),
+            Color::rgb(90, 100, 110),
+            Color::rgb(120, 130, 140),
         ];
         let texture = Texture::new(3, 3, colors.to_vec()).unwrap();
         let mut target = Framebuffer::new(7, 7, Color::BLACK).unwrap();
@@ -1902,11 +1947,11 @@ mod tests {
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(6, 0), Some(Color::BLUE));
-        assert_eq!(target.get_pixel(0, 6), Some(Color::CYAN));
+        assert_eq!(target.get_pixel(0, 6), Some(colors[6]));
         assert_eq!(target.get_pixel(6, 6), Some(colors[8]));
         assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
         assert_eq!(target.get_pixel(3, 0), Some(Color::GREEN));
-        assert_eq!(target.get_pixel(0, 3), Some(Color::YELLOW));
+        assert_eq!(target.get_pixel(0, 3), Some(colors[3]));
     }
 
     #[test]
@@ -1916,10 +1961,19 @@ mod tests {
         let texture = Texture::new(
             3,
             3,
-            vec![Color::RED, Color::GREEN, Color::BLUE,
-                 Color::YELLOW, Color::WHITE, Color::MAGENTA,
-                 Color::CYAN, Color::rgb(90, 100, 110), Color::rgb(120, 130, 140)],
-        ).unwrap();
+            vec![
+                Color::RED,
+                Color::GREEN,
+                Color::BLUE,
+                Color::rgb(255, 255, 0),
+                Color::WHITE,
+                Color::rgb(255, 0, 255),
+                Color::rgb(0, 255, 255),
+                Color::rgb(90, 100, 110),
+                Color::rgb(120, 130, 140),
+            ],
+        )
+        .unwrap();
         let mut target = Framebuffer::new(1, 1, Color::BLACK).unwrap();
         draw_texture_nine_slice_clipped(
             &mut target,
