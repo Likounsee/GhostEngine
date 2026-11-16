@@ -586,7 +586,6 @@ fn compose_transformed_layer(
     let source_step_y = inverse.m21;
     let destination_offset_x = layer.x as f32;
     let destination_offset_y = layer.y as f32;
-    let opacity_factor = f32::from(opacity) / 255.0;
     for y in top..bottom {
         let destination_y = y as f32 + 0.5 - destination_offset_y;
         let mut source_x = inverse.m11 * (left as f32 + 0.5 - destination_offset_x)
@@ -695,7 +694,7 @@ fn compose_transformed_layer(
                             bottom_row,
                             source_x - 0.5,
                             ty,
-                            opacity_factor,
+                            opacity,
                             destination,
                         );
                     } else {
@@ -705,7 +704,7 @@ fn compose_transformed_layer(
                             source_height_u32,
                             source_x - 0.5,
                             source_y - 0.5,
-                            opacity_factor,
+                            opacity,
                             destination,
                         );
                     }
@@ -755,10 +754,10 @@ fn blend_bilinear_over_opaque_rows(
     bottom_row: &[Color],
     x: f32,
     ty: f32,
-    opacity_factor: f32,
+    opacity: u8,
     destination: &mut Color,
 ) {
-    if top_row.is_empty() || opacity_factor <= 0.0 {
+    if top_row.is_empty() || opacity == 0 {
         return;
     }
     let x = x.max(0.0);
@@ -779,10 +778,25 @@ fn blend_bilinear_over_opaque_rows(
     // Fold source alpha and layer opacity into the four bilinear weights once.
     // Their sum is the final source alpha, so no separate interpolation pass
     // is needed before blending the three color channels.
-    let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
-    let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
-    let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
-    let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
+    // Full-opacity layers are common in transformed UI and sprite draws.
+    // Keep that hot path free of four redundant opacity multiplications.
+    let (alpha_top_left, alpha_top_right, alpha_bottom_left, alpha_bottom_right) =
+        if opacity == u8::MAX {
+            (
+                weight_top_left * f32::from(top_left.a),
+                weight_top_right * f32::from(top_right.a),
+                weight_bottom_left * f32::from(bottom_left.a),
+                weight_bottom_right * f32::from(bottom_right.a),
+            )
+        } else {
+            let opacity_factor = f32::from(opacity) / 255.0;
+            (
+                weight_top_left * f32::from(top_left.a) * opacity_factor,
+                weight_top_right * f32::from(top_right.a) * opacity_factor,
+                weight_bottom_left * f32::from(bottom_left.a) * opacity_factor,
+                weight_bottom_right * f32::from(bottom_right.a) * opacity_factor,
+            )
+        };
     let alpha = alpha_top_left + alpha_top_right + alpha_bottom_left + alpha_bottom_right;
     if alpha <= f32::EPSILON {
         return;
@@ -830,10 +844,10 @@ fn blend_bilinear_over_opaque(
     height: u32,
     x: f32,
     y: f32,
-    opacity_factor: f32,
+    opacity: u8,
     destination: &mut Color,
 ) {
-    if width == 0 || height == 0 || opacity_factor <= 0.0 {
+    if width == 0 || height == 0 || opacity == 0 {
         return;
     }
     // The caller has already verified that the unshifted source point is
@@ -867,10 +881,25 @@ fn blend_bilinear_over_opaque(
     // Fold source alpha and layer opacity into the four bilinear weights once.
     // Their sum is the final source alpha, so no separate interpolation pass
     // is needed before blending the three color channels.
-    let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
-    let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
-    let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
-    let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
+    // Full-opacity layers are common in transformed UI and sprite draws.
+    // Keep that hot path free of four redundant opacity multiplications.
+    let (alpha_top_left, alpha_top_right, alpha_bottom_left, alpha_bottom_right) =
+        if opacity == u8::MAX {
+            (
+                weight_top_left * f32::from(top_left.a),
+                weight_top_right * f32::from(top_right.a),
+                weight_bottom_left * f32::from(bottom_left.a),
+                weight_bottom_right * f32::from(bottom_right.a),
+            )
+        } else {
+            let opacity_factor = f32::from(opacity) / 255.0;
+            (
+                weight_top_left * f32::from(top_left.a) * opacity_factor,
+                weight_top_right * f32::from(top_right.a) * opacity_factor,
+                weight_bottom_left * f32::from(bottom_left.a) * opacity_factor,
+                weight_bottom_right * f32::from(bottom_right.a) * opacity_factor,
+            )
+        };
     let alpha = alpha_top_left + alpha_top_right + alpha_bottom_left + alpha_bottom_right;
     if alpha <= f32::EPSILON {
         return;
