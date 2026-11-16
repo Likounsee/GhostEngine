@@ -1430,9 +1430,7 @@ pub fn draw_texture_transformed_clipped(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for (x, &(horizontal_x, horizontal_y)) in
-            (first_x..end_x).zip(horizontal_terms.iter())
-        {
+        for (x, &(horizontal_x, horizontal_y)) in (first_x..end_x).zip(horizontal_terms.iter()) {
             let local_x = (horizontal_x + vertical_x) + inverse.tx;
             let local_y = (horizontal_y + vertical_y) + inverse.ty;
             if local_x < local_left
