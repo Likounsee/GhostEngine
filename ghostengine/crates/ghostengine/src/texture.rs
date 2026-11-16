@@ -1360,8 +1360,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                         continue;
                     };
                     for x in row_first_x..row_end_x {
-                        let (horizontal_x, horizontal_y) =
-                            horizontal_terms[(x - first_x) as usize];
+                        let (horizontal_x, horizontal_y) = horizontal_terms[(x - first_x) as usize];
                         // Preserve the sequential renderer's left-to-right
                         // floating-point addition order exactly.
                         let local_x = (horizontal_x + vertical_x) + inverse.tx;
