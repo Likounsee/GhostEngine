@@ -1229,6 +1229,34 @@ impl LayerGroup {
         })
     }
 
+    /// Creates an isolated group surface with capacity reserved for its children.
+    pub fn with_capacity(
+        width: u32,
+        height: u32,
+        child_capacity: usize,
+    ) -> Result<Self, FramebufferError> {
+        let mut group = Self::new(width, height)?;
+        group.children.reserve(child_capacity);
+        Ok(group)
+    }
+
+    /// Reserves space for additional child layers or nested groups.
+    pub fn reserve_children(&mut self, additional: usize) {
+        self.children.reserve(additional);
+    }
+
+    /// Returns the number of children currently stored in this group.
+    #[must_use]
+    pub fn child_count(&self) -> usize {
+        self.children.len()
+    }
+
+    /// Returns the number of children that fit without reallocating.
+    #[must_use]
+    pub fn child_capacity(&self) -> usize {
+        self.children.capacity()
+    }
+
     /// Adds a framebuffer-backed child layer, preserving insertion order.
     pub fn add_layer(&mut self, layer: Layer) {
         self.children.push(LayerGroupChild::Layer(layer));
@@ -1316,6 +1344,37 @@ pub struct LayerGroupScratch {
 }
 
 impl LayerGroupScratch {
+    /// Creates reusable group surfaces with room for the requested nesting depth.
+    #[must_use]
+    pub fn with_capacity(surface_capacity: usize) -> Self {
+        Self {
+            layers: Vec::with_capacity(surface_capacity),
+        }
+    }
+
+    /// Reserves reusable surfaces before entering a real-time render loop.
+    pub fn reserve_surfaces(&mut self, additional: usize) {
+        self.layers.reserve(additional);
+    }
+
+    /// Returns the number of reusable surface slots that fit without reallocating.
+    #[must_use]
+    pub fn surface_capacity(&self) -> usize {
+        self.layers.capacity()
+    }
+
+    /// Returns the pixel-buffer bytes currently owned by reusable group surfaces.
+    ///
+    /// This excludes allocator and vector metadata overhead.
+    #[must_use]
+    pub fn allocated_pixel_bytes(&self) -> usize {
+        self.layers.iter().fold(0usize, |total, layer| {
+            let bytes = layer.framebuffer().pixels().len()
+                .saturating_mul(std::mem::size_of::<Color>());
+            total.saturating_add(bytes)
+        })
+    }
+
     /// Returns the number of reusable group surfaces currently allocated.
     #[must_use]
     pub fn surface_count(&self) -> usize {
@@ -1430,6 +1489,32 @@ mod tests {
         compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
         assert_eq!(scratch.surface_count(), 2);
         assert_eq!(target.get_pixel(1, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn group_child_capacity_can_be_reserved_before_scene_construction() {
+        let mut group = LayerGroup::with_capacity(4, 3, 8).unwrap();
+        let capacity = group.child_capacity();
+        for _ in 0..8 {
+            group.add_layer(Layer::new(1, 1, Color::RED).unwrap());
+        }
+        assert_eq!(group.child_count(), 8);
+        assert_eq!(group.child_capacity(), capacity);
+    }
+
+    #[test]
+    fn group_scratch_can_preallocate_depth_and_reports_pixel_memory() {
+        let mut scratch = LayerGroupScratch::with_capacity(3);
+        assert!(scratch.surface_capacity() >= 3);
+        scratch.reserve_surfaces(2);
+        let mut nested = LayerGroup::new(2, 2).unwrap();
+        nested.add_layer(Layer::new(2, 2, Color::GREEN).unwrap());
+        let mut outer = LayerGroup::new(4, 4).unwrap();
+        outer.add_group(nested);
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
+        assert_eq!(scratch.surface_count(), 2);
+        assert_eq!(scratch.allocated_pixel_bytes(), 20 * std::mem::size_of::<Color>());
     }
 
     #[test]
