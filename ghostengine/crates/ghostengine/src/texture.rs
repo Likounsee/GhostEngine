@@ -373,14 +373,11 @@ fn blend_cached_bilinear_over_opaque(
     }
 
     let inverse_alpha = 255.0 - alpha;
-    let red = (top[0] * inverse_y + bottom[0] * ty
-        + f32::from(destination.r) * inverse_alpha)
+    let red = (top[0] * inverse_y + bottom[0] * ty + f32::from(destination.r) * inverse_alpha)
         * (1.0 / 255.0);
-    let green = (top[1] * inverse_y + bottom[1] * ty
-        + f32::from(destination.g) * inverse_alpha)
+    let green = (top[1] * inverse_y + bottom[1] * ty + f32::from(destination.g) * inverse_alpha)
         * (1.0 / 255.0);
-    let blue = (top[2] * inverse_y + bottom[2] * ty
-        + f32::from(destination.b) * inverse_alpha)
+    let blue = (top[2] * inverse_y + bottom[2] * ty + f32::from(destination.b) * inverse_alpha)
         * (1.0 / 255.0);
     destination.r = red.round().clamp(0.0, 255.0) as u8;
     destination.g = green.round().clamp(0.0, 255.0) as u8;
