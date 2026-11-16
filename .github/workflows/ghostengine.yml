@@ -9,8 +9,15 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest run for this workflow and branch.
+# A new push cancels an in-progress run and replaces an older queued run.
+concurrency:
+  group: ghostengine-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
+    timeout-minutes: 35
     name: Format, lint and test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
