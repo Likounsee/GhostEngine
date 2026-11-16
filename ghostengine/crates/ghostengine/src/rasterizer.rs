@@ -3098,7 +3098,7 @@ pub fn fill_ellipse_aa_parallel(
     color: Color,
 ) {
     let area = u64::from(radius_x.saturating_mul(2).saturating_add(2))
-        * u64::from(radius_y.saturating_mul(2).saturating_add(2));
+        .saturating_mul(u64::from(radius_y.saturating_mul(2).saturating_add(2)));
     let workers = if area < 16_384 {
         1
     } else {
