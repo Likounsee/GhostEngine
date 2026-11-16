@@ -2040,27 +2040,32 @@ pub fn fill_polygon_aa_with_scratch(
         let row_pixels = &mut row[left as usize..right as usize];
         let mut index = 0;
         while index < row_pixels.len() {
+            if coverage[index] == 0 {
+                index += 1;
+                continue;
+            }
             if row_pixels[index].a != u8::MAX {
                 let covered = coverage[index];
-                if covered != 0 {
-                    let source = coverage_colors[covered as usize];
-                    let pixel = &mut row_pixels[index];
-                    *pixel = if source.a == u8::MAX {
-                        source
-                    } else if source.a == 0 {
-                        *pixel
-                    } else {
-                        source.blend_over(*pixel)
-                    };
-                }
+                let source = coverage_colors[covered as usize];
+                let pixel = &mut row_pixels[index];
+                *pixel = if source.a == u8::MAX {
+                    source
+                } else if source.a == 0 {
+                    *pixel
+                } else {
+                    source.blend_over(*pixel)
+                };
                 index += 1;
                 continue;
             }
 
-            // Vectorize opaque destination runs independently. A single
-            // translucent destination must not scalarize neighboring pixels.
+            // Vectorize only covered opaque runs. Uncovered spans are skipped
+            // without loading or blending source colors.
             let run_start = index;
-            while index < row_pixels.len() && row_pixels[index].a == u8::MAX {
+            while index < row_pixels.len()
+                && row_pixels[index].a == u8::MAX
+                && coverage[index] != 0
+            {
                 index += 1;
             }
             let run_end = index;
