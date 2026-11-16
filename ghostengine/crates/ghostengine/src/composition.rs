@@ -1,5 +1,7 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
+use std::collections::BTreeMap;
+
 use crate::texture::sample_pixels_bilinear;
 use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
 
@@ -208,6 +210,68 @@ pub enum BlendMode {
 
 /// A framebuffer-backed layer positioned in the destination coordinate space.
 #[derive(Debug, Clone, PartialEq)]
+/// Stable application-defined identity for a compositing group.
+pub type LayerGroupId = u64;
+
+/// Tracks the last known bounds of groups by stable identity.
+///
+/// Keep this tracker beside a scene and call `update` once per group each
+/// frame. Reordering groups does not affect their identity: only a changed,
+/// added, or removed bound contributes damage. Bounds are expressed in target
+/// framebuffer coordinates (including any group transform).
+#[derive(Debug, Default)]
+pub struct LayerGroupDamageTracker {
+    bounds: BTreeMap<LayerGroupId, Rect>,
+}
+
+impl LayerGroupDamageTracker {
+    /// Records a group's current bounds and adds its previous/current bounds
+    /// to `damage` when they differ.
+    ///
+    /// Use `None` when a group has disappeared or is currently invisible.
+    /// Use `Some(bounds)` when it is visible. The first appearance damages
+    /// only the new bounds; removal damages only the old bounds.
+    pub fn update(
+        &mut self,
+        id: LayerGroupId,
+        current: Option<Rect>,
+        damage: &mut DamageRegion,
+    ) {
+        let previous = self.bounds.remove(&id);
+        if previous != current {
+            damage.add_transition(previous, current);
+        }
+        if let Some(current) = current {
+            self.bounds.insert(id, current);
+        }
+    }
+
+    /// Removes every tracked group and invalidates all of their previous bounds.
+    pub fn clear(&mut self, damage: &mut DamageRegion) {
+        for (_, previous) in std::mem::take(&mut self.bounds) {
+            damage.add(previous);
+        }
+    }
+
+    /// Returns the number of groups currently tracked.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.bounds.len()
+    }
+
+    /// Returns whether no group bounds are currently tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.bounds.is_empty()
+    }
+
+    /// Returns the last known bounds for a stable group identity.
+    #[must_use]
+    pub fn bounds(&self, id: LayerGroupId) -> Option<Rect> {
+        self.bounds.get(&id).copied()
+    }
+}
+
 pub struct Layer {
     framebuffer: Framebuffer,
     x: i32,
@@ -1725,6 +1789,42 @@ mod tests {
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
+
+    #[test]
+    fn stable_group_damage_tracker_survives_reordering_and_tracks_lifecycle() {
+        use super::LayerGroupDamageTracker;
+
+        let mut tracker = LayerGroupDamageTracker::default();
+        let mut damage = DamageRegion::new(32, 16);
+        let a = Rect::new(1, 2, 4, 4);
+        let b = Rect::new(20, 2, 5, 4);
+
+        tracker.update(100, Some(a), &mut damage);
+        tracker.update(200, Some(b), &mut damage);
+        assert_eq!(tracker.len(), 2);
+        assert_eq!(damage.area(), 26);
+
+        // Same identities and bounds in a different traversal order are clean.
+        let mut reordered_damage = DamageRegion::new(32, 16);
+        tracker.update(200, Some(b), &mut reordered_damage);
+        tracker.update(100, Some(a), &mut reordered_damage);
+        assert!(reordered_damage.is_empty());
+
+        // Moving one group damages both its former and new position.
+        let moved = Rect::new(10, 9, 4, 4);
+        tracker.update(100, Some(moved), &mut reordered_damage);
+        assert_eq!(reordered_damage.area(), 32);
+        assert_eq!(tracker.bounds(100), Some(moved));
+
+        // Removing a group damages its last known position.
+        tracker.update(200, None, &mut reordered_damage);
+        assert_eq!(tracker.bounds(200), None);
+        assert_eq!(tracker.len(), 1);
+
+        tracker.clear(&mut reordered_damage);
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.len(), 0);
+    }
 
     #[test]
     fn damage_transition_invalidates_old_and_new_bounds_without_filling_the_gap() {
