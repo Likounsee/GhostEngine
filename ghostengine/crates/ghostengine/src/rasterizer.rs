@@ -1795,6 +1795,82 @@ pub fn draw_rounded_rect(target: &mut Framebuffer, rect: Rect, radius: u32, colo
     }
 }
 
+/// Draws a rounded-rectangle outline using independent scanline workers.
+///
+/// Rows are disjoint, so the implementation is safe without locks or unsafe code.
+pub fn draw_rounded_rect_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    if rect.width == 0 || rect.height == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let radius = radius.min(rect.width / 2).min(rect.height / 2);
+    let Some((left, top, right, bottom)) = clipped_rect_bounds(target, rect) else {
+        return;
+    };
+    let row_width = target.width() as usize;
+    let start = top * row_width;
+    let end = bottom * row_width;
+    let rect_top = i64::from(rect.y);
+    let rect_bottom = rect_top + i64::from(rect.height) - 1;
+    let horizontal_start = (i64::from(rect.x) + i64::from(radius)).max(left as i64);
+    let horizontal_end =
+        (i64::from(rect.x) + i64::from(rect.width) - 1 - i64::from(radius))
+            .min(right as i64 - 1);
+    let has_horizontal = horizontal_start <= horizontal_end;
+
+    process_rows_with_y_mut(
+        &mut target.pixels_mut()[start..end],
+        row_width,
+        top,
+        thread_count,
+        |row, y| {
+            let y = y as i64;
+            if y == rect_top || y == rect_bottom {
+                if has_horizontal {
+                    row[horizontal_start as usize..=horizontal_end as usize].fill(color);
+                } else if let Some((first_x, last_x)) =
+                    rounded_rect_scanline_span(rect, radius, y)
+                {
+                    let first_x = first_x.max(left as i64) as usize;
+                    let last_x = last_x.min(right as i64 - 1) as usize;
+                    if first_x <= last_x {
+                        row[first_x..=last_x].fill(color);
+                    }
+                }
+                return;
+            }
+            if y <= rect_top || y >= rect_bottom {
+                return;
+            }
+            let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y) else {
+                return;
+            };
+            let first_x = first_x.max(left as i64) as usize;
+            let last_x = last_x.min(right as i64 - 1) as usize;
+            if first_x <= last_x {
+                row[first_x] = color;
+                row[last_x] = color;
+            }
+        },
+    );
+}
+
+/// Automatically selects a worker count for large rounded-rectangle outlines.
+pub fn draw_rounded_rect_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+) {
+    let thread_count = parallel_thread_count_for_rect(target, rect);
+    draw_rounded_rect_parallel_with_threads(target, rect, radius, color, thread_count);
+}
+
 /// Draws a closed polygon outline. Fewer than two vertices draw nothing.
 pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     if vertices.len() < 2 {
@@ -5962,6 +6038,44 @@ mod polygon_aa_opaque_run_tests {
     }
 }
 
+
+#[cfg(test)]
+mod rounded_rect_outline_parallel_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn parallel_outline_matches_serial_for_clipped_and_degenerate_rectangles() {
+        let cases = [
+            (Rect::new(3, 4, 71, 39), 12),
+            (Rect::new(-9, 7, 48, 31), 10),
+            (Rect::new(62, 48, 35, 29), 8),
+            (Rect::new(14, 13, 1, 1), 0),
+            (Rect::new(0, 0, 2, 2), 1),
+            (Rect::new(0, 0, 96, 64), 0),
+        ];
+        for (rect, radius) in cases {
+            let mut expected = Framebuffer::new(96, 64, Color::TRANSPARENT).unwrap();
+            super::draw_rounded_rect(&mut expected, rect, radius, Color::WHITE);
+            for threads in [0, 1, 2, 4, 8] {
+                let mut actual = Framebuffer::new(96, 64, Color::TRANSPARENT).unwrap();
+                super::draw_rounded_rect_parallel_with_threads(
+                    &mut actual, rect, radius, Color::WHITE, threads,
+                );
+                assert_eq!(actual, expected, "threads {threads}, rect {rect:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_parallel_outline_matches_serial() {
+        let rect = Rect::new(-5, 8, 180, 96);
+        let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        super::draw_rounded_rect(&mut expected, rect, 27, Color::WHITE);
+        super::draw_rounded_rect_parallel(&mut actual, rect, 27, Color::WHITE);
+        assert_eq!(actual, expected);
+    }
+}
 
 #[cfg(test)]
 mod rounded_rect_parallel_tests {
