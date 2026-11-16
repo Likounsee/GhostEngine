@@ -946,9 +946,7 @@ pub fn draw_texture_clipped_with_scratch(
                         }
                     }
                 }
-                for (pixel, &(x0, x1, tx)) in
-                    remainder_pixels.iter_mut().zip(remainder_samples)
-                {
+                for (pixel, &(x0, x1, tx)) in remainder_pixels.iter_mut().zip(remainder_samples) {
                     let color = sample_bilinear_prepared(
                         &texture.pixels,
                         row_width,
