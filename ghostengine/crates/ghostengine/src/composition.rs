@@ -1413,6 +1413,163 @@ pub fn compose_layer_groups_with_scratch(
     Ok(())
 }
 
+
+/// Re-composites only damaged portions of isolated groups, preserving all other
+/// pixels in the reusable off-screen surfaces.
+///
+/// The damage rectangles are expressed in target coordinates. They are mapped
+/// into each group's local surface, then propagated through nested groups.
+/// Identity-transformed groups can be updated partially; a group with a
+/// non-identity transform is conservatively rebuilt in full. The caller must
+/// include both the old and new bounds when moving or removing scene content,
+/// and must restore the target background in damaged areas before calling.
+pub fn compose_layer_groups_in_damage_regions(
+    target: &mut Framebuffer,
+    groups: &[LayerGroup],
+    damage: &DamageRegion,
+    scratch: &mut LayerGroupScratch,
+) -> Result<(), FramebufferError> {
+    if damage.is_empty() {
+        return Ok(());
+    }
+
+    for group in groups {
+        if !group.visible || group.opacity == 0 {
+            continue;
+        }
+
+        if group.transform == Transform2D::IDENTITY {
+            let local_damage = translated_damage(damage, group.width, group.height, group.x, group.y);
+            if local_damage.is_empty() {
+                continue;
+            }
+            render_layer_group_partial_into(group, scratch, 0, &local_damage)?;
+        } else {
+            // Arbitrary affine transforms require conservative full regeneration.
+            render_layer_group_into(group, scratch, 0)?;
+        }
+
+        compose_layers_in_damage_regions(target, &scratch.layers[..1], damage);
+    }
+    Ok(())
+}
+
+fn translated_damage(
+    source: &DamageRegion,
+    width: u32,
+    height: u32,
+    offset_x: i32,
+    offset_y: i32,
+) -> DamageRegion {
+    let mut translated = DamageRegion::new(width, height);
+    for rectangle in source.rectangles() {
+        let left = i64::from(rectangle.x) - i64::from(offset_x);
+        let top = i64::from(rectangle.y) - i64::from(offset_y);
+        let right = left + i64::from(rectangle.width);
+        let bottom = top + i64::from(rectangle.height);
+        let clipped_left = left.max(0).min(i64::from(width));
+        let clipped_top = top.max(0).min(i64::from(height));
+        let clipped_right = right.max(0).min(i64::from(width));
+        let clipped_bottom = bottom.max(0).min(i64::from(height));
+        if clipped_left < clipped_right && clipped_top < clipped_bottom {
+            translated.add(Rect::new(
+                clipped_left as u32,
+                clipped_top as u32,
+                (clipped_right - clipped_left) as u32,
+                (clipped_bottom - clipped_top) as u32,
+            ));
+        }
+    }
+    translated
+}
+
+fn render_layer_group_partial_into(
+    group: &LayerGroup,
+    scratch: &mut LayerGroupScratch,
+    depth: usize,
+    damage: &DamageRegion,
+) -> Result<(), FramebufferError> {
+    let needs_full_initialization = if scratch.layers.len() <= depth {
+        scratch.layers.push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
+        true
+    } else {
+        let surface = scratch.layers[depth].framebuffer_mut();
+        if surface.width() != group.width || surface.height() != group.height {
+            surface.resize_and_clear(group.width, group.height, Color::TRANSPARENT)?;
+            true
+        } else {
+            false
+        }
+    };
+
+    let mut effective_damage;
+    let damage = if needs_full_initialization {
+        effective_damage = DamageRegion::new(group.width, group.height);
+        effective_damage.add(Rect::new(0, 0, group.width, group.height));
+        &effective_damage
+    } else {
+        damage
+    };
+
+    {
+        let surface = scratch.layers[depth].framebuffer_mut();
+        let stride = surface.width() as usize;
+        for rectangle in damage.rectangles() {
+            for y in rectangle.y..rectangle.y + rectangle.height {
+                let start = y as usize * stride + rectangle.x as usize;
+                let end = start + rectangle.width as usize;
+                surface.pixels_mut()[start..end].fill(Color::TRANSPARENT);
+            }
+        }
+    }
+
+    for child in &group.children {
+        match child {
+            LayerGroupChild::Layer(layer) => {
+                compose_layers_in_damage_regions(
+                    scratch.layers[depth].framebuffer_mut(),
+                    std::slice::from_ref(layer),
+                    damage,
+                );
+            }
+            LayerGroupChild::Group(nested) => {
+                if !nested.visible || nested.opacity == 0 {
+                    continue;
+                }
+                if nested.transform == Transform2D::IDENTITY {
+                    let nested_damage = translated_damage(
+                        damage,
+                        nested.width,
+                        nested.height,
+                        nested.x,
+                        nested.y,
+                    );
+                    if nested_damage.is_empty() {
+                        continue;
+                    }
+                    render_layer_group_partial_into(nested, scratch, depth + 1, &nested_damage)?;
+                } else {
+                    render_layer_group_into(nested, scratch, depth + 1)?;
+                }
+                let (parents, children) = scratch.layers.split_at_mut(depth + 1);
+                compose_layers_in_damage_regions(
+                    parents[depth].framebuffer_mut(),
+                    std::slice::from_ref(&children[0]),
+                    damage,
+                );
+            }
+        }
+    }
+
+    let layer = &mut scratch.layers[depth];
+    layer.set_position(group.x, group.y);
+    layer.set_opacity(group.opacity);
+    layer.set_blend_mode(group.blend_mode);
+    layer.set_transform(group.transform);
+    layer.set_filter(group.filter);
+    Ok(())
+}
+
 fn render_layer_group_into(
     group: &LayerGroup,
     scratch: &mut LayerGroupScratch,
@@ -1471,6 +1628,51 @@ mod tests {
         DamageRegion, Layer, LayerGroup, LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+
+    #[test]
+    fn nested_group_damage_recomposition_matches_full_render_and_preserves_untouched_pixels() {
+        use super::compose_layer_groups_in_damage_regions;
+
+        let mut inner = LayerGroup::new(5, 4).unwrap();
+        let mut red = Layer::new(5, 4, Color::RED).unwrap();
+        red.set_position(0, 0);
+        inner.add_layer(red);
+
+        let mut outer = LayerGroup::new(10, 8).unwrap();
+        inner.set_position(2, 1);
+        outer.add_group(inner);
+        let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
+        let mut scratch = LayerGroupScratch::with_capacity(2);
+
+        let mut full = target.clone();
+        compose_layer_groups_with_scratch(&mut full, &[outer.clone()], &mut LayerGroupScratch::default()).unwrap();
+        let mut initial_damage = DamageRegion::new(12, 10);
+        initial_damage.add(Rect::new(0, 0, 12, 10));
+        compose_layer_groups_in_damage_regions(&mut target, &[outer.clone()], &initial_damage, &mut scratch).unwrap();
+        assert_eq!(target.pixels(), full.pixels());
+
+        // Update one pixel in the innermost layer and invalidate only its target area.
+        let mut changed_inner = outer.clone();
+        if let LayerGroupChild::Group(nested) = &mut changed_inner.children[0] {
+            if let LayerGroupChild::Layer(layer) = &mut nested.children[0] {
+                layer.framebuffer_mut().set_pixel(3, 2, Color::BLUE);
+            }
+        }
+        let mut dirty = DamageRegion::new(12, 10);
+        dirty.add(Rect::new(5, 3, 1, 1));
+        let mut expected = target.clone();
+        compose_layer_groups_with_scratch(&mut expected, &[changed_inner.clone()], &mut LayerGroupScratch::default()).unwrap();
+        compose_layer_groups_in_damage_regions(&mut target, &[changed_inner], &dirty, &mut scratch).unwrap();
+        assert_eq!(target.get_pixel(5, 3), expected.get_pixel(5, 3));
+        for y in 0..target.height() {
+            for x in 0..target.width() {
+                if x != 5 || y != 3 {
+                    assert_eq!(target.get_pixel(x, y), Some(full.get_pixel(x, y).unwrap()));
+                }
+            }
+        }
+    }
 
     #[test]
     fn group_scratch_reuses_surfaces_across_frames_and_nested_depths() {
