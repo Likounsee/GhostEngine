@@ -1414,18 +1414,27 @@ pub fn draw_texture_transformed_clipped(
     let source_scale_y = texture.height as f32 / destination.height as f32;
     let texture_width = texture.width as usize;
     let texture_height = texture.height as usize;
+    // The inverse affine transform separates into horizontal and vertical
+    // contributions. Cache the X terms once for the whole draw, preserving
+    // the original left-to-right floating-point addition order per pixel.
+    let horizontal_terms: Vec<(f32, f32)> = (first_x..end_x)
+        .map(|x| {
+            let pixel_center_x = x as f32 + 0.5;
+            (inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x)
+        })
+        .collect();
     for y in first_y..end_y {
         let pixel_center_y = y as f32 + 0.5;
+        let vertical_x = inverse.m12 * pixel_center_y;
+        let vertical_y = inverse.m22 * pixel_center_y;
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in first_x..end_x {
-            // Both inverse-mapped coordinates vary across a scanline for
-            // rotations and shears. Recompute them from the pixel center so
-            // sampling exactly matches the affine transform definition.
-            let pixel_center_x = x as f32 + 0.5;
-            let local_x = inverse.m11 * pixel_center_x + inverse.m12 * pixel_center_y + inverse.tx;
-            let local_y = inverse.m21 * pixel_center_x + inverse.m22 * pixel_center_y + inverse.ty;
+        for (x, &(horizontal_x, horizontal_y)) in
+            (first_x..end_x).zip(horizontal_terms.iter())
+        {
+            let local_x = (horizontal_x + vertical_x) + inverse.tx;
+            let local_y = (horizontal_y + vertical_y) + inverse.ty;
             if local_x < local_left
                 || local_x >= local_right
                 || local_y < local_top
