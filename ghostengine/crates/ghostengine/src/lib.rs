@@ -86,7 +86,7 @@ pub use rasterizer::{
     fill_rect_parallel_with_threads, fill_rect_radial_gradient_parallel,
     fill_rect_radial_gradient_parallel_with_threads, fill_rects_clipped, fill_rounded_rect,
     fill_rounded_rect_aa, fill_transformed_rect_linear_gradient_clipped,
-    fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, Gradient, GradientError,
+    fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, fill_triangle_aa_with_scratch, Gradient, GradientError,
     GradientStop, RasterizerScratch,
 };
 pub use shaping::{
