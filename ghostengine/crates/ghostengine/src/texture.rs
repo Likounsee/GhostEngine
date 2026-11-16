@@ -1558,6 +1558,17 @@ pub fn draw_texture_transformed_clipped(
     let local_top = destination.y as f32;
     let local_right = local_left + destination.width as f32;
     let local_bottom = local_top + destination.height as f32;
+    let scanline_bounds = TransformedScanlineBounds {
+        inverse,
+        reciprocal_m11,
+        reciprocal_m21,
+        first_x,
+        end_x,
+        local_left,
+        local_top,
+        local_right,
+        local_bottom,
+    };
     let mut visible = false;
     let source_scale_x = texture.width as f32 / destination.width as f32;
     let source_scale_y = texture.height as f32 / destination.height as f32;
@@ -1574,7 +1585,9 @@ pub fn draw_texture_transformed_clipped(
         .collect();
     for y in first_y..end_y {
         let pixel_center_y = y as f32 + 0.5;
-        let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(scanline_bounds, pixel_center_y) else {
+        let Some((row_first_x, row_end_x)) =
+            transformed_scanline_x_range(scanline_bounds, pixel_center_y)
+        else {
             continue;
         };
         let vertical_x = inverse.m12 * pixel_center_y;
