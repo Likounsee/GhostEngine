@@ -2945,6 +2945,170 @@ fn accumulate_ellipse_span(
 ///
 /// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
 /// line along the remaining axis; a point-sized ellipse draws one pixel.
+/// Processes an ellipse scanline band with one reusable coverage buffer per worker.
+fn fill_ellipse_aa_parallel_rows(
+    rows: &mut [Color],
+    row_width: usize,
+    first_y: usize,
+    left: u32,
+    right: u32,
+    cx: f64,
+    cy: f64,
+    rx: f64,
+    inverse_ry: f64,
+    coverage_colors: &[Color; 17],
+) {
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let mut coverage = vec![0_u8; (right - left) as usize];
+    for (row_offset, row) in rows.chunks_mut(row_width).enumerate() {
+        let y = first_y + row_offset;
+        coverage.fill(0);
+        for offset_y in SAMPLE_OFFSETS {
+            let normalized_y = (y as f64 + offset_y - cy) * inverse_ry;
+            let remaining = 1.0 - normalized_y * normalized_y;
+            if remaining < 0.0 {
+                continue;
+            }
+            let half_width = rx * remaining.sqrt();
+            let span_left = cx - half_width;
+            let span_right = cx + half_width;
+            let first = ((span_left - SAMPLE_OFFSETS[3]).ceil() as i64)
+                .clamp(i64::from(left), i64::from(right)) as u32;
+            let end = ((span_right - SAMPLE_OFFSETS[0]).floor() as i64 + 1)
+                .clamp(i64::from(left), i64::from(right)) as u32;
+            accumulate_ellipse_span(&mut coverage, left, first, end, span_left, span_right);
+        }
+
+        let row_pixels = &mut row[left as usize..right as usize];
+        let mut index = 0;
+        while index < row_pixels.len() {
+            let covered = coverage[index];
+            if covered == 0 {
+                index += 1;
+                continue;
+            }
+            if row_pixels[index].a != u8::MAX {
+                let source = coverage_colors[usize::from(covered)];
+                if source.a != 0 {
+                    row_pixels[index] = if row_pixels[index].a == 0 {
+                        source
+                    } else {
+                        source.blend_over(row_pixels[index])
+                    };
+                }
+                index += 1;
+                continue;
+            }
+            let run_start = index;
+            while index < row_pixels.len()
+                && row_pixels[index].a == u8::MAX
+                && coverage[index] != 0
+            {
+                index += 1;
+            }
+            let run_end = index;
+            let mut offset = run_start;
+            while offset + 4 <= run_end {
+                let sources = core::array::from_fn(|lane| {
+                    coverage_colors[usize::from(coverage[offset + lane])]
+                });
+                let destinations: &mut [Color; 4] = row_pixels[offset..offset + 4]
+                    .try_into()
+                    .expect("four destination pixels");
+                blend_variable_opaque_quad(destinations, sources);
+                offset += 4;
+            }
+            while offset < run_end {
+                let source = coverage_colors[usize::from(coverage[offset])];
+                row_pixels[offset] = source.blend_over(row_pixels[offset]);
+                offset += 1;
+            }
+        }
+    }
+}
+
+/// Fills an antialiased ellipse using disjoint scanline bands and worker-local coverage buffers.
+pub fn fill_ellipse_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    if radius_x == 0 || radius_y == 0 || thread_count <= 1 {
+        fill_ellipse_aa(target, center, radius_x, radius_y, color);
+        return;
+    }
+
+    let cx = f64::from(center.x);
+    let cy = f64::from(center.y);
+    let rx = f64::from(radius_x);
+    let ry = f64::from(radius_y);
+    let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+    let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+    let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+    let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+    }
+
+    let row_width = target.width() as usize;
+    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
+    let row_count = (bottom - top) as usize;
+    let worker_count = thread_count.max(1).min(row_count);
+    if worker_count == 1 {
+        fill_ellipse_aa_parallel_rows(
+            rows, row_width, top as usize, left, right, cx, cy, rx, ry.recip(),
+            &coverage_colors,
+        );
+        return;
+    }
+
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+            let first_y = top as usize + chunk_index * rows_per_worker;
+            let colors = &coverage_colors;
+            scope.spawn(move || {
+                fill_ellipse_aa_parallel_rows(
+                    chunk, row_width, first_y, left, right, cx, cy, rx, ry.recip(), colors,
+                );
+            });
+        }
+    });
+}
+
+/// Automatically selects workers for sufficiently large antialiased ellipses.
+pub fn fill_ellipse_aa_parallel(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+) {
+    let area = u64::from(radius_x.saturating_mul(2).saturating_add(2))
+        * u64::from(radius_y.saturating_mul(2).saturating_add(2));
+    let workers = if area < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    };
+    fill_ellipse_aa_parallel_with_threads(target, center, radius_x, radius_y, color, workers);
+}
+
 pub fn fill_ellipse_aa(
     target: &mut Framebuffer,
     center: Point,
