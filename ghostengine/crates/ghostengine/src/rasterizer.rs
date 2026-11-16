@@ -1964,6 +1964,10 @@ pub fn fill_polygon_aa_with_scratch(
 
         for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
             let coverage_start = quad_index * 4;
+            let covered = &coverage[coverage_start..coverage_start + 4];
+            if covered.iter().all(|count| *count == 0) {
+                continue;
+            }
             if destinations.iter().all(|pixel| pixel.a == u8::MAX) {
                 let sources = core::array::from_fn(|lane| {
                     coverage_colors[coverage[coverage_start + lane] as usize]
