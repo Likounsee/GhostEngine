@@ -43,7 +43,6 @@ pub(crate) fn blend_opaque_quad(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::Color;
