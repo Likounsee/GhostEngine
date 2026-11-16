@@ -1453,7 +1453,7 @@ fn blend_rounded_rect_aa_row(
     coverage_colors: &[Color; 17],
 ) {
     let mut x = clip_left;
-    while x <= clip_right.saturating_sub(4) {
+    while clip_right - x >= 4 {
         let mut sources = [Color::TRANSPARENT; 4];
         for (lane, source) in sources.iter_mut().enumerate() {
             let covered = rounded_rect_aa_coverage(
