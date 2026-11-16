@@ -1257,7 +1257,7 @@ mod tests {
                         height,
                         x,
                         y,
-                        f32::from(opacity) / 255.0,
+                        opacity,
                         &mut actual,
                     );
                     assert!(actual.r.abs_diff(expected.r) <= 1);
@@ -1292,7 +1292,7 @@ mod tests {
                         2,
                         x,
                         ty,
-                        f32::from(opacity) / 255.0,
+                        opacity,
                         &mut expected,
                     );
                     blend_bilinear_over_opaque_rows(
@@ -1300,7 +1300,7 @@ mod tests {
                         bottom_row,
                         x,
                         ty,
-                        f32::from(opacity) / 255.0,
+                        opacity,
                         &mut actual,
                     );
                     assert_eq!(actual, expected, "x={x}, y={ty}, opacity={opacity}");
