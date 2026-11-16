@@ -1087,7 +1087,54 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in left..right {
+        let mut x = left;
+        while x + 4 <= right {
+            let mut sources = [Color::TRANSPARENT; 4];
+            let mut inside = [false; 4];
+            for lane in 0..4 {
+                let local = inverse
+                    .transform_point(crate::Vector::new((x + lane) as f32 + 0.5, y as f32 + 0.5));
+                inside[lane] = rect_contains_point(rect, local);
+                if inside[lane] {
+                    visible = true;
+                    let position =
+                        (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
+                    sources[lane] = gradient.sample_raster(position);
+                }
+            }
+
+            let destinations = &mut row[x as usize..x as usize + 4];
+            if inside.iter().all(|is_inside| *is_inside)
+                && destinations.iter().all(|pixel| pixel.a == u8::MAX)
+            {
+                let mut quad = [
+                    destinations[0],
+                    destinations[1],
+                    destinations[2],
+                    destinations[3],
+                ];
+                blend_variable_opaque_quad(&mut quad, sources);
+                destinations.copy_from_slice(&quad);
+            } else {
+                for lane in 0..4 {
+                    if !inside[lane] {
+                        continue;
+                    }
+                    let color = sources[lane];
+                    let pixel = &mut destinations[lane];
+                    *pixel = if color.a == u8::MAX {
+                        color
+                    } else if color.a == 0 {
+                        *pixel
+                    } else {
+                        color.blend_over(*pixel)
+                    };
+                }
+            }
+            x += 4;
+        }
+
+        for x in x..right {
             let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
                 continue;
