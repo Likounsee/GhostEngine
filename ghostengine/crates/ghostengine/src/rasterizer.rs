@@ -1844,30 +1844,11 @@ pub fn fill_polygon_aa_with_scratch(
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     // Cache the 17 possible source colors produced by 4x4 coverage sampling.
+    // Opaque destinations are composited four pixels at a time by the SIMD backend.
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    // Opaque framebuffer pixels are common; precompute their exact source-over
-    // results for every coverage and destination channel to avoid per-pixel
-    // channel divisions on partially covered edges.
-    let mut opaque_r = [[0_u8; 256]; 17];
-    let mut opaque_g = [[0_u8; 256]; 17];
-    let mut opaque_b = [[0_u8; 256]; 17];
     for covered in 1..=16 {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
         coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
-        let source_alpha = u32::from(alpha);
-        let inverse_alpha = 255 - source_alpha;
-        for destination in 0..256 {
-            let destination = destination as u32;
-            opaque_r[covered][destination as usize] =
-                ((u32::from(color.r) * source_alpha + destination * inverse_alpha + 127) / 255)
-                    as u8;
-            opaque_g[covered][destination as usize] =
-                ((u32::from(color.g) * source_alpha + destination * inverse_alpha + 127) / 255)
-                    as u8;
-            opaque_b[covered][destination as usize] =
-                ((u32::from(color.b) * source_alpha + destination * inverse_alpha + 127) / 255)
-                    as u8;
-        }
     }
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
@@ -1977,10 +1958,46 @@ pub fn fill_polygon_aa_with_scratch(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for (pixel, covered) in row[left as usize..right as usize]
-            .iter_mut()
-            .zip(coverage.iter().copied())
-        {
+        let row_pixels = &mut row[left as usize..right as usize];
+        let vectorized_len = row_pixels.len() / 4 * 4;
+        let (vectorized, tail) = row_pixels.split_at_mut(vectorized_len);
+
+        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
+            let coverage_start = quad_index * 4;
+            if destinations.iter().all(|pixel| pixel.a == u8::MAX) {
+                let sources = core::array::from_fn(|lane| {
+                    coverage_colors[coverage[coverage_start + lane] as usize]
+                });
+                let mut quad = [
+                    destinations[0],
+                    destinations[1],
+                    destinations[2],
+                    destinations[3],
+                ];
+                blend_variable_opaque_quad(&mut quad, sources);
+                destinations.copy_from_slice(&quad);
+            } else {
+                for lane in 0..4 {
+                    let covered = coverage[coverage_start + lane];
+                    if covered == 0 {
+                        continue;
+                    }
+                    let source = coverage_colors[covered as usize];
+                    let pixel = &mut destinations[lane];
+                    *pixel = if source.a == u8::MAX {
+                        source
+                    } else if source.a == 0 {
+                        *pixel
+                    } else {
+                        source.blend_over(*pixel)
+                    };
+                }
+            }
+        }
+
+        for (pixel, covered) in tail.iter_mut().zip(
+            coverage[vectorized_len..].iter().copied(),
+        ) {
             if covered == 0 {
                 continue;
             }
@@ -1989,13 +2006,6 @@ pub fn fill_polygon_aa_with_scratch(
                 source
             } else if source.a == 0 {
                 *pixel
-            } else if pixel.a == u8::MAX {
-                let index = usize::from(covered);
-                Color::rgb(
-                    opaque_r[index][pixel.r as usize],
-                    opaque_g[index][pixel.g as usize],
-                    opaque_b[index][pixel.b as usize],
-                )
             } else {
                 source.blend_over(*pixel)
             };
