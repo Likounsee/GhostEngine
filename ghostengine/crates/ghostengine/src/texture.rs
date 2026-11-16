@@ -1005,36 +1005,61 @@ pub fn draw_texture_clipped_parallel_with_threads(
                             &texture.pixels[top_offset..top_offset + texture.width as usize];
                         let bottom_row =
                             &texture.pixels[bottom_offset..bottom_offset + texture.width as usize];
-                        for (pixel, sample) in
-                            row[left..right].iter_mut().zip(horizontal_samples.iter())
-                        {
-                            if texture.fully_opaque {
-                                *pixel = sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty);
-                            } else if pixel.a == 255 {
-                                blend_bilinear_rows_over_opaque(
-                                    top_row,
-                                    bottom_row,
-                                    *sample,
-                                    ty,
-                                    pixel,
-                                );
-                            } else {
-                                let color = sample_bilinear_prepared(
-                                    &texture.pixels,
-                                    texture.width as usize,
-                                    BilinearCoordinates {
-                                        x0: sample.x0,
-                                        x1: sample.x1,
-                                        y0,
-                                        y1,
-                                        tx: sample.tx,
-                                        ty,
-                                    },
-                                );
-                                if color.a == 255 {
-                                    *pixel = color;
-                                } else if color.a > 0 {
-                                    *pixel = color.blend_over(*pixel);
+                        if use_horizontal_cache {
+                            let samples_per_row = horizontal_samples.len();
+                            let top_offset = y0 * samples_per_row;
+                            let bottom_offset = y1 * samples_per_row;
+                            let inverse_y = 1.0 - ty;
+                            for (pixel, (&top, &bottom)) in row[left..right].iter_mut().zip(
+                                horizontal_cache[top_offset..top_offset + samples_per_row]
+                                    .iter()
+                                    .zip(&horizontal_cache[bottom_offset..bottom_offset + samples_per_row]),
+                            ) {
+                                if texture.fully_opaque {
+                                    *pixel = sample_cached_bilinear_opaque(&top, &bottom, inverse_y, ty);
+                                } else if pixel.a == 255 {
+                                    blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, pixel);
+                                } else {
+                                    let alpha = top[3] * inverse_y + bottom[3] * ty;
+                                    if alpha <= f32::EPSILON {
+                                        continue;
+                                    }
+                                    let inverse_alpha = alpha.recip();
+                                    let color = Color::rgba(
+                                        ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
+                                        ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
+                                        ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
+                                        alpha.round().clamp(0.0, 255.0) as u8,
+                                    );
+                                    if color.a > 0 {
+                                        *pixel = color.blend_over(*pixel);
+                                    }
+                                }
+                            }
+                        } else {
+                            for (pixel, sample) in row[left..right].iter_mut().zip(horizontal_samples.iter()) {
+                                if texture.fully_opaque {
+                                    *pixel = sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty);
+                                } else if pixel.a == 255 {
+                                    blend_bilinear_rows_over_opaque(top_row, bottom_row, *sample, ty, pixel);
+                                } else {
+                                    let color = sample_bilinear_prepared(
+                                        &texture.pixels,
+                                        texture.width as usize,
+                                        BilinearCoordinates {
+                                            x0: sample.x0,
+                                            x1: sample.x1,
+                                            y0,
+                                            y1,
+                                            tx: sample.tx,
+                                            ty,
+                                        },
+                                    );
+                                    if color.a == 255 {
+                                        *pixel = color;
+                                    } else if color.a > 0 {
+                                        *pixel = color.blend_over(*pixel);
+                                    }
                                 }
                             }
                         }
