@@ -345,56 +345,49 @@ pub fn compose_layers_parallel_with_threads(
     layers: &[Layer],
     threads: usize,
 ) {
-     if threads <= 1 || target.width() == 0 || target.height() == 0 {
-         compose_layers(target, layers);
-         return;
-     }
-     let target_bounds = Rect::new(0, 0, target.width(), target.height());
-     let width = target.width() as usize;
-     let height = target.height() as usize;
-     let worker_count = threads.min(height).max(1);
-     let rows_per_worker = height.div_ceil(worker_count);
-     let chunk_len = rows_per_worker * width;
+    if threads <= 1 || target.width() == 0 || target.height() == 0 {
+        compose_layers(target, layers);
+        return;
+    }
+    let target_bounds = Rect::new(0, 0, target.width(), target.height());
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let worker_count = threads.min(height).max(1);
+    let rows_per_worker = height.div_ceil(worker_count);
+    let chunk_len = rows_per_worker * width;
 
-     for layer in layers {
-         if !layer.visible || layer.opacity == 0 {
-             continue;
-         }
-         if layer.transform == Transform2D::IDENTITY {
-             compose_layer_clipped(target, layer, target_bounds, None);
-             continue;
-         }
-         let Some(prepared) = prepare_transformed_layer(target, layer) else {
-             continue;
-         };
-         let Some(clip) = prepared.bounds.intersection(target_bounds) else {
-             continue;
-         };
-         std::thread::scope(|scope| {
-             for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
-                 let row_origin = (worker_index * rows_per_worker) as u32;
-                 let row_end = (row_origin as usize + pixels.len() / width) as u32;
-                 let first_row = clip.y.max(row_origin);
-                 let last_row = (clip.y + clip.height).min(row_end);
-                 if first_row >= last_row {
-                     continue;
-                 }
-                 scope.spawn(move || {
-                     compose_transformed_layer_rows(
-                         pixels,
-                         width,
-                         layer,
-                         clip,
-                         prepared,
-                         first_row,
-                         last_row,
-                         row_origin,
-                     );
-                 });
-             }
-         });
-     }
- }
+    for layer in layers {
+        if !layer.visible || layer.opacity == 0 {
+            continue;
+        }
+        if layer.transform == Transform2D::IDENTITY {
+            compose_layer_clipped(target, layer, target_bounds, None);
+            continue;
+        }
+        let Some(prepared) = prepare_transformed_layer(target, layer) else {
+            continue;
+        };
+        let Some(clip) = prepared.bounds.intersection(target_bounds) else {
+            continue;
+        };
+        std::thread::scope(|scope| {
+            for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+                let row_origin = (worker_index * rows_per_worker) as u32;
+                let row_end = (row_origin as usize + pixels.len() / width) as u32;
+                let first_row = clip.y.max(row_origin);
+                let last_row = (clip.y + clip.height).min(row_end);
+                if first_row >= last_row {
+                    continue;
+                }
+                scope.spawn(move || {
+                    compose_transformed_layer_rows(
+                        pixels, width, layer, clip, prepared, first_row, last_row, row_origin,
+                    );
+                });
+            }
+        });
+    }
+}
 
 /// Composites layers in slice order, limited to the accumulated damage rectangles.
 ///
@@ -1039,10 +1032,7 @@ fn blend_bilinear_over_opaque(
         }
         let inverse_alpha = 255.0 - alpha;
         let blend_channel = |a: u8, b: u8, background: u8| {
-            let premultiplied = f32::from(a).mul_add(
-                first_alpha,
-                f32::from(b) * second_alpha,
-            );
+            let premultiplied = f32::from(a).mul_add(first_alpha, f32::from(b) * second_alpha);
             ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
                 .round()
                 .clamp(0.0, 255.0) as u8
