@@ -474,6 +474,18 @@ fn blend_rect_with_threads(
             let pixels = &mut row[left..right];
             let mut index = 0;
             while index < pixels.len() {
+                if pixels[index].a == 0 {
+                    // Transparent destinations need no channel arithmetic:
+                    // source-over is exactly the source color. Fill the whole
+                    // contiguous run instead of dispatching one pixel at a time.
+                    let run_start = index;
+                    while index < pixels.len() && pixels[index].a == 0 {
+                        index += 1;
+                    }
+                    pixels[run_start..index].fill(color);
+                    continue;
+                }
+
                 if pixels[index].a != 255 {
                     blend_rect_pixel(&mut pixels[index], &context);
                     index += 1;
