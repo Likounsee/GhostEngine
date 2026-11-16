@@ -1074,10 +1074,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     let horizontal_terms: Vec<(f32, f32)> = (first_x..end_x)
         .map(|x| {
             let pixel_center_x = x as f32 + 0.5;
-            (
-                inverse.m11 * pixel_center_x,
-                inverse.m21 * pixel_center_x,
-            )
+            (inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x)
         })
         .collect();
     let mut any_visible = false;
@@ -1092,6 +1089,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
             if first_row >= last_row {
                 continue;
             }
+            let horizontal_terms = horizontal_terms.as_slice();
             handles.push(scope.spawn(move || {
                 let mut worker_visible = false;
                 for y in first_row..last_row {
