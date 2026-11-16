@@ -21,6 +21,7 @@ pub mod mipmap;
 pub mod path;
 pub mod path_cache;
 pub mod rasterizer;
+mod simd;
 pub mod shaping;
 pub mod stroke;
 pub mod text;
