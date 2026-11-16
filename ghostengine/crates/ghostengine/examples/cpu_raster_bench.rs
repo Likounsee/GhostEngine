@@ -7,7 +7,7 @@ use ghostengine::{
     draw_mipmapped_texture_clipped, draw_text, draw_texture_clipped_auto,
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
-    fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
+    fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
     TextureDrawScratch, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
@@ -412,6 +412,15 @@ fn main() {
                 0.35 * SCALE_F32,
             )
             .expect("benchmark path should be valid");
+        }),
+        measure("Vector path fill (non-zero)", iterations, |target| {
+            fill_path_non_zero(
+                target,
+                &path,
+                Color::rgba(245, 130, 45, 220),
+                0.35 * SCALE_F32,
+            )
+            .expect("benchmark non-zero path should be valid");
         }),
         measure("Vector path stroke", iterations, |target| {
             stroke_path(
