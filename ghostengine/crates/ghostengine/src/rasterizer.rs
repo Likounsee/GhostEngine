@@ -2514,7 +2514,6 @@ pub fn draw_ellipse_aa_with_scratch(
     radius_x: u32,
     radius_y: u32,
     color: Color,
-,
     scratch: &mut RasterizerScratch,
 ) {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
@@ -2794,7 +2793,6 @@ pub fn fill_arc_aa_with_scratch(
     start_angle: f32,
     end_angle: f32,
     color: Color,
-,
     scratch: &mut RasterizerScratch,
 ) {
     use core::f64::consts::TAU;
