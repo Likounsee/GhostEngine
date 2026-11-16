@@ -384,7 +384,13 @@ pub fn compose_layers_parallel_with_threads(
                 let target_rows = &mut pixels[first_pixel..last_pixel];
                 scope.spawn(move || {
                     compose_transformed_layer_rows(
-                        target_rows, width, layer, clip, prepared, first_row, last_row,
+                        target_rows,
+                        width,
+                        layer,
+                        clip,
+                        prepared,
+                        first_row,
+                        last_row,
                     );
                 });
             }
