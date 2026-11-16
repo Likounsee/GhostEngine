@@ -14,8 +14,14 @@ on:
 permissions:
   contents: read
 
+# Benchmark runs are also superseded by newer commits on the same ref.
+concurrency:
+  group: ghostengine-cpu-bench-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   benchmark:
+    timeout-minutes: 60
     name: Release CPU raster benchmark (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
