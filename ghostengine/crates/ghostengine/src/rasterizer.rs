@@ -4823,3 +4823,99 @@ mod transformed_radial_gradient_simd_tests {
         }
     }
 }
+
+
+#[cfg(test)]
+mod ellipse_outline_simd_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    fn scalar_reference(
+        target: &mut Framebuffer,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        color: Color,
+    ) {
+        if color.a == 0 || radius_x == 0 || radius_y == 0 {
+            return;
+        }
+        const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+        let cx = f64::from(center.x);
+        let cy = f64::from(center.y);
+        let rx = f64::from(radius_x);
+        let ry = f64::from(radius_y);
+        let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+        let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+        let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+        let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+        let inverse_rx_squared = 1.0 / (rx * rx);
+        let inverse_ry_squared = 1.0 / (ry * ry);
+
+        for y in top..bottom {
+            let row = target.row_mut(y).unwrap();
+            for x in left..right {
+                let mut covered = 0_u32;
+                for offset_y in OFFSETS {
+                    let dy = f64::from(y) + offset_y - cy;
+                    let normalized_y = dy * dy * inverse_ry_squared;
+                    for offset_x in OFFSETS {
+                        let dx = f64::from(x) + offset_x - cx;
+                        let normalized_x = dx * dx * inverse_rx_squared;
+                        let radius = (normalized_x + normalized_y).sqrt();
+                        if radius == 0.0 {
+                            continue;
+                        }
+                        let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
+                            + dy * dy * inverse_ry_squared * inverse_ry_squared)
+                            .sqrt()
+                            / radius;
+                        if ((radius - 1.0) / gradient.max(f64::EPSILON)).abs() <= 0.5 {
+                            covered += 1;
+                        }
+                    }
+                }
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                if alpha != 0 {
+                    row[x as usize] =
+                        Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simd_ellipse_outline_matches_scalar_for_opaque_and_translucent_targets() {
+        for target_alpha in [255, 117] {
+            for source_alpha in [255, 173, 1] {
+                let mut actual = Framebuffer::new(43, 31, Color::BLACK).unwrap();
+                for (index, pixel) in actual.pixels_mut().iter_mut().enumerate() {
+                    *pixel = Color::rgba(
+                        (index % 251) as u8,
+                        (index % 193) as u8,
+                        (index % 157) as u8,
+                        if target_alpha == 255 {
+                            255
+                        } else {
+                            (index % 256) as u8
+                        },
+                    );
+                }
+                let mut expected = actual.clone();
+                let color = Color::rgba(210, 75, 130, source_alpha);
+                super::draw_ellipse_aa(&mut actual, Point::new(18, 15), 13, 9, color);
+                scalar_reference(&mut expected, Point::new(18, 15), 13, 9, color);
+                assert_eq!(actual, expected, "target alpha class: {target_alpha}, source alpha: {source_alpha}");
+            }
+        }
+    }
+
+    #[test]
+    fn simd_ellipse_outline_handles_clipping_and_scalar_tail() {
+        let mut actual = Framebuffer::new(19, 13, Color::rgba(20, 30, 40, 255)).unwrap();
+        let mut expected = actual.clone();
+        let color = Color::rgba(230, 80, 40, 190);
+        super::draw_ellipse_aa(&mut actual, Point::new(1, 6), 8, 5, color);
+        scalar_reference(&mut expected, Point::new(1, 6), 8, 5, color);
+        assert_eq!(actual, expected);
+    }
+}
