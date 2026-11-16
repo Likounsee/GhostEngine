@@ -672,6 +672,22 @@ fn main() {
                 &theme,
             );
         }),
+        measure("UI button AA + text", iterations, |target| {
+            ghostengine::draw_button_aa(
+                target,
+                &font,
+                Rect::new(
+                    110 * SCALE_U32,
+                    100 * SCALE_U32,
+                    260 * SCALE_U32,
+                    64 * SCALE_U32,
+                ),
+                "مرحبا",
+                28.0 * SCALE_F32,
+                WidgetState::Hovered,
+                &theme,
+            );
+        }),
     ];
 
     // Treat 60 FPS (16.67 ms) as the per-operation CPU budget on
