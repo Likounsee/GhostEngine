@@ -789,10 +789,13 @@ fn blend_bilinear_over_opaque_rows(
     }
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
-        let premultiplied = f32::from(tl) * alpha_top_left
-            + f32::from(tr) * alpha_top_right
-            + f32::from(bl) * alpha_bottom_left
-            + f32::from(br) * alpha_bottom_right;
+        let premultiplied = f32::from(tl).mul_add(
+            alpha_top_left,
+            f32::from(tr).mul_add(
+                alpha_top_right,
+                f32::from(bl).mul_add(alpha_bottom_left, f32::from(br) * alpha_bottom_right),
+            ),
+        );
         ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
@@ -874,10 +877,13 @@ fn blend_bilinear_over_opaque(
     }
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
-        let premultiplied = f32::from(tl) * alpha_top_left
-            + f32::from(tr) * alpha_top_right
-            + f32::from(bl) * alpha_bottom_left
-            + f32::from(br) * alpha_bottom_right;
+        let premultiplied = f32::from(tl).mul_add(
+            alpha_top_left,
+            f32::from(tr).mul_add(
+                alpha_top_right,
+                f32::from(bl).mul_add(alpha_bottom_left, f32::from(br) * alpha_bottom_right),
+            ),
+        );
         ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
