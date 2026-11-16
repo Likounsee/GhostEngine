@@ -1476,6 +1476,110 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
     }
 }
 
+
+/// Fills an anti-aliased rounded rectangle using disjoint scanline bands.
+///
+/// The result is deterministic and pixel-identical to [`fill_rounded_rect_aa`].
+/// A thread count of zero or one selects the serial execution path.
+pub fn fill_rounded_rect_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    if rect.width == 0
+        || rect.height == 0
+        || color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+    {
+        return;
+    }
+
+    let left = i64::from(rect.x);
+    let top = i64::from(rect.y);
+    let right = left + i64::from(rect.width);
+    let bottom = top + i64::from(rect.height);
+    let clip_left = left.saturating_sub(1).max(0) as u32;
+    let clip_top = top.saturating_sub(1).max(0) as u32;
+    let clip_right = (right + 1).clamp(0, i64::from(target.width())) as u32;
+    let clip_bottom = (bottom + 1).clamp(0, i64::from(target.height())) as u32;
+    if clip_left >= clip_right || clip_top >= clip_bottom {
+        return;
+    }
+
+    const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let center_x = (left + right - 1) as f64 * 0.5;
+    let center_y = (top + bottom - 1) as f64 * 0.5;
+    let half_width = (f64::from(rect.width) - 1.0) * 0.5;
+    let half_height = (f64::from(rect.height) - 1.0) * 0.5;
+    let corner_radius = f64::from(radius.min(rect.width / 2).min(rect.height / 2));
+    let inner_width = half_width - corner_radius;
+    let inner_height = half_height - corner_radius;
+    let coverage_colors: [Color; 17] = core::array::from_fn(|covered| {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        Color::rgba(color.r, color.g, color.b, alpha)
+    });
+
+    let row_width = target.width() as usize;
+    let start = clip_top as usize * row_width;
+    let end = clip_bottom as usize * row_width;
+    process_rows_with_y_mut(
+        &mut target.pixels_mut()[start..end],
+        row_width,
+        clip_top as usize,
+        thread_count,
+        |row, y| {
+            let sample_ys = SAMPLE_OFFSETS.map(|offset| y as f64 + offset - center_y);
+            for x in clip_left..clip_right {
+                let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
+                let mut covered = 0_usize;
+                for py in sample_ys {
+                    for px in sample_xs {
+                        let qx = px.abs() - inner_width;
+                        let qy = py.abs() - inner_height;
+                        let outside_x = qx.max(0.0);
+                        let outside_y = qy.max(0.0);
+                        let distance =
+                            outside_x.hypot(outside_y) + qx.max(qy).min(0.0) - corner_radius;
+                        if distance <= 0.0 {
+                            covered += 1;
+                        }
+                    }
+                }
+                if covered != 0 {
+                    let source = coverage_colors[covered];
+                    if source.a != 0 {
+                        let pixel = &mut row[x as usize];
+                        *pixel = source.blend_over(*pixel);
+                    }
+                }
+            }
+        },
+    );
+}
+
+/// Automatically selects a parallel worker count for sufficiently large rounded rectangles.
+pub fn fill_rounded_rect_aa_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    radius: u32,
+    color: Color,
+) {
+    let area = clipped_rect_bounds(target, rect)
+        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
+        .unwrap_or(0);
+    let thread_count = if area < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    };
+    fill_rounded_rect_aa_parallel_with_threads(target, rect, radius, color, thread_count);
+}
+
 /// Returns the inclusive horizontal pixel span for one rounded-rectangle scanline.
 ///
 /// Geometry is evaluated at pixel centers in doubled integer coordinates,
