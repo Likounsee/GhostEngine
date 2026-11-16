@@ -5365,3 +5365,57 @@ mod blend_rect_opaque_run_tests {
         }
     }
 }
+
+
+#[cfg(test)]
+mod polygon_aa_opaque_run_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn polygon_aa_simd_opaque_runs_match_scalar_source_over() {
+        let width = 41;
+        let height = 23;
+        let vertices = [
+            Point::new(2, 3),
+            Point::new(35, 1),
+            Point::new(38, 17),
+            Point::new(7, 21),
+        ];
+        let source = Color::rgba(231, 74, 159, 173);
+
+        let mut initial = Framebuffer::new(width, height, Color::TRANSPARENT).unwrap();
+        for (index, pixel) in initial.pixels_mut().iter_mut().enumerate() {
+            *pixel = Color::rgba(
+                (index * 17 % 256) as u8,
+                (index * 43 % 256) as u8,
+                (index * 71 % 256) as u8,
+                match index % 9 {
+                    0 | 1 | 4 => 255,
+                    2 => 0,
+                    _ => (index * 29 % 254 + 1) as u8,
+                },
+            );
+        }
+
+        // A transparent target exposes the exact coverage-adjusted source
+        // alpha produced by the rasterizer, giving us an independent scalar
+        // source-over reference for every destination alpha class.
+        let mut coverage = Framebuffer::new(width, height, Color::TRANSPARENT).unwrap();
+        super::fill_polygon_aa(&mut coverage, &vertices, source);
+
+        let mut expected = initial.clone();
+        for (destination, covered_source) in expected
+            .pixels_mut()
+            .iter_mut()
+            .zip(coverage.pixels().iter().copied())
+        {
+            if covered_source.a != 0 {
+                *destination = covered_source.blend_over(*destination);
+            }
+        }
+
+        let mut actual = initial;
+        super::fill_polygon_aa(&mut actual, &vertices, source);
+        assert_eq!(actual, expected);
+    }
+}
