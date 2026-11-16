@@ -1251,15 +1251,7 @@ mod tests {
                     let alpha = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
                     let expected =
                         Color::rgba(source.r, source.g, source.b, alpha).blend_over(actual);
-                    blend_bilinear_over_opaque(
-                        &pixels,
-                        width,
-                        height,
-                        x,
-                        y,
-                        opacity,
-                        &mut actual,
-                    );
+                    blend_bilinear_over_opaque(&pixels, width, height, x, y, opacity, &mut actual);
                     assert!(actual.r.abs_diff(expected.r) <= 1);
                     assert!(actual.g.abs_diff(expected.g) <= 1);
                     assert!(actual.b.abs_diff(expected.b) <= 1);
@@ -1286,15 +1278,7 @@ mod tests {
                 for x in [0.0, 0.2, 0.75, 1.4, 1.9] {
                     let mut expected = Color::rgb(37, 91, 163);
                     let mut actual = expected;
-                    blend_bilinear_over_opaque(
-                        &pixels,
-                        3,
-                        2,
-                        x,
-                        ty,
-                        opacity,
-                        &mut expected,
-                    );
+                    blend_bilinear_over_opaque(&pixels, 3, 2, x, ty, opacity, &mut expected);
                     blend_bilinear_over_opaque_rows(
                         top_row,
                         bottom_row,
