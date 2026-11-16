@@ -58,6 +58,21 @@ impl TextureAtlasBuilder {
     }
 
     pub fn build(self) -> Result<(Texture, Vec<AtlasRegion>), TextureAtlasError> {
+        self.build_with_order(false)
+    }
+
+    /// Packs larger sprites first to reduce shelf fragmentation.
+    ///
+    /// Items are sorted by descending height, then width, with ascending IDs as
+    /// a deterministic tie-breaker. Returned regions remain keyed by their IDs.
+    pub fn build_optimized(self) -> Result<(Texture, Vec<AtlasRegion>), TextureAtlasError> {
+        self.build_with_order(true)
+    }
+
+    fn build_with_order(
+        mut self,
+        optimized: bool,
+    ) -> Result<(Texture, Vec<AtlasRegion>), TextureAtlasError> {
         if self.width == 0 || self.height == 0 {
             return Err(TextureAtlasError::ZeroDimension);
         }
@@ -65,6 +80,16 @@ impl TextureAtlasBuilder {
             .checked_mul(self.height as usize)
             .ok_or(TextureAtlasError::AtlasFull)?;
         let mut pixels = vec![Color::TRANSPARENT; count];
+        if optimized {
+            self.items.sort_by(|left, right| {
+                right
+                    .texture
+                    .height()
+                    .cmp(&left.texture.height())
+                    .then_with(|| right.texture.width().cmp(&left.texture.width()))
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+        }
         let mut regions = Vec::with_capacity(self.items.len());
         let mut x = 0_u32;
         let mut y = 0_u32;
@@ -169,6 +194,42 @@ mod tests {
             atlas.get_pixel(regions[0].rect.x - 1, regions[0].rect.y),
             Some(Color::RED)
         );
+    }
+
+    #[test]
+    fn optimized_packing_avoids_shelf_fragmentation() {
+        let items = [
+            (1, Texture::new(6, 6, vec![Color::RED; 36]).unwrap()),
+            (2, Texture::new(4, 4, vec![Color::GREEN; 16]).unwrap()),
+            (3, Texture::new(4, 6, vec![Color::BLUE; 24]).unwrap()),
+            (4, Texture::new(6, 4, vec![Color::WHITE; 24]).unwrap()),
+        ];
+
+        let mut insertion_order = TextureAtlasBuilder::new(10, 10, 0);
+        for (id, texture) in &items {
+            insertion_order.add(*id, texture).unwrap();
+        }
+        assert_eq!(
+            insertion_order.build().unwrap_err(),
+            TextureAtlasError::AtlasFull
+        );
+
+        let mut optimized = TextureAtlasBuilder::new(10, 10, 0);
+        for (id, texture) in &items {
+            optimized.add(*id, texture).unwrap();
+        }
+        let (atlas, regions) = optimized.build_optimized().unwrap();
+
+        assert_eq!(regions.len(), 4);
+        for (id, texture) in &items {
+            let region = regions.iter().find(|region| region.id == *id).unwrap();
+            assert_eq!(region.rect.width, texture.width());
+            assert_eq!(region.rect.height, texture.height());
+            assert_eq!(
+                atlas.get_pixel(region.rect.x, region.rect.y),
+                texture.get_pixel(0, 0)
+            );
+        }
     }
 
     #[test]
