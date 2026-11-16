@@ -384,6 +384,50 @@ fn blend_cached_bilinear_over_opaque(
     destination.b = channel(2, destination.b);
 }
 
+// Parallel scanlines cannot share the sequential renderer's persistent
+// horizontal cache. Build the two premultiplied horizontal samples in-place,
+// then composite directly over opaque destinations. This avoids converting
+// the interpolated sample back to straight-alpha bytes only to blend it again.
+#[inline]
+fn blend_bilinear_rows_over_opaque(
+    top_row: &[Color],
+    bottom_row: &[Color],
+    sample: BilinearHorizontalSample,
+    ty: f32,
+    destination: &mut Color,
+) {
+    let top_left = top_row[sample.x0];
+    let top_right = top_row[sample.x1];
+    let bottom_left = bottom_row[sample.x0];
+    let bottom_right = bottom_row[sample.x1];
+
+    let inverse_x = 1.0 - sample.tx;
+    let weighted_top_left_alpha = f32::from(top_left.a) * inverse_x;
+    let weighted_top_right_alpha = f32::from(top_right.a) * sample.tx;
+    let weighted_bottom_left_alpha = f32::from(bottom_left.a) * inverse_x;
+    let weighted_bottom_right_alpha = f32::from(bottom_right.a) * sample.tx;
+    let top = [
+        f32::from(top_left.r) * weighted_top_left_alpha
+            + f32::from(top_right.r) * weighted_top_right_alpha,
+        f32::from(top_left.g) * weighted_top_left_alpha
+            + f32::from(top_right.g) * weighted_top_right_alpha,
+        f32::from(top_left.b) * weighted_top_left_alpha
+            + f32::from(top_right.b) * weighted_top_right_alpha,
+        weighted_top_left_alpha + weighted_top_right_alpha,
+    ];
+    let bottom = [
+        f32::from(bottom_left.r) * weighted_bottom_left_alpha
+            + f32::from(bottom_right.r) * weighted_bottom_right_alpha,
+        f32::from(bottom_left.g) * weighted_bottom_left_alpha
+            + f32::from(bottom_right.g) * weighted_bottom_right_alpha,
+        f32::from(bottom_left.b) * weighted_bottom_left_alpha
+            + f32::from(bottom_right.b) * weighted_bottom_right_alpha,
+        weighted_bottom_left_alpha + weighted_bottom_right_alpha,
+    ];
+    let inverse_y = 1.0 - ty;
+    blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, destination);
+}
+
 /// Draws a texture into a destination rectangle, scaling and alpha-compositing it.
 ///
 /// The destination is clipped to the framebuffer. A zero-sized destination draws
@@ -929,10 +973,18 @@ pub fn draw_texture_clipped_parallel_with_threads(
                         for (pixel, sample) in
                             row[left..right].iter_mut().zip(horizontal_samples.iter())
                         {
-                            let color = if texture.fully_opaque {
-                                sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty)
+                            if texture.fully_opaque {
+                                *pixel = sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty);
+                            } else if pixel.a == 255 {
+                                blend_bilinear_rows_over_opaque(
+                                    top_row,
+                                    bottom_row,
+                                    *sample,
+                                    ty,
+                                    pixel,
+                                );
                             } else {
-                                sample_bilinear_prepared(
+                                let color = sample_bilinear_prepared(
                                     &texture.pixels,
                                     texture.width as usize,
                                     BilinearCoordinates {
@@ -943,12 +995,12 @@ pub fn draw_texture_clipped_parallel_with_threads(
                                         tx: sample.tx,
                                         ty,
                                     },
-                                )
-                            };
-                            if texture.fully_opaque || color.a == 255 {
-                                *pixel = color;
-                            } else if color.a > 0 {
-                                *pixel = color.blend_over(*pixel);
+                                );
+                                if color.a == 255 {
+                                    *pixel = color;
+                                } else if color.a > 0 {
+                                    *pixel = color.blend_over(*pixel);
+                                }
                             }
                         }
                     }
