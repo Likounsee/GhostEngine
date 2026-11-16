@@ -852,6 +852,47 @@ fn blend_bilinear_over_opaque(
     let bottom_left = pixels[bottom_offset + x0];
     let bottom_right = pixels[bottom_offset + x1];
 
+    // Most texels in flat-color regions share one alpha value. In that case,
+    // alpha is constant across the bilinear footprint, so interpolate RGB
+    // directly and apply the shared opacity once instead of weighting every
+    // texel's alpha independently.
+    let shared_alpha = top_left.a;
+    if shared_alpha == top_right.a
+        && shared_alpha == bottom_left.a
+        && shared_alpha == bottom_right.a
+    {
+        let inverse_x = 1.0 - tx;
+        let inverse_y = 1.0 - ty;
+        let weight_top_left = inverse_x * inverse_y;
+        let weight_top_right = tx * inverse_y;
+        let weight_bottom_left = inverse_x * ty;
+        let weight_bottom_right = tx * ty;
+        let alpha = f32::from(shared_alpha) * opacity_factor;
+        if alpha <= f32::EPSILON {
+            return;
+        }
+        let inverse_alpha = 255.0 - alpha;
+        let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
+            let interpolated = f32::from(tl) * weight_top_left
+                + f32::from(tr) * weight_top_right
+                + f32::from(bl) * weight_bottom_left
+                + f32::from(br) * weight_bottom_right;
+            ((interpolated * alpha + f32::from(background) * inverse_alpha) / 255.0)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        destination.r = channel(
+            top_left.r, top_right.r, bottom_left.r, bottom_right.r, destination.r,
+        );
+        destination.g = channel(
+            top_left.g, top_right.g, bottom_left.g, bottom_right.g, destination.g,
+        );
+        destination.b = channel(
+            top_left.b, top_right.b, bottom_left.b, bottom_right.b, destination.b,
+        );
+        return;
+    }
+
     // Share the four bilinear weights across alpha and all color channels.
     // The separable form repeats horizontal/vertical arithmetic for each
     // channel; these weights let each channel use only four multiply-adds.
