@@ -1688,7 +1688,7 @@ pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
         })
         .collect::<Vec<_>>();
 
-    let coverage = &mut scratch.ellipse_aa_coverage;
+    let coverage = &mut scratch.aa_coverage;
     coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
         coverage.fill(0);
@@ -2365,7 +2365,8 @@ pub fn fill_ellipse_aa_with_scratch(
         coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
-    let mut coverage = vec![0_u8; (right - left) as usize];
+    let coverage = &mut scratch.ellipse_aa_coverage;
+    coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
         coverage.fill(0);
         for offset_y in SAMPLE_OFFSETS {
