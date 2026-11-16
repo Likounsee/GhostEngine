@@ -1168,10 +1168,9 @@ fn conservative_scanline_axis_range(
     (start < end).then_some((start as u32, end as u32))
 }
 
-#[inline]
-fn transformed_scanline_x_range(
+#[derive(Clone, Copy)]
+struct TransformedScanlineBounds {
     inverse: Transform2D,
-    pixel_center_y: f32,
     reciprocal_m11: f32,
     reciprocal_m21: f32,
     first_x: u32,
@@ -1180,24 +1179,30 @@ fn transformed_scanline_x_range(
     local_top: f32,
     local_right: f32,
     local_bottom: f32,
+}
+
+#[inline]
+fn transformed_scanline_x_range(
+    bounds: TransformedScanlineBounds,
+    pixel_center_y: f32,
 ) -> Option<(u32, u32)> {
-    let x_offset = inverse.m12 * pixel_center_y + inverse.tx;
-    let y_offset = inverse.m22 * pixel_center_y + inverse.ty;
+    let x_offset = bounds.inverse.m12 * pixel_center_y + bounds.inverse.tx;
+    let y_offset = bounds.inverse.m22 * pixel_center_y + bounds.inverse.ty;
     let (x_start, x_end) = conservative_scanline_axis_range(
-        first_x,
-        end_x,
-        reciprocal_m11,
+        bounds.first_x,
+        bounds.end_x,
+        bounds.reciprocal_m11,
         x_offset,
-        local_left,
-        local_right,
+        bounds.local_left,
+        bounds.local_right,
     )?;
     let (y_start, y_end) = conservative_scanline_axis_range(
-        first_x,
-        end_x,
-        reciprocal_m21,
+        bounds.first_x,
+        bounds.end_x,
+        bounds.reciprocal_m21,
         y_offset,
-        local_top,
-        local_bottom,
+        bounds.local_top,
+        bounds.local_bottom,
     )?;
     let start = x_start.max(y_start);
     let end = x_end.min(y_end);
@@ -1312,6 +1317,17 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     let local_top = destination.y as f32;
     let local_right = local_left + destination.width as f32;
     let local_bottom = local_top + destination.height as f32;
+    let scanline_bounds = TransformedScanlineBounds {
+        inverse,
+        reciprocal_m11,
+        reciprocal_m21,
+        first_x,
+        end_x,
+        local_left,
+        local_top,
+        local_right,
+        local_bottom,
+    };
     let source_scale_x = texture.width as f32 / destination.width as f32;
     let source_scale_y = texture.height as f32 / destination.height as f32;
     let texture_width = texture.width as usize;
@@ -1354,18 +1370,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     let row = &mut pixels[local_row..local_row + width];
                     let vertical_x = inverse.m12 * pixel_center_y;
                     let vertical_y = inverse.m22 * pixel_center_y;
-                    let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(
-                        inverse,
-                        pixel_center_y,
-                        reciprocal_m11,
-                        reciprocal_m21,
-                        first_x,
-                        end_x,
-                        local_left,
-                        local_top,
-                        local_right,
-                        local_bottom,
-                    ) else {
+                    let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(scanline_bounds, pixel_center_y) else {
                         continue;
                     };
                     for x in row_first_x..row_end_x {
@@ -1569,18 +1574,7 @@ pub fn draw_texture_transformed_clipped(
         .collect();
     for y in first_y..end_y {
         let pixel_center_y = y as f32 + 0.5;
-        let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(
-            inverse,
-            pixel_center_y,
-            reciprocal_m11,
-            reciprocal_m21,
-            first_x,
-            end_x,
-            local_left,
-            local_top,
-            local_right,
-            local_bottom,
-        ) else {
+        let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(scanline_bounds, pixel_center_y) else {
             continue;
         };
         let vertical_x = inverse.m12 * pixel_center_y;
