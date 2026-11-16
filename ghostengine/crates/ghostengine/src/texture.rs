@@ -1283,7 +1283,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                                     )
                                 } else if row[x as usize].a == 255 {
                                     let top_offset = y0 * texture_width;
-                                    let bottom_offset = y1 * texture_width;
+                                    let bottom_offset = coordinates.y1 * texture_width;
                                     let sample = BilinearHorizontalSample {
                                         x0,
                                         x1: (x0 + 1).min(texture_width - 1),
@@ -1462,7 +1462,7 @@ pub fn draw_texture_transformed_clipped(
                         sample_bilinear_opaque_prepared(&texture.pixels, texture_width, coordinates)
                     } else if row[x as usize].a == 255 {
                         let top_offset = y0 * texture_width;
-                        let bottom_offset = y1 * texture_width;
+                        let bottom_offset = coordinates.y1 * texture_width;
                         let sample = BilinearHorizontalSample {
                             x0,
                             x1: (x0 + 1).min(texture_width - 1),
