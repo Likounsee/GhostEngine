@@ -311,11 +311,20 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
 pub fn compose_layers_auto(target: &mut Framebuffer, layers: &[Layer]) {
     const PARALLEL_PIXEL_THRESHOLD: u64 = 131_072;
 
-    let pixel_count = u64::from(target.width()) * u64::from(target.height());
-    let has_transformed_layer = layers.iter().any(|layer| {
-        layer.visible && layer.opacity != 0 && layer.transform != Transform2D::IDENTITY
+    // Base the decision on the pixels a transformed layer can actually touch,
+    // not the full target size. A small sprite on a large framebuffer should
+    // not pay the cost of spawning scoped worker threads.
+    let has_large_transformed_layer = layers.iter().any(|layer| {
+        if !layer.visible || layer.opacity == 0 || layer.transform == Transform2D::IDENTITY {
+            return false;
+        }
+        let Some(prepared) = prepare_transformed_layer(target, layer) else {
+            return false;
+        };
+        u64::from(prepared.bounds.width) * u64::from(prepared.bounds.height)
+            >= PARALLEL_PIXEL_THRESHOLD
     });
-    if pixel_count < PARALLEL_PIXEL_THRESHOLD || !has_transformed_layer {
+    if !has_large_transformed_layer {
         compose_layers(target, layers);
         return;
     }
