@@ -303,6 +303,29 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
     compose_layers_clipped(target, layers, None);
 }
 
+/// Composites layers using an automatic CPU strategy.
+///
+/// Small targets and scenes without transformed layers stay on the sequential
+/// path. Larger scenes with transformed layers use the available logical CPU
+/// workers, while preserving layer order and the same pixel-composition rules.
+pub fn compose_layers_auto(target: &mut Framebuffer, layers: &[Layer]) {
+    const PARALLEL_PIXEL_THRESHOLD: u64 = 131_072;
+
+    let pixel_count = u64::from(target.width()) * u64::from(target.height());
+    let has_transformed_layer = layers.iter().any(|layer| {
+        layer.visible && layer.opacity != 0 && layer.transform != Transform2D::IDENTITY
+    });
+    if pixel_count < PARALLEL_PIXEL_THRESHOLD || !has_transformed_layer {
+        compose_layers(target, layers);
+        return;
+    }
+
+    let threads = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    compose_layers_parallel_with_threads(target, layers, threads);
+}
+
 /// Composites layers in order while processing transformed layers in parallel row bands.
  ///
  /// Each layer completes before the next begins, preserving back-to-front blending.
