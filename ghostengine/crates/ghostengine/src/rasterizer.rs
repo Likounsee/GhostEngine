@@ -4192,6 +4192,48 @@ pub fn draw_circle_aa_with_scratch(
 }
 
 
+/// Fills an antialiased circle using the parallel ellipse rasterizer.
+pub fn fill_circle_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    fill_ellipse_aa_parallel_with_threads(target, center, radius, radius, color, thread_count);
+}
+
+/// Automatically selects workers for sufficiently large antialiased circle fills.
+pub fn fill_circle_aa_parallel(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+) {
+    fill_ellipse_aa_parallel(target, center, radius, radius, color);
+}
+
+/// Draws an antialiased circle outline using the parallel ellipse rasterizer.
+pub fn draw_circle_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) {
+    draw_ellipse_aa_parallel_with_threads(target, center, radius, radius, color, thread_count);
+}
+
+/// Automatically selects workers for sufficiently large antialiased circle outlines.
+pub fn draw_circle_aa_parallel(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+) {
+    draw_ellipse_aa_parallel(target, center, radius, radius, color);
+}
+
 /// Draws an ellipse outline from its center and horizontal/vertical radii.
 /// The result is symmetric and clipped, including when the center is off-screen.
 pub fn draw_ellipse(
@@ -7581,6 +7623,45 @@ mod blend_rect_transparent_run_tests {
                     &mut automatic, center, radius, start, end, color,
                 );
                 assert_eq!(automatic, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn parallel_antialiased_circle_apis_match_serial_ellipse_apis() {
+        for background in [Color::TRANSPARENT, Color::BLACK, Color::rgba(30, 70, 120, 113)] {
+            for (center, radius, color) in [
+                (Point::new(31, 24), 17, Color::rgba(230, 70, 120, 177)),
+                (Point::new(3, 7), 8, Color::rgba(40, 190, 210, 129)),
+                (Point::new(72, 51), 19, Color::WHITE),
+                (Point::new(31, 24), 0, Color::rgba(170, 90, 30, 211)),
+            ] {
+                let initial = Framebuffer::new(67, 49, background).unwrap();
+                let mut expected_fill = initial.clone();
+                fill_ellipse_aa(&mut expected_fill, center, radius, radius, color);
+                for workers in [0, 1, 2, 4, 8, 64] {
+                    let mut actual = initial.clone();
+                    fill_circle_aa_parallel_with_threads(
+                        &mut actual, center, radius, color, workers,
+                    );
+                    assert_eq!(actual, expected_fill, "fill worker_count={workers}");
+                }
+                let mut automatic_fill = initial.clone();
+                fill_circle_aa_parallel(&mut automatic_fill, center, radius, color);
+                assert_eq!(automatic_fill, expected_fill);
+
+                let mut expected_outline = initial.clone();
+                draw_ellipse_aa(&mut expected_outline, center, radius, radius, color);
+                for workers in [0, 1, 2, 4, 8, 64] {
+                    let mut actual = initial.clone();
+                    draw_circle_aa_parallel_with_threads(
+                        &mut actual, center, radius, color, workers,
+                    );
+                    assert_eq!(actual, expected_outline, "outline worker_count={workers}");
+                }
+                let mut automatic_outline = initial;
+                draw_circle_aa_parallel(&mut automatic_outline, center, radius, color);
+                assert_eq!(automatic_outline, expected_outline);
             }
         }
     }
