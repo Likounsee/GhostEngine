@@ -4691,6 +4691,38 @@ mod rounded_rectangle_aa_fill_tests {
     }
 
     #[test]
+    fn parallel_antialiased_rounded_rectangle_fill_matches_serial_for_worker_counts() {
+        for (rect, radius, color) in [
+            (
+                Rect::new(3, 2, 25, 17),
+                6,
+                Color::rgba(220, 70, 35, 173),
+            ),
+            (
+                Rect::new(-4, 5, 19, 14),
+                9,
+                Color::rgba(25, 180, 120, 211),
+            ),
+            (Rect::new(0, 0, 2, 2), 1, Color::WHITE),
+        ] {
+            let mut expected = Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
+            super::fill_rounded_rect_aa(&mut expected, rect, radius, color);
+            for workers in [0, 1, 2, 4, 8] {
+                let mut actual =
+                    Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
+                super::fill_rounded_rect_aa_parallel_with_threads(
+                    &mut actual, rect, radius, color, workers,
+                );
+                assert_eq!(actual, expected, "worker count: {workers}, rect: {rect:?}");
+            }
+            let mut automatic =
+                Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
+            super::fill_rounded_rect_aa_parallel(&mut automatic, rect, radius, color);
+            assert_eq!(automatic, expected);
+        }
+    }
+
+    #[test]
     fn antialiased_rounded_rectangle_fill_ignores_empty_or_offscreen_shapes() {
         let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         super::fill_rounded_rect_aa(&mut target, Rect::new(1, 1, 0, 3), 2, Color::WHITE);
