@@ -4722,7 +4722,7 @@ mod transformed_radial_gradient_simd_tests {
             }
             let mut expected = actual.clone();
 
-            assert!(super::fill_transformed_rect_radial_gradient_clipped(
+            let visible = super::fill_transformed_rect_radial_gradient_clipped(
                 &mut actual,
                 rect,
                 transform,
@@ -4730,7 +4730,8 @@ mod transformed_radial_gradient_simd_tests {
                 radius,
                 &gradient,
                 Rect::new(0, 0, 64, 48),
-            ));
+            );
+            assert!(visible);
 
             for y in 0..expected.height() {
                 for x in 0..expected.width() {
