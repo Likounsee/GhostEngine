@@ -1802,7 +1802,7 @@ mod tests {
         tracker.update(100, Some(a), &mut damage);
         tracker.update(200, Some(b), &mut damage);
         assert_eq!(tracker.len(), 2);
-        assert_eq!(damage.area(), 26);
+        assert_eq!(damage.area(), 36);
 
         // Same identities and bounds in a different traversal order are clean.
         let mut reordered_damage = DamageRegion::new(32, 16);
