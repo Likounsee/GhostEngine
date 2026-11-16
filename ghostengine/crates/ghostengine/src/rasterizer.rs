@@ -1371,16 +1371,21 @@ pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
     let inner_width = half_width - corner_radius;
     let inner_height = half_height - corner_radius;
 
+    let coverage_colors: [Color; 17] = core::array::from_fn(|covered| {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        Color::rgba(color.r, color.g, color.b, alpha)
+    });
+
     for y in clip_top..clip_bottom {
+        let sample_ys = SAMPLE_OFFSETS.map(|offset| f64::from(y) + offset - center_y);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in clip_left..clip_right {
-            let mut covered = 0_u16;
-            for offset_y in SAMPLE_OFFSETS {
-                let py = f64::from(y) + offset_y - center_y;
-                for offset_x in SAMPLE_OFFSETS {
-                    let px = f64::from(x) + offset_x - center_x;
+            let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
+            let mut covered = 0_usize;
+            for py in sample_ys {
+                for px in sample_xs {
                     let qx = px.abs() - inner_width;
                     let qy = py.abs() - inner_height;
                     let outside_x = qx.max(0.0);
@@ -1391,13 +1396,11 @@ pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
                     }
                 }
             }
-            if covered == 0 {
-                continue;
-            }
-            let alpha = (u16::from(color.a) * covered / 16) as u8;
-            if alpha != 0 {
-                row[x as usize] =
-                    Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
+            if covered != 0 {
+                let source = coverage_colors[covered];
+                if source.a != 0 {
+                    row[x as usize] = source.blend_over(row[x as usize]);
+                }
             }
         }
     }
@@ -1438,16 +1441,21 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
     let inner_width = half_width - corner_radius;
     let inner_height = half_height - corner_radius;
 
+    let coverage_colors: [Color; 17] = core::array::from_fn(|covered| {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        Color::rgba(color.r, color.g, color.b, alpha)
+    });
+
     for y in clip_top..clip_bottom {
+        let sample_ys = SAMPLE_OFFSETS.map(|offset| f64::from(y) + offset - center_y);
         let Some(row) = target.row_mut(y) else {
             continue;
         };
         for x in clip_left..clip_right {
-            let mut covered = 0_u16;
-            for offset_y in SAMPLE_OFFSETS {
-                let py = f64::from(y) + offset_y - center_y;
-                for offset_x in SAMPLE_OFFSETS {
-                    let px = f64::from(x) + offset_x - center_x;
+            let sample_xs = SAMPLE_OFFSETS.map(|offset| f64::from(x) + offset - center_x);
+            let mut covered = 0_usize;
+            for py in sample_ys {
+                for px in sample_xs {
                     let qx = px.abs() - inner_width;
                     let qy = py.abs() - inner_height;
                     let outside_x = qx.max(0.0);
@@ -1458,13 +1466,11 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
                     }
                 }
             }
-            if covered == 0 {
-                continue;
-            }
-            let alpha = (u16::from(color.a) * covered / 16) as u8;
-            if alpha != 0 {
-                row[x as usize] =
-                    Color::rgba(color.r, color.g, color.b, alpha).blend_over(row[x as usize]);
+            if covered != 0 {
+                let source = coverage_colors[covered];
+                if source.a != 0 {
+                    row[x as usize] = source.blend_over(row[x as usize]);
+                }
             }
         }
     }
