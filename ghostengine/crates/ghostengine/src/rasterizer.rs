@@ -6293,6 +6293,58 @@ mod polygon_aa_opaque_run_tests {
 
 
 #[cfg(test)]
+mod polygon_aa_parallel_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn parallel_aa_polygon_matches_serial_for_clipping_alpha_and_threads() {
+        let polygons = [
+            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
+            vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
+            vec![Point::new(-30, -20), Point::new(120, -15), Point::new(40, 90)],
+        ];
+        let backgrounds = [Color::rgba(11, 23, 37, 255), Color::rgba(11, 23, 37, 91)];
+        let colors = [Color::rgba(190, 80, 220, 173), Color::rgba(255, 140, 20, 1)];
+
+        for vertices in &polygons {
+            for background in backgrounds {
+                for color in colors {
+                    let mut expected = Framebuffer::new(79, 63, background).unwrap();
+                    super::fill_polygon_aa(&mut expected, vertices, color);
+                    for threads in [0, 1, 2, 4, 8] {
+                        let mut actual = Framebuffer::new(79, 63, background).unwrap();
+                        super::fill_polygon_aa_parallel_with_threads(
+                            &mut actual, vertices, color, threads,
+                        );
+                        assert_eq!(
+                            actual, expected,
+                            "threads {threads}, background {background:?}, color {color:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_parallel_aa_polygon_matches_serial() {
+        let vertices = [
+            Point::new(-12, 8),
+            Point::new(181, 14),
+            Point::new(154, 117),
+            Point::new(23, 101),
+        ];
+        let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let color = Color::rgba(40, 180, 220, 190);
+        super::fill_polygon_aa(&mut expected, &vertices, color);
+        super::fill_polygon_aa_parallel(&mut actual, &vertices, color);
+        assert_eq!(actual, expected);
+    }
+}
+
+#[cfg(test)]
 mod polygon_parallel_tests {
     use crate::{Color, Framebuffer, Point};
 
