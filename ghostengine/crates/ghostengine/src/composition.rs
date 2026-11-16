@@ -628,6 +628,36 @@ fn compose_transformed_layer(
             continue;
         };
 
+        // Bilinear source-over keeps an opaque destination opaque. When the
+        // destination scanline is already opaque, classify it once and avoid
+        // checking destination alpha again for every sampled pixel.
+        if filter == TextureFilter::Bilinear && source_over {
+            let destination_slice = &destination_row[left as usize..right as usize];
+            let opaque_destination = destination_slice.iter().all(|pixel| pixel.a == u8::MAX);
+            if opaque_destination {
+                for x in left..right {
+                    if source_x >= 0.0
+                        && source_y >= 0.0
+                        && source_x < source_width
+                        && source_y < source_height
+                    {
+                        blend_bilinear_over_opaque(
+                            source_pixels,
+                            source_width_u32,
+                            source_height_u32,
+                            source_x - 0.5,
+                            source_y - 0.5,
+                            opacity_factor,
+                            &mut destination_row[x as usize],
+                        );
+                    }
+                    source_x += source_step_x;
+                    source_y += source_step_y;
+                }
+                continue;
+            }
+        }
+
         // For an axis-aligned horizontal sampling step, nearest-neighbour
         // sampling stays on one source row. Resolve that row once and use a
         // dedicated loop that does not calculate or validate source Y per pixel.
