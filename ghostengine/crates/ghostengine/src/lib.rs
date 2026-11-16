@@ -104,7 +104,8 @@ pub use text::{
     FontFace, FontFamily, TextAlign, TextLayoutOptions, TextMetrics,
 };
 pub use texture::{
-    draw_texture, draw_texture_clipped, draw_texture_clipped_parallel_with_threads,
+    draw_texture, draw_texture_auto, draw_texture_clipped, draw_texture_clipped_auto,
+    draw_texture_clipped_parallel_with_threads,
     draw_texture_clipped_with_scratch, draw_texture_region_clipped,
     draw_texture_transformed_clipped, draw_texture_transformed_clipped_parallel_with_threads,
     Texture, TextureDrawScratch, TextureError, TextureFilter,
