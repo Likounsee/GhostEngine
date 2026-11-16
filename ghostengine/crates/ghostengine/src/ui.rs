@@ -1402,7 +1402,7 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
+        draw_checkbox, draw_divider, draw_label_ellipsized, draw_panel, draw_panel_aa, draw_progress_bar, state_for_pointer, ListState,
         TextInputState, UiTheme, WidgetState,
     };
     use crate::{Color, Framebuffer, Point, Rect};
@@ -1421,6 +1421,29 @@ mod tests {
         assert!(target.pixels().iter().any(|pixel| *pixel == theme.panel_border));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != theme.panel && *pixel != theme.panel_border
+        }));
+    }
+
+    #[test]
+    fn ellipsized_label_respects_available_width_and_clip() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = crate::FontFace::from_bytes(bytes).unwrap();
+        let mut target = Framebuffer::new(80, 32, Color::BLACK).unwrap();
+        let clip = Rect::new(5, 4, 36, 22);
+        let metrics = draw_label_ellipsized(
+            &mut target,
+            &font,
+            "A very long application label",
+            Point::new(5, 22),
+            12.0,
+            Color::WHITE,
+            clip,
+        );
+        assert_eq!(metrics.line_count, 1);
+        assert!(metrics.width > 0.0 && metrics.width <= clip.width as f32);
+        assert!(target.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % target.width() as usize;
+            (5..41).contains(&x) || *pixel == Color::BLACK
         }));
     }
 
