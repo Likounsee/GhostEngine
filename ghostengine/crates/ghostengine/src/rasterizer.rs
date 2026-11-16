@@ -2181,7 +2181,20 @@ pub fn draw_triangle_aa_with_scratch(
 
 /// Fills a triangle with 4x4 coverage sampling and source-over alpha blending.
 pub fn fill_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
-    fill_polygon_aa(target, &[a, b, c], color);
+    let mut scratch = RasterizerScratch::default();
+    fill_triangle_aa_with_scratch(target, a, b, c, color, &mut scratch);
+}
+
+/// Fills an antialiased triangle while reusing caller-owned polygon buffers.
+pub fn fill_triangle_aa_with_scratch(
+    target: &mut Framebuffer,
+    a: Point,
+    b: Point,
+    c: Point,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    fill_polygon_aa_with_scratch(target, &[a, b, c], color, scratch);
 }
 
 /// Fills a triangle using integer edge functions, pixel-center sampling and
@@ -5933,6 +5946,27 @@ mod blend_rect_transparent_run_tests {
         assert_eq!(actual, expected);
         assert!(scratch.aa_outline_segments.capacity() >= 4);
         assert!(scratch.aa_coverage.capacity() >= 83);
+    }
+
+    #[test]
+    fn fill_triangle_aa_scratch_matches_compatibility_wrapper() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(79, 63, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+        for (a, b, c, color) in [
+            (Point::new(7, 8), Point::new(68, 14), Point::new(31, 55), Color::rgba(230, 80, 40, 177)),
+            (Point::new(-9, 26), Point::new(43, -5), Point::new(77, 61), Color::rgba(40, 170, 220, 129)),
+            (Point::new(12, 49), Point::new(54, 49), Point::new(33, 18), Color::rgba(120, 210, 70, 203)),
+        ] {
+            super::fill_triangle_aa_with_scratch(
+                &mut actual, a, b, c, color, &mut scratch,
+            );
+            super::fill_triangle_aa(&mut expected, a, b, c, color);
+        }
+        assert_eq!(actual, expected);
+        assert!(scratch.aa_edges.capacity() >= 3);
+        assert!(scratch.aa_edge_order.capacity() >= 3);
+        assert!(scratch.aa_coverage.capacity() >= 79);
     }
 
 }
