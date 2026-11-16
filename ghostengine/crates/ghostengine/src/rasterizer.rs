@@ -2432,64 +2432,11 @@ pub fn draw_ellipse_aa(
 
     let inverse_rx_squared = 1.0 / (rx * rx);
     let inverse_ry_squared = 1.0 / (ry * ry);
+    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
-        let row = &mut row[left as usize..right as usize];
-        let vectorized_len = row.len() / 4 * 4;
-        let (vectorized, tail) = row.split_at_mut(vectorized_len);
-        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
-            let x_base = left + (quad_index as u32) * 4;
-            let mut sources = [Color::TRANSPARENT; 4];
-            let mut has_coverage = false;
-            for lane in 0..4 {
-                let x = x_base + lane as u32;
-                let mut covered = 0_u32;
-                for offset_y in SAMPLE_OFFSETS {
-                    let dy = f64::from(y) + offset_y - cy;
-                    let normalized_y = dy * dy * inverse_ry_squared;
-                    for offset_x in SAMPLE_OFFSETS {
-                        let dx = f64::from(x) + offset_x - cx;
-                        let normalized_x = dx * dx * inverse_rx_squared;
-                        let radius = (normalized_x + normalized_y).sqrt();
-                        if radius == 0.0 {
-                            continue;
-                        }
-                        let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
-                            + dy * dy * inverse_ry_squared * inverse_ry_squared)
-                            .sqrt()
-                            / radius;
-                        let distance = (radius - 1.0) / gradient.max(f64::EPSILON);
-                        if distance.abs() <= 0.5 {
-                            covered += 1;
-                        }
-                    }
-                }
-                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-                if alpha != 0 {
-                    sources[lane] = Color::rgba(color.r, color.g, color.b, alpha);
-                    has_coverage = true;
-                }
-            }
-            if !has_coverage {
-                continue;
-            }
-            if destinations.iter().all(|pixel| pixel.a == 255) {
-                blend_variable_opaque_quad(
-                    destinations.try_into().expect("four destination pixels"),
-                    sources,
-                );
-            } else {
-                for (destination, source) in destinations.iter_mut().zip(sources) {
-                    if source.a != 0 {
-                        *destination = source.blend_over(*destination);
-                    }
-                }
-            }
-        }
-        for (index, destination) in tail.iter_mut().enumerate() {
-            let x = left + vectorized_len as u32 + index as u32;
+        sources.fill(Color::TRANSPARENT);
+        for (index, source) in sources.iter_mut().enumerate() {
+            let x = left + index as u32;
             let mut covered = 0_u32;
             for offset_y in SAMPLE_OFFSETS {
                 let dy = f64::from(y) + offset_y - cy;
@@ -2505,15 +2452,60 @@ pub fn draw_ellipse_aa(
                         + dy * dy * inverse_ry_squared * inverse_ry_squared)
                         .sqrt()
                         / radius;
-                    let distance = (radius - 1.0) / gradient.max(f64::EPSILON);
-                    if distance.abs() <= 0.5 {
+                    if ((radius - 1.0) / gradient.max(f64::EPSILON)).abs() <= 0.5 {
                         covered += 1;
                     }
                 }
             }
-            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-            if alpha != 0 {
-                *destination = Color::rgba(color.r, color.g, color.b, alpha).blend_over(*destination);
+            if covered != 0 {
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                *source = Color::rgba(color.r, color.g, color.b, alpha);
+            }
+        }
+
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        let destinations = &mut row[left as usize..right as usize];
+        let mut index = 0;
+        while index < destinations.len() {
+            if sources[index].a == 0 {
+                index += 1;
+                continue;
+            }
+            if destinations[index].a != u8::MAX {
+                destinations[index] = sources[index].blend_over(destinations[index]);
+                index += 1;
+                continue;
+            }
+
+            // Batch complete groups from opaque destination runs. A single
+            // translucent destination no longer blocks adjacent SIMD groups.
+            let run_start = index;
+            while index < destinations.len()
+                && destinations[index].a == u8::MAX
+                && sources[index].a != 0
+            {
+                index += 1;
+            }
+            let mut destination_quads = destinations[run_start..index].chunks_exact_mut(4);
+            let mut source_quads = sources[run_start..index].chunks_exact(4);
+            for destination_quad in &mut destination_quads {
+                let source_quad: [Color; 4] = source_quads
+                    .next()
+                    .expect("source and destination runs have equal lengths")
+                    .try_into()
+                    .expect("four source pixels");
+                let destination_quad: &mut [Color; 4] = destination_quad
+                    .try_into()
+                    .expect("four destination pixels");
+                blend_variable_opaque_quad(destination_quad, source_quad);
+            }
+            for (destination, source) in destination_quads.into_remainder()
+                .iter_mut()
+                .zip(source_quads)
+            {
+                *destination = source.blend_over(*destination);
             }
         }
     }
