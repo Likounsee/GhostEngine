@@ -321,7 +321,8 @@ fn main() {
     }
     layer_group.add_group(nested_group);
     layer_group.set_opacity(235);
-    let mut layer_group_scratch = ghostengine::LayerGroupScratch::default();
+    let mut layer_group_scratch = ghostengine::LayerGroupScratch::with_capacity(3);
+    layer_group_scratch.reserve_surfaces(1);
 
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
