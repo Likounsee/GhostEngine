@@ -1,6 +1,14 @@
 //! CPU-side image storage and scaled texture compositing.
 
 use crate::{Color, Framebuffer, Rect, Transform2D};
+use core::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_TEXTURE_ID: AtomicU64 = AtomicU64::new(1);
+
+#[inline]
+fn next_texture_id() -> u64 {
+    NEXT_TEXTURE_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Errors returned when constructing an in-memory texture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,13 +28,25 @@ pub enum TextureFilter {
 }
 
 /// An immutable, tightly packed RGBA image suitable for CPU rendering.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Texture {
+    id: u64,
     width: u32,
     height: u32,
     pixels: Vec<Color>,
     fully_opaque: bool,
 }
+
+impl PartialEq for Texture {
+    fn eq(&self, other: &Self) -> bool {
+        self.width == other.width
+            && self.height == other.height
+            && self.pixels == other.pixels
+            && self.fully_opaque == other.fully_opaque
+    }
+}
+
+impl Eq for Texture {}
 
 impl Texture {
     /// Creates a texture from row-major pixels.
@@ -42,6 +62,7 @@ impl Texture {
         }
         let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
         Ok(Self {
+            id: next_texture_id(),
             width,
             height,
             pixels,
@@ -53,6 +74,7 @@ impl Texture {
     #[must_use]
     pub fn from_framebuffer(framebuffer: &Framebuffer) -> Self {
         Self {
+            id: next_texture_id(),
             width: framebuffer.width(),
             height: framebuffer.height(),
             pixels: framebuffer.pixels().to_vec(),
@@ -69,6 +91,7 @@ impl Texture {
         let (width, height, pixels) = framebuffer.into_parts();
         let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
         Self {
+            id: next_texture_id(),
             width,
             height,
             pixels,
@@ -584,12 +607,12 @@ pub struct TextureDrawScratch {
     nearest_columns: Vec<usize>,
     horizontal_samples: Vec<(usize, usize, f32)>,
     horizontal_cache: Vec<[f32; 4]>,
-    cached_texture_pixels: Vec<Color>,
     cached_bilinear_key: Option<BilinearCacheKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BilinearCacheKey {
+    texture_id: u64,
     texture_width: u32,
     texture_height: u32,
     destination_x: u32,
@@ -682,6 +705,7 @@ pub fn draw_texture_clipped_with_scratch(
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
         if should_cache {
             let key = BilinearCacheKey {
+                texture_id: texture.id,
                 texture_width: texture.width,
                 texture_height: texture.height,
                 destination_x: destination.x,
@@ -689,8 +713,7 @@ pub fn draw_texture_clipped_with_scratch(
                 first_x,
                 end_x,
             };
-            let cache_is_valid = scratch.cached_bilinear_key == Some(key)
-                && scratch.cached_texture_pixels == texture.pixels;
+            let cache_is_valid = scratch.cached_bilinear_key == Some(key);
             if !cache_is_valid {
                 scratch.horizontal_cache.clear();
                 scratch.horizontal_cache.reserve(cache_len.unwrap());
@@ -711,12 +734,10 @@ pub fn draw_texture_clipped_with_scratch(
                         ]);
                     }
                 }
-                scratch.cached_texture_pixels.clone_from(&texture.pixels);
                 scratch.cached_bilinear_key = Some(key);
             }
         } else {
             scratch.cached_bilinear_key = None;
-            scratch.cached_texture_pixels.clear();
             scratch.horizontal_cache.clear();
         }
         should_cache
