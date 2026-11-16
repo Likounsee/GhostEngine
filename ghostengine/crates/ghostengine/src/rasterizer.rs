@@ -3,7 +3,10 @@
 //! Lines are clipped before rasterization; rectangles use half-open bounds;
 //! triangles sample pixel centers and use a top-left edge rule.
 
-use crate::{simd::blend_opaque_quad, Color, Framebuffer, Point, Rect};
+use crate::{
+    simd::{blend_opaque_quad, blend_variable_opaque_quad},
+    Color, Framebuffer, Point, Rect,
+};
 
 /// Writes a pixel without blending. Returns false when outside the target.
 pub fn draw_pixel(target: &mut Framebuffer, point: Point, color: Color) -> bool {
@@ -738,8 +741,35 @@ fn fill_rect_linear_gradient_with_threads(
             ((left as f32 + 0.5 - start.x) * dx + (y as f32 + 0.5 - start.y) * dy)
                 * inverse_length_squared
         };
+        let pixels = &mut row[left..right];
+        let vectorized_len = pixels.len() / 4 * 4;
+        let (quads, remainder) = pixels.split_at_mut(vectorized_len);
         let mut position = row_position;
-        for pixel in &mut row[left..right] {
+
+        for quad in quads.chunks_exact_mut(4) {
+            let mut sources = [Color::TRANSPARENT; 4];
+            for source in &mut sources {
+                *source = gradient.sample_raster(position);
+                position += horizontal_step;
+            }
+            if quad.iter().all(|pixel| pixel.a == u8::MAX) {
+                let mut destinations = [quad[0], quad[1], quad[2], quad[3]];
+                blend_variable_opaque_quad(&mut destinations, sources);
+                quad.copy_from_slice(&destinations);
+            } else {
+                for (pixel, color) in quad.iter_mut().zip(sources) {
+                    *pixel = if color.a == u8::MAX {
+                        color
+                    } else if color.a == 0 {
+                        *pixel
+                    } else {
+                        color.blend_over(*pixel)
+                    };
+                }
+            }
+        }
+
+        for pixel in remainder {
             let color = gradient.sample_raster(position);
             *pixel = if color.a == u8::MAX {
                 color
@@ -827,14 +857,54 @@ fn fill_rect_radial_gradient_with_threads(
         let dy = y as f32 + 0.5 - center.y;
         let dy_squared = dy * dy;
         let mut dx = left as f32 + 0.5 - center.x;
-        for pixel in &mut row[left..right] {
+        let pixels = &mut row[left..right];
+        let vectorized_len = pixels.len() / 4 * 4;
+        let (quads, remainder) = pixels.split_at_mut(vectorized_len);
+
+        for quad in quads.chunks_exact_mut(4) {
+            let mut sources = [Color::TRANSPARENT; 4];
+            for source in &mut sources {
+                let distance_squared = dx * dx + dy_squared;
+                *source = if radius_squared.is_finite() && distance_squared.is_finite() {
+                    if distance_squared >= outside_radius_squared {
+                        outside_color
+                    } else {
+                        gradient.sample_radial_squared_in_range(
+                            distance_squared * inverse_radius_squared,
+                        )
+                    }
+                } else {
+                    let distance = dx.hypot(dy);
+                    gradient.sample_raster(distance * inverse_radius)
+                };
+                dx += 1.0;
+            }
+            if quad.iter().all(|pixel| pixel.a == u8::MAX) {
+                let mut destinations = [quad[0], quad[1], quad[2], quad[3]];
+                blend_variable_opaque_quad(&mut destinations, sources);
+                quad.copy_from_slice(&destinations);
+            } else {
+                for (pixel, color) in quad.iter_mut().zip(sources) {
+                    *pixel = if color.a == u8::MAX {
+                        color
+                    } else if color.a == 0 {
+                        *pixel
+                    } else {
+                        color.blend_over(*pixel)
+                    };
+                }
+            }
+        }
+
+        for pixel in remainder {
             let distance_squared = dx * dx + dy_squared;
             let color = if radius_squared.is_finite() && distance_squared.is_finite() {
                 if distance_squared >= outside_radius_squared {
                     outside_color
                 } else {
-                    gradient
-                        .sample_radial_squared_in_range(distance_squared * inverse_radius_squared)
+                    gradient.sample_radial_squared_in_range(
+                        distance_squared * inverse_radius_squared,
+                    )
                 }
             } else {
                 let distance = dx.hypot(dy);
