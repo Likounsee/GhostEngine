@@ -989,6 +989,34 @@ fn blend_bilinear_over_opaque(
     let bottom_left = pixels[bottom_offset + x0];
     let bottom_right = pixels[bottom_offset + x1];
 
+    // When all four taps resolve to the same texel color, interpolation cannot
+    // change the source color or alpha. Skip the four weights and fused channel
+    // interpolation entirely; this is common for scaled sprites and flat areas.
+    if top_left == top_right && top_left == bottom_left && top_left == bottom_right {
+        let alpha = f32::from(top_left.a)
+            * (if opacity == u8::MAX {
+                1.0
+            } else {
+                f32::from(opacity) / 255.0
+            });
+        if alpha <= f32::EPSILON {
+            return;
+        }
+        let inverse_alpha = 255.0 - alpha;
+        let blend_channel = |source: u8, background: u8| {
+            ((f32::from(source).mul_add(
+                alpha,
+                f32::from(background) * inverse_alpha,
+            ) / 255.0)
+                .round()
+                .clamp(0.0, 255.0)) as u8
+        };
+        destination.r = blend_channel(top_left.r, destination.r);
+        destination.g = blend_channel(top_left.g, destination.g);
+        destination.b = blend_channel(top_left.b, destination.b);
+        return;
+    }
+
     // Share the four bilinear weights across alpha and all color channels.
     // The separable form repeats horizontal/vertical arithmetic for each
     // channel; these weights let each channel use only four multiply-adds.
