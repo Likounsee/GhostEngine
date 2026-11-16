@@ -65,7 +65,8 @@ pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
 #[cfg(feature = "image-decoding")]
 pub use image::{
-    decode_texture, decode_texture_with_options, ImageDecodeError, ImageDecodeOptions,
+    decode_texture, decode_texture_into_cache, decode_texture_with_options,
+    decode_texture_with_options_into_cache, ImageDecodeError, ImageDecodeOptions,
 };
 pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
