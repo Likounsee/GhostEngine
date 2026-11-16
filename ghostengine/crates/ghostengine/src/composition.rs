@@ -336,15 +336,15 @@ pub fn compose_layers_auto(target: &mut Framebuffer, layers: &[Layer]) {
 }
 
 /// Composites layers in order while processing transformed layers in parallel row bands.
- ///
- /// Each layer completes before the next begins, preserving back-to-front blending.
- /// Identity-transformed layers use the regular compositor; transformed layers
- /// split destination rows between workers without overlapping framebuffer writes.
- pub fn compose_layers_parallel_with_threads(
-     target: &mut Framebuffer,
-     layers: &[Layer],
-     threads: usize,
- ) {
+///
+/// Each layer completes before the next begins, preserving back-to-front blending.
+/// Identity-transformed layers use the regular compositor; transformed layers
+/// split destination rows between workers without overlapping framebuffer writes.
+pub fn compose_layers_parallel_with_threads(
+    target: &mut Framebuffer,
+    layers: &[Layer],
+    threads: usize,
+) {
      if threads <= 1 || target.width() == 0 || target.height() == 0 {
          compose_layers(target, layers);
          return;
@@ -741,8 +741,7 @@ fn compose_transformed_layer_rows(
             None
         };
         let row_offset = (y - row_origin) as usize * target_width;
-        let Some(destination_row) =
-            target_pixels.get_mut(row_offset..row_offset + target_width)
+        let Some(destination_row) = target_pixels.get_mut(row_offset..row_offset + target_width)
         else {
             continue;
         };
@@ -1004,16 +1003,53 @@ fn blend_bilinear_over_opaque(
         }
         let inverse_alpha = 255.0 - alpha;
         let blend_channel = |source: u8, background: u8| {
-            ((f32::from(source).mul_add(
-                alpha,
-                f32::from(background) * inverse_alpha,
-            ) / 255.0)
+            ((f32::from(source).mul_add(alpha, f32::from(background) * inverse_alpha) / 255.0)
                 .round()
                 .clamp(0.0, 255.0)) as u8
         };
         destination.r = blend_channel(top_left.r, destination.r);
         destination.g = blend_channel(top_left.g, destination.g);
         destination.b = blend_channel(top_left.b, destination.b);
+        return;
+    }
+
+    // A bilinear footprint that is constant across either row or column only
+    // needs a single interpolation axis. This is common along sprite tile edges
+    // and avoids calculating four weights for those boundary pixels.
+    let (first, second, amount) = if top_left == top_right && bottom_left == bottom_right {
+        (top_left, bottom_left, ty)
+    } else if top_left == bottom_left && top_right == bottom_right {
+        (top_left, top_right, tx)
+    } else {
+        // The general four-sample path below handles diagonal and fully mixed taps.
+        (Color::TRANSPARENT, Color::TRANSPARENT, -1.0)
+    };
+    if amount >= 0.0 {
+        let inverse_amount = 1.0 - amount;
+        let opacity_factor = if opacity == u8::MAX {
+            1.0
+        } else {
+            f32::from(opacity) / 255.0
+        };
+        let first_alpha = inverse_amount * f32::from(first.a) * opacity_factor;
+        let second_alpha = amount * f32::from(second.a) * opacity_factor;
+        let alpha = first_alpha + second_alpha;
+        if alpha <= f32::EPSILON {
+            return;
+        }
+        let inverse_alpha = 255.0 - alpha;
+        let blend_channel = |a: u8, b: u8, background: u8| {
+            let premultiplied = f32::from(a).mul_add(
+                first_alpha,
+                f32::from(b) * second_alpha,
+            );
+            ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        destination.r = blend_channel(first.r, second.r, destination.r);
+        destination.g = blend_channel(first.g, second.g, destination.g);
+        destination.b = blend_channel(first.b, second.b, destination.b);
         return;
     }
 
