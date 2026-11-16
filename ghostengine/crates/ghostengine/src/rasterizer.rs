@@ -471,21 +471,34 @@ fn blend_rect_with_threads(
 
     process_rows_mut(rows, width, thread_count, |band| {
         for row in band.chunks_mut(width) {
-            let mut pixels = row[left..right].chunks_exact_mut(4);
-            for quad in &mut pixels {
-                if quad.iter().all(|pixel| pixel.a == 255) {
+            let pixels = &mut row[left..right];
+            let mut index = 0;
+            while index < pixels.len() {
+                if pixels[index].a != 255 {
+                    blend_rect_pixel(&mut pixels[index], &context);
+                    index += 1;
+                    continue;
+                }
+
+                // Keep SIMD batches aligned to opaque runs, not arbitrary
+                // groups of four. A single translucent destination therefore
+                // no longer forces its three opaque neighbors through scalar
+                // compositing.
+                let run_start = index;
+                while index < pixels.len() && pixels[index].a == 255 {
+                    index += 1;
+                }
+                let run = &mut pixels[run_start..index];
+                let mut quads = run.chunks_exact_mut(4);
+                for quad in &mut quads {
                     let quad: &mut [Color; 4] = quad
                         .try_into()
                         .expect("chunks_exact_mut always yields four pixels");
                     blend_opaque_quad(quad, color, source_alpha, inverse_source_alpha);
-                } else {
-                    for pixel in quad {
-                        blend_rect_pixel(pixel, &context);
-                    }
                 }
-            }
-            for pixel in pixels.into_remainder() {
-                blend_rect_pixel(pixel, &context);
+                for pixel in quads.into_remainder() {
+                    blend_rect_pixel(pixel, &context);
+                }
             }
         }
     });
@@ -5272,5 +5285,84 @@ mod horizontal_line_simd_tests {
             color,
         );
         assert_eq!(actual, expected);
+    }
+}
+
+
+#[cfg(test)]
+mod blend_rect_opaque_run_tests {
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn large_blend_rect_matches_scalar_with_fragmented_opaque_runs() {
+        let mut initial = Framebuffer::new(43, 17, Color::BLACK).unwrap();
+        for (index, pixel) in initial.pixels_mut().iter_mut().enumerate() {
+            *pixel = Color::rgba(
+                (index * 19 % 256) as u8,
+                (index * 37 % 256) as u8,
+                (index * 53 % 256) as u8,
+                match index % 11 {
+                    0 | 1 | 5 => 255,
+                    2 => 0,
+                    _ => (index * 23 % 254 + 1) as u8,
+                },
+            );
+        }
+        let source = Color::rgba(219, 83, 147, 139);
+        let rect = Rect::new(3, 2, 37, 13);
+
+        let mut expected = initial.clone();
+        for y in 2..15 {
+            for x in 3..40 {
+                let pixel = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(x, y, source.blend_over(pixel));
+            }
+        }
+
+        let mut serial = initial.clone();
+        super::blend_rect(&mut serial, rect, source);
+        assert_eq!(serial, expected);
+
+        for thread_count in [0, 1, 2, 4, 32] {
+            let mut parallel = initial.clone();
+            super::blend_rect_parallel_with_threads(
+                &mut parallel,
+                rect,
+                source,
+                thread_count,
+            );
+            assert_eq!(parallel, expected, "thread count {thread_count}");
+        }
+    }
+
+    #[test]
+    fn large_blend_rect_clips_opaque_runs_and_preserves_untouched_pixels() {
+        let mut actual = Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap();
+        let mut expected = actual.clone();
+        let source = Color::rgba(230, 70, 110, 177);
+        for y in 0..9 {
+            for x in 0..19 {
+                if (x + y) % 3 == 0 {
+                    let old = expected.get_pixel(x, y).unwrap();
+                    expected.set_pixel(x, y, source.blend_over(old));
+                }
+            }
+        }
+        super::blend_rect(
+            &mut actual,
+            Rect::new(0, 0, 19, 9),
+            Color::TRANSPARENT,
+        );
+        assert_eq!(actual, Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap());
+
+        // A clipped, non-zero-alpha draw exercises the SIMD path and scalar
+        // fallback at both edges of every affected row.
+        let clipped = Rect::new(0, 0, 19, 9);
+        super::blend_rect(&mut actual, clipped, source);
+        let mut reference = Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap();
+        for pixel in reference.pixels_mut() {
+            *pixel = source.blend_over(*pixel);
+        }
+        assert_eq!(actual, reference);
     }
 }
