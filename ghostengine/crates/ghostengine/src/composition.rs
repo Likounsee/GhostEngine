@@ -379,9 +379,12 @@ pub fn compose_layers_parallel_with_threads(
                 if first_row >= last_row {
                     continue;
                 }
+                let first_pixel = (first_row - row_origin) as usize * width;
+                let last_pixel = (last_row - row_origin) as usize * width;
+                let target_rows = &mut pixels[first_pixel..last_pixel];
                 scope.spawn(move || {
                     compose_transformed_layer_rows(
-                        pixels, width, layer, clip, prepared, first_row, last_row, row_origin,
+                        target_rows, width, layer, clip, prepared, first_row, last_row,
                     );
                 });
             }
@@ -648,16 +651,10 @@ fn compose_transformed_layer(
     };
     let width = target.width() as usize;
     let end_y = clip.y + clip.height;
-    compose_transformed_layer_rows(
-        target.pixels_mut(),
-        width,
-        layer,
-        clip,
-        prepared,
-        clip.y,
-        end_y,
-        0,
-    );
+    let first_pixel = clip.y as usize * width;
+    let last_pixel = end_y as usize * width;
+    let target_rows = &mut target.pixels_mut()[first_pixel..last_pixel];
+    compose_transformed_layer_rows(target_rows, width, layer, clip, prepared, clip.y, end_y);
 }
 
 fn compose_transformed_layer_rows(
@@ -668,7 +665,6 @@ fn compose_transformed_layer_rows(
     prepared: PreparedTransformedLayer,
     row_start: u32,
     row_end: u32,
-    row_origin: u32,
 ) {
     let inverse = prepared.inverse;
     let left = clip.x;
@@ -733,7 +729,7 @@ fn compose_transformed_layer_rows(
         } else {
             None
         };
-        let row_offset = (y - row_origin) as usize * target_width;
+        let row_offset = (y - row_start) as usize * target_width;
         let Some(destination_row) = target_pixels.get_mut(row_offset..row_offset + target_width)
         else {
             continue;
