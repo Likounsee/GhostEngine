@@ -27,6 +27,7 @@ pub mod stroke;
 pub mod text;
 pub mod texture;
 pub mod texture_atlas;
+pub mod texture_cache;
 pub mod transform;
 pub mod ui;
 
@@ -120,6 +121,7 @@ pub use texture_atlas::{
     draw_atlas_region_clipped, AtlasRegion, TextureAtlas, TextureAtlasBuilder,
     TextureAtlasError,
 };
+pub use texture_cache::{TextureCache, TextureCacheError, TextureCacheStats, TextureHandle};
 pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_button_aa, draw_checkbox, draw_combo_box, draw_divider, draw_label,
