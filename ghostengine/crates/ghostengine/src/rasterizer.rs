@@ -4699,7 +4699,7 @@ mod rounded_rectangle_aa_fill_tests {
                 Color::rgba(220, 70, 35, 173),
             ),
             (
-                Rect::new(-4, 5, 19, 14),
+                Rect::new(24, 5, 19, 14),
                 9,
                 Color::rgba(25, 180, 120, 211),
             ),
