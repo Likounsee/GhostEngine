@@ -870,33 +870,99 @@ pub fn draw_texture_clipped_with_scratch(
                         }
                     }
                 }
-            } else {
+            } else if texture.fully_opaque {
                 for (pixel, &(x0, x1, tx)) in row[first_x as usize..end_x as usize]
                     .iter_mut()
                     .zip(samples.iter())
                 {
-                    let coordinates = BilinearCoordinates {
-                        x0,
-                        x1,
-                        y0,
-                        y1,
-                        tx,
-                        ty,
-                    };
-                    if texture.fully_opaque {
-                        *pixel = sample_bilinear_opaque_prepared(
-                            &texture.pixels,
-                            row_width,
-                            coordinates,
-                        );
+                    *pixel = sample_bilinear_opaque_prepared(
+                        &texture.pixels,
+                        row_width,
+                        BilinearCoordinates {
+                            x0,
+                            x1,
+                            y0,
+                            y1,
+                            tx,
+                            ty,
+                        },
+                    );
+                }
+            } else {
+                let mut pixel_quads =
+                    row[first_x as usize..end_x as usize].chunks_exact_mut(4);
+                let mut sample_quads = samples.chunks_exact(4);
+                for (pixels, coordinates) in
+                    pixel_quads.by_ref().zip(sample_quads.by_ref())
+                {
+                    if pixels.iter().all(|pixel| pixel.a == 255) {
+                        let sample = |&(x0, x1, tx): &(usize, usize, f32)| {
+                            sample_bilinear_prepared(
+                                &texture.pixels,
+                                row_width,
+                                BilinearCoordinates {
+                                    x0,
+                                    x1,
+                                    y0,
+                                    y1,
+                                    tx,
+                                    ty,
+                                },
+                            )
+                        };
+                        let sources = [
+                            sample(&coordinates[0]),
+                            sample(&coordinates[1]),
+                            sample(&coordinates[2]),
+                            sample(&coordinates[3]),
+                        ];
+                        let pixels: &mut [Color; 4] = pixels
+                            .try_into()
+                            .expect("chunks_exact_mut always yields four pixels");
+                        blend_variable_opaque_quad(pixels, sources);
                     } else {
-                        let color =
-                            sample_bilinear_prepared(&texture.pixels, row_width, coordinates);
-                        if color.a == 255 {
-                            *pixel = color;
-                        } else if color.a > 0 {
-                            *pixel = color.blend_over(*pixel);
+                        for (pixel, &(x0, x1, tx)) in pixels.iter_mut().zip(coordinates) {
+                            let color = sample_bilinear_prepared(
+                                &texture.pixels,
+                                row_width,
+                                BilinearCoordinates {
+                                    x0,
+                                    x1,
+                                    y0,
+                                    y1,
+                                    tx,
+                                    ty,
+                                },
+                            );
+                            if color.a == 255 {
+                                *pixel = color;
+                            } else if color.a > 0 {
+                                *pixel = color.blend_over(*pixel);
+                            }
                         }
+                    }
+                }
+                for (pixel, &(x0, x1, tx)) in pixel_quads
+                    .into_remainder()
+                    .iter_mut()
+                    .zip(sample_quads.remainder())
+                {
+                    let color = sample_bilinear_prepared(
+                        &texture.pixels,
+                        row_width,
+                        BilinearCoordinates {
+                            x0,
+                            x1,
+                            y0,
+                            y1,
+                            tx,
+                            ty,
+                        },
+                    );
+                    if color.a == 255 {
+                        *pixel = color;
+                    } else if color.a > 0 {
+                        *pixel = color.blend_over(*pixel);
                     }
                 }
             }
