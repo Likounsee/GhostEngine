@@ -78,7 +78,7 @@ pub use path::{
 pub use path_cache::PathGeometryCache;
 pub use rasterizer::{
     blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
-    draw_arc_aa, draw_arc_aa_with_scratch, draw_circle_aa, draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_parallel, draw_ellipse_aa_parallel_with_threads, draw_ellipse_aa_with_scratch, draw_polygon_aa, draw_polygon_aa_with_scratch, draw_rect_aa, draw_rect_aa_with_scratch, draw_rounded_rect, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
+    draw_arc_aa, draw_arc_aa_parallel, draw_arc_aa_parallel_with_threads, draw_arc_aa_with_scratch, draw_circle_aa, draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_parallel, draw_ellipse_aa_parallel_with_threads, draw_ellipse_aa_with_scratch, draw_polygon_aa, draw_polygon_aa_with_scratch, draw_rect_aa, draw_rect_aa_with_scratch, draw_rounded_rect, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
     draw_rounded_rect_aa, draw_triangle_aa, draw_triangle_aa_with_scratch, fill_arc_aa, fill_arc_aa_with_scratch, fill_circle_aa, fill_circle_aa_with_scratch, fill_ellipse_aa_with_scratch, fill_ellipse_aa_parallel, fill_ellipse_aa_parallel_with_threads,
     fill_polygon_aa, fill_polygon_aa_parallel, fill_polygon_aa_parallel_with_threads,
     fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads, fill_polygon_with_scratch, fill_rect_clipped,
