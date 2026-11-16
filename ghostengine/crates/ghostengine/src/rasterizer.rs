@@ -1898,8 +1898,9 @@ fn accumulate_polygon_span_edges(
     // with a contiguous coverage update and reserve scalar tests for the edges.
     let interior_start = ((span_left - OFFSETS[0]).ceil() as i64)
         .clamp(i64::from(start_x), i64::from(end_x)) as u32;
-    let interior_end = ((span_right - OFFSETS[3]).ceil() as i64)
-        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+    let interior_end = (((span_right - OFFSETS[3]).ceil() as i64)
+        .clamp(i64::from(start_x), i64::from(end_x)) as u32)
+        .max(interior_start);
 
     for x in start_x..interior_start {
         let base = f64::from(x);
