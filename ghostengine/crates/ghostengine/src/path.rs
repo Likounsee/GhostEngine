@@ -524,6 +524,169 @@ pub fn fill_transformed_path_non_zero_clipped(
     Ok(())
 }
 
+/// Fills a transformed path with antialiased non-zero winding coverage.
+pub fn fill_path_non_zero_aa(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero_aa_clipped(
+        target,
+        path,
+        Transform2D::IDENTITY,
+        color,
+        tolerance,
+        Rect::new(0, 0, target.width(), target.height()),
+    )
+}
+
+/// Fills a path with antialiased non-zero winding coverage inside a clip rectangle.
+pub fn fill_path_non_zero_aa_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero_aa_clipped(
+        target, path, Transform2D::IDENTITY, color, tolerance, clip,
+    )
+}
+
+/// Flattens and transforms a path before antialiased non-zero winding filling.
+pub fn fill_transformed_path_non_zero_aa(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero_aa_clipped(
+        target,
+        path,
+        transform,
+        color,
+        tolerance,
+        Rect::new(0, 0, target.width(), target.height()),
+    )
+}
+
+/// Antialiased non-zero winding fill restricted to a framebuffer-space viewport.
+pub fn fill_transformed_path_non_zero_aa_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
+    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    if color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return Ok(());
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
+    let mut edges = flattened.subpaths.iter()
+        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+        .flat_map(|subpath| (0..subpath.points.len()).filter_map(move |index| {
+            FillEdge::new(
+                subpath.points[index],
+                subpath.points[(index + 1) % subpath.points.len()],
+            )
+        }))
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return Ok(());
+    }
+
+    let (path_min_x, path_min_y, path_max_x, path_max_y) = edges.iter().fold(
+        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+        |(min_x, min_y, max_x, max_y), edge| (
+            min_x.min(edge.min_x.min(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y))),
+            min_y.min(edge.min_y),
+            max_x.max(edge.min_x.max(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y))),
+            max_y.max(edge.max_y),
+        ),
+    );
+    let min_x = path_min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
+    let max_x = path_max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let min_y = path_min_y.floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let max_y = path_max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    if min_x >= max_x || min_y >= max_y {
+        return Ok(());
+    }
+
+    edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
+    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut intersections: Vec<(f32, i32)> = Vec::with_capacity(edges.len());
+    let mut coverage = vec![0_u8; (max_x - min_x) as usize];
+    let mut next_edge = 0_usize;
+
+    for y in min_y..max_y {
+        coverage.fill(0);
+        for offset_y in OFFSETS {
+            let sample_y = y as f32 + offset_y;
+            while next_edge < edges.len() && edges[next_edge].min_y <= sample_y {
+                let edge = edges[next_edge];
+                if edge.crosses(sample_y) {
+                    active_edges.push(edge);
+                }
+                next_edge += 1;
+            }
+            active_edges.retain(|edge| edge.crosses(sample_y));
+            intersections.clear();
+            intersections.extend(active_edges.iter().map(|edge| (edge.x_at(sample_y), edge.winding)));
+            intersections.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
+
+            let mut winding = 0_i32;
+            let mut previous_x = 0.0_f32;
+            let mut index = 0_usize;
+            while index < intersections.len() {
+                let x = intersections[index].0;
+                if winding != 0 && previous_x < x {
+                    let span_start = ((previous_x - 0.875).floor() as i64)
+                        .max(i64::from(min_x)).min(i64::from(max_x)) as u32;
+                    let span_end = ((x - 0.125).ceil() as i64)
+                        .max(i64::from(min_x)).min(i64::from(max_x)) as u32;
+                    for pixel_x in span_start..span_end {
+                        for offset_x in OFFSETS {
+                            let sample_x = pixel_x as f32 + offset_x;
+                            if previous_x <= sample_x && sample_x < x {
+                                coverage[(pixel_x - min_x) as usize] += 1;
+                            }
+                        }
+                    }
+                }
+                while index < intersections.len() && intersections[index].0 == x {
+                    winding += intersections[index].1;
+                    index += 1;
+                }
+                previous_x = x;
+            }
+        }
+
+        let Some(row) = target.row_mut(y) else { continue };
+        for (offset, &covered) in coverage.iter().enumerate() {
+            if covered == 0 {
+                continue;
+            }
+            let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
+            if alpha == 0 {
+                continue;
+            }
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            let index = min_x as usize + offset;
+            row[index] = if alpha == 255 { source } else { source.blend_over(row[index]) };
+        }
+    }
+    Ok(())
+}
+
 /// Fills a path with 4x4 supersampled edge coverage and source-over blending.
 pub fn fill_path_even_odd_aa(
     target: &mut Framebuffer,
@@ -1155,6 +1318,47 @@ mod tests {
         reference_full_scan(&mut reference, &path, color, clip);
 
         assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
+    fn non_zero_antialiased_fill_preserves_same_direction_nested_contours() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.25, 0.25))
+            .line_to(Vector::new(8.25, 0.25))
+            .line_to(Vector::new(8.25, 8.25))
+            .line_to(Vector::new(0.25, 8.25))
+            .close();
+        path.move_to(Vector::new(2.0, 2.0))
+            .line_to(Vector::new(6.0, 2.0))
+            .line_to(Vector::new(6.0, 6.0))
+            .line_to(Vector::new(2.0, 6.0))
+            .close();
+
+        let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
+        super::fill_path_non_zero_aa(&mut target, &path, Color::WHITE, 0.2).unwrap();
+        assert_eq!(target.get_pixel(4, 4), Some(Color::WHITE));
+        assert!(target.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+    }
+
+    #[test]
+    fn non_zero_antialiased_fill_respects_opposite_winding_holes() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(8.0, 0.0))
+            .line_to(Vector::new(8.0, 8.0))
+            .line_to(Vector::new(0.0, 8.0))
+            .close();
+        path.move_to(Vector::new(2.0, 2.0))
+            .line_to(Vector::new(2.0, 6.0))
+            .line_to(Vector::new(6.0, 6.0))
+            .line_to(Vector::new(6.0, 2.0))
+            .close();
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        super::fill_path_non_zero_aa_clipped(
+            &mut target, &path, Color::WHITE, 0.2, Rect::new(1, 1, 6, 6),
+        ).unwrap();
+        assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::WHITE));
     }
 
     #[test]
