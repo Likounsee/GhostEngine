@@ -1375,7 +1375,10 @@ fn render_layer_group_into(
     for child in &group.children {
         match child {
             LayerGroupChild::Layer(layer) => {
-                compose_layers(scratch.layers[depth].framebuffer_mut(), std::slice::from_ref(layer));
+                compose_layers(
+                    scratch.layers[depth].framebuffer_mut(),
+                    std::slice::from_ref(layer),
+                );
             }
             LayerGroupChild::Group(nested) => {
                 if !nested.visible || nested.opacity == 0 {
