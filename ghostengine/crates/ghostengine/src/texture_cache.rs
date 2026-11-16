@@ -34,6 +34,8 @@ pub enum TextureCacheError {
     TextureExceedsBudget { texture_bytes: usize, budget_bytes: usize },
     /// The cache-local handle counter has reached its maximum value.
     HandleExhausted,
+    /// The cache cannot fit the texture without evicting retained entries.
+    CacheFullyRetained,
 }
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ struct Entry {
     texture: Texture,
     bytes: usize,
     last_used: u64,
+    retain_count: usize,
 }
 
 /// A bounded LRU cache for immutable textures.
@@ -100,10 +103,17 @@ impl TextureCache {
             .checked_add(1)
             .ok_or(TextureCacheError::HandleExhausted)?;
 
+        let required_bytes = self.used_bytes.saturating_add(bytes).saturating_sub(self.budget_bytes);
+        let reclaimable_bytes = self.entries.values()
+            .filter(|entry| entry.retain_count == 0)
+            .map(|entry| entry.bytes)
+            .sum::<usize>();
+        if reclaimable_bytes < required_bytes {
+            return Err(TextureCacheError::CacheFullyRetained);
+        }
         while self.used_bytes > self.budget_bytes - bytes {
-            if !self.evict_least_recently_used() {
-                break;
-            }
+            let evicted = self.evict_least_recently_used();
+            debug_assert!(evicted, "reclaimable cache capacity was precomputed");
         }
 
         self.clock = self.clock.saturating_add(1);
@@ -113,6 +123,7 @@ impl TextureCache {
                 texture,
                 bytes,
                 last_used: self.clock,
+                retain_count: 0,
             },
         );
         self.used_bytes += bytes;
@@ -134,6 +145,35 @@ impl TextureCache {
                 None
             }
         }
+    }
+
+    /// Retains a cached texture so automatic eviction cannot remove it.
+    ///
+    /// Call release when the component or resource owner no longer needs it.
+    pub fn retain(&mut self, handle: TextureHandle) -> bool {
+        let Some(entry) = self.entries.get_mut(&handle) else {
+            return false;
+        };
+        entry.retain_count = entry.retain_count.saturating_add(1);
+        true
+    }
+
+    /// Releases one retained reference. Returns false for missing or unretained handles.
+    pub fn release(&mut self, handle: TextureHandle) -> bool {
+        let Some(entry) = self.entries.get_mut(&handle) else {
+            return false;
+        };
+        if entry.retain_count == 0 {
+            return false;
+        }
+        entry.retain_count -= 1;
+        true
+    }
+
+    /// Returns the number of active retained references for a handle.
+    #[must_use]
+    pub fn retain_count(&self, handle: TextureHandle) -> Option<usize> {
+        self.entries.get(&handle).map(|entry| entry.retain_count)
     }
 
     /// Reads a texture without changing LRU order or hit/miss counters.
@@ -194,6 +234,7 @@ impl TextureCache {
         let candidate = self
             .entries
             .iter()
+            .filter(|(_, entry)| entry.retain_count == 0)
             .min_by_key(|(_, entry)| entry.last_used)
             .map(|(handle, _)| *handle);
         let Some(handle) = candidate else {
@@ -299,6 +340,49 @@ mod tests {
 
         assert!(cache.peek(first).is_none());
         assert!(cache.peek(second).is_some());
+    }
+
+    #[test]
+    fn retained_textures_are_not_evicted_until_released() {
+        let mut cache = TextureCache::new(16);
+        let retained = cache.insert(texture(Color::RED, 2)).unwrap();
+        let evictable = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        assert!(cache.retain(retained));
+        let newest = cache.insert(texture(Color::GREEN, 2)).unwrap();
+
+        assert!(cache.peek(retained).is_some());
+        assert!(cache.peek(evictable).is_none());
+        assert!(cache.peek(newest).is_some());
+        assert_eq!(cache.retain_count(retained), Some(1));
+        assert!(cache.release(retained));
+        assert_eq!(cache.retain_count(retained), Some(0));
+    }
+
+    #[test]
+    fn insertion_fails_without_evicting_when_all_entries_are_retained() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        assert!(cache.retain(first));
+        assert!(cache.retain(second));
+
+        assert_eq!(
+            cache.insert(texture(Color::GREEN, 2)),
+            Err(TextureCacheError::CacheFullyRetained)
+        );
+        assert!(cache.peek(first).is_some());
+        assert!(cache.peek(second).is_some());
+        assert_eq!(cache.stats().entries, 2);
+        assert_eq!(cache.stats().used_bytes, 16);
+    }
+
+    #[test]
+    fn explicit_removal_releases_retained_texture() {
+        let mut cache = TextureCache::new(16);
+        let handle = cache.insert(texture(Color::RED, 2)).unwrap();
+        assert!(cache.retain(handle));
+        assert_eq!(cache.remove(handle).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(cache.stats().used_bytes, 0);
     }
 
     #[test]
