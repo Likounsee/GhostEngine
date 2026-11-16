@@ -151,24 +151,44 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         let left = x0.min(x1) as usize;
         let right = x0.max(x1) as usize;
         if let Some(row) = target.row_mut(y0 as u32) {
-            let mut pixels = row[left..=right].chunks_exact_mut(4);
+            let pixels = &mut row[left..=right];
             let source_alpha = u32::from(color.a);
-            for quad in &mut pixels {
-                if quad.iter().all(|pixel| pixel.a == u8::MAX) {
+            let inverse_source_alpha = 255 - source_alpha;
+            let mut index = 0;
+            while index < pixels.len() {
+                if pixels[index].a == 0 {
+                    let run_start = index;
+                    while index < pixels.len() && pixels[index].a == 0 {
+                        index += 1;
+                    }
+                    pixels[run_start..index].fill(color);
+                    continue;
+                }
+                if pixels[index].a != u8::MAX {
+                    pixels[index] = color.blend_over(pixels[index]);
+                    index += 1;
+                    continue;
+                }
+
+                // SIMD batches are formed from complete opaque runs, so
+                // isolated translucent pixels do not disable vectorization
+                // for neighboring opaque destinations.
+                let run_start = index;
+                while index < pixels.len() && pixels[index].a == u8::MAX {
+                    index += 1;
+                }
+                let mut quads = pixels[run_start..index].chunks_exact_mut(4);
+                for quad in &mut quads {
                     blend_opaque_quad(
                         quad.try_into().expect("four destination pixels"),
                         color,
                         source_alpha,
-                        255 - source_alpha,
+                        inverse_source_alpha,
                     );
-                } else {
-                    for pixel in quad {
-                        *pixel = color.blend_over(*pixel);
-                    }
                 }
-            }
-            for pixel in pixels.into_remainder() {
-                *pixel = color.blend_over(*pixel);
+                for pixel in quads.into_remainder() {
+                    *pixel = color.blend_over(*pixel);
+                }
             }
         }
         return;
