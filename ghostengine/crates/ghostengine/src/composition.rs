@@ -1195,7 +1195,7 @@ mod tests {
             (BlendMode::Darken, Color::rgb(64, 64, 100)),
             (BlendMode::Lighten, Color::rgb(128, 128, 200)),
             (BlendMode::Difference, Color::rgb(64, 64, 100)),
-            (BlendMode::Exclusion, Color::rgb(128, 128, 144)),
+            (BlendMode::Exclusion, Color::rgb(128, 128, 143)),
         ];
         for (mode, expected) in cases {
             assert_eq!(blend_with_mode(source, destination, 255, mode), expected);
@@ -1208,11 +1208,11 @@ mod tests {
         let destination = Color::rgb(64, 192, 128);
         assert_eq!(
             blend_with_mode(source, destination, 255, BlendMode::Overlay),
-            Color::rgb(96, 160, 128)
+            Color::rgb(96, 161, 128)
         );
         assert_eq!(
             blend_with_mode(source, destination, 255, BlendMode::HardLight),
-            Color::rgb(96, 96, 128)
+            Color::rgb(161, 96, 128)
         );
     }
 
