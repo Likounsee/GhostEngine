@@ -4675,3 +4675,80 @@ mod rasterizer_scratch_tests {
         assert_eq!(target, expected);
     }
 }
+
+#[cfg(test)]
+mod transformed_radial_gradient_simd_tests {
+    use crate::{Color, Framebuffer, Gradient, GradientStop, Rect, Transform2D, Vector};
+
+    #[test]
+    fn transformed_radial_gradient_simd_matches_scalar_for_opaque_and_translucent_targets() {
+        let gradient = Gradient::new(vec![
+            GradientStop {
+                position: 0.0,
+                color: Color::rgba(230, 30, 70, 255),
+            },
+            GradientStop {
+                position: 0.4,
+                color: Color::rgba(20, 190, 230, 173),
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::rgba(240, 210, 30, 35),
+            },
+        ])
+        .unwrap();
+        let rect = Rect::new(2, 3, 19, 13);
+        let transform = Transform2D::translation(13.0, 7.0)
+            .then(Transform2D::rotation(0.23))
+            .then(Transform2D::scale(1.2, 0.9));
+        let center = Vector::new(11.5, 8.0);
+        let radius = 9.75;
+        let inverse = transform.inverse().unwrap();
+
+        for translucent in [false, true] {
+            let mut actual = Framebuffer::new(64, 48, Color::BLACK).unwrap();
+            for (index, pixel) in actual.pixels_mut().iter_mut().enumerate() {
+                let alpha = if translucent {
+                    (index % 256) as u8
+                } else {
+                    255
+                };
+                *pixel = Color::rgba(
+                    (index % 251) as u8,
+                    (index % 193) as u8,
+                    (index % 157) as u8,
+                    alpha,
+                );
+            }
+            let mut expected = actual.clone();
+
+            assert!(super::fill_transformed_rect_radial_gradient_clipped(
+                &mut actual,
+                rect,
+                transform,
+                center,
+                radius,
+                &gradient,
+                Rect::new(0, 0, 64, 48),
+            ));
+
+            for y in 0..expected.height() {
+                for x in 0..expected.width() {
+                    let local = inverse.transform_point(Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+                    if local.x < rect.x as f32
+                        || local.y < rect.y as f32
+                        || local.x >= rect.x.saturating_add(rect.width) as f32
+                        || local.y >= rect.y.saturating_add(rect.height) as f32
+                    {
+                        continue;
+                    }
+                    let position = (local.x - center.x).hypot(local.y - center.y) / radius;
+                    let source = gradient.sample_raster(position);
+                    let destination = expected.get_pixel(x, y).unwrap();
+                    expected.set_pixel(x, y, source.blend_over(destination));
+                }
+            }
+            assert_eq!(actual, expected, "translucent destination: {translucent}");
+        }
+    }
+}
