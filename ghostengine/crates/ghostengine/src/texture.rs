@@ -930,6 +930,41 @@ pub fn draw_texture_clipped_parallel_with_threads(
         Vec::new()
     };
 
+    // Share precomputed premultiplied horizontal samples across worker threads.
+    // Bound memory use and keep the direct sampler for short or very wide draws.
+    let horizontal_cache: Vec<[f32; 4]> = if filter == TextureFilter::Bilinear {
+        let cache_len = (texture.height as usize).checked_mul(horizontal_samples.len());
+        let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+        if end_y - first_y >= u64::from(texture.height) * 2
+            && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024)
+        {
+            let mut cache = Vec::with_capacity(cache_len.unwrap());
+            let row_width = texture.width as usize;
+            for source_row in 0..texture.height as usize {
+                let source_offset = source_row * row_width;
+                for sample in &horizontal_samples {
+                    let left = texture.pixels[source_offset + sample.x0];
+                    let right = texture.pixels[source_offset + sample.x1];
+                    let inverse_x = 1.0 - sample.tx;
+                    let left_alpha = f32::from(left.a) * inverse_x;
+                    let right_alpha = f32::from(right.a) * sample.tx;
+                    cache.push([
+                        f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                        f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                        f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                        left_alpha + right_alpha,
+                    ]);
+                }
+            }
+            cache
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    let use_horizontal_cache = !horizontal_cache.is_empty();
+
     std::thread::scope(|scope| {
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
