@@ -1756,6 +1756,7 @@ pub struct RasterizerScratch {
     aa_intersections: Vec<f64>,
     aa_coverage: Vec<u8>,
     ellipse_aa_coverage: Vec<u8>,
+    arc_aa_sources: Vec<Color>,
 }
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
@@ -2574,6 +2575,21 @@ pub fn draw_arc_aa(
     end_angle: f32,
     color: Color,
 ) {
+    let mut scratch = RasterizerScratch::default();
+    draw_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, &mut scratch);
+}
+
+/// Draws an antialiased arc while reusing caller-owned scanline color storage.
+pub fn draw_arc_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+,
+    scratch: &mut RasterizerScratch,
+) {
     use core::f64::consts::TAU;
 
     if color.a == 0
@@ -2615,7 +2631,8 @@ pub fn draw_arc_aa(
     }
 
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
+    let sources = &mut scratch.arc_aa_sources;
+    sources.resize((right - left) as usize, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -2683,8 +2700,8 @@ pub fn draw_arc_aa(
             }
         }
     }
-}
 
+}
 /// Fills an anti-aliased circular sector (pie slice).
 ///
 /// Angles are radians measured from the positive X axis. Positive sweeps are
@@ -2698,6 +2715,21 @@ pub fn fill_arc_aa(
     start_angle: f32,
     end_angle: f32,
     color: Color,
+) {
+    let mut scratch = RasterizerScratch::default();
+    fill_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, &mut scratch);
+}
+
+/// Fills an antialiased arc sector while reusing caller-owned scanline color storage.
+pub fn fill_arc_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+,
+    scratch: &mut RasterizerScratch,
 ) {
     use core::f64::consts::TAU;
 
@@ -2735,7 +2767,8 @@ pub fn fill_arc_aa(
     // Compute one source row, then composite contiguous opaque destination
     // runs. This lets SIMD groups cross the old four-pixel chunk boundaries.
     const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
-    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
+    let sources = &mut scratch.arc_aa_sources;
+    sources.resize((right - left) as usize, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -2804,8 +2837,8 @@ pub fn fill_arc_aa(
             }
         }
     }
-}
 
+}
 /// Fills a circle with anti-aliased edge coverage.
 pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     fill_ellipse_aa(target, center, radius, radius, color);
