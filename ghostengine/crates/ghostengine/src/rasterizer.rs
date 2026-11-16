@@ -2488,24 +2488,21 @@ pub fn draw_ellipse_aa(
             {
                 index += 1;
             }
-            let mut destination_quads = destinations[run_start..index].chunks_exact_mut(4);
-            let mut source_quads = sources[run_start..index].chunks_exact(4);
-            for destination_quad in &mut destination_quads {
-                let source_quad: [Color; 4] = source_quads
-                    .next()
-                    .expect("source and destination runs have equal lengths")
+            let mut quad_start = run_start;
+            while quad_start + 4 <= index {
+                let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = destination_quad
+                let destination_quad: &mut [Color; 4] = destinations
+                    [quad_start..quad_start + 4]
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
+                quad_start += 4;
             }
-            for (destination, source) in destination_quads.into_remainder()
-                .iter_mut()
-                .zip(source_quads)
-            {
-                *destination = source.blend_over(*destination);
+            for pixel_index in quad_start..index {
+                destinations[pixel_index] =
+                    sources[pixel_index].blend_over(destinations[pixel_index]);
             }
         }
     }
@@ -2567,60 +2564,11 @@ pub fn draw_arc_aa(
     }
 
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     for y in top..bottom {
-        let Some(row) = target.row_mut(y) else {
-            continue;
-        };
-        let row = &mut row[left as usize..right as usize];
-        let vectorized_len = row.len() / 4 * 4;
-        let (vectorized, tail) = row.split_at_mut(vectorized_len);
-        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
-            let x_base = left + quad_index as u32 * 4;
-            let mut sources = [Color::TRANSPARENT; 4];
-            let mut has_coverage = false;
-            for lane in 0..4 {
-                let x = x_base + lane as u32;
-                let mut covered = 0_u32;
-                for offset_y in SAMPLE_OFFSETS {
-                    let dy = f64::from(y) + offset_y - cy;
-                    for offset_x in SAMPLE_OFFSETS {
-                        let dx = f64::from(x) + offset_x - cx;
-                        if (dx.hypot(dy) - radius).abs() > 0.5 {
-                            continue;
-                        }
-                        if !full_circle {
-                            let angle = dy.atan2(dx).rem_euclid(TAU);
-                            if (angle - start).rem_euclid(TAU) > sweep {
-                                continue;
-                            }
-                        }
-                        covered += 1;
-                    }
-                }
-                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-                if alpha != 0 {
-                    sources[lane] = Color::rgba(color.r, color.g, color.b, alpha);
-                    has_coverage = true;
-                }
-            }
-            if !has_coverage {
-                continue;
-            }
-            if destinations.iter().all(|pixel| pixel.a == 255) {
-                blend_variable_opaque_quad(
-                    destinations.try_into().expect("four destination pixels"),
-                    sources,
-                );
-            } else {
-                for (destination, source) in destinations.iter_mut().zip(sources) {
-                    if source.a != 0 {
-                        *destination = source.blend_over(*destination);
-                    }
-                }
-            }
-        }
-        for (index, destination) in tail.iter_mut().enumerate() {
-            let x = left + vectorized_len as u32 + index as u32;
+        sources.fill(Color::TRANSPARENT);
+        for (index, source) in sources.iter_mut().enumerate() {
+            let x = left + index as u32;
             let mut covered = 0_u32;
             for offset_y in SAMPLE_OFFSETS {
                 let dy = f64::from(y) + offset_y - cy;
@@ -2638,9 +2586,49 @@ pub fn draw_arc_aa(
                     covered += 1;
                 }
             }
-            let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-            if alpha != 0 {
-                *destination = Color::rgba(color.r, color.g, color.b, alpha).blend_over(*destination);
+            if covered != 0 {
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                *source = Color::rgba(color.r, color.g, color.b, alpha);
+            }
+        }
+
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        let destinations = &mut row[left as usize..right as usize];
+        let mut index = 0;
+        while index < destinations.len() {
+            if sources[index].a == 0 {
+                index += 1;
+                continue;
+            }
+            if destinations[index].a != u8::MAX {
+                destinations[index] = sources[index].blend_over(destinations[index]);
+                index += 1;
+                continue;
+            }
+            let run_start = index;
+            while index < destinations.len()
+                && destinations[index].a == u8::MAX
+                && sources[index].a != 0
+            {
+                index += 1;
+            }
+            let mut quad_start = run_start;
+            while quad_start + 4 <= index {
+                let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four source pixels");
+                let destination_quad: &mut [Color; 4] = destinations
+                    [quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four destination pixels");
+                blend_variable_opaque_quad(destination_quad, source_quad);
+                quad_start += 4;
+            }
+            for pixel_index in quad_start..index {
+                destinations[pixel_index] =
+                    sources[pixel_index].blend_over(destinations[pixel_index]);
             }
         }
     }
@@ -2747,24 +2735,21 @@ pub fn fill_arc_aa(
             {
                 index += 1;
             }
-            let mut destination_quads = destinations[run_start..index].chunks_exact_mut(4);
-            let mut source_quads = sources[run_start..index].chunks_exact(4);
-            for destination_quad in &mut destination_quads {
-                let source_quad: [Color; 4] = source_quads
-                    .next()
-                    .expect("source and destination runs have equal lengths")
+            let mut quad_start = run_start;
+            while quad_start + 4 <= index {
+                let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = destination_quad
+                let destination_quad: &mut [Color; 4] = destinations
+                    [quad_start..quad_start + 4]
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
+                quad_start += 4;
             }
-            for (destination, source) in destination_quads.into_remainder()
-                .iter_mut()
-                .zip(source_quads)
-            {
-                *destination = source.blend_over(*destination);
+            for pixel_index in quad_start..index {
+                destinations[pixel_index] =
+                    sources[pixel_index].blend_over(destinations[pixel_index]);
             }
         }
     }
