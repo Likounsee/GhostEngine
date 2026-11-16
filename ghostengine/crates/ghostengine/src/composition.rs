@@ -176,6 +176,18 @@ pub enum BlendMode {
     Screen,
     /// Adds source and destination channels, clamping at full intensity.
     Add,
+    /// Selects the darker channel value.
+    Darken,
+    /// Selects the lighter channel value.
+    Lighten,
+    /// Applies the standard contrast-enhancing overlay formula.
+    Overlay,
+    /// Applies the inverse overlay formula.
+    HardLight,
+    /// Absolute difference between source and destination channels.
+    Difference,
+    /// Exclusion blend, a softer difference operation.
+    Exclusion,
 }
 
 /// A framebuffer-backed layer positioned in the destination coordinate space.
@@ -1132,6 +1144,24 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
             BlendMode::Multiply => source * destination,
             BlendMode::Screen => source + destination - source * destination,
             BlendMode::Add => (source + destination).min(1.0),
+            BlendMode::Darken => source.min(destination),
+            BlendMode::Lighten => source.max(destination),
+            BlendMode::Overlay => {
+                if destination <= 0.5 {
+                    2.0 * source * destination
+                } else {
+                    1.0 - 2.0 * (1.0 - source) * (1.0 - destination)
+                }
+            }
+            BlendMode::HardLight => {
+                if source <= 0.5 {
+                    2.0 * source * destination
+                } else {
+                    1.0 - 2.0 * (1.0 - source) * (1.0 - destination)
+                }
+            }
+            BlendMode::Difference => (source - destination).abs(),
+            BlendMode::Exclusion => source + destination - 2.0 * source * destination,
         };
         let premultiplied = source * source_alpha * (1.0 - destination_alpha)
             + blended * source_alpha * destination_alpha
@@ -1156,6 +1186,53 @@ mod tests {
         compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn blend_modes_produce_expected_opaque_channel_results() {
+        let source = Color::rgb(128, 64, 200);
+        let destination = Color::rgb(64, 128, 100);
+        let cases = [
+            (BlendMode::Darken, Color::rgb(64, 64, 100)),
+            (BlendMode::Lighten, Color::rgb(128, 128, 200)),
+            (BlendMode::Difference, Color::rgb(64, 64, 100)),
+            (BlendMode::Exclusion, Color::rgb(128, 128, 144)),
+        ];
+        for (mode, expected) in cases {
+            assert_eq!(blend_with_mode(source, destination, 255, mode), expected);
+        }
+    }
+
+    #[test]
+    fn overlay_and_hard_light_use_their_respective_base_channels() {
+        let source = Color::rgb(192, 64, 128);
+        let destination = Color::rgb(64, 192, 128);
+        assert_eq!(
+            blend_with_mode(source, destination, 255, BlendMode::Overlay),
+            Color::rgb(96, 160, 128)
+        );
+        assert_eq!(
+            blend_with_mode(source, destination, 255, BlendMode::HardLight),
+            Color::rgb(96, 96, 128)
+        );
+    }
+
+    #[test]
+    fn blend_modes_preserve_source_over_alpha_composition() {
+        let source = Color::rgba(220, 80, 30, 128);
+        let destination = Color::rgba(20, 100, 240, 96);
+        for mode in [
+            BlendMode::Darken,
+            BlendMode::Lighten,
+            BlendMode::Overlay,
+            BlendMode::HardLight,
+            BlendMode::Difference,
+            BlendMode::Exclusion,
+        ] {
+            let result = blend_with_mode(source, destination, 180, mode);
+            assert!(result.a > destination.a);
+            assert!(result.a < 255);
+        }
+    }
 
     #[test]
     fn damage_region_reports_bounds_area_and_full_coverage() {
