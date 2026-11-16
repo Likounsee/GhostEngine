@@ -776,22 +776,17 @@ fn blend_bilinear_over_opaque_rows(
     let weight_top_right = tx * inverse_y;
     let weight_bottom_left = inverse_x * ty;
     let weight_bottom_right = tx * ty;
-    let alpha = (f32::from(top_left.a) * weight_top_left
-        + f32::from(top_right.a) * weight_top_right
-        + f32::from(bottom_left.a) * weight_bottom_left
-        + f32::from(bottom_right.a) * weight_bottom_right)
-        * opacity_factor;
-    if alpha <= f32::EPSILON {
-        return;
-    }
-
     // Fold source alpha and layer opacity into the four bilinear weights once.
-    // The three color channels can then reuse these values, avoiding a second
-    // multiplication by source alpha for every sample/channel pair.
+    // Their sum is the final source alpha, so no separate interpolation pass
+    // is needed before blending the three color channels.
     let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
     let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
     let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
     let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
+    let alpha = alpha_top_left + alpha_top_right + alpha_bottom_left + alpha_bottom_right;
+    if alpha <= f32::EPSILON {
+        return;
+    }
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
         let premultiplied = f32::from(tl) * alpha_top_left
@@ -866,22 +861,17 @@ fn blend_bilinear_over_opaque(
     let weight_top_right = tx * inverse_y;
     let weight_bottom_left = inverse_x * ty;
     let weight_bottom_right = tx * ty;
-    let alpha = (f32::from(top_left.a) * weight_top_left
-        + f32::from(top_right.a) * weight_top_right
-        + f32::from(bottom_left.a) * weight_bottom_left
-        + f32::from(bottom_right.a) * weight_bottom_right)
-        * opacity_factor;
-    if alpha <= f32::EPSILON {
-        return;
-    }
-
     // Fold source alpha and layer opacity into the four bilinear weights once.
-    // The three color channels can then reuse these values, avoiding a second
-    // multiplication by source alpha for every sample/channel pair.
+    // Their sum is the final source alpha, so no separate interpolation pass
+    // is needed before blending the three color channels.
     let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
     let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
     let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
     let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
+    let alpha = alpha_top_left + alpha_top_right + alpha_bottom_left + alpha_bottom_right;
+    if alpha <= f32::EPSILON {
+        return;
+    }
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
         let premultiplied = f32::from(tl) * alpha_top_left
