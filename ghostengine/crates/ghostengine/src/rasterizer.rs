@@ -2305,6 +2305,148 @@ fn accumulate_polygon_span_edges(
     }
 }
 
+/// Fills an antialiased polygon using independent scanline workers.
+///
+/// Every worker computes the four vertical samples for its own rows. The
+/// even-odd coverage rule and source-over compositing match the serial API.
+pub fn fill_polygon_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+) {
+    if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
+    for covered in 1..=16 {
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+    }
+
+    let min_x = vertices.iter().map(|point| point.x).min().unwrap();
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap();
+    let max_x = vertices.iter().map(|point| point.x).max().unwrap();
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    let left = (i64::from(min_x) - 1).max(0) as u32;
+    let top = (i64::from(min_y) - 1).max(0) as u32;
+    let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
+    let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let mut edges = Vec::with_capacity(vertices.len());
+    for index in 0..vertices.len() {
+        if let Some(edge) = PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()]) {
+            edges.push(edge);
+        }
+    }
+    if edges.is_empty() {
+        return;
+    }
+
+    let row_width = target.width() as usize;
+    let span_width = (right - left) as usize;
+    let start = top as usize * row_width;
+    let end = bottom as usize * row_width;
+    process_rows_with_y_mut(
+        &mut target.pixels_mut()[start..end],
+        row_width,
+        top as usize,
+        thread_count,
+        |row, y| {
+            let mut coverage = vec![0_u8; span_width];
+            for offset_y in OFFSETS {
+                let sample_y = y as f64 + offset_y;
+                let mut intersections = Vec::with_capacity(edges.len());
+                for edge in &edges {
+                    if edge.min_y <= sample_y && edge.max_y > sample_y {
+                        intersections.push(edge.intersection_x(sample_y));
+                    }
+                }
+                intersections.sort_unstable_by(f64::total_cmp);
+                for pair in intersections.chunks_exact(2) {
+                    let span_left = pair[0].max(f64::from(left));
+                    let span_right = pair[1].min(f64::from(right));
+                    if span_left >= span_right {
+                        continue;
+                    }
+                    accumulate_polygon_span_edges(
+                        &mut coverage,
+                        left,
+                        span_left.floor() as u32,
+                        span_right.ceil() as u32,
+                        span_left,
+                        span_right,
+                    );
+                }
+            }
+
+            let row_pixels = &mut row[left as usize..right as usize];
+            let mut index = 0;
+            while index < row_pixels.len() {
+                if coverage[index] == 0 {
+                    index += 1;
+                    continue;
+                }
+                if row_pixels[index].a != u8::MAX {
+                    let source = coverage_colors[coverage[index] as usize];
+                    if source.a != 0 {
+                        row_pixels[index] = source.blend_over(row_pixels[index]);
+                    }
+                    index += 1;
+                    continue;
+                }
+
+                let run_start = index;
+                while index < row_pixels.len()
+                    && row_pixels[index].a == u8::MAX
+                    && coverage[index] != 0
+                {
+                    index += 1;
+                }
+                let run_end = index;
+                let mut offset = run_start;
+                while offset + 4 <= run_end {
+                    let sources = core::array::from_fn(|lane| {
+                        coverage_colors[coverage[offset + lane] as usize]
+                    });
+                    let mut destinations = [
+                        row_pixels[offset],
+                        row_pixels[offset + 1],
+                        row_pixels[offset + 2],
+                        row_pixels[offset + 3],
+                    ];
+                    blend_variable_opaque_quad(&mut destinations, sources);
+                    row_pixels[offset..offset + 4].copy_from_slice(&destinations);
+                    offset += 4;
+                }
+                while offset < run_end {
+                    let source = coverage_colors[coverage[offset] as usize];
+                    row_pixels[offset] = source.blend_over(row_pixels[offset]);
+                    offset += 1;
+                }
+            }
+        },
+    );
+}
+
+/// Automatically selects a worker count for antialiased polygon filling.
+pub fn fill_polygon_aa_parallel(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let area = target.width() as u64 * target.height() as u64;
+    let thread_count = if vertices.len() < 3 || area < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    };
+    fill_polygon_aa_parallel_with_threads(target, vertices, color, thread_count);
+}
+
 /// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.
 pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     let mut scratch = RasterizerScratch::default();
