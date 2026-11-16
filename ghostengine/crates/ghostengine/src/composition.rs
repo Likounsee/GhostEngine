@@ -1454,20 +1454,93 @@ pub fn compose_layer_groups_in_damage_regions(
             continue;
         }
 
-        if group.transform == Transform2D::IDENTITY {
-            let local_damage = translated_damage(damage, group.width, group.height, group.x, group.y);
+        if let Some(local_damage) = transformed_damage(
+            damage,
+            group.width,
+            group.height,
+            group.x,
+            group.y,
+            group.transform,
+        ) {
             if local_damage.is_empty() {
                 continue;
             }
             render_layer_group_partial_into(group, scratch, 0, &local_damage)?;
         } else {
-            // Arbitrary affine transforms require conservative full regeneration.
+            // Singular or non-finite transforms require conservative full regeneration.
             render_layer_group_into(group, scratch, 0)?;
         }
 
         compose_layers_in_damage_regions(target, &scratch.layers[..1], damage);
     }
     Ok(())
+}
+
+/// Maps target-space damage back into a group's local coordinates.
+///
+/// The one-pixel expansion is conservative for filtered sampling at transformed
+/// edges. A singular or non-finite transform returns None so callers can fall
+/// back to a full group rebuild rather than risk stale pixels.
+fn transformed_damage(
+    source: &DamageRegion,
+    width: u32,
+    height: u32,
+    offset_x: i32,
+    offset_y: i32,
+    transform: Transform2D,
+) -> Option<DamageRegion> {
+    let inverse = transform.inverse()?;
+    let mut local = DamageRegion::new(width, height);
+
+    for rectangle in source.rectangles() {
+        let left = rectangle.x as f32 - offset_x as f32;
+        let top = rectangle.y as f32 - offset_y as f32;
+        let right = (u64::from(rectangle.x) + u64::from(rectangle.width)) as f32
+            - offset_x as f32;
+        let bottom = (u64::from(rectangle.y) + u64::from(rectangle.height)) as f32
+            - offset_y as f32;
+        let corners = [
+            Vector::new(left, top),
+            Vector::new(right, top),
+            Vector::new(right, bottom),
+            Vector::new(left, bottom),
+        ]
+        .map(|point| inverse.transform_point(point));
+
+        if corners
+            .iter()
+            .any(|point| !point.x.is_finite() || !point.y.is_finite())
+        {
+            return None;
+        }
+
+        let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+        let max_x = corners
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+        let max_y = corners
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        let local_left = (min_x.floor() - 1.0).clamp(0.0, width as f32) as u32;
+        let local_top = (min_y.floor() - 1.0).clamp(0.0, height as f32) as u32;
+        let local_right = (max_x.ceil() + 1.0).clamp(0.0, width as f32) as u32;
+        let local_bottom = (max_y.ceil() + 1.0).clamp(0.0, height as f32) as u32;
+
+        if local_left < local_right && local_top < local_bottom {
+            local.add(Rect::new(
+                local_left,
+                local_top,
+                local_right - local_left,
+                local_bottom - local_top,
+            ));
+        }
+    }
+
+    Some(local)
 }
 
 fn translated_damage(
@@ -1552,19 +1625,20 @@ fn render_layer_group_partial_into(
                 if !nested.visible || nested.opacity == 0 {
                     continue;
                 }
-                if nested.transform == Transform2D::IDENTITY {
-                    let nested_damage = translated_damage(
-                        damage,
-                        nested.width,
-                        nested.height,
-                        nested.x,
-                        nested.y,
-                    );
+                if let Some(nested_damage) = transformed_damage(
+                    damage,
+                    nested.width,
+                    nested.height,
+                    nested.x,
+                    nested.y,
+                    nested.transform,
+                ) {
                     if nested_damage.is_empty() {
                         continue;
                     }
                     render_layer_group_partial_into(nested, scratch, depth + 1, &nested_damage)?;
                 } else {
+                    // Singular or non-finite transforms cannot be mapped safely.
                     render_layer_group_into(nested, scratch, depth + 1)?;
                 }
                 let (parents, children) = scratch.layers.split_at_mut(depth + 1);
@@ -1708,6 +1782,69 @@ mod tests {
             for x in 0..target.width() {
                 if x != 5 || y != 3 {
                     assert_eq!(target.get_pixel(x, y), Some(full.get_pixel(x, y).unwrap()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transformed_nested_group_recomposes_only_mapped_damage() {
+        use super::compose_layer_groups_in_damage_regions;
+
+        let mut inner = LayerGroup::new(5, 4).unwrap();
+        inner.add_layer(Layer::new(5, 4, Color::RED).unwrap());
+        inner.set_position(2, 1);
+        inner.set_transform(Transform2D::scale(2.0, 2.0));
+
+        let mut outer = LayerGroup::new(16, 12).unwrap();
+        outer.add_group(inner);
+        let mut target = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+        let mut scratch = LayerGroupScratch::with_capacity(2);
+
+        let mut full = target.clone();
+        compose_layer_groups_with_scratch(
+            &mut full,
+            &[outer.clone()],
+            &mut LayerGroupScratch::default(),
+        )
+        .unwrap();
+        let mut initial = DamageRegion::new(16, 12);
+        initial.add(Rect::new(0, 0, 16, 12));
+        compose_layer_groups_in_damage_regions(&mut target, &[outer.clone()], &initial, &mut scratch)
+            .unwrap();
+        assert_eq!(target.pixels(), full.pixels());
+
+        let mut changed = outer;
+        if let super::LayerGroupChild::Group(nested) = &mut changed.children[0] {
+            if let super::LayerGroupChild::Layer(layer) = &mut nested.children[0] {
+                layer.framebuffer_mut().set_pixel(3, 2, Color::BLUE);
+            }
+        }
+
+        // Local pixel (3, 2), scaled by two and offset by (2, 1).
+        let dirty_rect = Rect::new(8, 5, 2, 2);
+        let mut damage = DamageRegion::new(16, 12);
+        damage.add(dirty_rect);
+        let mut expected = target.clone();
+        compose_layer_groups_with_scratch(
+            &mut expected,
+            &[changed.clone()],
+            &mut LayerGroupScratch::default(),
+        )
+        .unwrap();
+        compose_layer_groups_in_damage_regions(&mut target, &[changed], &damage, &mut scratch)
+            .unwrap();
+
+        for y in 0..target.height() {
+            for x in 0..target.width() {
+                if x >= dirty_rect.x
+                    && x < dirty_rect.x + dirty_rect.width
+                    && y >= dirty_rect.y
+                    && y < dirty_rect.y + dirty_rect.height
+                {
+                    assert_eq!(target.get_pixel(x, y), expected.get_pixel(x, y));
+                } else {
+                    assert_eq!(target.get_pixel(x, y), full.get_pixel(x, y));
                 }
             }
         }
