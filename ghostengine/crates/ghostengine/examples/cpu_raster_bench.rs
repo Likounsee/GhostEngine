@@ -12,7 +12,7 @@ use ghostengine::{
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
     NineSliceMargins, TextureAtlasBuilder, TextureDrawScratch, TextureFilter, Transform2D,
-    UiTheme, Vector, WidgetState,
+    TextureCache, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -181,6 +181,11 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
     let mipmaps = MipmapChain::new(&texture).expect("benchmark mipmaps should be valid");
+    let mut texture_cache = TextureCache::new(128 * 128 * std::mem::size_of::<Color>());
+    let cached_texture_handle = texture_cache
+        .insert(texture.clone())
+        .expect("benchmark texture should fit cache");
+
     let mut atlas_builder = TextureAtlasBuilder::new(256, 256, 2);
     atlas_builder
         .add(1, &texture)
@@ -608,6 +613,9 @@ fn main() {
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
+        }),
+        measure("Texture cache handle lookup", iterations, |_target| {
+            black_box(texture_cache.get(cached_texture_handle));
         }),
         measure("Texture bilinear", iterations, |target| {
             ghostengine::draw_texture(
