@@ -2587,7 +2587,6 @@ pub fn draw_arc_aa_with_scratch(
     start_angle: f32,
     end_angle: f32,
     color: Color,
-,
     scratch: &mut RasterizerScratch,
 ) {
     use core::f64::consts::TAU;
@@ -5721,4 +5720,35 @@ mod blend_rect_transparent_run_tests {
         super::blend_rect(&mut actual, rect, source);
         assert_eq!(actual, expected);
     }
+    #[test]
+    fn arc_aa_reuses_scratch_scanline_across_draws() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(67, 43, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+
+        for (center, radius, start, end, color) in [
+            (Point::new(20, 18), 12, 0.2, 2.7, Color::rgba(230, 70, 120, 177)),
+            (Point::new(42, 25), 19, 1.1, 5.4, Color::rgba(40, 190, 210, 129)),
+            (Point::new(3, 7), 8, 4.8, 7.2, Color::rgba(170, 90, 30, 211)),
+        ] {
+            super::draw_arc_aa_with_scratch(
+                &mut actual, center, radius, start, end, color, &mut scratch,
+            );
+            super::draw_arc_aa(&mut expected, center, radius, start, end, color);
+            super::fill_arc_aa_with_scratch(
+                &mut actual, center, radius, start, end, color, &mut scratch,
+            );
+            super::fill_arc_aa(&mut expected, center, radius, start, end, color);
+        }
+
+        assert_eq!(actual, expected);
+        assert!(scratch.arc_aa_sources.capacity() >= 39);
+        let capacity = scratch.arc_aa_sources.capacity();
+        super::draw_arc_aa_with_scratch(
+            &mut actual, Point::new(30, 20), 10, 0.0, 1.5,
+            Color::WHITE, &mut scratch,
+        );
+        assert_eq!(scratch.arc_aa_sources.capacity(), capacity);
+    }
+
 }
