@@ -4,13 +4,15 @@ use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, compose_layers_auto, compose_layers_parallel_with_threads,
-    draw_mipmapped_texture_clipped, draw_text, draw_texture_clipped_auto,
+    draw_atlas_region_clipped, draw_mipmapped_texture_clipped, draw_text,
+    draw_texture_clipped_auto, draw_texture_nine_slice_clipped,
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
-    TextureDrawScratch, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    NineSliceMargins, TextureAtlasBuilder, TextureDrawScratch, TextureFilter, Transform2D,
+    UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -179,6 +181,21 @@ fn main() {
     let texture =
         Texture::new(128, 128, texture_pixels).expect("benchmark texture should be valid");
     let mipmaps = MipmapChain::new(&texture).expect("benchmark mipmaps should be valid");
+    let mut atlas_builder = TextureAtlasBuilder::new(256, 256, 2);
+    atlas_builder
+        .add(1, &texture)
+        .expect("first atlas sprite should be added");
+    atlas_builder
+        .add(2, &texture)
+        .expect("second atlas sprite should be added");
+    let (texture_atlas, atlas_regions) = atlas_builder
+        .build_optimized()
+        .expect("benchmark atlas should build");
+    let atlas_region = *atlas_regions
+        .iter()
+        .find(|region| region.id == 1)
+        .expect("benchmark atlas region should exist");
+
 
     // Full-HD workload: downscale a 4K source over every output pixel.
     // Source creation and mipmap generation stay outside frame timings.
@@ -548,6 +565,27 @@ fn main() {
                     200 * SCALE_U32,
                 ),
                 TextureFilter::Nearest,
+            );
+        }),
+        measure("Texture atlas region bilinear", iterations, |target| {
+            draw_atlas_region_clipped(
+                target,
+                &texture_atlas,
+                atlas_region,
+                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+            );
+        }),
+        measure("Texture nine-slice bilinear", iterations, |target| {
+            draw_texture_nine_slice_clipped(
+                target,
+                &texture,
+                Rect::new(0, 0, 128, 128),
+                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                NineSliceMargins::new(16, 16, 16, 16),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),
         measure("Texture bilinear", iterations, |target| {
