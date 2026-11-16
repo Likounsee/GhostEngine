@@ -1307,6 +1307,17 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 
 /// Draws an anti-aliased rectangle outline with 4x4 supersampled coverage.
 pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    draw_rect_aa_with_scratch(target, rect, color, &mut scratch);
+}
+
+/// Draws an antialiased rectangle outline using reusable polygon buffers.
+pub fn draw_rect_aa_with_scratch(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
@@ -1320,7 +1331,7 @@ pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
     let top = i64::from(rect.y);
     let right = left + i64::from(rect.width) - 1;
     let bottom = top + i64::from(rect.height) - 1;
-    draw_polygon_aa(
+    draw_polygon_aa_with_scratch(
         target,
         &[
             point(left, top),
@@ -1329,6 +1340,7 @@ pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
             point(left, bottom),
         ],
         color,
+        scratch,
     );
 }
 
@@ -2151,7 +2163,20 @@ pub fn fill_polygon_aa_with_scratch(
 
 /// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
 pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
-    draw_polygon_aa(target, &[a, b, c], color);
+    let mut scratch = RasterizerScratch::default();
+    draw_triangle_aa_with_scratch(target, a, b, c, color, &mut scratch);
+}
+
+/// Draws an antialiased triangle outline using reusable rasterizer storage.
+pub fn draw_triangle_aa_with_scratch(
+    target: &mut Framebuffer,
+    a: Point,
+    b: Point,
+    c: Point,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    draw_polygon_aa_with_scratch(target, &[a, b, c], color, scratch);
 }
 
 /// Fills a triangle with 4x4 coverage sampling and source-over alpha blending.
@@ -5875,6 +5900,39 @@ mod blend_rect_transparent_run_tests {
         assert_eq!(actual, expected);
         assert!(scratch.aa_outline_segments.capacity() >= 4);
         assert!(scratch.aa_coverage.capacity() >= 73);
+    }
+
+    #[test]
+    fn triangle_and_rect_outline_aa_scratch_match_wrappers() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(83, 67, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+        for rect in [
+            Rect::new(4, 6, 31, 24),
+            Rect::new(48, 8, 29, 43),
+            Rect::new(-5, 39, 22, 35),
+        ] {
+            super::draw_rect_aa_with_scratch(
+                &mut actual, rect, Color::rgba(30, 190, 120, 181), &mut scratch,
+            );
+            super::draw_rect_aa(
+                &mut expected, rect, Color::rgba(30, 190, 120, 181),
+            );
+        }
+        for (a, b, c) in [
+            (Point::new(8, 9), Point::new(71, 17), Point::new(33, 59)),
+            (Point::new(-7, 32), Point::new(39, 2), Point::new(82, 63)),
+        ] {
+            super::draw_triangle_aa_with_scratch(
+                &mut actual, a, b, c, Color::rgba(210, 80, 40, 137), &mut scratch,
+            );
+            super::draw_triangle_aa(
+                &mut expected, a, b, c, Color::rgba(210, 80, 40, 137),
+            );
+        }
+        assert_eq!(actual, expected);
+        assert!(scratch.aa_outline_segments.capacity() >= 4);
+        assert!(scratch.aa_coverage.capacity() >= 83);
     }
 
 }
