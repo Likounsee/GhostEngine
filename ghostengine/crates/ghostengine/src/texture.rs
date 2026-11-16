@@ -783,9 +783,11 @@ pub fn draw_texture_clipped_with_scratch(
                     *pixel = texture.pixels[source_row + source_column];
                 }
             } else {
-                let mut destination_quads = row[first_x as usize..end_x as usize].chunks_exact_mut(4);
+                let mut destination_quads =
+                    row[first_x as usize..end_x as usize].chunks_exact_mut(4);
                 let mut source_quads = scratch.nearest_columns.chunks_exact(4);
-                for (destinations, columns) in destination_quads.by_ref().zip(source_quads.by_ref()) {
+                for (destinations, columns) in destination_quads.by_ref().zip(source_quads.by_ref())
+                {
                     if destinations.iter().all(|pixel| pixel.a == 255) {
                         let sources = [
                             texture.pixels[source_row + columns[0]],
