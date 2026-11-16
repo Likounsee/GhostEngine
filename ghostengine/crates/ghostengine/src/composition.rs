@@ -46,6 +46,22 @@ impl DamageRegion {
         self.rectangles.capacity()
     }
 
+    /// Marks both the previous and current bounds of an object as damaged.
+    ///
+    /// This is the preferred invalidation operation for moving, resizing,
+    /// showing, or hiding scene content. Passing `None` for either bound
+    /// handles objects that have just appeared or disappeared. Each bound is
+    /// clipped and coalesced through `add`, so disjoint old/new positions stay
+    /// separate instead of forcing a large redraw between them.
+    pub fn add_transition(&mut self, previous: Option<Rect>, current: Option<Rect>) {
+        if let Some(previous) = previous {
+            self.add(previous);
+        }
+        if let Some(current) = current {
+            self.add(current);
+        }
+    }
+
     /// Adds a rectangle, clipping it to the configured framebuffer bounds.
     ///
     /// Overlapping entries are merged. The resulting rectangles remain disjoint,
@@ -1629,6 +1645,29 @@ mod tests {
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
+
+    #[test]
+    fn damage_transition_invalidates_old_and_new_bounds_without_filling_the_gap() {
+        let mut damage = DamageRegion::new(20, 12);
+        damage.add_transition(
+            Some(Rect::new(2, 3, 2, 2)),
+            Some(Rect::new(12, 3, 3, 2)),
+        );
+
+        assert_eq!(
+            damage.rectangles(),
+            &[Rect::new(2, 3, 2, 2), Rect::new(12, 3, 3, 2)]
+        );
+        assert_eq!(damage.area(), 10);
+
+        let mut appearing = DamageRegion::new(8, 8);
+        appearing.add_transition(None, Some(Rect::new(1, 1, 2, 2)));
+        assert_eq!(appearing.rectangles(), &[Rect::new(1, 1, 2, 2)]);
+
+        let mut disappearing = DamageRegion::new(8, 8);
+        disappearing.add_transition(Some(Rect::new(4, 2, 2, 3)), None);
+        assert_eq!(disappearing.rectangles(), &[Rect::new(4, 2, 2, 3)]);
+    }
 
     #[test]
     fn nested_group_damage_recomposition_matches_full_render_and_preserves_untouched_pixels() {
