@@ -81,7 +81,7 @@ pub use rasterizer::{
     draw_arc_aa, draw_arc_aa_with_scratch, draw_circle_aa, draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_with_scratch, draw_polygon_aa, draw_polygon_aa_with_scratch, draw_rect_aa, draw_rect_aa_with_scratch, draw_rounded_rect, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
     draw_rounded_rect_aa, draw_triangle_aa, draw_triangle_aa_with_scratch, fill_arc_aa, fill_arc_aa_with_scratch, fill_circle_aa, fill_circle_aa_with_scratch, fill_ellipse_aa_with_scratch,
     fill_polygon_aa,
-    fill_polygon_aa_with_scratch, fill_polygon_with_scratch, fill_rect_clipped,
+    fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads, fill_polygon_with_scratch, fill_rect_clipped,
     fill_rect_linear_gradient_parallel, fill_rect_linear_gradient_parallel_with_threads,
     fill_rect_parallel_with_threads, fill_rect_radial_gradient_parallel,
     fill_rect_radial_gradient_parallel_with_threads, fill_rects_clipped, fill_rounded_rect, fill_rounded_rect_parallel, fill_rounded_rect_parallel_with_threads,
