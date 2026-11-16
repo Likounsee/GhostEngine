@@ -7376,7 +7376,13 @@ mod rounded_rect_parallel_tests {
 
 #[cfg(test)]
 mod blend_rect_transparent_run_tests {
-    use crate::{Color, Framebuffer, Rect};
+    use crate::{
+        rasterizer::{
+            draw_circle_aa_parallel, draw_circle_aa_parallel_with_threads, draw_ellipse_aa,
+            fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_ellipse_aa,
+        },
+        Color, Framebuffer, Point, Rect,
+    };
 
     #[test]
     fn transparent_destination_runs_match_scalar_source_over() {
