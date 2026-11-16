@@ -1890,11 +1890,38 @@ fn accumulate_polygon_span_edges(
     span_right: f64,
 ) {
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-    for x in start_x..end_x {
-        let sample_base = f64::from(x);
+    if start_x >= end_x {
+        return;
+    }
+
+    // Pixels in this interval contain all four horizontal samples. Count them
+    // with a contiguous coverage update and reserve scalar tests for the edges.
+    let interior_start = ((span_left - OFFSETS[0]).ceil() as i64)
+        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+    let interior_end = ((span_right - OFFSETS[3]).ceil() as i64)
+        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+
+    for x in start_x..interior_start {
+        let base = f64::from(x);
         let mut covered = 0;
         for offset in OFFSETS {
-            let sample_x = sample_base + offset;
+            let sample_x = base + offset;
+            covered += u8::from(sample_x >= span_left && sample_x < span_right);
+        }
+        coverage[(x - row_left) as usize] += covered;
+    }
+
+    for covered in
+        &mut coverage[(interior_start - row_left) as usize..(interior_end - row_left) as usize]
+    {
+        *covered += 4;
+    }
+
+    for x in interior_end..end_x {
+        let base = f64::from(x);
+        let mut covered = 0;
+        for offset in OFFSETS {
+            let sample_x = base + offset;
             covered += u8::from(sample_x >= span_left && sample_x < span_right);
         }
         coverage[(x - row_left) as usize] += covered;
