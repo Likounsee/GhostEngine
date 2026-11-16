@@ -2223,24 +2223,12 @@ pub fn fill_ellipse_aa(
 
     let inverse_ry = ry.recip();
 
-    // Ellipse coverage has only 17 possible values (0..=16). Precompute the
-    // exact source-over result for every destination channel when the
-    // framebuffer pixel is opaque, avoiding three divisions per covered pixel.
-    let mut opaque_r = [[0_u8; 256]; 17];
-    let mut opaque_g = [[0_u8; 256]; 17];
-    let mut opaque_b = [[0_u8; 256]; 17];
+    // Coverage has only 17 possible values (0..=16). Cache their source
+    // colors so opaque destination pixels can be composited four at a time.
+    let mut coverage_colors = [Color::TRANSPARENT; 17];
     for covered in 1..=16 {
-        let alpha = (u16::from(color.a) * covered as u16 / 16) as u32;
-        let inverse_alpha = 255 - alpha;
-        for destination in 0..256 {
-            let destination = destination as u32;
-            opaque_r[covered][destination as usize] =
-                ((u32::from(color.r) * alpha + destination * inverse_alpha + 127) / 255) as u8;
-            opaque_g[covered][destination as usize] =
-                ((u32::from(color.g) * alpha + destination * inverse_alpha + 127) / 255) as u8;
-            opaque_b[covered][destination as usize] =
-                ((u32::from(color.b) * alpha + destination * inverse_alpha + 127) / 255) as u8;
-        }
+        let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     let mut coverage = vec![0_u8; (right - left) as usize];
@@ -2268,29 +2256,51 @@ pub fn fill_ellipse_aa(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for (pixel, covered) in row[left as usize..right as usize]
-            .iter_mut()
-            .zip(coverage.iter().copied())
-        {
-            if covered == 0 {
+        let row_pixels = &mut row[left as usize..right as usize];
+        let vectorized_len = row_pixels.len() / 4 * 4;
+        let (vectorized, tail) = row_pixels.split_at_mut(vectorized_len);
+
+        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
+            let coverage_start = quad_index * 4;
+            let covered = &coverage[coverage_start..coverage_start + 4];
+            if covered.iter().all(|count| *count == 0) {
                 continue;
             }
-            if color.a == 0 {
-                continue;
-            }
-            if pixel.a == u8::MAX {
-                let index = usize::from(covered);
-                *pixel = Color::rgb(
-                    opaque_r[index][pixel.r as usize],
-                    opaque_g[index][pixel.g as usize],
-                    opaque_b[index][pixel.b as usize],
-                );
+
+            if destinations.iter().all(|pixel| pixel.a == u8::MAX) {
+                let sources = core::array::from_fn(|lane| {
+                    coverage_colors[usize::from(covered[lane])]
+                });
+                let mut quad = [
+                    destinations[0],
+                    destinations[1],
+                    destinations[2],
+                    destinations[3],
+                ];
+                blend_variable_opaque_quad(&mut quad, sources);
+                destinations.copy_from_slice(&quad);
             } else {
-                let alpha = (u16::from(color.a) * u16::from(covered) / 16) as u8;
-                if alpha == 0 {
-                    continue;
+                for lane in 0..4 {
+                    let count = covered[lane];
+                    if count == 0 {
+                        continue;
+                    }
+                    let source = coverage_colors[usize::from(count)];
+                    if source.a != 0 {
+                        destinations[lane] = source.blend_over(destinations[lane]);
+                    }
                 }
-                let source = Color::rgba(color.r, color.g, color.b, alpha);
+            }
+        }
+
+        for (pixel, count) in tail.iter_mut().zip(
+            coverage[vectorized_len..].iter().copied(),
+        ) {
+            if count == 0 {
+                continue;
+            }
+            let source = coverage_colors[usize::from(count)];
+            if source.a != 0 {
                 *pixel = source.blend_over(*pixel);
             }
         }
