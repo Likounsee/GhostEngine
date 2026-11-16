@@ -2027,6 +2027,117 @@ pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
     fill_polygon_with_scratch(target, vertices, color, &mut scratch);
 }
 
+/// Fills a polygon using independent scanline workers.
+///
+/// Each worker computes intersections for its own rows, preserving the
+/// even-odd scan conversion used by `fill_polygon`.
+pub fn fill_polygon_parallel_with_threads(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+) {
+    if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+
+    let min_y = vertices.iter().map(|point| point.y).min().unwrap().max(0) as usize;
+    let max_y = vertices.iter().map(|point| point.y).max().unwrap();
+    if max_y < 0 || min_y >= target.height() as usize {
+        return;
+    }
+    let max_y = (max_y as usize).min(target.height() as usize - 1);
+    if min_y > max_y {
+        return;
+    }
+
+    let mut edges = Vec::with_capacity(vertices.len());
+    for index in 0..vertices.len() {
+        let a = vertices[index];
+        let b = vertices[(index + 1) % vertices.len()];
+        let (ax, ay, bx, by) = (
+            f64::from(a.x),
+            f64::from(a.y),
+            f64::from(b.x),
+            f64::from(b.y),
+        );
+        if ay != by {
+            edges.push((ay.min(by), ay.max(by), ax, ay, bx, by));
+        }
+    }
+    if edges.is_empty() {
+        return;
+    }
+
+    let row_width = target.width() as usize;
+    let start = min_y * row_width;
+    let end = (max_y + 1) * row_width;
+    process_rows_with_y_mut(
+        &mut target.pixels_mut()[start..end],
+        row_width,
+        min_y,
+        thread_count,
+        |row, y| {
+            let scan_y = y as f64 + 0.5;
+            if edges.len() <= 64 {
+                let mut intersections = [0.0_f64; 64];
+                let mut count = 0;
+                for &(edge_min_y, edge_max_y, ax, ay, bx, by) in &edges {
+                    if edge_min_y <= scan_y && edge_max_y > scan_y {
+                        let t = (scan_y - ay) / (by - ay);
+                        intersections[count] = ax + t * (bx - ax);
+                        count += 1;
+                    }
+                }
+                let intersections = &mut intersections[..count];
+                intersections.sort_unstable_by(f64::total_cmp);
+                for pair in intersections.chunks_exact(2) {
+                    let first = (pair[0] - 0.5).ceil().max(0.0) as usize;
+                    let end = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(row_width);
+                    let start = first.min(row_width);
+                    if start < end {
+                        row[start..end].fill(color);
+                    }
+                }
+            } else {
+                let mut intersections = Vec::with_capacity(edges.len());
+                for &(edge_min_y, edge_max_y, ax, ay, bx, by) in &edges {
+                    if edge_min_y <= scan_y && edge_max_y > scan_y {
+                        let t = (scan_y - ay) / (by - ay);
+                        intersections.push(ax + t * (bx - ax));
+                    }
+                }
+                intersections.sort_unstable_by(f64::total_cmp);
+                for pair in intersections.chunks_exact(2) {
+                    let first = (pair[0] - 0.5).ceil().max(0.0) as usize;
+                    let end = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(row_width);
+                    let start = first.min(row_width);
+                    if start < end {
+                        row[start..end].fill(color);
+                    }
+                }
+            }
+        },
+    );
+}
+
+/// Automatically selects a worker count for polygon filling.
+pub fn fill_polygon_parallel(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+) {
+    let area = target.width() as u64 * target.height() as u64;
+    let thread_count = if vertices.len() < 3 || area < 16_384 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    };
+    fill_polygon_parallel_with_threads(target, vertices, color, thread_count);
+}
+
 /// Fills a polygon using caller-owned reusable scratch storage.
 ///
 /// The output is pixel-identical to fill_polygon. Reusing the same scratch
