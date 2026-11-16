@@ -116,7 +116,9 @@ pub use texture::{
     draw_texture_transformed_clipped_parallel_with_threads, Texture, TextureDrawScratch,
     NineSliceMargins, TextureError, TextureFilter,
 };
-pub use texture_atlas::{AtlasRegion, TextureAtlasBuilder, TextureAtlasError};
+pub use texture_atlas::{
+    draw_atlas_region_clipped, AtlasRegion, TextureAtlasBuilder, TextureAtlasError,
+};
 pub use transform::Transform2D;
 pub use ui::{
     draw_button, draw_button_aa, draw_checkbox, draw_combo_box, draw_divider, draw_label,
