@@ -489,14 +489,7 @@ pub fn draw_texture_clipped_auto(
     let threads = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1);
-    draw_texture_clipped_parallel_with_threads(
-        target,
-        texture,
-        destination,
-        filter,
-        clip,
-        threads,
-    );
+    draw_texture_clipped_parallel_with_threads(target, texture, destination, filter, clip, threads);
 }
 
 /// Draws a rectangular region of a texture or atlas into a destination rectangle.
