@@ -785,13 +785,19 @@ fn blend_bilinear_over_opaque_rows(
         return;
     }
 
+    // Fold source alpha and layer opacity into the four bilinear weights once.
+    // The three color channels can then reuse these values, avoiding a second
+    // multiplication by source alpha for every sample/channel pair.
+    let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
+    let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
+    let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
+    let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
-        let premultiplied = (f32::from(tl) * f32::from(top_left.a) * weight_top_left
-            + f32::from(tr) * f32::from(top_right.a) * weight_top_right
-            + f32::from(bl) * f32::from(bottom_left.a) * weight_bottom_left
-            + f32::from(br) * f32::from(bottom_right.a) * weight_bottom_right)
-            * opacity_factor;
+        let premultiplied = f32::from(tl) * alpha_top_left
+            + f32::from(tr) * alpha_top_right
+            + f32::from(bl) * alpha_bottom_left
+            + f32::from(br) * alpha_bottom_right;
         ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
@@ -869,13 +875,19 @@ fn blend_bilinear_over_opaque(
         return;
     }
 
+    // Fold source alpha and layer opacity into the four bilinear weights once.
+    // The three color channels can then reuse these values, avoiding a second
+    // multiplication by source alpha for every sample/channel pair.
+    let alpha_top_left = weight_top_left * f32::from(top_left.a) * opacity_factor;
+    let alpha_top_right = weight_top_right * f32::from(top_right.a) * opacity_factor;
+    let alpha_bottom_left = weight_bottom_left * f32::from(bottom_left.a) * opacity_factor;
+    let alpha_bottom_right = weight_bottom_right * f32::from(bottom_right.a) * opacity_factor;
     let inverse_alpha = 255.0 - alpha;
     let channel = |tl: u8, tr: u8, bl: u8, br: u8, background: u8| {
-        let premultiplied = (f32::from(tl) * f32::from(top_left.a) * weight_top_left
-            + f32::from(tr) * f32::from(top_right.a) * weight_top_right
-            + f32::from(bl) * f32::from(bottom_left.a) * weight_bottom_left
-            + f32::from(br) * f32::from(bottom_right.a) * weight_bottom_right)
-            * opacity_factor;
+        let premultiplied = f32::from(tl) * alpha_top_left
+            + f32::from(tr) * alpha_top_right
+            + f32::from(bl) * alpha_bottom_left
+            + f32::from(br) * alpha_bottom_right;
         ((premultiplied + f32::from(background) * inverse_alpha) / 255.0)
             .round()
             .clamp(0.0, 255.0) as u8
