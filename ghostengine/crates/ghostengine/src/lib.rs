@@ -52,7 +52,7 @@ pub use components::{
     UiComponent,
 };
 pub use composition::{
-    compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
+    compose_layers, compose_layers_in_damage_regions, compose_layers_parallel_with_threads, BlendMode, DamageRegion, Layer,
 };
 pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
 pub use effects::{apply_box_blur, EffectScratch};

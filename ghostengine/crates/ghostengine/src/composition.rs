@@ -303,6 +303,67 @@ pub fn compose_layers(target: &mut Framebuffer, layers: &[Layer]) {
     compose_layers_clipped(target, layers, None);
 }
 
+/// Composites layers in order while processing transformed layers in parallel row bands.
+ ///
+ /// Each layer completes before the next begins, preserving back-to-front blending.
+ /// Identity-transformed layers use the regular compositor; transformed layers
+ /// split destination rows between workers without overlapping framebuffer writes.
+ pub fn compose_layers_parallel_with_threads(
+     target: &mut Framebuffer,
+     layers: &[Layer],
+     threads: usize,
+ ) {
+     if threads <= 1 || target.width() == 0 || target.height() == 0 {
+         compose_layers(target, layers);
+         return;
+     }
+     let target_bounds = Rect::new(0, 0, target.width(), target.height());
+     let width = target.width() as usize;
+     let height = target.height() as usize;
+     let worker_count = threads.min(height).max(1);
+     let rows_per_worker = height.div_ceil(worker_count);
+     let chunk_len = rows_per_worker * width;
+
+     for layer in layers {
+         if !layer.visible || layer.opacity == 0 {
+             continue;
+         }
+         if layer.transform == Transform2D::IDENTITY {
+             compose_layer_clipped(target, layer, target_bounds, None);
+             continue;
+         }
+         let Some(prepared) = prepare_transformed_layer(target, layer) else {
+             continue;
+         };
+         let Some(clip) = prepared.bounds.intersection(target_bounds) else {
+             continue;
+         };
+         std::thread::scope(|scope| {
+             for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+                 let row_origin = (worker_index * rows_per_worker) as u32;
+                 let row_end = (row_origin as usize + pixels.len() / width) as u32;
+                 let first_row = clip.y.max(row_origin);
+                 let last_row = (clip.y + clip.height).min(row_end);
+                 if first_row >= last_row {
+                     continue;
+                 }
+                 scope.spawn(move || {
+                     compose_transformed_layer_rows(
+                         pixels,
+                         width,
+                         layer,
+                         clip,
+                         prepared,
+                         first_row,
+                         last_row,
+                         row_origin,
+                     );
+                 });
+             }
+         });
+     }
+ }
+
 /// Composites layers in slice order, limited to the accumulated damage rectangles.
 ///
 /// Callers should redraw or clear the damaged target areas before recomposition
@@ -560,6 +621,30 @@ fn compose_transformed_layer(
     let Some(clip) = prepared.bounds.intersection(clip) else {
         return;
     };
+    let width = target.width() as usize;
+    let end_y = clip.y + clip.height;
+    compose_transformed_layer_rows(
+        target.pixels_mut(),
+        width,
+        layer,
+        clip,
+        prepared,
+        clip.y,
+        end_y,
+        0,
+    );
+}
+
+fn compose_transformed_layer_rows(
+    target_pixels: &mut [Color],
+    target_width: usize,
+    layer: &Layer,
+    clip: Rect,
+    prepared: PreparedTransformedLayer,
+    row_start: u32,
+    row_end: u32,
+    row_origin: u32,
+) {
     let inverse = prepared.inverse;
     let left = clip.x;
     let right = clip.x + clip.width;
@@ -586,7 +671,7 @@ fn compose_transformed_layer(
     let source_step_y = inverse.m21;
     let destination_offset_x = layer.x as f32;
     let destination_offset_y = layer.y as f32;
-    for y in top..bottom {
+    for y in row_start.max(top)..row_end.min(bottom) {
         let destination_y = y as f32 + 0.5 - destination_offset_y;
         let mut source_x = inverse.m11 * (left as f32 + 0.5 - destination_offset_x)
             + inverse.m12 * destination_y
@@ -623,7 +708,10 @@ fn compose_transformed_layer(
         } else {
             None
         };
-        let Some(destination_row) = target.row_mut(y) else {
+        let row_offset = (y - row_origin) as usize * target_width;
+        let Some(destination_row) =
+            target_pixels.get_mut(row_offset..row_offset + target_width)
+        else {
             continue;
         };
 

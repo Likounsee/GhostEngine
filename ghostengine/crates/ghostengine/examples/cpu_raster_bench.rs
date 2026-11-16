@@ -7,7 +7,7 @@ use ghostengine::{
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_polygon_aa, stroke_path, stroke_path_aa,
-    stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
+    stroke_path_aa_parallel_with_threads, compose_layers_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
     TextureDrawScratch, TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
@@ -599,6 +599,9 @@ fn main() {
         }),
         measure("Transformed layer (bilinear)", iterations, |target| {
             ghostengine::compose_layers(target, &transformed_layers);
+        }),
+        measure("Transformed layer (bilinear parallel)", iterations, |target| {
+            compose_layers_parallel_with_threads(target, &transformed_layers, raster_threads);
         }),
         measure("Text rasterization (cached)", iterations, |target| {
             draw_text(
