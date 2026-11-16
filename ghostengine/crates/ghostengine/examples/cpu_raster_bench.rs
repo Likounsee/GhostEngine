@@ -195,6 +195,18 @@ fn main() {
         .iter()
         .find(|region| region.id == 1)
         .expect("benchmark atlas region should exist");
+    let atlas_object = {
+        let mut builder = TextureAtlasBuilder::new(256, 256, 2);
+        builder
+            .add(1, &texture)
+            .expect("atlas object sprite should be added");
+        builder
+            .add(2, &texture)
+            .expect("atlas object second sprite should be added");
+        builder
+            .build_atlas_optimized()
+            .expect("ID-addressable atlas should build")
+    };
 
 
     // Full-HD workload: downscale a 4K source over every output pixel.
@@ -576,6 +588,15 @@ fn main() {
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
+        }),
+        measure("Texture atlas ID lookup + draw", iterations, |target| {
+            black_box(atlas_object.draw_region(
+                target,
+                1,
+                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+            ));
         }),
         measure("Texture nine-slice bilinear", iterations, |target| {
             draw_texture_nine_slice_clipped(
