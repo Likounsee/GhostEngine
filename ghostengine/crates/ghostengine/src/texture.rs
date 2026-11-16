@@ -934,7 +934,8 @@ pub fn draw_texture_clipped_parallel_with_threads(
     // Bound memory use and keep the direct sampler for short or very wide draws.
     let horizontal_cache: Vec<[f32; 4]> = if filter == TextureFilter::Bilinear {
         let cache_len = (texture.height as usize).checked_mul(horizontal_samples.len());
-        let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+        let cache_bytes =
+            cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
         if end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024)
         {
@@ -1014,12 +1015,18 @@ pub fn draw_texture_clipped_parallel_with_threads(
                             for (pixel, (&top, &bottom)) in row[left..right].iter_mut().zip(
                                 horizontal_cache[top_offset..top_offset + samples_per_row]
                                     .iter()
-                                    .zip(&horizontal_cache[bottom_offset..bottom_offset + samples_per_row]),
+                                    .zip(
+                                        &horizontal_cache
+                                            [bottom_offset..bottom_offset + samples_per_row],
+                                    ),
                             ) {
                                 if texture.fully_opaque {
-                                    *pixel = sample_cached_bilinear_opaque(&top, &bottom, inverse_y, ty);
+                                    *pixel =
+                                        sample_cached_bilinear_opaque(&top, &bottom, inverse_y, ty);
                                 } else if pixel.a == 255 {
-                                    blend_cached_bilinear_over_opaque(&top, &bottom, inverse_y, ty, pixel);
+                                    blend_cached_bilinear_over_opaque(
+                                        &top, &bottom, inverse_y, ty, pixel,
+                                    );
                                 } else {
                                     let alpha = top[3] * inverse_y + bottom[3] * ty;
                                     if alpha <= f32::EPSILON {
@@ -1027,9 +1034,18 @@ pub fn draw_texture_clipped_parallel_with_threads(
                                     }
                                     let inverse_alpha = alpha.recip();
                                     let color = Color::rgba(
-                                        ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
-                                        ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
-                                        ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha).round().clamp(0.0, 255.0) as u8,
+                                        ((top[0] * inverse_y + bottom[0] * ty) * inverse_alpha)
+                                            .round()
+                                            .clamp(0.0, 255.0)
+                                            as u8,
+                                        ((top[1] * inverse_y + bottom[1] * ty) * inverse_alpha)
+                                            .round()
+                                            .clamp(0.0, 255.0)
+                                            as u8,
+                                        ((top[2] * inverse_y + bottom[2] * ty) * inverse_alpha)
+                                            .round()
+                                            .clamp(0.0, 255.0)
+                                            as u8,
                                         alpha.round().clamp(0.0, 255.0) as u8,
                                     );
                                     if color.a > 0 {
@@ -1038,11 +1054,17 @@ pub fn draw_texture_clipped_parallel_with_threads(
                                 }
                             }
                         } else {
-                            for (pixel, sample) in row[left..right].iter_mut().zip(horizontal_samples.iter()) {
+                            for (pixel, sample) in
+                                row[left..right].iter_mut().zip(horizontal_samples.iter())
+                            {
                                 if texture.fully_opaque {
-                                    *pixel = sample_bilinear_opaque_rows(top_row, bottom_row, *sample, ty);
+                                    *pixel = sample_bilinear_opaque_rows(
+                                        top_row, bottom_row, *sample, ty,
+                                    );
                                 } else if pixel.a == 255 {
-                                    blend_bilinear_rows_over_opaque(top_row, bottom_row, *sample, ty, pixel);
+                                    blend_bilinear_rows_over_opaque(
+                                        top_row, bottom_row, *sample, ty, pixel,
+                                    );
                                 } else {
                                     let color = sample_bilinear_prepared(
                                         &texture.pixels,
