@@ -76,27 +76,29 @@ mod tests {
     use crate::Color;
 
     #[test]
-    fn variable_source_simd_blend_matches_scalar_for_opaque_destinations() {
-        let sources = [
-            Color::rgba(255, 0, 17, 0),
-            Color::rgba(10, 220, 30, 1),
-            Color::rgba(90, 80, 70, 127),
-            Color::rgba(255, 200, 150, 255),
-        ];
-        let mut actual = [
-            Color::rgb(0, 255, 127),
-            Color::rgb(255, 0, 128),
-            Color::rgb(17, 99, 231),
-            Color::rgb(240, 31, 3),
-        ];
-        let expected = [
-            sources[0].blend_over(actual[0]),
-            sources[1].blend_over(actual[1]),
-            sources[2].blend_over(actual[2]),
-            sources[3].blend_over(actual[3]),
-        ];
-        super::blend_variable_opaque_quad(&mut actual, sources);
-        assert_eq!(actual, expected);
+    fn variable_source_simd_blend_matches_scalar_for_all_alpha_values() {
+        for alpha in 0..=255_u8 {
+            let sources = [
+                Color::rgba(255, 0, 17, alpha),
+                Color::rgba(10, 220, 30, 255 - alpha),
+                Color::rgba(90, 80, 70, alpha / 2),
+                Color::rgba(255, 200, 150, alpha.wrapping_mul(73)),
+            ];
+            let mut actual = [
+                Color::rgb(0, 255, 127),
+                Color::rgb(255, 0, 128),
+                Color::rgb(17, 99, 231),
+                Color::rgb(240, 31, 3),
+            ];
+            let expected = [
+                sources[0].blend_over(actual[0]),
+                sources[1].blend_over(actual[1]),
+                sources[2].blend_over(actual[2]),
+                sources[3].blend_over(actual[3]),
+            ];
+            super::blend_variable_opaque_quad(&mut actual, sources);
+            assert_eq!(actual, expected, "base source alpha {alpha}");
+        }
     }
 
     #[test]
