@@ -4,7 +4,7 @@
 //! event loop, or platform state; applications provide interaction state and
 //! use the same CPU renderer as every other scene.
 
-use crate::rasterizer::{draw_line_aa, draw_rect, fill_rect, fill_rect_clipped, fill_rounded_rect};
+use crate::rasterizer::{draw_line_aa, draw_rect, draw_rounded_rect_aa, fill_rect, fill_rect_clipped, fill_rounded_rect, fill_rounded_rect_aa};
 use crate::{
     draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
     FontFace, FontFamily, Framebuffer, Point, Rect, TextLayoutOptions, TextMetrics,
@@ -88,6 +88,12 @@ pub fn draw_panel(target: &mut Framebuffer, rect: Rect, radius: u32, theme: &UiT
     }
 }
 
+/// Draws a panel with antialiased rounded fill and border.
+pub fn draw_panel_aa(target: &mut Framebuffer, rect: Rect, radius: u32, theme: &UiTheme) {
+    fill_rounded_rect_aa(target, rect, radius, theme.panel);
+    draw_rounded_rect_aa(target, rect, radius, theme.panel_border);
+}
+
 /// Draws a stateful rounded button and centers its label.
 /// The caller handles pointer hit-testing and activation.
 pub fn draw_button(
@@ -115,6 +121,51 @@ pub fn draw_button(
     };
     let radius = (rect.height / 4).min(10);
     fill_rounded_rect(target, rect, radius, background);
+    let metrics = font.measure(label, pixel_size);
+    let x = i64::from(rect.x) + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
+    let line_height = font.line_height(pixel_size);
+    let y = i64::from(rect.y)
+        + (i64::from(rect.height) - line_height.round() as i64) / 2
+        + (line_height * 0.78).round() as i64;
+    if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(y)) {
+        draw_text_clipped(
+            target,
+            font,
+            label,
+            Point::new(x, y),
+            pixel_size,
+            foreground,
+            rect,
+        );
+    }
+}
+
+/// Draws an antialiased stateful rounded button and centers its label.
+pub fn draw_button_aa(
+    target: &mut Framebuffer,
+    font: &FontFace,
+    rect: Rect,
+    label: &str,
+    pixel_size: f32,
+    state: WidgetState,
+    theme: &UiTheme,
+) {
+    if rect.width == 0 || rect.height == 0 || !pixel_size.is_finite() || pixel_size <= 0.0 {
+        return;
+    }
+    let background = match state {
+        WidgetState::Normal => theme.accent,
+        WidgetState::Hovered => theme.accent_hover,
+        WidgetState::Pressed => theme.accent_pressed,
+        WidgetState::Disabled => theme.disabled,
+    };
+    let foreground = if state == WidgetState::Disabled {
+        Color::rgb(242, 244, 247)
+    } else {
+        Color::WHITE
+    };
+    let radius = (rect.height / 4).min(10);
+    fill_rounded_rect_aa(target, rect, radius, background);
     let metrics = font.measure(label, pixel_size);
     let x = i64::from(rect.x) + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
     let line_height = font.line_height(pixel_size);
