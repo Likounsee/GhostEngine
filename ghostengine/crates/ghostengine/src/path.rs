@@ -17,6 +17,7 @@ struct FillEdge {
     max_y: f32,
     min_x: f32,
     inverse_slope: f32,
+    winding: i32,
 }
 
 impl FillEdge {
@@ -30,6 +31,7 @@ impl FillEdge {
             max_y: upper.y,
             min_x: lower.x,
             inverse_slope: (upper.x - lower.x) / (upper.y - lower.y),
+            winding: if a.y < b.y { 1 } else { -1 },
         })
     }
 
@@ -394,6 +396,129 @@ pub fn fill_transformed_path_even_odd_clipped(
             if left < right {
                 row[left as usize..right as usize].fill(color);
             }
+        }
+    }
+    Ok(())
+}
+
+/// Fills all closed contours using the non-zero winding rule.
+pub fn fill_path_non_zero(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero(target, path, Transform2D::IDENTITY, color, tolerance)
+}
+
+/// Fills a path with the non-zero winding rule inside a framebuffer-space clip.
+pub fn fill_path_non_zero_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero_clipped(
+        target, path, Transform2D::IDENTITY, color, tolerance, clip,
+    )
+}
+
+/// Flattens, transforms and fills a path using the non-zero winding rule.
+pub fn fill_transformed_path_non_zero(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+) -> Result<(), PathError> {
+    fill_transformed_path_non_zero_clipped(
+        target,
+        path,
+        transform,
+        color,
+        tolerance,
+        Rect::new(0, 0, target.width(), target.height()),
+    )
+}
+
+/// Non-zero winding fill restricted to a framebuffer-space viewport.
+pub fn fill_transformed_path_non_zero_clipped(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+) -> Result<(), PathError> {
+    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
+    if target.width() == 0 || target.height() == 0 {
+        return Ok(());
+    }
+
+    let clip_right = clip.x.saturating_add(clip.width);
+    let clip_bottom = clip.y.saturating_add(clip.height);
+    let mut edges = flattened
+        .subpaths
+        .iter()
+        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+        .flat_map(|contour| {
+            (0..contour.points.len()).filter_map(move |index| {
+                FillEdge::new(
+                    contour.points[index],
+                    contour.points[(index + 1) % contour.points.len()],
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if edges.is_empty() {
+        return Ok(());
+    }
+
+    let min_y = edges.iter().map(|edge| edge.min_y).fold(f32::INFINITY, f32::min)
+        .floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let max_y = edges.iter().map(|edge| edge.max_y).fold(f32::NEG_INFINITY, f32::max)
+        .ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
+
+    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut intersections: Vec<(f32, i32)> = Vec::with_capacity(edges.len());
+    let mut next_edge = 0;
+    for y in min_y..max_y {
+        let scan = y as f32 + 0.5;
+        while next_edge < edges.len() && edges[next_edge].min_y <= scan {
+            let edge = edges[next_edge];
+            if edge.crosses(scan) {
+                active_edges.push(edge);
+            }
+            next_edge += 1;
+        }
+        active_edges.retain(|edge| edge.crosses(scan));
+        intersections.clear();
+        intersections.extend(active_edges.iter().map(|edge| (edge.x_at(scan), edge.winding)));
+        intersections.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
+
+        let Some(row) = target.row_mut(y) else { continue };
+        let mut winding = 0_i32;
+        let mut previous_x = 0.0_f32;
+        let mut index = 0;
+        while index < intersections.len() {
+            let x = intersections[index].0;
+            if winding != 0 && previous_x < x {
+                let left = ((previous_x - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
+                let right = ((x - 0.5).ceil().max(clip.x as f32) as u32).min(clip_right);
+                if left < right {
+                    row[left as usize..right as usize].fill(color);
+                }
+            }
+            while index < intersections.len() && intersections[index].0 == x {
+                winding += intersections[index].1;
+                index += 1;
+            }
+            previous_x = x;
         }
     }
     Ok(())
@@ -811,6 +936,48 @@ mod tests {
             .close();
         let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         fill_path_even_odd(&mut fb, &p, Color::GREEN, 0.25).unwrap();
+        assert_eq!(fb.get_pixel(1, 1), Some(Color::GREEN));
+        assert_eq!(fb.get_pixel(3, 3), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn non_zero_fill_keeps_same_direction_nested_contours_filled() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(8.0, 0.0))
+            .line_to(Vector::new(8.0, 8.0))
+            .line_to(Vector::new(0.0, 8.0))
+            .close();
+        // Same winding direction: non-zero fills the nested contour too.
+        path.move_to(Vector::new(2.0, 2.0))
+            .line_to(Vector::new(6.0, 2.0))
+            .line_to(Vector::new(6.0, 6.0))
+            .line_to(Vector::new(2.0, 6.0))
+            .close();
+        let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        super::fill_path_non_zero(&mut fb, &path, Color::GREEN, 0.2).unwrap();
+        assert_eq!(fb.get_pixel(1, 1), Some(Color::GREEN));
+        assert_eq!(fb.get_pixel(3, 3), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn non_zero_fill_creates_hole_for_opposite_winding_contour() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(8.0, 0.0))
+            .line_to(Vector::new(8.0, 8.0))
+            .line_to(Vector::new(0.0, 8.0))
+            .close();
+        // Reverse direction relative to the outer contour.
+        path.move_to(Vector::new(2.0, 2.0))
+            .line_to(Vector::new(2.0, 6.0))
+            .line_to(Vector::new(6.0, 6.0))
+            .line_to(Vector::new(6.0, 2.0))
+            .close();
+        let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        super::fill_path_non_zero_clipped(
+            &mut fb, &path, Color::GREEN, 0.2, Rect::new(1, 1, 6, 6),
+        ).unwrap();
         assert_eq!(fb.get_pixel(1, 1), Some(Color::GREEN));
         assert_eq!(fb.get_pixel(3, 3), Some(Color::BLACK));
     }
