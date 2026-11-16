@@ -1306,55 +1306,98 @@ impl LayerGroup {
     }
 }
 
+/// Reusable off-screen surfaces for hierarchical group composition.
+///
+/// Keep one scratch value alongside a scene and pass it to
+/// `compose_layer_groups_with_scratch` on every frame to retain allocations.
+#[derive(Debug, Default)]
+pub struct LayerGroupScratch {
+    layers: Vec<Layer>,
+}
+
+impl LayerGroupScratch {
+    /// Returns the number of reusable group surfaces currently allocated.
+    #[must_use]
+    pub fn surface_count(&self) -> usize {
+        self.layers.len()
+    }
+}
+
 /// Composites isolated groups in order, applying each group's opacity and blend
 /// mode once after all of its children have been rendered.
 ///
-/// Each group owns a bounded off-screen surface. Child coordinates are local to
-/// that surface; the group's position and transform place the completed surface
-/// in the destination framebuffer. Nested groups are supported.
+/// This convenience function creates temporary scratch storage. Real-time
+/// render loops should use `compose_layer_groups_with_scratch` to reuse buffers.
 pub fn compose_layer_groups(
     target: &mut Framebuffer,
     groups: &[LayerGroup],
+) -> Result<(), FramebufferError> {
+    compose_layer_groups_with_scratch(target, groups, &mut LayerGroupScratch::default())
+}
+
+/// Composites nested groups while reusing their off-screen framebuffer allocations.
+///
+/// Child coordinates are local to the containing group. Group transforms,
+/// opacity and blend modes are applied once to the completed child surface.
+pub fn compose_layer_groups_with_scratch(
+    target: &mut Framebuffer,
+    groups: &[LayerGroup],
+    scratch: &mut LayerGroupScratch,
 ) -> Result<(), FramebufferError> {
     for group in groups {
         if !group.visible || group.opacity == 0 {
             continue;
         }
-        let surface = render_layer_group(group)?;
-        let mut layer = Layer::from_framebuffer(surface);
-        layer.set_position(group.x, group.y);
-        layer.set_opacity(group.opacity);
-        layer.set_blend_mode(group.blend_mode);
-        layer.set_transform(group.transform);
-        layer.set_filter(group.filter);
-        compose_layers(target, std::slice::from_ref(&layer));
+        render_layer_group_into(group, scratch, 0)?;
+        compose_layers(target, &scratch.layers[..1]);
     }
     Ok(())
 }
 
-fn render_layer_group(group: &LayerGroup) -> Result<Framebuffer, FramebufferError> {
-    let mut surface = Framebuffer::new(group.width, group.height, Color::TRANSPARENT)?;
+fn render_layer_group_into(
+    group: &LayerGroup,
+    scratch: &mut LayerGroupScratch,
+    depth: usize,
+) -> Result<(), FramebufferError> {
+    if scratch.layers.len() <= depth {
+        scratch
+            .layers
+            .push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
+    } else {
+        let surface = scratch.layers[depth].framebuffer_mut();
+        if surface.width() != group.width || surface.height() != group.height {
+            surface.resize_and_clear(group.width, group.height, Color::TRANSPARENT)?;
+        } else {
+            surface.clear(Color::TRANSPARENT);
+        }
+    }
+
     for child in &group.children {
         match child {
             LayerGroupChild::Layer(layer) => {
-                compose_layers(&mut surface, std::slice::from_ref(layer));
+                compose_layers(scratch.layers[depth].framebuffer_mut(), std::slice::from_ref(layer));
             }
             LayerGroupChild::Group(nested) => {
                 if !nested.visible || nested.opacity == 0 {
                     continue;
                 }
-                let nested_surface = render_layer_group(nested)?;
-                let mut nested_layer = Layer::from_framebuffer(nested_surface);
-                nested_layer.set_position(nested.x, nested.y);
-                nested_layer.set_opacity(nested.opacity);
-                nested_layer.set_blend_mode(nested.blend_mode);
-                nested_layer.set_transform(nested.transform);
-                nested_layer.set_filter(nested.filter);
-                compose_layers(&mut surface, std::slice::from_ref(&nested_layer));
+                render_layer_group_into(nested, scratch, depth + 1)?;
+                let (parents, children) = scratch.layers.split_at_mut(depth + 1);
+                compose_layers(
+                    parents[depth].framebuffer_mut(),
+                    std::slice::from_ref(&children[0]),
+                );
             }
         }
     }
-    Ok(surface)
+
+    let layer = &mut scratch.layers[depth];
+    layer.set_position(group.x, group.y);
+    layer.set_opacity(group.opacity);
+    layer.set_blend_mode(group.blend_mode);
+    layer.set_transform(group.transform);
+    layer.set_filter(group.filter);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1362,10 +1405,29 @@ mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
         compose_layer_groups, compose_layers, compose_layers_in_damage_regions, BlendMode,
-        DamageRegion, Layer, LayerGroup,
+        DamageRegion, Layer, LayerGroup, LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
+
+    #[test]
+    fn group_scratch_reuses_surfaces_across_frames_and_nested_depths() {
+        let mut inner = LayerGroup::new(2, 1).unwrap();
+        inner.add_layer(Layer::new(2, 1, Color::GREEN).unwrap());
+        let mut outer = LayerGroup::new(3, 2).unwrap();
+        outer.add_group(inner);
+
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(3, 2, Color::BLACK).unwrap();
+        compose_layer_groups_with_scratch(&mut target, &[outer.clone()], &mut scratch).unwrap();
+        assert_eq!(scratch.surface_count(), 2);
+        assert_eq!(target.get_pixel(0, 0), Some(Color::GREEN));
+
+        target.clear(Color::BLACK);
+        compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
+        assert_eq!(scratch.surface_count(), 2);
+        assert_eq!(target.get_pixel(1, 0), Some(Color::GREEN));
+    }
 
     #[test]
     fn group_opacity_is_applied_once_after_child_composition() {
