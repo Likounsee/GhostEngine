@@ -5029,6 +5029,102 @@ mod ellipse_outline_simd_tests {
         }
     }
 
+    fn scalar_fill_reference(
+        target: &mut Framebuffer,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        color: Color,
+    ) {
+        if color.a == 0 || radius_x == 0 || radius_y == 0 {
+            return;
+        }
+        const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
+        let cx = f64::from(center.x);
+        let cy = f64::from(center.y);
+        let rx = f64::from(radius_x);
+        let ry = f64::from(radius_y);
+        let left = (cx - rx - 1.0).floor().max(0.0) as u32;
+        let top = (cy - ry - 1.0).floor().max(0.0) as u32;
+        let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
+        let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
+
+        for y in top..bottom {
+            let row = target.row_mut(y).unwrap();
+            for x in left..right {
+                let mut covered = 0_u32;
+                for offset_y in OFFSETS {
+                    let dy = (f64::from(y) + offset_y - cy) / ry;
+                    for offset_x in OFFSETS {
+                        let dx = (f64::from(x) + offset_x - cx) / rx;
+                        if dx * dx + dy * dy <= 1.0 {
+                            covered += 1;
+                        }
+                    }
+                }
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                if alpha != 0 {
+                    let source = Color::rgba(color.r, color.g, color.b, alpha);
+                    let destination = &mut row[x as usize];
+                    *destination = if destination.a == 0 {
+                        source
+                    } else {
+                        source.blend_over(*destination)
+                    };
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simd_ellipse_fill_matches_scalar_for_clipping_and_alpha_modes() {
+        let cases = [
+            (Point::new(18, 14), 12, 8),
+            (Point::new(2, 13), 9, 7),
+            (Point::new(37, 26), 11, 9),
+            (Point::new(18, 14), 1, 1),
+        ];
+        for target_alpha in [255, 117] {
+            for source_alpha in [255, 173, 1] {
+                for (center, radius_x, radius_y) in cases {
+                    let mut actual = Framebuffer::new(43, 31, Color::BLACK).unwrap();
+                    for (index, pixel) in actual.pixels_mut().iter_mut().enumerate() {
+                        *pixel = Color::rgba(
+                            (index % 251) as u8,
+                            (index % 193) as u8,
+                            (index % 157) as u8,
+                            if target_alpha == 255 {
+                                255
+                            } else {
+                                (index * 37 % 256) as u8
+                            },
+                        );
+                    }
+                    let mut expected = actual.clone();
+                    let color = Color::rgba(210, 75, 130, source_alpha);
+                    super::fill_ellipse_aa(
+                        &mut actual,
+                        center,
+                        radius_x,
+                        radius_y,
+                        color,
+                    );
+                    scalar_fill_reference(
+                        &mut expected,
+                        center,
+                        radius_x,
+                        radius_y,
+                        color,
+                    );
+                    assert_eq!(
+                        actual, expected,
+                        "target alpha {target_alpha}, source alpha {source_alpha}, radii {radius_x}x{radius_y}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn simd_ellipse_outline_matches_scalar_for_opaque_and_translucent_targets() {
         for target_alpha in [255, 117] {
