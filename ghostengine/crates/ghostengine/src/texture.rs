@@ -1098,7 +1098,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     let row = &mut pixels[local_row..local_row + width];
                     let vertical_x = inverse.m12 * pixel_center_y;
                     let vertical_y = inverse.m22 * pixel_center_y;
-                    for (_x, &(horizontal_x, horizontal_y)) in
+                    for (x, &(horizontal_x, horizontal_y)) in
                         (first_x..end_x).zip(horizontal_terms.iter())
                     {
                         // Preserve the sequential renderer's left-to-right
