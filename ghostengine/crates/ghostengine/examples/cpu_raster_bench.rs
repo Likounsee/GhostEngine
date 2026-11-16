@@ -617,6 +617,11 @@ fn main() {
         measure("Texture cache handle lookup", iterations, |_target| {
             black_box(texture_cache.get(cached_texture_handle));
         }),
+        measure("Texture cache retain + release", iterations, |_target| {
+            black_box(texture_cache.retain(cached_texture_handle));
+            black_box(texture_cache.release(cached_texture_handle));
+        }),
+
         measure("Texture bilinear", iterations, |target| {
             ghostengine::draw_texture(
                 target,
