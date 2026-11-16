@@ -2352,7 +2352,60 @@ pub fn draw_ellipse_aa(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        for x in left..right {
+        let row = &mut row[left as usize..right as usize];
+        let vectorized_len = row.len() / 4 * 4;
+        let (vectorized, tail) = row.split_at_mut(vectorized_len);
+        for (quad_index, destinations) in vectorized.chunks_exact_mut(4).enumerate() {
+            let x_base = left + (quad_index as u32) * 4;
+            let mut sources = [Color::TRANSPARENT; 4];
+            let mut has_coverage = false;
+            for lane in 0..4 {
+                let x = x_base + lane as u32;
+                let mut covered = 0_u32;
+                for offset_y in SAMPLE_OFFSETS {
+                    let dy = f64::from(y) + offset_y - cy;
+                    let normalized_y = dy * dy * inverse_ry_squared;
+                    for offset_x in SAMPLE_OFFSETS {
+                        let dx = f64::from(x) + offset_x - cx;
+                        let normalized_x = dx * dx * inverse_rx_squared;
+                        let radius = (normalized_x + normalized_y).sqrt();
+                        if radius == 0.0 {
+                            continue;
+                        }
+                        let gradient = (dx * dx * inverse_rx_squared * inverse_rx_squared
+                            + dy * dy * inverse_ry_squared * inverse_ry_squared)
+                            .sqrt()
+                            / radius;
+                        let distance = (radius - 1.0) / gradient.max(f64::EPSILON);
+                        if distance.abs() <= 0.5 {
+                            covered += 1;
+                        }
+                    }
+                }
+                let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
+                if alpha != 0 {
+                    sources[lane] = Color::rgba(color.r, color.g, color.b, alpha);
+                    has_coverage = true;
+                }
+            }
+            if !has_coverage {
+                continue;
+            }
+            if destinations.iter().all(|pixel| pixel.a == 255) {
+                blend_variable_opaque_quad(
+                    destinations.try_into().expect("four destination pixels"),
+                    sources,
+                );
+            } else {
+                for (destination, source) in destinations.iter_mut().zip(sources) {
+                    if source.a != 0 {
+                        *destination = source.blend_over(*destination);
+                    }
+                }
+            }
+        }
+        for (index, destination) in tail.iter_mut().enumerate() {
+            let x = left + vectorized_len as u32 + index as u32;
             let mut covered = 0_u32;
             for offset_y in SAMPLE_OFFSETS {
                 let dy = f64::from(y) + offset_y - cy;
@@ -2374,16 +2427,10 @@ pub fn draw_ellipse_aa(
                     }
                 }
             }
-            if covered == 0 {
-                continue;
-            }
             let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-            if alpha == 0 {
-                continue;
+            if alpha != 0 {
+                *destination = Color::rgba(color.r, color.g, color.b, alpha).blend_over(*destination);
             }
-            let source = Color::rgba(color.r, color.g, color.b, alpha);
-            let index = x as usize;
-            row[index] = source.blend_over(row[index]);
         }
     }
 }
