@@ -5337,32 +5337,27 @@ mod blend_rect_opaque_run_tests {
 
     #[test]
     fn large_blend_rect_clips_opaque_runs_and_preserves_untouched_pixels() {
-        let mut actual = Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap();
+        let base = Color::rgb(17, 29, 41);
+        let mut actual = Framebuffer::new(19, 9, base).unwrap();
         let mut expected = actual.clone();
         let source = Color::rgba(230, 70, 110, 177);
+        let rect = Rect::new(4, 2, 40, 20);
+
+        for y in 2..9 {
+            for x in 4..19 {
+                let old = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(x, y, source.blend_over(old));
+            }
+        }
+
+        super::blend_rect(&mut actual, rect, source);
+        assert_eq!(actual, expected);
         for y in 0..9 {
             for x in 0..19 {
-                if (x + y) % 3 == 0 {
-                    let old = expected.get_pixel(x, y).unwrap();
-                    expected.set_pixel(x, y, source.blend_over(old));
+                if x < 4 || y < 2 {
+                    assert_eq!(actual.get_pixel(x, y), Some(base));
                 }
             }
         }
-        super::blend_rect(
-            &mut actual,
-            Rect::new(0, 0, 19, 9),
-            Color::TRANSPARENT,
-        );
-        assert_eq!(actual, Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap());
-
-        // A clipped, non-zero-alpha draw exercises the SIMD path and scalar
-        // fallback at both edges of every affected row.
-        let clipped = Rect::new(0, 0, 19, 9);
-        super::blend_rect(&mut actual, clipped, source);
-        let mut reference = Framebuffer::new(19, 9, Color::rgb(17, 29, 41)).unwrap();
-        for pixel in reference.pixels_mut() {
-            *pixel = source.blend_over(*pixel);
-        }
-        assert_eq!(actual, reference);
     }
 }
