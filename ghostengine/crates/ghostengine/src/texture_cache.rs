@@ -1,0 +1,310 @@
+//! Bounded, ID-addressable cache for immutable CPU textures.
+
+use std::collections::HashMap;
+
+use crate::Texture;
+
+/// Stable handle returned when a texture is inserted into a cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureHandle(u64);
+
+impl TextureHandle {
+    /// Returns the cache-local numeric identifier.
+    #[must_use]
+    pub const fn id(self) -> u64 {
+        self.0
+    }
+}
+
+/// Memory usage and eviction counters for a texture cache.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextureCacheStats {
+    pub entries: usize,
+    pub used_bytes: usize,
+    pub budget_bytes: usize,
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
+}
+
+/// Errors returned when a texture cannot be inserted into a cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureCacheError {
+    /// The texture alone is larger than the configured cache budget.
+    TextureExceedsBudget { texture_bytes: usize, budget_bytes: usize },
+    /// The cache-local handle counter has reached its maximum value.
+    HandleExhausted,
+}
+
+#[derive(Debug)]
+struct Entry {
+    texture: Texture,
+    bytes: usize,
+    last_used: u64,
+}
+
+/// A bounded LRU cache for immutable textures.
+///
+/// The cache owns its textures and accounts for their pixel storage. Inserting
+/// an item may evict least-recently-used entries until the new item fits.
+/// Handles are monotonically allocated and are never reused during the cache's
+/// lifetime, so an evicted handle cannot accidentally refer to a later texture.
+#[derive(Debug)]
+pub struct TextureCache {
+    entries: HashMap<TextureHandle, Entry>,
+    budget_bytes: usize,
+    used_bytes: usize,
+    next_handle: u64,
+    clock: u64,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+}
+
+impl TextureCache {
+    /// Creates an empty cache with a maximum pixel-storage budget.
+    #[must_use]
+    pub fn new(budget_bytes: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            budget_bytes,
+            used_bytes: 0,
+            next_handle: 1,
+            clock: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+        }
+    }
+
+    /// Inserts a texture, evicting least-recently-used entries if necessary.
+    ///
+    /// The size is calculated from the owned RGBA pixel buffer. Hash-map and
+    /// allocator overhead are intentionally not included in this accounting.
+    pub fn insert(&mut self, texture: Texture) -> Result<TextureHandle, TextureCacheError> {
+        let bytes = texture
+            .pixels()
+            .len()
+            .checked_mul(std::mem::size_of::<crate::Color>())
+            .unwrap_or(usize::MAX);
+        if bytes > self.budget_bytes {
+            return Err(TextureCacheError::TextureExceedsBudget {
+                texture_bytes: bytes,
+                budget_bytes: self.budget_bytes,
+            });
+        }
+
+        let handle = TextureHandle(self.next_handle);
+        let next_handle = self
+            .next_handle
+            .checked_add(1)
+            .ok_or(TextureCacheError::HandleExhausted)?;
+
+        while self.used_bytes > self.budget_bytes - bytes {
+            if !self.evict_least_recently_used() {
+                break;
+            }
+        }
+
+        self.clock = self.clock.saturating_add(1);
+        self.entries.insert(
+            handle,
+            Entry {
+                texture,
+                bytes,
+                last_used: self.clock,
+            },
+        );
+        self.used_bytes += bytes;
+        self.next_handle = next_handle;
+        Ok(handle)
+    }
+
+    /// Gets a texture and marks it as recently used.
+    pub fn get(&mut self, handle: TextureHandle) -> Option<&Texture> {
+        self.clock = self.clock.saturating_add(1);
+        match self.entries.get_mut(&handle) {
+            Some(entry) => {
+                entry.last_used = self.clock;
+                self.hits = self.hits.saturating_add(1);
+                Some(&entry.texture)
+            }
+            None => {
+                self.misses = self.misses.saturating_add(1);
+                None
+            }
+        }
+    }
+
+    /// Reads a texture without changing LRU order or hit/miss counters.
+    #[must_use]
+    pub fn peek(&self, handle: TextureHandle) -> Option<&Texture> {
+        self.entries.get(&handle).map(|entry| &entry.texture)
+    }
+
+    /// Removes an entry and returns ownership of its texture.
+    pub fn remove(&mut self, handle: TextureHandle) -> Option<Texture> {
+        let entry = self.entries.remove(&handle)?;
+        self.used_bytes -= entry.bytes;
+        Some(entry.texture)
+    }
+
+    /// Changes the memory budget, immediately evicting entries if required.
+    pub fn set_budget_bytes(&mut self, budget_bytes: usize) {
+        self.budget_bytes = budget_bytes;
+        while self.used_bytes > self.budget_bytes {
+            if !self.evict_least_recently_used() {
+                break;
+            }
+        }
+    }
+
+    /// Removes every cached texture while preserving counters and handle IDs.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.used_bytes = 0;
+    }
+
+    /// Returns the current cache metrics.
+    #[must_use]
+    pub fn stats(&self) -> TextureCacheStats {
+        TextureCacheStats {
+            entries: self.entries.len(),
+            used_bytes: self.used_bytes,
+            budget_bytes: self.budget_bytes,
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+        }
+    }
+
+    /// Returns the number of currently cached textures.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns true when no textures are currently cached.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    fn evict_least_recently_used(&mut self) -> bool {
+        let candidate = self
+            .entries
+            .iter()
+            .min_by_key(|(_, entry)| entry.last_used)
+            .map(|(handle, _)| *handle);
+        let Some(handle) = candidate else {
+            return false;
+        };
+        if let Some(entry) = self.entries.remove(&handle) {
+            self.used_bytes -= entry.bytes;
+            self.evictions = self.evictions.saturating_add(1);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Color;
+
+    fn texture(color: Color, pixels: usize) -> Texture {
+        Texture::new(pixels as u32, 1, vec![color; pixels]).unwrap()
+    }
+
+    #[test]
+    fn inserts_and_retrieves_with_stable_handles() {
+        let mut cache = TextureCache::new(64);
+        let handle = cache.insert(texture(Color::RED, 4)).unwrap();
+
+        assert_eq!(handle.id(), 1);
+        assert_eq!(cache.get(handle).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().used_bytes, 16);
+    }
+
+    #[test]
+    fn evicts_least_recently_used_texture_to_respect_budget() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+
+        assert!(cache.get(first).is_some());
+        let third = cache.insert(texture(Color::GREEN, 2)).unwrap();
+
+        assert!(cache.peek(first).is_some());
+        assert!(cache.peek(second).is_none());
+        assert!(cache.peek(third).is_some());
+        assert_eq!(cache.stats().used_bytes, 16);
+        assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
+    fn rejects_oversized_texture_without_evicting_existing_entries() {
+        let mut cache = TextureCache::new(8);
+        let retained = cache.insert(texture(Color::RED, 2)).unwrap();
+
+        assert_eq!(
+            cache.insert(texture(Color::BLUE, 3)),
+            Err(TextureCacheError::TextureExceedsBudget {
+                texture_bytes: 12,
+                budget_bytes: 8,
+            })
+        );
+        assert!(cache.peek(retained).is_some());
+        assert_eq!(cache.stats().entries, 1);
+    }
+
+    #[test]
+    fn shrinking_budget_evicts_oldest_entries_immediately() {
+        let mut cache = TextureCache::new(32);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        cache.set_budget_bytes(8);
+
+        assert!(cache.peek(first).is_none());
+        assert!(cache.peek(second).is_some());
+        assert_eq!(cache.stats().used_bytes, 8);
+        assert_eq!(cache.stats().budget_bytes, 8);
+    }
+
+    #[test]
+    fn remove_and_clear_release_accounted_storage() {
+        let mut cache = TextureCache::new(64);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        cache.insert(texture(Color::BLUE, 2)).unwrap();
+
+        assert_eq!(cache.remove(first).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(cache.stats().used_bytes, 8);
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().used_bytes, 0);
+    }
+
+    #[test]
+    fn peek_does_not_change_lru_or_access_counters() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+
+        assert!(cache.peek(first).is_some());
+        assert_eq!(cache.stats().hits, 0);
+        cache.insert(texture(Color::GREEN, 2)).unwrap();
+
+        assert!(cache.peek(first).is_none());
+        assert!(cache.peek(second).is_some());
+    }
+
+    #[test]
+    fn missing_handle_increments_miss_counter() {
+        let mut cache = TextureCache::new(16);
+        assert!(cache.get(TextureHandle(999)).is_none());
+        assert_eq!(cache.stats().misses, 1);
+    }
+}
