@@ -1757,6 +1757,7 @@ pub struct RasterizerScratch {
     aa_coverage: Vec<u8>,
     ellipse_aa_coverage: Vec<u8>,
     arc_aa_sources: Vec<Color>,
+    ellipse_aa_sources: Vec<Color>,
 }
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
@@ -2451,6 +2452,20 @@ pub fn draw_ellipse_aa(
     radius_y: u32,
     color: Color,
 ) {
+    let mut scratch = RasterizerScratch::default();
+    draw_ellipse_aa_with_scratch(target, center, radius_x, radius_y, color, &mut scratch);
+}
+
+/// Draws an antialiased ellipse outline while reusing caller-owned scanline color storage.
+pub fn draw_ellipse_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+,
+    scratch: &mut RasterizerScratch,
+) {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return;
     }
@@ -2484,7 +2499,8 @@ pub fn draw_ellipse_aa(
 
     let inverse_rx_squared = 1.0 / (rx * rx);
     let inverse_ry_squared = 1.0 / (ry * ry);
-    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
+    let sources = &mut scratch.ellipse_aa_sources;
+    sources.resize((right - left) as usize, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -2558,8 +2574,8 @@ pub fn draw_ellipse_aa(
             }
         }
     }
-}
 
+}
 /// Draws an anti-aliased circular arc.
 ///
 /// Angles are expressed in radians from the positive X axis. Positive sweeps
@@ -5749,6 +5765,32 @@ mod blend_rect_transparent_run_tests {
             Color::WHITE, &mut scratch,
         );
         assert_eq!(scratch.arc_aa_sources.capacity(), capacity);
+    }
+
+    #[test]
+    fn ellipse_outline_aa_reuses_scratch_scanline_across_draws() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(67, 43, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+
+        for (center, radius_x, radius_y, color) in [
+            (Point::new(20, 18), 12, 8, Color::rgba(230, 70, 120, 177)),
+            (Point::new(42, 25), 19, 11, Color::rgba(40, 190, 210, 129)),
+            (Point::new(3, 7), 8, 6, Color::rgba(170, 90, 30, 211)),
+        ] {
+            super::draw_ellipse_aa_with_scratch(
+                &mut actual, center, radius_x, radius_y, color, &mut scratch,
+            );
+            super::draw_ellipse_aa(&mut expected, center, radius_x, radius_y, color);
+        }
+
+        assert_eq!(actual, expected);
+        assert!(scratch.ellipse_aa_sources.capacity() >= 39);
+        let capacity = scratch.ellipse_aa_sources.capacity();
+        super::draw_ellipse_aa_with_scratch(
+            &mut actual, Point::new(30, 20), 10, 6, Color::WHITE, &mut scratch,
+        );
+        assert_eq!(scratch.ellipse_aa_sources.capacity(), capacity);
     }
 
 }
