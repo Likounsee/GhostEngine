@@ -1179,6 +1179,178 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
     )
 }
 
+
+/// A compositing group that renders its children into an isolated off-screen surface.
+///
+/// Group opacity and blend mode are applied once to the completed group, rather
+/// than independently to each child. Groups can contain other groups, allowing
+/// applications to build reusable scene hierarchies.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerGroup {
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    opacity: u8,
+    visible: bool,
+    blend_mode: BlendMode,
+    transform: Transform2D,
+    filter: TextureFilter,
+    children: Vec<LayerGroupChild>,
+}
+
+/// A child in a compositing group.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerGroupChild {
+    Layer(Layer),
+    Group(LayerGroup),
+}
+
+impl LayerGroup {
+    /// Creates an isolated group surface with transparent initial contents.
+    pub fn new(width: u32, height: u32) -> Result<Self, FramebufferError> {
+        // Validate dimensions at construction so invalid groups cannot enter a scene.
+        Framebuffer::new(width, height, Color::TRANSPARENT)?;
+        Ok(Self {
+            width,
+            height,
+            x: 0,
+            y: 0,
+            opacity: 255,
+            visible: true,
+            blend_mode: BlendMode::SourceOver,
+            transform: Transform2D::IDENTITY,
+            filter: TextureFilter::Bilinear,
+            children: Vec::new(),
+        })
+    }
+
+    /// Adds a framebuffer-backed child layer, preserving insertion order.
+    pub fn add_layer(&mut self, layer: Layer) {
+        self.children.push(LayerGroupChild::Layer(layer));
+    }
+
+    /// Adds a nested group, preserving insertion order.
+    pub fn add_group(&mut self, group: LayerGroup) {
+        self.children.push(LayerGroupChild::Group(group));
+    }
+
+    /// Returns the children in back-to-front composition order.
+    #[must_use]
+    pub fn children(&self) -> &[LayerGroupChild] {
+        &self.children
+    }
+
+    #[must_use]
+    pub const fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    #[must_use]
+    pub const fn position(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
+    pub fn set_position(&mut self, x: i32, y: i32) {
+        self.x = x;
+        self.y = y;
+    }
+
+    #[must_use]
+    pub const fn opacity(&self) -> u8 {
+        self.opacity
+    }
+
+    pub fn set_opacity(&mut self, opacity: u8) {
+        self.opacity = opacity;
+    }
+
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    pub fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    #[must_use]
+    pub const fn blend_mode(&self) -> BlendMode {
+        self.blend_mode
+    }
+
+    pub fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend_mode = mode;
+    }
+
+    #[must_use]
+    pub const fn transform(&self) -> Transform2D {
+        self.transform
+    }
+
+    pub fn set_transform(&mut self, transform: Transform2D) {
+        self.transform = transform;
+    }
+
+    #[must_use]
+    pub const fn filter(&self) -> TextureFilter {
+        self.filter
+    }
+
+    pub fn set_filter(&mut self, filter: TextureFilter) {
+        self.filter = filter;
+    }
+}
+
+/// Composites isolated groups in order, applying each group's opacity and blend
+/// mode once after all of its children have been rendered.
+///
+/// Each group owns a bounded off-screen surface. Child coordinates are local to
+/// that surface; the group's position and transform place the completed surface
+/// in the destination framebuffer. Nested groups are supported.
+pub fn compose_layer_groups(
+    target: &mut Framebuffer,
+    groups: &[LayerGroup],
+) -> Result<(), FramebufferError> {
+    for group in groups {
+        if !group.visible || group.opacity == 0 {
+            continue;
+        }
+        let surface = render_layer_group(group)?;
+        let mut layer = Layer::from_framebuffer(surface);
+        layer.set_position(group.x, group.y);
+        layer.set_opacity(group.opacity);
+        layer.set_blend_mode(group.blend_mode);
+        layer.set_transform(group.transform);
+        layer.set_filter(group.filter);
+        compose_layers(target, std::slice::from_ref(&layer));
+    }
+    Ok(())
+}
+
+fn render_layer_group(group: &LayerGroup) -> Result<Framebuffer, FramebufferError> {
+    let mut surface = Framebuffer::new(group.width, group.height, Color::TRANSPARENT)?;
+    for child in &group.children {
+        match child {
+            LayerGroupChild::Layer(layer) => compose_layers(&mut surface, std::slice::from_ref(layer)),
+            LayerGroupChild::Group(nested) => {
+                if !nested.visible || nested.opacity == 0 {
+                    continue;
+                }
+                let nested_surface = render_layer_group(nested)?;
+                let mut nested_layer = Layer::from_framebuffer(nested_surface);
+                nested_layer.set_position(nested.x, nested.y);
+                nested_layer.set_opacity(nested.opacity);
+                nested_layer.set_blend_mode(nested.blend_mode);
+                nested_layer.set_transform(nested.transform);
+                nested_layer.set_filter(nested.filter);
+                compose_layers(&mut surface, std::slice::from_ref(&nested_layer));
+            }
+        }
+    }
+    Ok(surface)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1186,6 +1358,61 @@ mod tests {
         compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+
+    #[test]
+    fn group_opacity_is_applied_once_after_child_composition() {
+        let mut group = LayerGroup::new(1, 1).unwrap();
+        group.add_layer(Layer::new(1, 1, Color::rgba(255, 0, 0, 128)).unwrap());
+        group.add_layer(Layer::new(1, 1, Color::rgba(0, 0, 255, 128)).unwrap());
+        group.set_opacity(128);
+
+        let background = Color::rgb(20, 40, 60);
+        let mut actual = Framebuffer::new(1, 1, background).unwrap();
+        compose_layer_groups(&mut actual, &[group]).unwrap();
+
+        let mut isolated = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
+        let mut children = [
+            Layer::new(1, 1, Color::rgba(255, 0, 0, 128)).unwrap(),
+            Layer::new(1, 1, Color::rgba(0, 0, 255, 128)).unwrap(),
+        ];
+        compose_layers(&mut isolated, &children);
+        let mut expected_layer = Layer::from_framebuffer(isolated);
+        expected_layer.set_opacity(128);
+        let mut expected = Framebuffer::new(1, 1, background).unwrap();
+        compose_layers(&mut expected, &[expected_layer]);
+
+        assert_eq!(actual.pixels(), expected.pixels());
+        // Applying opacity to each child independently produces a different result.
+        children[0].set_opacity(128);
+        children[1].set_opacity(128);
+        let mut per_child = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
+        compose_layers(&mut per_child, &children);
+        assert_ne!(actual.get_pixel(0, 0), Some(per_child.get_pixel(0, 0).unwrap().blend_over(background)));
+    }
+
+    #[test]
+    fn nested_groups_respect_visibility_position_and_blend_mode() {
+        let mut inner = LayerGroup::new(1, 1).unwrap();
+        inner.add_layer(Layer::new(1, 1, Color::RED).unwrap());
+        inner.set_position(1, 0);
+        inner.set_visible(true);
+
+        let mut outer = LayerGroup::new(3, 1).unwrap();
+        outer.add_group(inner);
+        outer.set_position(1, 0);
+        outer.set_blend_mode(BlendMode::Screen);
+        let mut hidden = LayerGroup::new(3, 1).unwrap();
+        hidden.add_layer(Layer::new(3, 1, Color::WHITE).unwrap());
+        hidden.set_visible(false);
+
+        let mut target = Framebuffer::new(5, 1, Color::BLACK).unwrap();
+        compose_layer_groups(&mut target, &[outer, hidden]).unwrap();
+
+        assert_eq!(target.get_pixel(2, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(4, 0), Some(Color::BLACK));
+    }
 
     #[test]
     fn blend_modes_produce_expected_opaque_channel_results() {
