@@ -2956,6 +2956,49 @@ mod tests {
     }
 
     #[test]
+    fn ellipse_aa_reuses_scratch_coverage_across_draws() {
+        let mut scratch = super::RasterizerScratch::default();
+        let mut actual = Framebuffer::new(67, 43, Color::TRANSPARENT).unwrap();
+        let mut expected = actual.clone();
+
+        for (center, radius_x, radius_y, color) in [
+            (Point::new(20, 18), 12, 8, Color::rgba(230, 70, 120, 177)),
+            (Point::new(42, 25), 19, 11, Color::rgba(40, 190, 210, 129)),
+            (Point::new(3, 7), 8, 6, Color::rgba(170, 90, 30, 211)),
+        ] {
+            super::fill_ellipse_aa_with_scratch(
+                &mut actual,
+                center,
+                radius_x,
+                radius_y,
+                color,
+                &mut scratch,
+            );
+            super::fill_ellipse_aa(
+                &mut expected,
+                center,
+                radius_x,
+                radius_y,
+                color,
+            );
+        }
+
+        assert_eq!(actual, expected);
+        assert!(scratch.ellipse_aa_coverage.capacity() >= 39);
+        let capacity = scratch.ellipse_aa_coverage.capacity();
+
+        super::fill_ellipse_aa_with_scratch(
+            &mut actual,
+            Point::new(30, 20),
+            5,
+            4,
+            Color::WHITE,
+            &mut scratch,
+        );
+        assert_eq!(scratch.ellipse_aa_coverage.capacity(), capacity);
+    }
+
+    #[test]
     fn polygon_span_fast_path_matches_four_sample_reference() {
         const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
         let row_left = 3_u32;
