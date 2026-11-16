@@ -1370,7 +1370,9 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                     let row = &mut pixels[local_row..local_row + width];
                     let vertical_x = inverse.m12 * pixel_center_y;
                     let vertical_y = inverse.m22 * pixel_center_y;
-                    let Some((row_first_x, row_end_x)) = transformed_scanline_x_range(scanline_bounds, pixel_center_y) else {
+                    let Some((row_first_x, row_end_x)) =
+                        transformed_scanline_x_range(scanline_bounds, pixel_center_y)
+                    else {
                         continue;
                     };
                     for x in row_first_x..row_end_x {
