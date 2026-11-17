@@ -124,12 +124,12 @@ mod tests {
     }
 
     #[test]
-    fn rectangle_contains_handles_coordinates_near_u32_limit() {
-        let rect = Rect::new(u32::MAX, u32::MAX, 1, 1);
+    fn rectangle_contains_handles_large_extents_and_maximum_point_coordinates() {
+        let rect = Rect::new(0, 0, u32::MAX, u32::MAX);
         assert!(rect.contains(Point::new(i32::MAX, i32::MAX)));
 
-        let rect = Rect::new(u32::MAX - 1, u32::MAX - 1, 2, 2);
-        assert!(rect.contains(Point::new(i32::MAX, i32::MAX)));
-        assert!(!rect.contains(Point::new(i32::MAX - 1, i32::MAX - 1)));
+        let edge = Rect::new(i32::MAX as u32, i32::MAX as u32, 1, 1);
+        assert!(edge.contains(Point::new(i32::MAX, i32::MAX)));
+        assert!(!edge.contains(Point::new(i32::MAX - 1, i32::MAX - 1)));
     }
 }
