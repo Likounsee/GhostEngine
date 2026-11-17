@@ -447,63 +447,8 @@ pub fn draw_text_shaped_clipped(
         return TextMetrics::default();
     }
 
-    // ShapedText is public and can be constructed by callers. Validate the
-    // complete run before touching the glyph cache or framebuffer so malformed
-    // metrics cannot cause partial rendering or poison the pen position.
-    if !shaped.advance_x.is_finite()
-        || !shaped.advance_y.is_finite()
-        || shaped.glyphs.iter().any(|glyph| {
-            !glyph.x_advance.is_finite()
-                || !glyph.y_advance.is_finite()
-                || !glyph.x_offset.is_finite()
-                || !glyph.y_offset.is_finite()
-        })
-    {
+    if !shaped_run_is_safe(shaped, baseline) {
         return TextMetrics::default();
-    }
-
-    let total_x = shaped
-        .glyphs
-        .iter()
-        .map(|glyph| f64::from(glyph.x_advance))
-        .sum::<f64>();
-    let total_y = shaped
-        .glyphs
-        .iter()
-        .map(|glyph| f64::from(glyph.y_advance))
-        .sum::<f64>();
-    if !total_x.is_finite()
-        || !total_y.is_finite()
-        || total_x.abs() > f64::from(f32::MAX)
-        || total_y.abs() > f64::from(f32::MAX)
-    {
-        return TextMetrics::default();
-    }
-
-    // Validate every intermediate pen position as well as the final sum.
-    // A run can have a finite final advance while an earlier prefix overflows
-    // (for example, a very large positive advance followed by a negative one).
-    let mut check_x = f64::from(baseline.x);
-    let mut check_y = f64::from(baseline.y);
-    for glyph in &shaped.glyphs {
-        let glyph_x = check_x + f64::from(glyph.x_offset);
-        let glyph_y = check_y - f64::from(glyph.y_offset);
-        if !glyph_x.is_finite()
-            || !glyph_y.is_finite()
-            || glyph_x.abs() > f64::from(f32::MAX)
-            || glyph_y.abs() > f64::from(f32::MAX)
-        {
-            return TextMetrics::default();
-        }
-        check_x += f64::from(glyph.x_advance);
-        check_y -= f64::from(glyph.y_advance);
-        if !check_x.is_finite()
-            || !check_y.is_finite()
-            || check_x.abs() > f64::from(f32::MAX)
-            || check_y.abs() > f64::from(f32::MAX)
-        {
-            return TextMetrics::default();
-        }
     }
 
     let mut pen_x = baseline.x as f32;
@@ -541,6 +486,63 @@ pub fn draw_text_shaped_clipped(
         height: font.line_height(pixel_size),
         line_count: 1,
     }
+}
+
+/// Checks public shaped-run data before any glyph-cache or framebuffer access.
+fn shaped_run_is_safe(shaped: &ShapedText, baseline: Point) -> bool {
+    if !shaped.advance_x.is_finite()
+        || !shaped.advance_y.is_finite()
+        || shaped.glyphs.iter().any(|glyph| {
+            !glyph.x_advance.is_finite()
+                || !glyph.y_advance.is_finite()
+                || !glyph.x_offset.is_finite()
+                || !glyph.y_offset.is_finite()
+        })
+    {
+        return false;
+    }
+
+    let total_x = shaped
+        .glyphs
+        .iter()
+        .map(|glyph| f64::from(glyph.x_advance))
+        .sum::<f64>();
+    let total_y = shaped
+        .glyphs
+        .iter()
+        .map(|glyph| f64::from(glyph.y_advance))
+        .sum::<f64>();
+    if !total_x.is_finite()
+        || !total_y.is_finite()
+        || total_x.abs() > f64::from(f32::MAX)
+        || total_y.abs() > f64::from(f32::MAX)
+    {
+        return false;
+    }
+
+    let mut pen_x = f64::from(baseline.x);
+    let mut pen_y = f64::from(baseline.y);
+    for glyph in &shaped.glyphs {
+        let glyph_x = pen_x + f64::from(glyph.x_offset);
+        let glyph_y = pen_y - f64::from(glyph.y_offset);
+        if !glyph_x.is_finite()
+            || !glyph_y.is_finite()
+            || glyph_x.abs() > f64::from(f32::MAX)
+            || glyph_y.abs() > f64::from(f32::MAX)
+        {
+            return false;
+        }
+        pen_x += f64::from(glyph.x_advance);
+        pen_y -= f64::from(glyph.y_advance);
+        if !pen_x.is_finite()
+            || !pen_y.is_finite()
+            || pen_x.abs() > f64::from(f32::MAX)
+            || pen_y.abs() > f64::from(f32::MAX)
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn draw_cached_glyph_clipped(
@@ -1605,6 +1607,7 @@ pub fn draw_text_shaped_transformed_clipped(
         || pixel_size <= 0.0
         || shaped.glyphs.is_empty()
         || !transform.is_finite()
+        || !shaped_run_is_safe(shaped, baseline)
     {
         return TextMetrics::default();
     }
@@ -2441,6 +2444,42 @@ mod tests {
             16.0,
             crate::Color::WHITE,
             crate::Rect::new(0, 0, 32, 32),
+        );
+
+        assert_eq!(metrics, super::TextMetrics::default());
+        assert_eq!(target.pixels(), before);
+        assert_eq!(font.cached_glyph_count(), 0);
+    }
+
+    #[test]
+    fn transformed_shaped_renderer_rejects_malformed_metrics_before_rendering() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let malformed = crate::ShapedText {
+            glyphs: vec![crate::ShapedGlyph {
+                glyph_id: 1,
+                cluster: 0,
+                x_advance: 0.0,
+                y_advance: f32::NAN,
+                x_offset: 0.0,
+                y_offset: 0.0,
+            }],
+            advance_x: 0.0,
+            advance_y: 0.0,
+        };
+        let mut target =
+            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let before = target.pixels().to_vec();
+
+        let metrics = super::draw_text_shaped_transformed_clipped(
+            &mut target,
+            &font,
+            &malformed,
+            crate::Point::new(4, 24),
+            16.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 32, 32),
+            crate::Transform2D::IDENTITY,
         );
 
         assert_eq!(metrics, super::TextMetrics::default());
