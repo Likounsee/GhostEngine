@@ -208,8 +208,6 @@ pub enum BlendMode {
     Exclusion,
 }
 
-/// A framebuffer-backed layer positioned in the destination coordinate space.
-#[derive(Debug, Clone, PartialEq)]
 /// Stable application-defined identity for a compositing group.
 pub type LayerGroupId = u64;
 
@@ -272,6 +270,8 @@ impl LayerGroupDamageTracker {
     }
 }
 
+/// A framebuffer-backed layer positioned in the destination coordinate space.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     framebuffer: Framebuffer,
     x: i32,
