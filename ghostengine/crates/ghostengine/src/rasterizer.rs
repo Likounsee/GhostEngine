@@ -8020,7 +8020,6 @@ mod blend_rect_transparent_run_tests {
     }
 }
 
-
 #[cfg(test)]
 mod axis_aligned_clip_tests {
     use super::clip_line;
@@ -8052,18 +8051,11 @@ mod axis_aligned_clip_tests {
 
     #[test]
     fn axis_aligned_clipping_rejects_segments_outside_the_framebuffer() {
-        assert_eq!(
-            clip_line(5, 4, Point::new(-10, 1), Point::new(-2, 1)),
-            None
-        );
-        assert_eq!(
-            clip_line(5, 4, Point::new(2, 8), Point::new(2, 12)),
-            None
-        );
+        assert_eq!(clip_line(5, 4, Point::new(-10, 1), Point::new(-2, 1)), None);
+        assert_eq!(clip_line(5, 4, Point::new(2, 8), Point::new(2, 12)), None);
         assert_eq!(clip_line(0, 4, Point::new(0, 0), Point::new(0, 2)), None);
     }
 }
-
 
 #[cfg(test)]
 mod diagonal_line_fast_path_tests {
@@ -8087,7 +8079,11 @@ mod diagonal_line_fast_path_tests {
                 assert_eq!(framebuffer.get_pixel(x, y), Some(Color::WHITE));
             }
             assert_eq!(
-                framebuffer.pixels().iter().filter(|pixel| **pixel == Color::WHITE).count(),
+                framebuffer
+                    .pixels()
+                    .iter()
+                    .filter(|pixel| **pixel == Color::WHITE)
+                    .count(),
                 11
             );
         }
@@ -8110,12 +8106,15 @@ mod diagonal_line_fast_path_tests {
             );
         }
         assert_eq!(
-            framebuffer.pixels().iter().filter(|pixel| **pixel == Color::RED).count(),
+            framebuffer
+                .pixels()
+                .iter()
+                .filter(|pixel| **pixel == Color::RED)
+                .count(),
             8
         );
     }
 }
-
 
 #[cfg(test)]
 mod bresenham_direct_buffer_tests {
