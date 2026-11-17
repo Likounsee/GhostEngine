@@ -2020,7 +2020,8 @@ fn render_layer_group_into(
 mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
-        compose_layer_groups, compose_layer_groups_cached, compose_layer_groups_with_scratch,
+        compose_layer_groups, compose_layer_groups_cached,
+        compose_layer_groups_cached_in_damage_regions, compose_layer_groups_with_scratch,
         compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
         LayerGroup, LayerGroupCache, LayerGroupChild, LayerGroupScratch,
     };
