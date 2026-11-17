@@ -338,7 +338,9 @@ impl ComponentTree {
                 input.left_mouse_released,
                 font,
                 pixel_size,
-                input.left_click_count.max(u8::from(input.left_mouse_pressed)),
+                input
+                    .left_click_count
+                    .max(u8::from(input.left_mouse_pressed)),
             )
         } else {
             self.update_pointer(
@@ -495,12 +497,11 @@ impl ClickTracker {
             return self.click_count;
         };
         let is_double_click = self.last_click.is_some_and(|(last_time, last_position)| {
-            now.duration_since(last_time) <= Duration::from_millis(500)
-                && {
-                    let dx = i64::from(position.x) - i64::from(last_position.x);
-                    let dy = i64::from(position.y) - i64::from(last_position.y);
-                    dx * dx + dy * dy <= 25
-                }
+            now.duration_since(last_time) <= Duration::from_millis(500) && {
+                let dx = i64::from(position.x) - i64::from(last_position.x);
+                let dy = i64::from(position.y) - i64::from(last_position.y);
+                dx * dx + dy * dy <= 25
+            }
         });
         self.click_count = if is_double_click {
             self.click_count.saturating_add(1).min(3)
@@ -805,10 +806,7 @@ mod tests {
 
         let start = Instant::now();
         let mut tracker = super::ClickTracker::default();
-        assert_eq!(
-            tracker.record_at(Some(crate::Point::new(10, 10)), start),
-            1
-        );
+        assert_eq!(tracker.record_at(Some(crate::Point::new(10, 10)), start), 1);
         assert_eq!(
             tracker.record_at(
                 Some(crate::Point::new(12, 12)),
