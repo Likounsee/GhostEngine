@@ -214,9 +214,11 @@ impl WindowSurface {
         let (left_mouse_pressed, left_mouse_released) =
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
-        let left_click_count = left_mouse_pressed
-            .then(|| self.left_click_tracker.record(mouse_position))
-            .unwrap_or(0);
+        let left_click_count = if left_mouse_pressed {
+            self.left_click_tracker.record(mouse_position)
+        } else {
+            0
+        };
         let right_mouse_down = self.window.get_mouse_down(MouseButton::Right);
         let (right_mouse_pressed, _) =
             button_transition(self.previous_right_mouse_down, right_mouse_down);
