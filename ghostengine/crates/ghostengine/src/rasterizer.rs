@@ -8072,11 +8072,16 @@ mod diagonal_line_fast_path_tests {
             let mut framebuffer = Framebuffer::new(16, 16, Color::BLACK).unwrap();
             super::draw_line(&mut framebuffer, start, end, Color::WHITE);
 
-            let step_y = if start.y <= end.y { 1 } else { -1 };
+            let (left, right) = if start.x <= end.x {
+                (start, end)
+            } else {
+                (end, start)
+            };
+            let step_y = if left.y <= right.y { 1 } else { -1 };
             for offset in 0..=10 {
-                let x = 2 + offset;
-                let y = if step_y > 0 { 3 + offset } else { 13 - offset };
-                assert_eq!(framebuffer.get_pixel(x, y), Some(Color::WHITE));
+                let x = left.x + offset;
+                let y = left.y + step_y * offset;
+                assert_eq!(framebuffer.get_pixel(x as u32, y as u32), Some(Color::WHITE));
             }
             assert_eq!(
                 framebuffer
