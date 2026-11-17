@@ -604,7 +604,6 @@ pub fn draw_texture_region_clipped(
     }
 }
 
-
 /// Fixed-size border widths for nine-slice image scaling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NineSliceMargins {
@@ -665,10 +664,8 @@ pub fn draw_texture_nine_slice_clipped(
             (fitted_first, available - fitted_first)
         }
     };
-    let (left_dst, right_dst) =
-        fit_borders(margins.left, margins.right, destination.width);
-    let (top_dst, bottom_dst) =
-        fit_borders(margins.top, margins.bottom, destination.height);
+    let (left_dst, right_dst) = fit_borders(margins.left, margins.right, destination.width);
+    let (top_dst, bottom_dst) = fit_borders(margins.top, margins.bottom, destination.height);
 
     let source_x = [
         source.x,
@@ -1917,7 +1914,6 @@ mod tests {
         Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap()
     }
 
- 
     #[test]
     fn nine_slice_preserves_corners_and_stretches_center() {
         use super::{draw_texture_nine_slice_clipped, NineSliceMargins};

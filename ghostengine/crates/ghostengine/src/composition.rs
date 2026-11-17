@@ -229,12 +229,7 @@ impl LayerGroupDamageTracker {
     /// Use `None` when a group has disappeared or is currently invisible.
     /// Use `Some(bounds)` when it is visible. The first appearance damages
     /// only the new bounds; removal damages only the old bounds.
-    pub fn update(
-        &mut self,
-        id: LayerGroupId,
-        current: Option<Rect>,
-        damage: &mut DamageRegion,
-    ) {
+    pub fn update(&mut self, id: LayerGroupId, current: Option<Rect>, damage: &mut DamageRegion) {
         let previous = self.bounds.remove(&id);
         if previous != current {
             damage.add_transition(previous, current);
@@ -1259,7 +1254,6 @@ fn blend_with_mode(source: Color, destination: Color, opacity: u8, mode: BlendMo
     )
 }
 
-
 /// A compositing group that renders its children into an isolated off-screen surface.
 ///
 /// Group opacity and blend mode are applied once to the completed group, rather
@@ -1449,7 +1443,10 @@ impl LayerGroupScratch {
     #[must_use]
     pub fn allocated_pixel_bytes(&self) -> usize {
         self.layers.iter().fold(0usize, |total, layer| {
-            let bytes = layer.framebuffer().pixels().len()
+            let bytes = layer
+                .framebuffer()
+                .pixels()
+                .len()
                 .saturating_mul(std::mem::size_of::<Color>());
             total.saturating_add(bytes)
         })
@@ -1492,7 +1489,6 @@ pub fn compose_layer_groups_with_scratch(
     }
     Ok(())
 }
-
 
 /// Re-composites only damaged portions of isolated groups, preserving all other
 /// pixels in the reusable off-screen surfaces.
@@ -1554,9 +1550,7 @@ fn transformed_damage(
     transform: Transform2D,
 ) -> Option<DamageRegion> {
     if transform == Transform2D::IDENTITY {
-        return Some(translated_damage(
-            source, width, height, offset_x, offset_y,
-        ));
+        return Some(translated_damage(source, width, height, offset_x, offset_y));
     }
 
     let inverse = transform.inverse()?;
@@ -1565,10 +1559,9 @@ fn transformed_damage(
     for rectangle in source.rectangles() {
         let left = rectangle.x as f32 - offset_x as f32;
         let top = rectangle.y as f32 - offset_y as f32;
-        let right = (u64::from(rectangle.x) + u64::from(rectangle.width)) as f32
-            - offset_x as f32;
-        let bottom = (u64::from(rectangle.y) + u64::from(rectangle.height)) as f32
-            - offset_y as f32;
+        let right = (u64::from(rectangle.x) + u64::from(rectangle.width)) as f32 - offset_x as f32;
+        let bottom =
+            (u64::from(rectangle.y) + u64::from(rectangle.height)) as f32 - offset_y as f32;
         let corners = [
             Vector::new(left, top),
             Vector::new(right, top),
@@ -1584,12 +1577,18 @@ fn transformed_damage(
             return None;
         }
 
-        let min_x = corners.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
+        let min_x = corners
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::INFINITY, f32::min);
         let max_x = corners
             .iter()
             .map(|point| point.x)
             .fold(f32::NEG_INFINITY, f32::max);
-        let min_y = corners.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
+        let min_y = corners
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::INFINITY, f32::min);
         let max_y = corners
             .iter()
             .map(|point| point.y)
@@ -1649,7 +1648,9 @@ fn render_layer_group_partial_into(
     damage: &DamageRegion,
 ) -> Result<(), FramebufferError> {
     let needs_full_initialization = if scratch.layers.len() <= depth {
-        scratch.layers.push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
+        scratch
+            .layers
+            .push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
         true
     } else {
         let surface = scratch.layers[depth].framebuffer_mut();
@@ -1784,11 +1785,10 @@ mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
         compose_layer_groups, compose_layer_groups_with_scratch, compose_layers,
-        compose_layers_in_damage_regions, BlendMode,
-        DamageRegion, Layer, LayerGroup, LayerGroupScratch,
+        compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer, LayerGroup,
+        LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
-
 
     #[test]
     fn stable_group_damage_tracker_survives_reordering_and_tracks_lifecycle() {
@@ -1829,10 +1829,7 @@ mod tests {
     #[test]
     fn damage_transition_invalidates_old_and_new_bounds_without_filling_the_gap() {
         let mut damage = DamageRegion::new(20, 12);
-        damage.add_transition(
-            Some(Rect::new(2, 3, 2, 2)),
-            Some(Rect::new(12, 3, 3, 2)),
-        );
+        damage.add_transition(Some(Rect::new(2, 3, 2, 2)), Some(Rect::new(12, 3, 3, 2)));
 
         assert_eq!(
             damage.rectangles(),
@@ -1865,10 +1862,21 @@ mod tests {
         let mut scratch = LayerGroupScratch::with_capacity(2);
 
         let mut full = target.clone();
-        compose_layer_groups_with_scratch(&mut full, &[outer.clone()], &mut LayerGroupScratch::default()).unwrap();
+        compose_layer_groups_with_scratch(
+            &mut full,
+            &[outer.clone()],
+            &mut LayerGroupScratch::default(),
+        )
+        .unwrap();
         let mut initial_damage = DamageRegion::new(12, 10);
         initial_damage.add(Rect::new(0, 0, 12, 10));
-        compose_layer_groups_in_damage_regions(&mut target, &[outer.clone()], &initial_damage, &mut scratch).unwrap();
+        compose_layer_groups_in_damage_regions(
+            &mut target,
+            &[outer.clone()],
+            &initial_damage,
+            &mut scratch,
+        )
+        .unwrap();
         assert_eq!(target.pixels(), full.pixels());
 
         // Update one pixel in the innermost layer and invalidate only its target area.
@@ -1881,8 +1889,14 @@ mod tests {
         let mut dirty = DamageRegion::new(12, 10);
         dirty.add(Rect::new(5, 3, 1, 1));
         let mut expected = target.clone();
-        compose_layer_groups_with_scratch(&mut expected, &[changed_inner.clone()], &mut LayerGroupScratch::default()).unwrap();
-        compose_layer_groups_in_damage_regions(&mut target, &[changed_inner], &dirty, &mut scratch).unwrap();
+        compose_layer_groups_with_scratch(
+            &mut expected,
+            &[changed_inner.clone()],
+            &mut LayerGroupScratch::default(),
+        )
+        .unwrap();
+        compose_layer_groups_in_damage_regions(&mut target, &[changed_inner], &dirty, &mut scratch)
+            .unwrap();
         assert_eq!(target.get_pixel(5, 3), expected.get_pixel(5, 3));
         for y in 0..target.height() {
             for x in 0..target.width() {
@@ -1916,8 +1930,13 @@ mod tests {
         .unwrap();
         let mut initial = DamageRegion::new(16, 12);
         initial.add(Rect::new(0, 0, 16, 12));
-        compose_layer_groups_in_damage_regions(&mut target, &[outer.clone()], &initial, &mut scratch)
-            .unwrap();
+        compose_layer_groups_in_damage_regions(
+            &mut target,
+            &[outer.clone()],
+            &initial,
+            &mut scratch,
+        )
+        .unwrap();
         assert_eq!(target.pixels(), full.pixels());
 
         let mut changed = outer;
@@ -1998,7 +2017,10 @@ mod tests {
         let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
         compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
         assert_eq!(scratch.surface_count(), 2);
-        assert_eq!(scratch.allocated_pixel_bytes(), 20 * std::mem::size_of::<Color>());
+        assert_eq!(
+            scratch.allocated_pixel_bytes(),
+            20 * std::mem::size_of::<Color>()
+        );
     }
 
     #[test]

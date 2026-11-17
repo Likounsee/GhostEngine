@@ -420,7 +420,12 @@ pub fn fill_path_non_zero_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     fill_transformed_path_non_zero_clipped(
-        target, path, Transform2D::IDENTITY, color, tolerance, clip,
+        target,
+        path,
+        Transform2D::IDENTITY,
+        color,
+        tolerance,
+        clip,
     )
 }
 
@@ -478,10 +483,20 @@ pub fn fill_transformed_path_non_zero_clipped(
         return Ok(());
     }
 
-    let min_y = edges.iter().map(|edge| edge.min_y).fold(f32::INFINITY, f32::min)
-        .floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
-    let max_y = edges.iter().map(|edge| edge.max_y).fold(f32::NEG_INFINITY, f32::max)
-        .ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let min_y = edges
+        .iter()
+        .map(|edge| edge.min_y)
+        .fold(f32::INFINITY, f32::min)
+        .floor()
+        .max(clip.y as f32)
+        .min(clip_bottom as f32) as u32;
+    let max_y = edges
+        .iter()
+        .map(|edge| edge.max_y)
+        .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
+        .max(clip.y as f32)
+        .min(clip_bottom as f32) as u32;
     edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
 
     let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
@@ -498,10 +513,16 @@ pub fn fill_transformed_path_non_zero_clipped(
         }
         active_edges.retain(|edge| edge.crosses(scan));
         intersections.clear();
-        intersections.extend(active_edges.iter().map(|edge| (edge.x_at(scan), edge.winding)));
+        intersections.extend(
+            active_edges
+                .iter()
+                .map(|edge| (edge.x_at(scan), edge.winding)),
+        );
         intersections.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
 
-        let Some(row) = target.row_mut(y) else { continue };
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         let mut winding = 0_i32;
         let mut previous_x = 0.0_f32;
         let mut index = 0;
@@ -550,7 +571,12 @@ pub fn fill_path_non_zero_aa_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     fill_transformed_path_non_zero_aa_clipped(
-        target, path, Transform2D::IDENTITY, color, tolerance, clip,
+        target,
+        path,
+        Transform2D::IDENTITY,
+        color,
+        tolerance,
+        clip,
     )
 }
 
@@ -591,31 +617,51 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     };
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let mut edges = flattened.subpaths.iter()
+    let mut edges = flattened
+        .subpaths
+        .iter()
         .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
-        .flat_map(|subpath| (0..subpath.points.len()).filter_map(move |index| {
-            FillEdge::new(
-                subpath.points[index],
-                subpath.points[(index + 1) % subpath.points.len()],
-            )
-        }))
+        .flat_map(|subpath| {
+            (0..subpath.points.len()).filter_map(move |index| {
+                FillEdge::new(
+                    subpath.points[index],
+                    subpath.points[(index + 1) % subpath.points.len()],
+                )
+            })
+        })
         .collect::<Vec<_>>();
     if edges.is_empty() {
         return Ok(());
     }
 
     let (path_min_x, path_min_y, path_max_x, path_max_y) = edges.iter().fold(
-        (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
-        |(min_x, min_y, max_x, max_y), edge| (
-            min_x.min(edge.min_x.min(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y))),
-            min_y.min(edge.min_y),
-            max_x.max(edge.min_x.max(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y))),
-            max_y.max(edge.max_y),
+        (
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
         ),
+        |(min_x, min_y, max_x, max_y), edge| {
+            (
+                min_x.min(
+                    edge.min_x
+                        .min(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y)),
+                ),
+                min_y.min(edge.min_y),
+                max_x.max(
+                    edge.min_x
+                        .max(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y)),
+                ),
+                max_y.max(edge.max_y),
+            )
+        },
     );
     let min_x = path_min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
     let max_x = path_max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
-    let min_y = path_min_y.floor().max(clip.y as f32).min(clip_bottom as f32) as u32;
+    let min_y = path_min_y
+        .floor()
+        .max(clip.y as f32)
+        .min(clip_bottom as f32) as u32;
     let max_y = path_max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
     if min_x >= max_x || min_y >= max_y {
         return Ok(());
@@ -640,7 +686,11 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
             }
             active_edges.retain(|edge| edge.crosses(sample_y));
             intersections.clear();
-            intersections.extend(active_edges.iter().map(|edge| (edge.x_at(sample_y), edge.winding)));
+            intersections.extend(
+                active_edges
+                    .iter()
+                    .map(|edge| (edge.x_at(sample_y), edge.winding)),
+            );
             intersections.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
 
             let mut winding = 0_i32;
@@ -650,9 +700,11 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
                 let x = intersections[index].0;
                 if winding != 0 && previous_x < x {
                     let span_start = ((previous_x - 0.875).floor() as i64)
-                        .max(i64::from(min_x)).min(i64::from(max_x)) as u32;
+                        .max(i64::from(min_x))
+                        .min(i64::from(max_x)) as u32;
                     let span_end = ((x - 0.125).ceil() as i64)
-                        .max(i64::from(min_x)).min(i64::from(max_x)) as u32;
+                        .max(i64::from(min_x))
+                        .min(i64::from(max_x)) as u32;
                     for pixel_x in span_start..span_end {
                         for offset_x in OFFSETS {
                             let sample_x = pixel_x as f32 + offset_x;
@@ -670,7 +722,9 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
             }
         }
 
-        let Some(row) = target.row_mut(y) else { continue };
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
         for (offset, &covered) in coverage.iter().enumerate() {
             if covered == 0 {
                 continue;
@@ -681,7 +735,11 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
             }
             let source = Color::rgba(color.r, color.g, color.b, alpha);
             let index = min_x as usize + offset;
-            row[index] = if alpha == 255 { source } else { source.blend_over(row[index]) };
+            row[index] = if alpha == 255 {
+                source
+            } else {
+                source.blend_over(row[index])
+            };
         }
     }
     Ok(())
@@ -1138,9 +1196,8 @@ mod tests {
             .line_to(Vector::new(6.0, 2.0))
             .close();
         let mut fb = Framebuffer::new(8, 8, Color::BLACK).unwrap();
-        super::fill_path_non_zero_clipped(
-            &mut fb, &path, Color::GREEN, 0.2, Rect::new(1, 1, 6, 6),
-        ).unwrap();
+        super::fill_path_non_zero_clipped(&mut fb, &path, Color::GREEN, 0.2, Rect::new(1, 1, 6, 6))
+            .unwrap();
         assert_eq!(fb.get_pixel(1, 1), Some(Color::GREEN));
         assert_eq!(fb.get_pixel(3, 3), Some(Color::BLACK));
     }
@@ -1337,7 +1394,10 @@ mod tests {
         let mut target = Framebuffer::new(10, 10, Color::BLACK).unwrap();
         super::fill_path_non_zero_aa(&mut target, &path, Color::WHITE, 0.2).unwrap();
         assert_eq!(target.get_pixel(4, 4), Some(Color::WHITE));
-        assert!(target.pixels().iter().any(|pixel| pixel.r > 0 && pixel.r < 255));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > 0 && pixel.r < 255));
     }
 
     #[test]
@@ -1355,8 +1415,13 @@ mod tests {
             .close();
         let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         super::fill_path_non_zero_aa_clipped(
-            &mut target, &path, Color::WHITE, 0.2, Rect::new(1, 1, 6, 6),
-        ).unwrap();
+            &mut target,
+            &path,
+            Color::WHITE,
+            0.2,
+            Rect::new(1, 1, 6, 6),
+        )
+        .unwrap();
         assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
         assert_eq!(target.get_pixel(1, 1), Some(Color::WHITE));
     }

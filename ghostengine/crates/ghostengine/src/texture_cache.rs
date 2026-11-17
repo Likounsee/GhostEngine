@@ -31,7 +31,10 @@ pub struct TextureCacheStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureCacheError {
     /// The texture alone is larger than the configured cache budget.
-    TextureExceedsBudget { texture_bytes: usize, budget_bytes: usize },
+    TextureExceedsBudget {
+        texture_bytes: usize,
+        budget_bytes: usize,
+    },
     /// The cache-local handle counter has reached its maximum value.
     HandleExhausted,
     /// The cache cannot fit the texture without evicting retained entries.
@@ -103,8 +106,13 @@ impl TextureCache {
             .checked_add(1)
             .ok_or(TextureCacheError::HandleExhausted)?;
 
-        let required_bytes = self.used_bytes.saturating_add(bytes).saturating_sub(self.budget_bytes);
-        let reclaimable_bytes = self.entries.values()
+        let required_bytes = self
+            .used_bytes
+            .saturating_add(bytes)
+            .saturating_sub(self.budget_bytes);
+        let reclaimable_bytes = self
+            .entries
+            .values()
             .filter(|entry| entry.retain_count == 0)
             .map(|entry| entry.bytes)
             .fold(0usize, usize::saturating_add);
@@ -192,7 +200,9 @@ impl TextureCache {
     /// Changes the memory budget, immediately evicting entries if required.
     pub fn set_budget_bytes(&mut self, budget_bytes: usize) -> Result<(), TextureCacheError> {
         let required_bytes = self.used_bytes.saturating_sub(budget_bytes);
-        let reclaimable_bytes = self.entries.values()
+        let reclaimable_bytes = self
+            .entries
+            .values()
             .filter(|entry| entry.retain_count == 0)
             .map(|entry| entry.bytes)
             .fold(0usize, usize::saturating_add);
@@ -347,7 +357,10 @@ mod tests {
         let first = cache.insert(texture(Color::RED, 2)).unwrap();
         cache.insert(texture(Color::BLUE, 2)).unwrap();
 
-        assert_eq!(cache.remove(first).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(
+            cache.remove(first).unwrap().get_pixel(0, 0),
+            Some(Color::RED)
+        );
         assert_eq!(cache.stats().used_bytes, 8);
         cache.clear();
         assert!(cache.is_empty());
@@ -407,7 +420,10 @@ mod tests {
         let mut cache = TextureCache::new(16);
         let handle = cache.insert(texture(Color::RED, 2)).unwrap();
         assert!(cache.retain(handle));
-        assert_eq!(cache.remove(handle).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(
+            cache.remove(handle).unwrap().get_pixel(0, 0),
+            Some(Color::RED)
+        );
         assert_eq!(cache.stats().used_bytes, 0);
     }
 

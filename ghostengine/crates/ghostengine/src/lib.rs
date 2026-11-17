@@ -54,9 +54,11 @@ pub use components::{
     UiComponent,
 };
 pub use composition::{
-    compose_layer_groups, compose_layer_groups_in_damage_regions, compose_layer_groups_with_scratch, compose_layers, compose_layers_auto,
+    compose_layer_groups, compose_layer_groups_in_damage_regions,
+    compose_layer_groups_with_scratch, compose_layers, compose_layers_auto,
     compose_layers_in_damage_regions, compose_layers_parallel_with_threads, BlendMode,
-    DamageRegion, Layer, LayerGroup, LayerGroupChild, LayerGroupDamageTracker, LayerGroupId, LayerGroupScratch,
+    DamageRegion, Layer, LayerGroup, LayerGroupChild, LayerGroupDamageTracker, LayerGroupId,
+    LayerGroupScratch,
 };
 pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
 pub use effects::{apply_box_blur, EffectScratch};
@@ -73,27 +75,37 @@ pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayou
 pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path::{
-    fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped,
-    fill_path_non_zero, fill_path_non_zero_aa, fill_path_non_zero_aa_clipped,
-    fill_path_non_zero_clipped, fill_transformed_path_even_odd,
-    fill_transformed_path_even_odd_aa, fill_transformed_path_even_odd_aa_clipped,
-    fill_transformed_path_even_odd_clipped, fill_transformed_path_non_zero,
-    fill_transformed_path_non_zero_aa, fill_transformed_path_non_zero_aa_clipped,
-    fill_transformed_path_non_zero_clipped, FlattenedPath, FlattenedSubpath, Path, PathError,
+    fill_path_even_odd, fill_path_even_odd_aa, fill_path_even_odd_clipped, fill_path_non_zero,
+    fill_path_non_zero_aa, fill_path_non_zero_aa_clipped, fill_path_non_zero_clipped,
+    fill_transformed_path_even_odd, fill_transformed_path_even_odd_aa,
+    fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
+    fill_transformed_path_non_zero, fill_transformed_path_non_zero_aa,
+    fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped,
+    FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use path_cache::PathGeometryCache;
 pub use rasterizer::{
     blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
-    draw_arc_aa, draw_arc_aa_parallel, draw_arc_aa_parallel_with_threads, draw_arc_aa_with_scratch, draw_circle_aa, draw_circle_aa_parallel, draw_circle_aa_parallel_with_threads, draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_parallel, draw_ellipse_aa_parallel_with_threads, draw_ellipse_aa_with_scratch, draw_polygon_aa, draw_polygon_aa_with_scratch, draw_rect_aa, draw_rect_aa_with_scratch, draw_rounded_rect, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
-    draw_rounded_rect_aa, draw_triangle_aa, draw_triangle_aa_with_scratch, fill_arc_aa, fill_arc_aa_parallel, fill_arc_aa_parallel_with_threads, fill_arc_aa_with_scratch, fill_circle_aa, fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_circle_aa_with_scratch, fill_ellipse_aa_with_scratch, fill_ellipse_aa_parallel, fill_ellipse_aa_parallel_with_threads,
+    draw_arc_aa, draw_arc_aa_parallel, draw_arc_aa_parallel_with_threads, draw_arc_aa_with_scratch,
+    draw_circle_aa, draw_circle_aa_parallel, draw_circle_aa_parallel_with_threads,
+    draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_parallel,
+    draw_ellipse_aa_parallel_with_threads, draw_ellipse_aa_with_scratch, draw_polygon_aa,
+    draw_polygon_aa_with_scratch, draw_rect_aa, draw_rect_aa_with_scratch, draw_rounded_rect,
+    draw_rounded_rect_aa, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
+    draw_triangle_aa, draw_triangle_aa_with_scratch, fill_arc_aa, fill_arc_aa_parallel,
+    fill_arc_aa_parallel_with_threads, fill_arc_aa_with_scratch, fill_circle_aa,
+    fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_circle_aa_with_scratch,
+    fill_ellipse_aa_parallel, fill_ellipse_aa_parallel_with_threads, fill_ellipse_aa_with_scratch,
     fill_polygon_aa, fill_polygon_aa_parallel, fill_polygon_aa_parallel_with_threads,
-    fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads, fill_polygon_with_scratch, fill_rect_clipped,
-    fill_rect_linear_gradient_parallel, fill_rect_linear_gradient_parallel_with_threads,
-    fill_rect_parallel_with_threads, fill_rect_radial_gradient_parallel,
-    fill_rect_radial_gradient_parallel_with_threads, fill_rects_clipped, fill_rounded_rect, fill_rounded_rect_parallel, fill_rounded_rect_parallel_with_threads,
-    fill_rounded_rect_aa, fill_rounded_rect_aa_parallel, fill_rounded_rect_aa_parallel_with_threads, fill_transformed_rect_linear_gradient_clipped,
-    fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, fill_triangle_aa_with_scratch, Gradient, GradientError,
-    GradientStop, RasterizerScratch,
+    fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads,
+    fill_polygon_with_scratch, fill_rect_clipped, fill_rect_linear_gradient_parallel,
+    fill_rect_linear_gradient_parallel_with_threads, fill_rect_parallel_with_threads,
+    fill_rect_radial_gradient_parallel, fill_rect_radial_gradient_parallel_with_threads,
+    fill_rects_clipped, fill_rounded_rect, fill_rounded_rect_aa, fill_rounded_rect_aa_parallel,
+    fill_rounded_rect_aa_parallel_with_threads, fill_rounded_rect_parallel,
+    fill_rounded_rect_parallel_with_threads, fill_transformed_rect_linear_gradient_clipped,
+    fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, fill_triangle_aa_with_scratch,
+    Gradient, GradientError, GradientStop, RasterizerScratch,
 };
 pub use shaping::{
     resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError,
@@ -115,12 +127,11 @@ pub use texture::{
     draw_texture, draw_texture_auto, draw_texture_clipped, draw_texture_clipped_auto,
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
     draw_texture_nine_slice_clipped, draw_texture_region_clipped, draw_texture_transformed_clipped,
-    draw_texture_transformed_clipped_parallel_with_threads, Texture, TextureDrawScratch,
-    NineSliceMargins, TextureError, TextureFilter,
+    draw_texture_transformed_clipped_parallel_with_threads, NineSliceMargins, Texture,
+    TextureDrawScratch, TextureError, TextureFilter,
 };
 pub use texture_atlas::{
-    draw_atlas_region_clipped, AtlasRegion, TextureAtlas, TextureAtlasBuilder,
-    TextureAtlasError,
+    draw_atlas_region_clipped, AtlasRegion, TextureAtlas, TextureAtlasBuilder, TextureAtlasError,
 };
 pub use texture_cache::{TextureCache, TextureCacheError, TextureCacheStats, TextureHandle};
 pub use transform::Transform2D;

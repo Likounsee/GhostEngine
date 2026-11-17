@@ -1473,7 +1473,12 @@ fn blend_rounded_rect_aa_row(
         if sources.iter().all(|source| source.a == 0) {
             // Fully uncovered SIMD groups need no framebuffer writes.
         } else if destinations.iter().all(|pixel| pixel.a == 255) {
-            let mut quad = [destinations[0], destinations[1], destinations[2], destinations[3]];
+            let mut quad = [
+                destinations[0],
+                destinations[1],
+                destinations[2],
+                destinations[3],
+            ];
             crate::simd::blend_variable_opaque_quad(&mut quad, sources);
             destinations.copy_from_slice(&quad);
         } else {
@@ -1557,7 +1562,6 @@ pub fn fill_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, c
         );
     }
 }
-
 
 /// Fills an anti-aliased rounded rectangle using disjoint scanline bands.
 ///
@@ -1763,8 +1767,7 @@ pub fn fill_rounded_rect_parallel_with_threads(
         top,
         thread_count,
         |row, y| {
-            let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y as i64)
-            else {
+            let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y as i64) else {
                 return;
             };
             let first_x = (first_x.max(left as i64)) as usize;
@@ -1777,12 +1780,7 @@ pub fn fill_rounded_rect_parallel_with_threads(
 }
 
 /// Automatically parallelizes large rounded-rectangle fills.
-pub fn fill_rounded_rect_parallel(
-    target: &mut Framebuffer,
-    rect: Rect,
-    radius: u32,
-    color: Color,
-) {
+pub fn fill_rounded_rect_parallel(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
     let thread_count = parallel_thread_count_for_rect(target, rect);
     fill_rounded_rect_parallel_with_threads(target, rect, radius, color, thread_count);
 }
@@ -1887,8 +1885,7 @@ pub fn draw_rounded_rect_parallel_with_threads(
     let rect_bottom = rect_top + i64::from(rect.height) - 1;
     let horizontal_start = (i64::from(rect.x) + i64::from(radius)).max(left as i64);
     let horizontal_end =
-        (i64::from(rect.x) + i64::from(rect.width) - 1 - i64::from(radius))
-            .min(right as i64 - 1);
+        (i64::from(rect.x) + i64::from(rect.width) - 1 - i64::from(radius)).min(right as i64 - 1);
     let has_horizontal = horizontal_start <= horizontal_end;
 
     process_rows_with_y_mut(
@@ -1901,8 +1898,7 @@ pub fn draw_rounded_rect_parallel_with_threads(
             if y == rect_top || y == rect_bottom {
                 if has_horizontal {
                     row[horizontal_start as usize..=horizontal_end as usize].fill(color);
-                } else if let Some((first_x, last_x)) =
-                    rounded_rect_scanline_span(rect, radius, y)
+                } else if let Some((first_x, last_x)) = rounded_rect_scanline_span(rect, radius, y)
                 {
                     let first_x = first_x.max(left as i64) as usize;
                     let last_x = last_x.min(right as i64 - 1) as usize;
@@ -1929,12 +1925,7 @@ pub fn draw_rounded_rect_parallel_with_threads(
 }
 
 /// Automatically selects a worker count for large rounded-rectangle outlines.
-pub fn draw_rounded_rect_parallel(
-    target: &mut Framebuffer,
-    rect: Rect,
-    radius: u32,
-    color: Color,
-) {
+pub fn draw_rounded_rect_parallel(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
     let thread_count = parallel_thread_count_for_rect(target, rect);
     draw_rounded_rect_parallel_with_threads(target, rect, radius, color, thread_count);
 }
@@ -1997,24 +1988,23 @@ pub fn draw_polygon_aa_with_scratch(
 
     let segments = &mut scratch.aa_outline_segments;
     segments.clear();
-    segments.extend((0..vertices.len())
-        .map(|index| {
-            let a = vertices[index];
-            let b = vertices[(index + 1) % vertices.len()];
-            let (ax, ay) = (f64::from(a.x), f64::from(a.y));
-            let (dx, dy) = (f64::from(b.x) - ax, f64::from(b.y) - ay);
-            (
-                ax,
-                ay,
-                dx,
-                dy,
-                dx * dx + dy * dy,
-                ax.min(f64::from(b.x)) - 0.5,
-                ax.max(f64::from(b.x)) + 0.5,
-                ay.min(f64::from(b.y)) - 0.5,
-                ay.max(f64::from(b.y)) + 0.5,
-            )
-        }));
+    segments.extend((0..vertices.len()).map(|index| {
+        let a = vertices[index];
+        let b = vertices[(index + 1) % vertices.len()];
+        let (ax, ay) = (f64::from(a.x), f64::from(a.y));
+        let (dx, dy) = (f64::from(b.x) - ax, f64::from(b.y) - ay);
+        (
+            ax,
+            ay,
+            dx,
+            dy,
+            dx * dx + dy * dy,
+            ax.min(f64::from(b.x)) - 0.5,
+            ax.max(f64::from(b.x)) + 0.5,
+            ay.min(f64::from(b.y)) - 0.5,
+            ay.max(f64::from(b.y)) + 0.5,
+        )
+    }));
 
     let coverage = &mut scratch.aa_coverage;
     coverage.resize((right - left) as usize, 0);
@@ -2190,11 +2180,7 @@ pub fn fill_polygon_parallel_with_threads(
 }
 
 /// Automatically selects a worker count for polygon filling.
-pub fn fill_polygon_parallel(
-    target: &mut Framebuffer,
-    vertices: &[Point],
-    color: Color,
-) {
+pub fn fill_polygon_parallel(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     let area = target.width() as u64 * target.height() as u64;
     let thread_count = if vertices.len() < 3 || area < 16_384 {
         1
@@ -2340,8 +2326,8 @@ fn accumulate_polygon_span_edges(
 
     // Pixels in this interval contain all four horizontal samples. Count them
     // with a contiguous coverage update and reserve scalar tests for the edges.
-    let interior_start = ((span_left - OFFSETS[0]).ceil() as i64)
-        .clamp(i64::from(start_x), i64::from(end_x)) as u32;
+    let interior_start =
+        ((span_left - OFFSETS[0]).ceil() as i64).clamp(i64::from(start_x), i64::from(end_x)) as u32;
     let interior_end = (((span_right - OFFSETS[3]).ceil() as i64)
         .clamp(i64::from(start_x), i64::from(end_x)) as u32)
         .max(interior_start);
@@ -2433,18 +2419,15 @@ fn fill_polygon_aa_parallel_rows(
             }
 
             let run_start = index;
-            while index < row_pixels.len()
-                && row_pixels[index].a == u8::MAX
-                && coverage[index] != 0
+            while index < row_pixels.len() && row_pixels[index].a == u8::MAX && coverage[index] != 0
             {
                 index += 1;
             }
             let run_end = index;
             let mut offset = run_start;
             while offset + 4 <= run_end {
-                let sources = core::array::from_fn(|lane| {
-                    coverage_colors[coverage[offset + lane] as usize]
-                });
+                let sources =
+                    core::array::from_fn(|lane| coverage_colors[coverage[offset + lane] as usize]);
                 let mut destinations = [
                     row_pixels[offset],
                     row_pixels[offset + 1],
@@ -2499,7 +2482,9 @@ pub fn fill_polygon_aa_parallel_with_threads(
 
     let mut edges = Vec::with_capacity(vertices.len());
     for index in 0..vertices.len() {
-        if let Some(edge) = PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()]) {
+        if let Some(edge) =
+            PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
+        {
             edges.push(edge);
         }
     }
@@ -2515,7 +2500,13 @@ pub fn fill_polygon_aa_parallel_with_threads(
     let worker_count = thread_count.max(1).min(row_count);
     if worker_count == 1 {
         fill_polygon_aa_parallel_rows(
-            rows, row_width, top as usize, left, right, &edges, &coverage_colors,
+            rows,
+            row_width,
+            top as usize,
+            left,
+            right,
+            &edges,
+            &coverage_colors,
         );
     } else {
         let rows_per_worker = row_count.div_ceil(worker_count);
@@ -2527,7 +2518,13 @@ pub fn fill_polygon_aa_parallel_with_threads(
                 let coverage_colors = &coverage_colors;
                 scope.spawn(move || {
                     fill_polygon_aa_parallel_rows(
-                        chunk, row_width, first_y, left, right, edges, coverage_colors,
+                        chunk,
+                        row_width,
+                        first_y,
+                        left,
+                        right,
+                        edges,
+                        coverage_colors,
                     );
                 });
             }
@@ -2709,18 +2706,15 @@ pub fn fill_polygon_aa_with_scratch(
             // Vectorize only covered opaque runs. Uncovered spans are skipped
             // without loading or blending source colors.
             let run_start = index;
-            while index < row_pixels.len()
-                && row_pixels[index].a == u8::MAX
-                && coverage[index] != 0
+            while index < row_pixels.len() && row_pixels[index].a == u8::MAX && coverage[index] != 0
             {
                 index += 1;
             }
             let run_end = index;
             let mut offset = run_start;
             while offset + 4 <= run_end {
-                let sources = core::array::from_fn(|lane| {
-                    coverage_colors[coverage[offset + lane] as usize]
-                });
+                let sources =
+                    core::array::from_fn(|lane| coverage_colors[coverage[offset + lane] as usize]);
                 let mut quad = [
                     row_pixels[offset],
                     row_pixels[offset + 1],
@@ -3000,9 +2994,7 @@ fn fill_ellipse_aa_parallel_rows(
                 continue;
             }
             let run_start = index;
-            while index < row_pixels.len()
-                && row_pixels[index].a == u8::MAX
-                && coverage[index] != 0
+            while index < row_pixels.len() && row_pixels[index].a == u8::MAX && coverage[index] != 0
             {
                 index += 1;
             }
@@ -3068,7 +3060,15 @@ pub fn fill_ellipse_aa_parallel_with_threads(
     let worker_count = thread_count.max(1).min(row_count);
     if worker_count == 1 {
         fill_ellipse_aa_parallel_rows(
-            rows, row_width, top as usize, left, right, cx, cy, rx, ry.recip(),
+            rows,
+            row_width,
+            top as usize,
+            left,
+            right,
+            cx,
+            cy,
+            rx,
+            ry.recip(),
             &coverage_colors,
         );
         return;
@@ -3082,7 +3082,16 @@ pub fn fill_ellipse_aa_parallel_with_threads(
             let colors = &coverage_colors;
             scope.spawn(move || {
                 fill_ellipse_aa_parallel_rows(
-                    chunk, row_width, first_y, left, right, cx, cy, rx, ry.recip(), colors,
+                    chunk,
+                    row_width,
+                    first_y,
+                    left,
+                    right,
+                    cx,
+                    cy,
+                    rx,
+                    ry.recip(),
+                    colors,
                 );
             });
         }
@@ -3222,9 +3231,7 @@ pub fn fill_ellipse_aa_with_scratch(
             // Form SIMD batches from contiguous opaque pixels that actually
             // receive coverage, instead of being limited to fixed row quads.
             let run_start = index;
-            while index < row_pixels.len()
-                && row_pixels[index].a == u8::MAX
-                && coverage[index] != 0
+            while index < row_pixels.len() && row_pixels[index].a == u8::MAX && coverage[index] != 0
             {
                 index += 1;
             }
@@ -3402,10 +3409,9 @@ fn draw_ellipse_aa_parallel_rows(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] =
-                    destinations[quad_start..quad_start + 4]
-                        .try_into()
-                        .expect("four destination pixels");
+                let destination_quad: &mut [Color; 4] = destinations[quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
                 quad_start += 4;
             }
@@ -3533,7 +3539,8 @@ pub fn draw_ellipse_aa_with_scratch(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
@@ -3545,7 +3552,6 @@ pub fn draw_ellipse_aa_with_scratch(
             }
         }
     }
-
 }
 /// Draws an anti-aliased circular arc.
 ///
@@ -3563,7 +3569,15 @@ pub fn draw_arc_aa(
     color: Color,
 ) {
     let mut scratch = RasterizerScratch::default();
-    draw_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, &mut scratch);
+    draw_arc_aa_with_scratch(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        &mut scratch,
+    );
 }
 
 /// Draws an antialiased arc while reusing caller-owned scanline color storage.
@@ -3673,7 +3687,8 @@ pub fn draw_arc_aa_with_scratch(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
@@ -3685,7 +3700,6 @@ pub fn draw_arc_aa_with_scratch(
             }
         }
     }
-
 }
 /// Fills an anti-aliased circular sector (pie slice).
 ///
@@ -3702,7 +3716,15 @@ pub fn fill_arc_aa(
     color: Color,
 ) {
     let mut scratch = RasterizerScratch::default();
-    fill_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, &mut scratch);
+    fill_arc_aa_with_scratch(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        &mut scratch,
+    );
 }
 
 /// Fills an antialiased arc sector while reusing caller-owned scanline color storage.
@@ -3808,7 +3830,8 @@ pub fn fill_arc_aa_with_scratch(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
@@ -3820,7 +3843,6 @@ pub fn fill_arc_aa_with_scratch(
             }
         }
     }
-
 }
 /// Draws an antialiased circular arc using disjoint framebuffer row bands.
 pub fn draw_arc_aa_parallel_with_threads(
@@ -3853,7 +3875,11 @@ pub fn draw_arc_aa_parallel_with_threads(
 
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
-    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
     let radius = f64::from(radius);
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -3876,8 +3902,18 @@ pub fn draw_arc_aa_parallel_with_threads(
             let first_y = top as usize + chunk_index * rows_per_worker;
             scope.spawn(move || {
                 draw_arc_aa_parallel_rows(
-                    chunk, row_width, first_y, left, right, cx, cy, radius,
-                    start, sweep, full_circle, color,
+                    chunk,
+                    row_width,
+                    first_y,
+                    left,
+                    right,
+                    cx,
+                    cy,
+                    radius,
+                    start,
+                    sweep,
+                    full_circle,
+                    color,
                 );
             });
         }
@@ -3897,9 +3933,19 @@ pub fn draw_arc_aa_parallel(
     let workers = if diameter.saturating_mul(diameter) < 16_384 {
         1
     } else {
-        std::thread::available_parallelism().map(usize::from).unwrap_or(1)
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
     };
-    draw_arc_aa_parallel_with_threads(target, center, radius, start_angle, end_angle, color, workers);
+    draw_arc_aa_parallel_with_threads(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        workers,
+    );
 }
 
 fn draw_arc_aa_parallel_rows(
@@ -3976,10 +4022,9 @@ fn draw_arc_aa_parallel_rows(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] =
-                    destinations[quad_start..quad_start + 4]
-                        .try_into()
-                        .expect("four destination pixels");
+                let destination_quad: &mut [Color; 4] = destinations[quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
                 quad_start += 4;
             }
@@ -4003,8 +4048,11 @@ pub fn fill_arc_aa_parallel_with_threads(
 ) {
     use core::f64::consts::TAU;
 
-    if color.a == 0 || target.width() == 0 || target.height() == 0
-        || !start_angle.is_finite() || !end_angle.is_finite()
+    if color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+        || !start_angle.is_finite()
+        || !end_angle.is_finite()
     {
         return;
     }
@@ -4018,7 +4066,11 @@ pub fn fill_arc_aa_parallel_with_threads(
     }
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
-    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
     let radius_f = f64::from(radius);
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -4045,8 +4097,18 @@ pub fn fill_arc_aa_parallel_with_threads(
             let first_y = top as usize + chunk_index * rows_per_worker;
             scope.spawn(move || {
                 fill_arc_aa_parallel_rows(
-                    chunk, row_width, first_y, left, right, cx, cy, radius_f,
-                    start, sweep, full_circle, color,
+                    chunk,
+                    row_width,
+                    first_y,
+                    left,
+                    right,
+                    cx,
+                    cy,
+                    radius_f,
+                    start,
+                    sweep,
+                    full_circle,
+                    color,
                 );
             });
         }
@@ -4066,9 +4128,19 @@ pub fn fill_arc_aa_parallel(
     let workers = if diameter.saturating_mul(diameter) < 16_384 {
         1
     } else {
-        std::thread::available_parallelism().map(usize::from).unwrap_or(1)
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
     };
-    fill_arc_aa_parallel_with_threads(target, center, radius, start_angle, end_angle, color, workers);
+    fill_arc_aa_parallel_with_threads(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        workers,
+    );
 }
 
 fn fill_arc_aa_parallel_rows(
@@ -4143,10 +4215,11 @@ fn fill_arc_aa_parallel_rows(
             let mut quad_start = run_start;
             while quad_start + 4 <= index {
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
-                    .try_into().expect("four source pixels");
-                let destination_quad: &mut [Color; 4] =
-                    destinations[quad_start..quad_start + 4]
-                        .try_into().expect("four destination pixels");
+                    .try_into()
+                    .expect("four source pixels");
+                let destination_quad: &mut [Color; 4] = destinations[quad_start..quad_start + 4]
+                    .try_into()
+                    .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
                 quad_start += 4;
             }
@@ -4174,7 +4247,6 @@ pub fn fill_circle_aa_with_scratch(
     fill_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
 }
 
-
 /// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
 pub fn draw_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     draw_ellipse_aa(target, center, radius, radius, color);
@@ -4191,7 +4263,6 @@ pub fn draw_circle_aa_with_scratch(
     draw_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
 }
 
-
 /// Fills an antialiased circle using the parallel ellipse rasterizer.
 pub fn fill_circle_aa_parallel_with_threads(
     target: &mut Framebuffer,
@@ -4204,12 +4275,7 @@ pub fn fill_circle_aa_parallel_with_threads(
 }
 
 /// Automatically selects workers for sufficiently large antialiased circle fills.
-pub fn fill_circle_aa_parallel(
-    target: &mut Framebuffer,
-    center: Point,
-    radius: u32,
-    color: Color,
-) {
+pub fn fill_circle_aa_parallel(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     fill_ellipse_aa_parallel(target, center, radius, radius, color);
 }
 
@@ -4225,12 +4291,7 @@ pub fn draw_circle_aa_parallel_with_threads(
 }
 
 /// Automatically selects workers for sufficiently large antialiased circle outlines.
-pub fn draw_circle_aa_parallel(
-    target: &mut Framebuffer,
-    center: Point,
-    radius: u32,
-    color: Color,
-) {
+pub fn draw_circle_aa_parallel(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     draw_ellipse_aa_parallel(target, center, radius, radius, color);
 }
 
@@ -4404,7 +4465,12 @@ mod tests {
             for workers in [0, 1, 2, 4, 8, 64] {
                 let mut actual = Framebuffer::new(67, 43, background).unwrap();
                 super::fill_ellipse_aa_parallel_with_threads(
-                    &mut actual, center, radius_x, radius_y, color, workers,
+                    &mut actual,
+                    center,
+                    radius_x,
+                    radius_y,
+                    color,
+                    workers,
                 );
                 assert_eq!(
                     actual, expected,
@@ -4412,9 +4478,7 @@ mod tests {
                 );
             }
             let mut automatic = Framebuffer::new(67, 43, background).unwrap();
-            super::fill_ellipse_aa_parallel(
-                &mut automatic, center, radius_x, radius_y, color,
-            );
+            super::fill_ellipse_aa_parallel(&mut automatic, center, radius_x, radius_y, color);
             assert_eq!(automatic, expected);
         }
     }
@@ -4449,7 +4513,12 @@ mod tests {
             for workers in [0, 1, 2, 4, 8, 64] {
                 let mut actual = Framebuffer::new(67, 43, background).unwrap();
                 super::draw_ellipse_aa_parallel_with_threads(
-                    &mut actual, center, radius_x, radius_y, color, workers,
+                    &mut actual,
+                    center,
+                    radius_x,
+                    radius_y,
+                    color,
+                    workers,
                 );
                 assert_eq!(
                     actual, expected,
@@ -4457,9 +4526,7 @@ mod tests {
                 );
             }
             let mut automatic = Framebuffer::new(67, 43, background).unwrap();
-            super::draw_ellipse_aa_parallel(
-                &mut automatic, center, radius_x, radius_y, color,
-            );
+            super::draw_ellipse_aa_parallel(&mut automatic, center, radius_x, radius_y, color);
             assert_eq!(automatic, expected);
         }
     }
@@ -4483,13 +4550,7 @@ mod tests {
                 color,
                 &mut scratch,
             );
-            super::fill_ellipse_aa(
-                &mut expected,
-                center,
-                radius_x,
-                radius_y,
-                color,
-            );
+            super::fill_ellipse_aa(&mut expected, center, radius_x, radius_y, color);
         }
 
         assert_eq!(actual, expected);
@@ -4537,10 +4598,7 @@ mod tests {
                     }
                     expected[(x - row_left) as usize] += covered;
                 }
-                assert_eq!(
-                    actual, expected,
-                    "span [{span_left}, {span_right})"
-                );
+                assert_eq!(actual, expected, "span [{span_left}, {span_right})");
             }
         }
     }
@@ -5970,30 +6028,24 @@ mod rounded_rectangle_aa_fill_tests {
     #[test]
     fn parallel_antialiased_rounded_rectangle_fill_matches_serial_for_worker_counts() {
         for (rect, radius, color) in [
-            (
-                Rect::new(3, 2, 25, 17),
-                6,
-                Color::rgba(220, 70, 35, 173),
-            ),
-            (
-                Rect::new(24, 5, 19, 14),
-                9,
-                Color::rgba(25, 180, 120, 211),
-            ),
+            (Rect::new(3, 2, 25, 17), 6, Color::rgba(220, 70, 35, 173)),
+            (Rect::new(24, 5, 19, 14), 9, Color::rgba(25, 180, 120, 211)),
             (Rect::new(0, 0, 2, 2), 1, Color::WHITE),
         ] {
             let mut expected = Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
             super::fill_rounded_rect_aa(&mut expected, rect, radius, color);
             for workers in [0, 1, 2, 4, 8] {
-                let mut actual =
-                    Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
+                let mut actual = Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
                 super::fill_rounded_rect_aa_parallel_with_threads(
-                    &mut actual, rect, radius, color, workers,
+                    &mut actual,
+                    rect,
+                    radius,
+                    color,
+                    workers,
                 );
                 assert_eq!(actual, expected, "worker count: {workers}, rect: {rect:?}");
             }
-            let mut automatic =
-                Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
+            let mut automatic = Framebuffer::new(32, 24, Color::rgba(12, 20, 28, 255)).unwrap();
             super::fill_rounded_rect_aa_parallel(&mut automatic, rect, radius, color);
             assert_eq!(automatic, expected);
         }
@@ -6637,7 +6689,6 @@ mod transformed_radial_gradient_simd_tests {
     }
 }
 
-
 #[cfg(test)]
 mod ellipse_outline_simd_tests {
     use crate::{Color, Framebuffer, Point};
@@ -6769,20 +6820,8 @@ mod ellipse_outline_simd_tests {
                     }
                     let mut expected = actual.clone();
                     let color = Color::rgba(210, 75, 130, source_alpha);
-                    super::fill_ellipse_aa(
-                        &mut actual,
-                        center,
-                        radius_x,
-                        radius_y,
-                        color,
-                    );
-                    scalar_fill_reference(
-                        &mut expected,
-                        center,
-                        radius_x,
-                        radius_y,
-                        color,
-                    );
+                    super::fill_ellipse_aa(&mut actual, center, radius_x, radius_y, color);
+                    scalar_fill_reference(&mut expected, center, radius_x, radius_y, color);
                     assert_eq!(
                         actual, expected,
                         "target alpha {target_alpha}, source alpha {source_alpha}, radii {radius_x}x{radius_y}"
@@ -6813,7 +6852,10 @@ mod ellipse_outline_simd_tests {
                 let color = Color::rgba(210, 75, 130, source_alpha);
                 super::draw_ellipse_aa(&mut actual, Point::new(18, 15), 13, 9, color);
                 scalar_reference(&mut expected, Point::new(18, 15), 13, 9, color);
-                assert_eq!(actual, expected, "target alpha class: {target_alpha}, source alpha: {source_alpha}");
+                assert_eq!(
+                    actual, expected,
+                    "target alpha class: {target_alpha}, source alpha: {source_alpha}"
+                );
             }
         }
     }
@@ -6828,7 +6870,6 @@ mod ellipse_outline_simd_tests {
         assert_eq!(actual, expected);
     }
 }
-
 
 #[cfg(test)]
 mod arc_simd_tests {
@@ -6863,7 +6904,11 @@ mod arc_simd_tests {
         }
         let full_circle = raw_sweep.abs() >= TAU;
         let start = f64::from(start_angle).rem_euclid(TAU);
-        let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+        let sweep = if full_circle {
+            TAU
+        } else {
+            raw_sweep.rem_euclid(TAU)
+        };
         let radius = f64::from(radius);
         let cx = f64::from(center.x);
         let cy = f64::from(center.y);
@@ -6882,7 +6927,11 @@ mod arc_simd_tests {
             return;
         }
 
-        let offsets = if outline { &OUTLINE_OFFSETS } else { &FILL_OFFSETS };
+        let offsets = if outline {
+            &OUTLINE_OFFSETS
+        } else {
+            &FILL_OFFSETS
+        };
         for y in top..bottom {
             let row = target.row_mut(y).unwrap();
             for x in left..right {
@@ -6921,7 +6970,11 @@ mod arc_simd_tests {
     fn initialized_target(alpha_mode: u8) -> Framebuffer {
         let mut target = Framebuffer::new(37, 29, Color::BLACK).unwrap();
         for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
-            let alpha = if alpha_mode == 255 { 255 } else { (index * 37 % 256) as u8 };
+            let alpha = if alpha_mode == 255 {
+                255
+            } else {
+                (index * 37 % 256) as u8
+            };
             *pixel = Color::rgba(
                 (index * 13 % 256) as u8,
                 (index * 29 % 256) as u8,
@@ -6989,13 +7042,19 @@ mod arc_simd_tests {
             let mut outline = fill.clone();
             let before = fill.clone();
             super::fill_arc_aa(&mut fill, Point::new(18, 14), 8, start, end, Color::WHITE);
-            super::draw_arc_aa(&mut outline, Point::new(18, 14), 8, start, end, Color::WHITE);
+            super::draw_arc_aa(
+                &mut outline,
+                Point::new(18, 14),
+                8,
+                start,
+                end,
+                Color::WHITE,
+            );
             assert_eq!(fill, before);
             assert_eq!(outline, before);
         }
     }
 }
-
 
 #[cfg(test)]
 mod horizontal_line_simd_tests {
@@ -7054,16 +7113,10 @@ mod horizontal_line_simd_tests {
         for pixel in expected.row_mut(1).unwrap() {
             *pixel = color.blend_over(*pixel);
         }
-        super::draw_line_aa(
-            &mut actual,
-            Point::new(-8, 1),
-            Point::new(18, 1),
-            color,
-        );
+        super::draw_line_aa(&mut actual, Point::new(-8, 1), Point::new(18, 1), color);
         assert_eq!(actual, expected);
     }
 }
-
 
 #[cfg(test)]
 mod blend_rect_opaque_run_tests {
@@ -7101,12 +7154,7 @@ mod blend_rect_opaque_run_tests {
 
         for thread_count in [0, 1, 2, 4, 32] {
             let mut parallel = initial.clone();
-            super::blend_rect_parallel_with_threads(
-                &mut parallel,
-                rect,
-                source,
-                thread_count,
-            );
+            super::blend_rect_parallel_with_threads(&mut parallel, rect, source, thread_count);
             assert_eq!(parallel, expected, "thread count {thread_count}");
         }
     }
@@ -7137,7 +7185,6 @@ mod blend_rect_opaque_run_tests {
         }
     }
 }
-
 
 #[cfg(test)]
 mod polygon_aa_opaque_run_tests {
@@ -7192,7 +7239,6 @@ mod polygon_aa_opaque_run_tests {
     }
 }
 
-
 #[cfg(test)]
 mod polygon_aa_parallel_tests {
     use crate::{Color, Framebuffer, Point};
@@ -7200,10 +7246,19 @@ mod polygon_aa_parallel_tests {
     #[test]
     fn parallel_aa_polygon_matches_serial_for_clipping_alpha_and_threads() {
         let polygons = [
-            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![
+                Point::new(4, 5),
+                Point::new(55, 8),
+                Point::new(39, 47),
+                Point::new(9, 42),
+            ],
             vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
             vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
-            vec![Point::new(-30, -20), Point::new(120, -15), Point::new(40, 90)],
+            vec![
+                Point::new(-30, -20),
+                Point::new(120, -15),
+                Point::new(40, 90),
+            ],
         ];
         let backgrounds = [Color::rgba(11, 23, 37, 255), Color::rgba(11, 23, 37, 91)];
         let colors = [Color::rgba(190, 80, 220, 173), Color::rgba(255, 140, 20, 1)];
@@ -7216,7 +7271,10 @@ mod polygon_aa_parallel_tests {
                     for threads in [0, 1, 2, 4, 8] {
                         let mut actual = Framebuffer::new(79, 63, background).unwrap();
                         super::fill_polygon_aa_parallel_with_threads(
-                            &mut actual, vertices, color, threads,
+                            &mut actual,
+                            vertices,
+                            color,
+                            threads,
                         );
                         assert_eq!(
                             actual, expected,
@@ -7252,19 +7310,26 @@ mod polygon_parallel_tests {
     #[test]
     fn parallel_polygon_matches_serial_for_clipping_and_thread_counts() {
         let polygons = [
-            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![
+                Point::new(4, 5),
+                Point::new(55, 8),
+                Point::new(39, 47),
+                Point::new(9, 42),
+            ],
             vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
             vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
             vec![Point::new(12, 12), Point::new(12, 12), Point::new(12, 12)],
-            vec![Point::new(-30, -20), Point::new(120, -15), Point::new(40, 90)],
+            vec![
+                Point::new(-30, -20),
+                Point::new(120, -15),
+                Point::new(40, 90),
+            ],
         ];
         for vertices in &polygons {
-            let mut expected =
-                Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
+            let mut expected = Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
             super::fill_polygon(&mut expected, vertices, Color::rgba(190, 80, 220, 173));
             for threads in [0, 1, 2, 4, 8] {
-                let mut actual =
-                    Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
+                let mut actual = Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
                 super::fill_polygon_parallel_with_threads(
                     &mut actual,
                     vertices,
@@ -7312,7 +7377,11 @@ mod rounded_rect_outline_parallel_tests {
             for threads in [0, 1, 2, 4, 8] {
                 let mut actual = Framebuffer::new(96, 64, Color::TRANSPARENT).unwrap();
                 super::draw_rounded_rect_parallel_with_threads(
-                    &mut actual, rect, radius, Color::WHITE, threads,
+                    &mut actual,
+                    rect,
+                    radius,
+                    Color::WHITE,
+                    threads,
                 );
                 assert_eq!(actual, expected, "threads {threads}, rect {rect:?}");
             }
@@ -7344,12 +7413,10 @@ mod rounded_rect_parallel_tests {
             (Rect::new(0, 0, 96, 64), 32),
         ];
         for (rect, radius) in cases {
-            let mut expected =
-                Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
+            let mut expected = Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
             super::fill_rounded_rect(&mut expected, rect, radius, Color::rgba(211, 87, 43, 173));
             for threads in [0, 1, 2, 4, 8] {
-                let mut actual =
-                    Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
+                let mut actual = Framebuffer::new(96, 64, Color::rgba(19, 31, 47, 255)).unwrap();
                 super::fill_rounded_rect_parallel_with_threads(
                     &mut actual,
                     rect,
@@ -7422,16 +7489,40 @@ mod blend_rect_transparent_run_tests {
         let mut expected = actual.clone();
 
         for (center, radius, start, end, color) in [
-            (Point::new(20, 18), 12, 0.2, 2.7, Color::rgba(230, 70, 120, 177)),
-            (Point::new(42, 25), 19, 1.1, 5.4, Color::rgba(40, 190, 210, 129)),
+            (
+                Point::new(20, 18),
+                12,
+                0.2,
+                2.7,
+                Color::rgba(230, 70, 120, 177),
+            ),
+            (
+                Point::new(42, 25),
+                19,
+                1.1,
+                5.4,
+                Color::rgba(40, 190, 210, 129),
+            ),
             (Point::new(3, 7), 8, 4.8, 7.2, Color::rgba(170, 90, 30, 211)),
         ] {
             super::draw_arc_aa_with_scratch(
-                &mut actual, center, radius, start, end, color, &mut scratch,
+                &mut actual,
+                center,
+                radius,
+                start,
+                end,
+                color,
+                &mut scratch,
             );
             super::draw_arc_aa(&mut expected, center, radius, start, end, color);
             super::fill_arc_aa_with_scratch(
-                &mut actual, center, radius, start, end, color, &mut scratch,
+                &mut actual,
+                center,
+                radius,
+                start,
+                end,
+                color,
+                &mut scratch,
             );
             super::fill_arc_aa(&mut expected, center, radius, start, end, color);
         }
@@ -7440,8 +7531,13 @@ mod blend_rect_transparent_run_tests {
         assert!(scratch.arc_aa_sources.capacity() >= 39);
         let capacity = scratch.arc_aa_sources.capacity();
         super::draw_arc_aa_with_scratch(
-            &mut actual, Point::new(30, 20), 10, 0.0, 1.5,
-            Color::WHITE, &mut scratch,
+            &mut actual,
+            Point::new(30, 20),
+            10,
+            0.0,
+            1.5,
+            Color::WHITE,
+            &mut scratch,
         );
         assert_eq!(scratch.arc_aa_sources.capacity(), capacity);
     }
@@ -7458,7 +7554,12 @@ mod blend_rect_transparent_run_tests {
             (Point::new(3, 7), 8, 6, Color::rgba(170, 90, 30, 211)),
         ] {
             super::draw_ellipse_aa_with_scratch(
-                &mut actual, center, radius_x, radius_y, color, &mut scratch,
+                &mut actual,
+                center,
+                radius_x,
+                radius_y,
+                color,
+                &mut scratch,
             );
             super::draw_ellipse_aa(&mut expected, center, radius_x, radius_y, color);
         }
@@ -7467,7 +7568,12 @@ mod blend_rect_transparent_run_tests {
         assert!(scratch.ellipse_aa_sources.capacity() >= 39);
         let capacity = scratch.ellipse_aa_sources.capacity();
         super::draw_ellipse_aa_with_scratch(
-            &mut actual, Point::new(30, 20), 10, 6, Color::WHITE, &mut scratch,
+            &mut actual,
+            Point::new(30, 20),
+            10,
+            6,
+            Color::WHITE,
+            &mut scratch,
         );
         assert_eq!(scratch.ellipse_aa_sources.capacity(), capacity);
     }
@@ -7483,13 +7589,9 @@ mod blend_rect_transparent_run_tests {
             (Point::new(42, 25), 19, Color::rgba(40, 190, 210, 129)),
             (Point::new(3, 7), 8, Color::rgba(170, 90, 30, 211)),
         ] {
-            super::fill_circle_aa_with_scratch(
-                &mut actual, center, radius, color, &mut scratch,
-            );
+            super::fill_circle_aa_with_scratch(&mut actual, center, radius, color, &mut scratch);
             super::fill_circle_aa(&mut expected, center, radius, color);
-            super::draw_circle_aa_with_scratch(
-                &mut actual, center, radius, color, &mut scratch,
-            );
+            super::draw_circle_aa_with_scratch(&mut actual, center, radius, color, &mut scratch);
             super::draw_circle_aa(&mut expected, center, radius, color);
         }
         assert_eq!(actual, expected);
@@ -7503,17 +7605,23 @@ mod blend_rect_transparent_run_tests {
         let mut actual = Framebuffer::new(73, 59, Color::TRANSPARENT).unwrap();
         let mut expected = actual.clone();
         let polygons = [
-            vec![Point::new(4, 5), Point::new(55, 8), Point::new(39, 47), Point::new(9, 42)],
+            vec![
+                Point::new(4, 5),
+                Point::new(55, 8),
+                Point::new(39, 47),
+                Point::new(9, 42),
+            ],
             vec![Point::new(18, 12), Point::new(65, 19), Point::new(48, 53)],
             vec![Point::new(-8, 20), Point::new(26, -4), Point::new(71, 39)],
         ];
         for vertices in &polygons {
             super::draw_polygon_aa_with_scratch(
-                &mut actual, vertices, Color::rgba(190, 80, 220, 173), &mut scratch,
+                &mut actual,
+                vertices,
+                Color::rgba(190, 80, 220, 173),
+                &mut scratch,
             );
-            super::draw_polygon_aa(
-                &mut expected, vertices, Color::rgba(190, 80, 220, 173),
-            );
+            super::draw_polygon_aa(&mut expected, vertices, Color::rgba(190, 80, 220, 173));
         }
         assert_eq!(actual, expected);
         assert!(scratch.aa_outline_segments.capacity() >= 4);
@@ -7531,22 +7639,26 @@ mod blend_rect_transparent_run_tests {
             Rect::new(-5, 39, 22, 35),
         ] {
             super::draw_rect_aa_with_scratch(
-                &mut actual, rect, Color::rgba(30, 190, 120, 181), &mut scratch,
+                &mut actual,
+                rect,
+                Color::rgba(30, 190, 120, 181),
+                &mut scratch,
             );
-            super::draw_rect_aa(
-                &mut expected, rect, Color::rgba(30, 190, 120, 181),
-            );
+            super::draw_rect_aa(&mut expected, rect, Color::rgba(30, 190, 120, 181));
         }
         for (a, b, c) in [
             (Point::new(8, 9), Point::new(71, 17), Point::new(33, 59)),
             (Point::new(-7, 32), Point::new(39, 2), Point::new(82, 63)),
         ] {
             super::draw_triangle_aa_with_scratch(
-                &mut actual, a, b, c, Color::rgba(210, 80, 40, 137), &mut scratch,
+                &mut actual,
+                a,
+                b,
+                c,
+                Color::rgba(210, 80, 40, 137),
+                &mut scratch,
             );
-            super::draw_triangle_aa(
-                &mut expected, a, b, c, Color::rgba(210, 80, 40, 137),
-            );
+            super::draw_triangle_aa(&mut expected, a, b, c, Color::rgba(210, 80, 40, 137));
         }
         assert_eq!(actual, expected);
         assert!(scratch.aa_outline_segments.capacity() >= 4);
@@ -7559,13 +7671,26 @@ mod blend_rect_transparent_run_tests {
         let mut actual = Framebuffer::new(79, 63, Color::TRANSPARENT).unwrap();
         let mut expected = actual.clone();
         for (a, b, c, color) in [
-            (Point::new(7, 8), Point::new(68, 14), Point::new(31, 55), Color::rgba(230, 80, 40, 177)),
-            (Point::new(-9, 26), Point::new(43, -5), Point::new(77, 61), Color::rgba(40, 170, 220, 129)),
-            (Point::new(12, 49), Point::new(54, 49), Point::new(33, 18), Color::rgba(120, 210, 70, 203)),
+            (
+                Point::new(7, 8),
+                Point::new(68, 14),
+                Point::new(31, 55),
+                Color::rgba(230, 80, 40, 177),
+            ),
+            (
+                Point::new(-9, 26),
+                Point::new(43, -5),
+                Point::new(77, 61),
+                Color::rgba(40, 170, 220, 129),
+            ),
+            (
+                Point::new(12, 49),
+                Point::new(54, 49),
+                Point::new(33, 18),
+                Color::rgba(120, 210, 70, 203),
+            ),
         ] {
-            super::fill_triangle_aa_with_scratch(
-                &mut actual, a, b, c, color, &mut scratch,
-            );
+            super::fill_triangle_aa_with_scratch(&mut actual, a, b, c, color, &mut scratch);
             super::fill_triangle_aa(&mut expected, a, b, c, color);
         }
         assert_eq!(actual, expected);
@@ -7574,13 +7699,28 @@ mod blend_rect_transparent_run_tests {
         assert!(scratch.aa_coverage.capacity() >= 79);
     }
 
-
     #[test]
     fn parallel_antialiased_arc_outline_matches_serial_for_worker_counts() {
-        for background in [Color::TRANSPARENT, Color::BLACK, Color::rgba(30, 70, 120, 113)] {
+        for background in [
+            Color::TRANSPARENT,
+            Color::BLACK,
+            Color::rgba(30, 70, 120, 113),
+        ] {
             for (center, radius, start, end, color) in [
-                (Point::new(31, 24), 17, 0.2, 2.7, Color::rgba(230, 70, 120, 177)),
-                (Point::new(42, 25), 19, 5.4, 1.1, Color::rgba(40, 190, 210, 129)),
+                (
+                    Point::new(31, 24),
+                    17,
+                    0.2,
+                    2.7,
+                    Color::rgba(230, 70, 120, 177),
+                ),
+                (
+                    Point::new(42, 25),
+                    19,
+                    5.4,
+                    1.1,
+                    Color::rgba(40, 190, 210, 129),
+                ),
                 (Point::new(3, 7), 8, 4.8, 7.2, Color::rgba(170, 90, 30, 211)),
                 (Point::new(31, 24), 17, -1.0, 8.0, Color::WHITE),
             ] {
@@ -7590,26 +7730,45 @@ mod blend_rect_transparent_run_tests {
                 for workers in [0, 1, 2, 4, 8, 64] {
                     let mut actual = initial.clone();
                     super::draw_arc_aa_parallel_with_threads(
-                        &mut actual, center, radius, start, end, color, workers,
+                        &mut actual,
+                        center,
+                        radius,
+                        start,
+                        end,
+                        color,
+                        workers,
                     );
                     assert_eq!(actual, expected, "worker_count={workers}");
                 }
                 let mut automatic = initial;
-                super::draw_arc_aa_parallel(
-                    &mut automatic, center, radius, start, end, color,
-                );
+                super::draw_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
                 assert_eq!(automatic, expected);
             }
         }
     }
 
-
     #[test]
     fn parallel_antialiased_arc_sector_matches_serial_for_worker_counts() {
-        for background in [Color::TRANSPARENT, Color::BLACK, Color::rgba(30, 70, 120, 113)] {
+        for background in [
+            Color::TRANSPARENT,
+            Color::BLACK,
+            Color::rgba(30, 70, 120, 113),
+        ] {
             for (center, radius, start, end, color) in [
-                (Point::new(31, 24), 17, 0.2, 2.7, Color::rgba(230, 70, 120, 177)),
-                (Point::new(42, 25), 19, 5.4, 1.1, Color::rgba(40, 190, 210, 129)),
+                (
+                    Point::new(31, 24),
+                    17,
+                    0.2,
+                    2.7,
+                    Color::rgba(230, 70, 120, 177),
+                ),
+                (
+                    Point::new(42, 25),
+                    19,
+                    5.4,
+                    1.1,
+                    Color::rgba(40, 190, 210, 129),
+                ),
                 (Point::new(3, 7), 8, 4.8, 7.2, Color::rgba(170, 90, 30, 211)),
                 (Point::new(31, 24), 17, -1.0, 8.0, Color::WHITE),
                 (Point::new(31, 24), 0, 0.0, 1.5, Color::WHITE),
@@ -7620,14 +7779,18 @@ mod blend_rect_transparent_run_tests {
                 for workers in [0, 1, 2, 4, 8, 64] {
                     let mut actual = initial.clone();
                     super::fill_arc_aa_parallel_with_threads(
-                        &mut actual, center, radius, start, end, color, workers,
+                        &mut actual,
+                        center,
+                        radius,
+                        start,
+                        end,
+                        color,
+                        workers,
                     );
                     assert_eq!(actual, expected, "worker_count={workers}");
                 }
                 let mut automatic = initial;
-                super::fill_arc_aa_parallel(
-                    &mut automatic, center, radius, start, end, color,
-                );
+                super::fill_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
                 assert_eq!(automatic, expected);
             }
         }
@@ -7635,7 +7798,11 @@ mod blend_rect_transparent_run_tests {
 
     #[test]
     fn parallel_antialiased_circle_apis_match_serial_ellipse_apis() {
-        for background in [Color::TRANSPARENT, Color::BLACK, Color::rgba(30, 70, 120, 113)] {
+        for background in [
+            Color::TRANSPARENT,
+            Color::BLACK,
+            Color::rgba(30, 70, 120, 113),
+        ] {
             for (center, radius, color) in [
                 (Point::new(31, 24), 17, Color::rgba(230, 70, 120, 177)),
                 (Point::new(3, 7), 8, Color::rgba(40, 190, 210, 129)),
@@ -7648,7 +7815,11 @@ mod blend_rect_transparent_run_tests {
                 for workers in [0, 1, 2, 4, 8, 64] {
                     let mut actual = initial.clone();
                     fill_circle_aa_parallel_with_threads(
-                        &mut actual, center, radius, color, workers,
+                        &mut actual,
+                        center,
+                        radius,
+                        color,
+                        workers,
                     );
                     assert_eq!(actual, expected_fill, "fill worker_count={workers}");
                 }
@@ -7661,7 +7832,11 @@ mod blend_rect_transparent_run_tests {
                 for workers in [0, 1, 2, 4, 8, 64] {
                     let mut actual = initial.clone();
                     draw_circle_aa_parallel_with_threads(
-                        &mut actual, center, radius, color, workers,
+                        &mut actual,
+                        center,
+                        radius,
+                        color,
+                        workers,
                     );
                     assert_eq!(actual, expected_outline, "outline worker_count={workers}");
                 }
@@ -7671,5 +7846,4 @@ mod blend_rect_transparent_run_tests {
             }
         }
     }
-
 }

@@ -5,14 +5,14 @@ use std::time::{Duration, Instant};
 use ghostengine::{
     blend_rect, compose_layers_auto, compose_layers_parallel_with_threads,
     draw_atlas_region_clipped, draw_mipmapped_texture_clipped, draw_text,
-    draw_texture_clipped_auto, draw_texture_nine_slice_clipped,
-    draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
+    draw_texture_clipped_auto, draw_texture_clipped_parallel_with_threads,
+    draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
-    Layer, MipmapChain, Path, Point, RasterizerScratch, Rect, StrokeStyle, Texture,
-    NineSliceMargins, TextureAtlasBuilder, TextureDrawScratch, TextureFilter, Transform2D,
-    TextureCache, UiTheme, Vector, WidgetState,
+    Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, StrokeStyle,
+    Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch, TextureFilter, Transform2D,
+    UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -213,7 +213,6 @@ fn main() {
             .expect("ID-addressable atlas should build")
     };
 
-
     // Full-HD workload: downscale a 4K source over every output pixel.
     // Source creation and mipmap generation stay outside frame timings.
     const FULL_HD_SOURCE_WIDTH: u32 = 3840;
@@ -307,15 +306,15 @@ fn main() {
         .map(usize::from)
         .unwrap_or(1);
 
-    let mut nested_group = ghostengine::LayerGroup::new(640, 360)
-        .expect("nested benchmark group should allocate");
+    let mut nested_group =
+        ghostengine::LayerGroup::new(640, 360).expect("nested benchmark group should allocate");
     let mut nested_child = transformed_layers[0].clone();
     nested_child.set_position(0, 0);
     nested_group.add_layer(nested_child);
     nested_group.set_position(520, 280);
     nested_group.set_opacity(220);
-    let mut layer_group = ghostengine::LayerGroup::new(WIDTH, HEIGHT)
-        .expect("benchmark group should allocate");
+    let mut layer_group =
+        ghostengine::LayerGroup::new(WIDTH, HEIGHT).expect("benchmark group should allocate");
     for layer in &layers {
         layer_group.add_layer(layer.clone());
     }
@@ -590,7 +589,12 @@ fn main() {
                 target,
                 &texture_atlas,
                 atlas_region,
-                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
@@ -599,7 +603,12 @@ fn main() {
             black_box(atlas_object.draw_region(
                 target,
                 1,
-                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
             ));
@@ -609,7 +618,12 @@ fn main() {
                 target,
                 &texture,
                 Rect::new(0, 0, 128, 128),
-                Rect::new(80 * SCALE_U32, 35 * SCALE_U32, 320 * SCALE_U32, 200 * SCALE_U32),
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
                 NineSliceMargins::new(16, 16, 16, 16),
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
@@ -622,7 +636,6 @@ fn main() {
             black_box(texture_cache.retain(cached_texture_handle));
             black_box(texture_cache.release(cached_texture_handle));
         }),
-
         measure("Texture bilinear", iterations, |target| {
             ghostengine::draw_texture(
                 target,
@@ -725,14 +738,18 @@ fn main() {
         measure("Layer composition (2 layers)", iterations, |target| {
             ghostengine::compose_layers(target, &layers);
         }),
-        measure("Nested layer groups (reused scratch)", iterations, |target| {
-            ghostengine::compose_layer_groups_with_scratch(
-                target,
-                std::slice::from_ref(&layer_group),
-                &mut layer_group_scratch,
-            )
-            .expect("group benchmark composition should succeed");
-        }),
+        measure(
+            "Nested layer groups (reused scratch)",
+            iterations,
+            |target| {
+                ghostengine::compose_layer_groups_with_scratch(
+                    target,
+                    std::slice::from_ref(&layer_group),
+                    &mut layer_group_scratch,
+                )
+                .expect("group benchmark composition should succeed");
+            },
+        ),
         measure("Transformed layer (nearest)", iterations, |target| {
             ghostengine::compose_layers(target, &nearest_layers);
         }),

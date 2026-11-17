@@ -64,7 +64,10 @@ impl Error for ImageDecodeError {
         match self {
             Self::Reader(error) => Some(error),
             Self::Decode(error) => Some(error),
-            Self::UnknownFormat | Self::UnsupportedFormat(_) | Self::Texture(_) | Self::Cache(_) => None,
+            Self::UnknownFormat
+            | Self::UnsupportedFormat(_)
+            | Self::Texture(_)
+            | Self::Cache(_) => None,
         }
     }
 }
@@ -182,9 +185,9 @@ mod tests {
     #[test]
     fn cache_budget_error_does_not_evict_existing_textures() {
         let mut cache = crate::TextureCache::new(8);
-        let existing = cache.insert(crate::Texture::new(
-            2, 1, vec![Color::RED; 2]
-        )).unwrap();
+        let existing = cache
+            .insert(crate::Texture::new(2, 1, vec![Color::RED; 2]))
+            .unwrap();
 
         assert!(matches!(
             super::decode_texture_into_cache(&encode_png(), &mut cache),

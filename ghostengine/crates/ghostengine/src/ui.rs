@@ -4,7 +4,10 @@
 //! event loop, or platform state; applications provide interaction state and
 //! use the same CPU renderer as every other scene.
 
-use crate::rasterizer::{draw_line_aa, draw_rect, draw_rounded_rect_aa, fill_rect, fill_rect_clipped, fill_rounded_rect, fill_rounded_rect_aa};
+use crate::rasterizer::{
+    draw_line_aa, draw_rect, draw_rounded_rect_aa, fill_rect, fill_rect_clipped, fill_rounded_rect,
+    fill_rounded_rect_aa,
+};
 use crate::{
     draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
     FontFace, FontFamily, Framebuffer, Point, Rect, TextLayoutOptions, TextMetrics,
@@ -1418,7 +1421,10 @@ mod tests {
         draw_panel_aa(&mut target, Rect::new(4, 4, 20, 14), 5, &theme);
         assert_eq!(target.get_pixel(12, 10), Some(theme.panel));
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
-        assert!(target.pixels().iter().any(|pixel| *pixel == theme.panel_border));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel == theme.panel_border));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != theme.panel && *pixel != theme.panel_border
         }));
