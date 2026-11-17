@@ -378,7 +378,7 @@ impl ComponentTree {
         if input.left_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down {
+                if input.control_down || input.super_down {
                     ComponentKey::WordLeft
                 } else {
                     ComponentKey::ArrowLeft
@@ -389,7 +389,7 @@ impl ComponentTree {
         if input.right_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down {
+                if input.control_down || input.super_down {
                     ComponentKey::WordRight
                 } else {
                     ComponentKey::ArrowRight
@@ -406,7 +406,7 @@ impl ComponentTree {
         if input.backspace_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down {
+                if input.control_down || input.super_down {
                     ComponentKey::DeleteWordBackward
                 } else {
                     ComponentKey::Backspace
@@ -417,7 +417,7 @@ impl ComponentTree {
         if input.delete_pressed {
             self.handle_key(
                 bounds,
-                if input.control_down {
+                if input.control_down || input.super_down {
                     ComponentKey::DeleteWordForward
                 } else {
                     ComponentKey::Delete
@@ -451,7 +451,7 @@ impl ComponentTree {
 
         // Prefer committed Unicode text from the host text service. The legacy
         // character list is only a fallback for adapters that cannot emit text events.
-        if input.text_events.is_empty() && !input.control_down && !input.alt_down {
+        if input.text_events.is_empty() && !input.control_down && !input.super_down && !input.alt_down {
             for character in &input.pressed_characters {
                 if *character == ' ' && self.focused_text_input().is_none() {
                     let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
