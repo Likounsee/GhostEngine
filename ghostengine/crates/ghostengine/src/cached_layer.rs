@@ -115,8 +115,7 @@ impl CachedLayer {
             let source_start = source_y * source_width + source_x;
             let target_start = target_y * target_width + target_x;
             let source_row = &self.framebuffer.pixels()[source_start..source_start + copy_width];
-            let target_row =
-                &mut target.pixels_mut()[target_start..target_start + copy_width];
+            let target_row = &mut target.pixels_mut()[target_start..target_start + copy_width];
 
             if opacity == 255 {
                 for (background, source) in target_row.iter_mut().zip(source_row.iter().copied()) {
@@ -127,7 +126,9 @@ impl CachedLayer {
                     }
                 }
             } else {
-                for (background, mut source) in target_row.iter_mut().zip(source_row.iter().copied()) {
+                for (background, mut source) in
+                    target_row.iter_mut().zip(source_row.iter().copied())
+                {
                     if source.a == 0 {
                         continue;
                     }
