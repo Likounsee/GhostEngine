@@ -58,6 +58,24 @@ pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Colo
         return;
     }
 
+    // Exact 45-degree lines have one pixel per step and need no error
+    // accumulator. Write directly into the packed framebuffer in either slope.
+    if (x1 - x0).abs() == (y1 - y0).abs() {
+        if x0 > x1 {
+            core::mem::swap(&mut x0, &mut x1);
+            core::mem::swap(&mut y0, &mut y1);
+        }
+        let step_y = if y0 <= y1 { 1 } else { -1 };
+        let width = target.width() as usize;
+        let pixels = target.pixels_mut();
+        for offset in 0..=(x1 - x0) {
+            let x = (x0 + offset) as usize;
+            let y = (y0 + offset * step_y) as usize;
+            pixels[y * width + x] = color;
+        }
+        return;
+    }
+
     // Canonical endpoint order makes Bresenham's tie-breaking independent
     // of the order in which the caller supplied the segment.
     if (x0, y0) > (x1, y1) {
@@ -8037,5 +8055,57 @@ mod axis_aligned_clip_tests {
             None
         );
         assert_eq!(clip_line(0, 4, Point::new(0, 0), Point::new(0, 2)), None);
+    }
+}
+
+
+#[cfg(test)]
+mod diagonal_line_fast_path_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn diagonal_fast_path_matches_expected_pixels_for_both_slopes_and_orders() {
+        for (start, end) in [
+            (Point::new(2, 3), Point::new(12, 13)),
+            (Point::new(2, 13), Point::new(12, 3)),
+            (Point::new(12, 13), Point::new(2, 3)),
+            (Point::new(12, 3), Point::new(2, 13)),
+        ] {
+            let mut framebuffer = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+            super::draw_line(&mut framebuffer, start, end, Color::WHITE);
+
+            let step_y = if start.y <= end.y { 1 } else { -1 };
+            for offset in 0..=10 {
+                let x = 2 + offset;
+                let y = if step_y > 0 { 3 + offset } else { 13 - offset };
+                assert_eq!(framebuffer.get_pixel(x, y), Some(Color::WHITE));
+            }
+            assert_eq!(
+                framebuffer.pixels().iter().filter(|pixel| **pixel == Color::WHITE).count(),
+                11
+            );
+        }
+    }
+
+    #[test]
+    fn diagonal_fast_path_handles_clipped_segments() {
+        let mut framebuffer = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        super::draw_line(
+            &mut framebuffer,
+            Point::new(-5, -5),
+            Point::new(10, 10),
+            Color::RED,
+        );
+
+        for coordinate in 0..8 {
+            assert_eq!(
+                framebuffer.get_pixel(coordinate, coordinate),
+                Some(Color::RED)
+            );
+        }
+        assert_eq!(
+            framebuffer.pixels().iter().filter(|pixel| **pixel == Color::RED).count(),
+            8
+        );
     }
 }
