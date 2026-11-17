@@ -262,7 +262,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
 
     for cluster in fallback_text_clusters(text) {
         match cluster {
-            "\\n" => {
+            "\n" => {
                 max_width = max_width.max(width);
                 width = 0.0;
                 let Some(next_lines) = lines.checked_add(1) else {
@@ -271,7 +271,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                 lines = next_lines;
                 previous = None;
             }
-            "\\t" => {
+            "\t" => {
                 width += tab_width;
                 if !width.is_finite() {
                     return TextMetrics::default();
