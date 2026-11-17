@@ -212,21 +212,22 @@ impl TextureAtlasBuilder {
             let content_y = y + self.padding;
             // Extrude edge texels into the padding so bilinear sampling near
             // sprite boundaries cannot blend with transparent neighboring space.
-            for padded_y in 0..padded_height {
-                let source_y = padded_y
-                    .saturating_sub(self.padding)
-                    .min(item.texture.height() - 1);
-                for padded_x in 0..padded_width {
-                    let source_x = padded_x
-                        .saturating_sub(self.padding)
-                        .min(item.texture.width() - 1);
-                    let source_index =
-                        source_y as usize * item.texture.width() as usize + source_x as usize;
-                    let destination_index = (y as usize + padded_y as usize) * self.width as usize
-                        + x as usize
-                        + padded_x as usize;
-                    pixels[destination_index] = item.texture.pixels()[source_index];
-                }
+            let source_width = item.texture.width() as usize;
+            let padding = self.padding as usize;
+            for padded_y in 0..padded_height as usize {
+                let source_y = (padded_y.saturating_sub(padding))
+                    .min(item.texture.height() as usize - 1);
+                let source_start = source_y * source_width;
+                let source_row = &item.texture.pixels()[source_start..source_start + source_width];
+
+                let destination_start =
+                    (y as usize + padded_y) * self.width as usize + x as usize;
+                let destination_row =
+                    &mut pixels[destination_start..destination_start + padded_width as usize];
+
+                destination_row[..padding].fill(source_row[0]);
+                destination_row[padding..padding + source_width].copy_from_slice(source_row);
+                destination_row[padding + source_width..].fill(source_row[source_width - 1]);
             }
             regions.push(AtlasRegion {
                 id: item.id,
