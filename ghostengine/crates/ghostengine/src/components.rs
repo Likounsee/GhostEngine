@@ -3000,7 +3000,10 @@ mod tests {
         let word_x = font.measure("Bonjour c", 16.0).width + 0.1;
 
         assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 1));
-        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Bonjour c".len());
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "Bonjour c".len()
+        );
 
         assert!(tree.handle_text_input_pointer(id, &font, 16.0, 0.0, true, 1));
         assert_eq!(
@@ -3013,14 +3016,66 @@ mod tests {
             tree.text_input_state(id).unwrap().selected_text(),
             Some("café")
         );
-        assert!(!tree.handle_text_input_pointer(
-            ComponentId(999),
+        assert!(!tree.handle_text_input_pointer(ComponentId(999), &font, 16.0, 0.0, false, 1));
+    }
+
+    #[test]
+    fn component_text_selection_continues_when_pointer_leaves_input_bounds() {
+        let id = ComponentId(144);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Sélection prolongée",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let bounds = Rect::new(0, 0, 180, 40);
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(20, 20)),
+            true,
+            false,
             &font,
             16.0,
-            0.0,
+            1,
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(400, 20)),
             false,
-            1
-        ));
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((20, "Sélection prolongée".len()))
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(-40, 20)),
+            false,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, "Sélection prolongée".len()))
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(-40, 20)),
+            false,
+            true,
+            &font,
+            16.0,
+            1,
+        );
     }
 
     #[test]
