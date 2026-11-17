@@ -446,6 +446,40 @@ pub fn draw_text_shaped_clipped(
     if !pixel_size.is_finite() || pixel_size <= 0.0 || shaped.glyphs.is_empty() {
         return TextMetrics::default();
     }
+
+    // ShapedText is public and can be constructed by callers. Validate the
+    // complete run before touching the glyph cache or framebuffer so malformed
+    // metrics cannot cause partial rendering or poison the pen position.
+    if !shaped.advance_x.is_finite()
+        || !shaped.advance_y.is_finite()
+        || shaped.glyphs.iter().any(|glyph| {
+            !glyph.x_advance.is_finite()
+                || !glyph.y_advance.is_finite()
+                || !glyph.x_offset.is_finite()
+                || !glyph.y_offset.is_finite()
+        })
+    {
+        return TextMetrics::default();
+    }
+
+    let total_x = shaped
+        .glyphs
+        .iter()
+        .map(|glyph| f64::from(glyph.x_advance))
+        .sum::<f64>();
+    let total_y = shaped
+        .glyphs
+        .iter()
+        .map(|glyph| f64::from(glyph.y_advance))
+        .sum::<f64>();
+    if !total_x.is_finite()
+        || !total_y.is_finite()
+        || total_x.abs() > f64::from(f32::MAX)
+        || total_y.abs() > f64::from(f32::MAX)
+    {
+        return TextMetrics::default();
+    }
+
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
     for shaped_glyph in &shaped.glyphs {
@@ -2262,6 +2296,86 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
 #[cfg(test)]
 mod tests {
     use super::FontFace;
+
+    #[test]
+    fn malformed_shaped_metrics_are_rejected_before_rendering() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let malformed = crate::ShapedText {
+            glyphs: vec![crate::ShapedGlyph {
+                glyph_id: 1,
+                cluster: 0,
+                x_advance: f32::INFINITY,
+                y_advance: 0.0,
+                x_offset: 0.0,
+                y_offset: 0.0,
+            }],
+            advance_x: 12.0,
+            advance_y: 0.0,
+        };
+        let mut target =
+            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let before = target.pixels().to_vec();
+
+        let metrics = super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &malformed,
+            crate::Point::new(4, 24),
+            16.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 32, 32),
+        );
+
+        assert_eq!(metrics, super::TextMetrics::default());
+        assert_eq!(target.pixels(), before);
+        assert_eq!(font.cached_glyph_count(), 0);
+    }
+
+    #[test]
+    fn overflowing_shaped_pen_position_is_rejected_before_rendering() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let malformed = crate::ShapedText {
+            glyphs: vec![
+                crate::ShapedGlyph {
+                    glyph_id: 1,
+                    cluster: 0,
+                    x_advance: f32::MAX,
+                    y_advance: 0.0,
+                    x_offset: 0.0,
+                    y_offset: 0.0,
+                },
+                crate::ShapedGlyph {
+                    glyph_id: 1,
+                    cluster: 1,
+                    x_advance: f32::MAX,
+                    y_advance: 0.0,
+                    x_offset: 0.0,
+                    y_offset: 0.0,
+                },
+            ],
+            advance_x: f32::MAX,
+            advance_y: 0.0,
+        };
+        let mut target =
+            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let before = target.pixels().to_vec();
+
+        let metrics = super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &malformed,
+            crate::Point::new(4, 24),
+            16.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 32, 32),
+        );
+
+        assert_eq!(metrics, super::TextMetrics::default());
+        assert_eq!(target.pixels(), before);
+        assert_eq!(font.cached_glyph_count(), 0);
+    }
 
     #[test]
     fn licensed_noto_hebrew_font_shapes_and_rasterizes_real_glyphs() {
