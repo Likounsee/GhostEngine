@@ -2468,7 +2468,6 @@ pub fn fill_polygon_aa_parallel_with_threads(
         return;
     }
 
-    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
     for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
