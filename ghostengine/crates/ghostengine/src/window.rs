@@ -937,9 +937,8 @@ mod tests {
         use crate::{ContextMenuItem, ContextMenuShortcut};
 
         let mut tree = ComponentTree::new(Vec::new());
-        tree.set_context_menu(vec![ContextMenuItem::new(950, "Save").with_shortcut(
-            ContextMenuShortcut::new('s').with_control(true),
-        )]);
+        tree.set_context_menu(vec![ContextMenuItem::new(950, "Save")
+            .with_shortcut(ContextMenuShortcut::new('s').with_control(true))]);
         let events = tree.handle_window_input(
             crate::Rect::new(0, 0, 100, 40),
             &InputState {
@@ -1086,34 +1085,76 @@ mod tests {
         use crate::{ComponentId, LayoutItem, UiComponent};
         let bounds = crate::Rect::new(0, 0, 180, 40);
         let id = ComponentId(93);
-        let mut tree = ComponentTree::new(vec![
-            UiComponent::text_input(id, "Input", "hello brave world")
-                .with_layout_item(LayoutItem::fixed(40)),
-        ]);
-        tree.handle_window_input(bounds, &InputState { tab_pressed: true, ..InputState::default() });
-        tree.handle_window_input(bounds, &InputState {
-            left_pressed: true, super_down: true, ..InputState::default()
-        });
-        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "hello brave ".len());
-        tree.handle_window_input(bounds, &InputState {
-            backspace_pressed: true, super_down: true, ..InputState::default()
-        });
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Input",
+            "hello brave world",
+        )
+        .with_layout_item(LayoutItem::fixed(40))]);
+        tree.handle_window_input(
+            bounds,
+            &InputState {
+                tab_pressed: true,
+                ..InputState::default()
+            },
+        );
+        tree.handle_window_input(
+            bounds,
+            &InputState {
+                left_pressed: true,
+                super_down: true,
+                ..InputState::default()
+            },
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "hello brave ".len()
+        );
+        tree.handle_window_input(
+            bounds,
+            &InputState {
+                backspace_pressed: true,
+                super_down: true,
+                ..InputState::default()
+            },
+        );
         assert!(matches!(tree.find(id).unwrap().kind(),
             crate::ComponentKind::TextInput { value, .. } if value == "hello world"));
 
         tree.select_all_text(id);
-        let copied = tree.handle_window_input(bounds, &InputState {
-            copy_pressed: true, super_down: true, ..InputState::default()
-        });
-        assert_eq!(copied.clipboard_action, Some(ClipboardAction::Copy("hello world".into())));
-        let cut = tree.handle_window_input(bounds, &InputState {
-            cut_pressed: true, super_down: true, ..InputState::default()
-        });
-        assert_eq!(cut.clipboard_action, Some(ClipboardAction::Copy("hello world".into())));
-        tree.handle_window_input(bounds, &InputState {
-            paste_pressed: true, super_down: true,
-            clipboard_text: Some("restored 🙂".into()), ..InputState::default()
-        });
+        let copied = tree.handle_window_input(
+            bounds,
+            &InputState {
+                copy_pressed: true,
+                super_down: true,
+                ..InputState::default()
+            },
+        );
+        assert_eq!(
+            copied.clipboard_action,
+            Some(ClipboardAction::Copy("hello world".into()))
+        );
+        let cut = tree.handle_window_input(
+            bounds,
+            &InputState {
+                cut_pressed: true,
+                super_down: true,
+                ..InputState::default()
+            },
+        );
+        assert_eq!(
+            cut.clipboard_action,
+            Some(ClipboardAction::Copy("hello world".into()))
+        );
+        tree.handle_window_input(
+            bounds,
+            &InputState {
+                paste_pressed: true,
+                super_down: true,
+                clipboard_text: Some("restored 🙂".into()),
+                ..InputState::default()
+            },
+        );
         assert!(matches!(tree.find(id).unwrap().kind(),
             crate::ComponentKind::TextInput { value, .. } if value == "restored 🙂"));
     }
