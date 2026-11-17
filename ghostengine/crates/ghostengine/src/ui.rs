@@ -883,7 +883,11 @@ pub fn text_input_cursor_from_x(font: &FontFace, text: &str, pixel_size: f32, x:
     text.len()
 }
 
-pub(crate) fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width: f32) -> f32 {
+pub(crate) fn text_input_scroll_offset(
+    cursor_width: f32,
+    total_width: f32,
+    viewport_width: f32,
+) -> f32 {
     if !cursor_width.is_finite()
         || !total_width.is_finite()
         || !viewport_width.is_finite()
@@ -1596,7 +1600,10 @@ mod tests {
         let third = font.measure("Aé🙂", 16.0).width;
 
         assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, -4.0), 0);
-        assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, first * 0.25), 0);
+        assert_eq!(
+            super::text_input_cursor_from_x(&font, text, 16.0, first * 0.25),
+            0
+        );
         assert_eq!(
             super::text_input_cursor_from_x(&font, text, 16.0, first + 0.01),
             "A".len()
@@ -1609,7 +1616,10 @@ mod tests {
             super::text_input_cursor_from_x(&font, text, 16.0, third + 100.0),
             text.len()
         );
-        assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, f32::NAN), 0);
+        assert_eq!(
+            super::text_input_cursor_from_x(&font, text, 16.0, f32::NAN),
+            0
+        );
     }
 
     #[test]
