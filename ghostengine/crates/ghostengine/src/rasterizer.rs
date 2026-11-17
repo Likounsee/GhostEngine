@@ -49,10 +49,11 @@ pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Colo
     }
     if x0 == x1 {
         let x = x0 as usize;
+        let width = target.width() as usize;
+        let pixels = target.pixels_mut();
         for y in y0.min(y1)..=y0.max(y1) {
-            if let Some(row) = target.row_mut(y as u32) {
-                row[x] = color;
-            }
+            let index = y as usize * width + x;
+            pixels[index] = color;
         }
         return;
     }
