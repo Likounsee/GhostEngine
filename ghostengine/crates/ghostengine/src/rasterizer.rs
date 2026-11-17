@@ -1977,7 +1977,6 @@ pub fn draw_polygon_aa_with_scratch(
         return;
     }
 
-    
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
     let max_x = vertices.iter().map(|point| point.x).max().unwrap();
