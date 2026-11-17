@@ -519,9 +519,13 @@ pub fn draw_label_ellipsized(
         let graphemes = text.graphemes(true).collect::<Vec<_>>();
         let mut low = 0_usize;
         let mut high = graphemes.len();
+        let mut candidate = String::with_capacity(text.len() + ELLIPSIS.len());
         while low < high {
             let middle = low + (high - low).div_ceil(2);
-            let mut candidate = graphemes[..middle].concat();
+            candidate.clear();
+            for grapheme in &graphemes[..middle] {
+                candidate.push_str(grapheme);
+            }
             candidate.push_str(ELLIPSIS);
             if font.measure(&candidate, pixel_size).width <= available_width {
                 low = middle;
@@ -529,7 +533,10 @@ pub fn draw_label_ellipsized(
                 high = middle - 1;
             }
         }
-        let mut candidate = graphemes[..low].concat();
+        candidate.clear();
+        for grapheme in &graphemes[..low] {
+            candidate.push_str(grapheme);
+        }
         candidate.push_str(ELLIPSIS);
         candidate
     };
