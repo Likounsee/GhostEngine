@@ -2009,7 +2009,6 @@ pub fn draw_polygon_aa_with_scratch(
         )
     }));
 
-    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let coverage = &mut scratch.aa_coverage;
     coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
