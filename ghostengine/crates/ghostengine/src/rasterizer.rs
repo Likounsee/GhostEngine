@@ -7937,18 +7937,8 @@ mod blend_rect_transparent_run_tests {
             ] {
                 let mut forward = Framebuffer::new(24, 24, background).unwrap();
                 let mut reverse = forward.clone();
-                super::draw_line_aa(
-                    &mut forward,
-                    Point::new(3, 5),
-                    Point::new(18, 20),
-                    color,
-                );
-                super::draw_line_aa(
-                    &mut reverse,
-                    Point::new(18, 20),
-                    Point::new(3, 5),
-                    color,
-                );
+                super::draw_line_aa(&mut forward, Point::new(3, 5), Point::new(18, 20), color);
+                super::draw_line_aa(&mut reverse, Point::new(18, 20), Point::new(3, 5), color);
                 assert_eq!(forward, reverse);
                 for offset in 0..=15 {
                     let expected = if color.a == 0 {
@@ -7968,5 +7958,4 @@ mod blend_rect_transparent_run_tests {
             }
         }
     }
-
 }
