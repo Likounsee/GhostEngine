@@ -7,6 +7,7 @@
 use crate::{
     draw_texture_region_clipped, Color, Framebuffer, Rect, Texture, TextureError, TextureFilter,
 };
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureAtlasError {
@@ -45,6 +46,7 @@ pub fn draw_atlas_region_clipped(
 pub struct TextureAtlas {
     texture: Texture,
     regions: Vec<AtlasRegion>,
+    regions_by_id: HashMap<u64, AtlasRegion>,
 }
 
 impl TextureAtlas {
@@ -63,7 +65,7 @@ impl TextureAtlas {
     /// Finds a sprite region by its stable application-defined ID.
     #[must_use]
     pub fn region(&self, id: u64) -> Option<AtlasRegion> {
-        self.regions.iter().copied().find(|region| region.id == id)
+        self.regions_by_id.get(&id).copied()
     }
 
     /// Draws a sprite by ID. Returns false when the ID is not present.
@@ -121,13 +123,23 @@ impl TextureAtlasBuilder {
     /// Builds an atlas object with direct ID-based sprite lookup.
     pub fn build_atlas(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build()?;
-        Ok(TextureAtlas { texture, regions })
+        let regions_by_id = regions.iter().copied().map(|region| (region.id, region)).collect();
+        Ok(TextureAtlas {
+            texture,
+            regions,
+            regions_by_id,
+        })
     }
 
     /// Optimized packing variant returning an ID-addressable atlas object.
     pub fn build_atlas_optimized(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build_optimized()?;
-        Ok(TextureAtlas { texture, regions })
+        let regions_by_id = regions.iter().copied().map(|region| (region.id, region)).collect();
+        Ok(TextureAtlas {
+            texture,
+            regions,
+            regions_by_id,
+        })
     }
 
     /// Packs larger sprites first to reduce shelf fragmentation.
