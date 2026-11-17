@@ -1598,8 +1598,8 @@ pub fn compose_layer_groups_cached_in_damage_regions(
     cache: &mut LayerGroupCache,
     scratch: &mut LayerGroupScratch,
 ) -> Result<(), FramebufferError> {
-    cache.retain_groups(groups);
     if target_damage.is_empty() {
+        cache.retain_groups(groups);
         return Ok(());
     }
     compose_layer_groups_cached_internal(target, groups, Some(target_damage), cache, scratch)
