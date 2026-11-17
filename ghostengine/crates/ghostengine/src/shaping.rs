@@ -132,6 +132,9 @@ impl OpenTypeShaper {
             return Err(ShapingError::InvalidFont);
         }
         let scale = pixel_size / units_per_em;
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(ShapingError::InvalidPixelSize);
+        }
 
         let mut buffer = rustybuzz::UnicodeBuffer::new();
         buffer.push_str(text);
@@ -156,8 +159,24 @@ impl OpenTypeShaper {
             })
             .collect::<Vec<_>>();
 
-        let advance_x = glyphs.iter().map(|glyph| glyph.x_advance).sum();
-        let advance_y = glyphs.iter().map(|glyph| glyph.y_advance).sum();
+        // A finite input size can still overflow when multiplied by unusually
+        // large font-unit positions. Never expose infinities or NaNs to layout
+        // and rasterization code.
+        if glyphs.iter().any(|glyph| {
+            !glyph.x_advance.is_finite()
+                || !glyph.y_advance.is_finite()
+                || !glyph.x_offset.is_finite()
+                || !glyph.y_offset.is_finite()
+        }) {
+            return Err(ShapingError::InvalidPixelSize);
+        }
+
+        let advance_x = glyphs.iter().map(|glyph| glyph.x_advance).sum::<f32>();
+        let advance_y = glyphs.iter().map(|glyph| glyph.y_advance).sum::<f32>();
+        if !advance_x.is_finite() || !advance_y.is_finite() {
+            return Err(ShapingError::InvalidPixelSize);
+        }
+
         Ok(ShapedText {
             glyphs,
             advance_x,
