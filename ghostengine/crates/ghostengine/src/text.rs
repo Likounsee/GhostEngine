@@ -480,6 +480,32 @@ pub fn draw_text_shaped_clipped(
         return TextMetrics::default();
     }
 
+    // Validate every intermediate pen position as well as the final sum.
+    // A run can have a finite final advance while an earlier prefix overflows
+    // (for example, a very large positive advance followed by a negative one).
+    let mut check_x = f64::from(baseline.x);
+    let mut check_y = f64::from(baseline.y);
+    for glyph in &shaped.glyphs {
+        let glyph_x = check_x + f64::from(glyph.x_offset);
+        let glyph_y = check_y - f64::from(glyph.y_offset);
+        if !glyph_x.is_finite()
+            || !glyph_y.is_finite()
+            || glyph_x.abs() > f64::from(f32::MAX)
+            || glyph_y.abs() > f64::from(f32::MAX)
+        {
+            return TextMetrics::default();
+        }
+        check_x += f64::from(glyph.x_advance);
+        check_y -= f64::from(glyph.y_advance);
+        if !check_x.is_finite()
+            || !check_y.is_finite()
+            || check_x.abs() > f64::from(f32::MAX)
+            || check_y.abs() > f64::from(f32::MAX)
+        {
+            return TextMetrics::default();
+        }
+    }
+
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
     for shaped_glyph in &shaped.glyphs {
@@ -2367,6 +2393,51 @@ mod tests {
             &font,
             &malformed,
             crate::Point::new(4, 24),
+            16.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 32, 32),
+        );
+
+        assert_eq!(metrics, super::TextMetrics::default());
+        assert_eq!(target.pixels(), before);
+        assert_eq!(font.cached_glyph_count(), 0);
+    }
+
+    #[test]
+    fn shaped_run_rejects_overflowing_intermediate_pen_positions() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let malformed = crate::ShapedText {
+            glyphs: vec![
+                crate::ShapedGlyph {
+                    glyph_id: 1,
+                    cluster: 0,
+                    x_advance: f32::MAX,
+                    y_advance: 0.0,
+                    x_offset: 0.0,
+                    y_offset: 0.0,
+                },
+                crate::ShapedGlyph {
+                    glyph_id: 1,
+                    cluster: 1,
+                    x_advance: -f32::MAX,
+                    y_advance: 0.0,
+                    x_offset: 0.0,
+                    y_offset: 0.0,
+                },
+            ],
+            advance_x: 0.0,
+            advance_y: 0.0,
+        };
+        let mut target =
+            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let before = target.pixels().to_vec();
+
+        let metrics = super::draw_text_shaped_clipped(
+            &mut target,
+            &font,
+            &malformed,
+            crate::Point::new(1, 24),
             16.0,
             crate::Color::WHITE,
             crate::Rect::new(0, 0, 32, 32),
