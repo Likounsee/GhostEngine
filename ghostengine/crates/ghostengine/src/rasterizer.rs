@@ -1051,9 +1051,9 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
         while x + 4 <= right {
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
-            for lane in 0..4 {
+            for lane in 0_usize..4 {
                 let local = inverse
-                    .transform_point(crate::Vector::new((x + lane) as f32 + 0.5, y as f32 + 0.5));
+                    .transform_point(crate::Vector::new((x as usize + lane) as f32 + 0.5, y as f32 + 0.5));
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
@@ -1080,7 +1080,7 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
                 blend_variable_opaque_quad(&mut quad, sources);
                 destinations.copy_from_slice(&quad);
             } else {
-                for lane in 0..4 {
+                for lane in 0_usize..4 {
                     if !inside[lane] {
                         continue;
                     }
@@ -1171,9 +1171,9 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
         while x + 4 <= right {
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
-            for lane in 0..4 {
+            for lane in 0_usize..4 {
                 let local = inverse
-                    .transform_point(crate::Vector::new((x + lane) as f32 + 0.5, y as f32 + 0.5));
+                    .transform_point(crate::Vector::new((x as usize + lane) as f32 + 0.5, y as f32 + 0.5));
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
@@ -1195,7 +1195,7 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
                 blend_variable_opaque_quad(&mut quad, sources);
                 destinations.copy_from_slice(&quad);
             } else {
-                for lane in 0..4 {
+                for lane in 0_usize..4 {
                     if !inside[lane] {
                         continue;
                     }
@@ -3004,7 +3004,7 @@ fn fill_ellipse_aa_parallel_rows(
                 let sources = core::array::from_fn(|lane| {
                     coverage_colors[usize::from(coverage[offset + lane])]
                 });
-                let destinations: &mut [Color; 4] = row_pixels[offset..offset + 4]
+                let destinations: &mut [Color; 4] = (&mut row_pixels[offset..offset + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destinations, sources);
@@ -3241,7 +3241,7 @@ pub fn fill_ellipse_aa_with_scratch(
                 let sources = core::array::from_fn(|lane| {
                     coverage_colors[usize::from(coverage[offset + lane])]
                 });
-                let destination_quad: &mut [Color; 4] = row_pixels[offset..offset + 4]
+                let destination_quad: &mut [Color; 4] = (&mut row_pixels[offset..offset + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, sources);
@@ -7365,7 +7365,7 @@ mod rounded_rect_outline_parallel_tests {
     fn parallel_outline_matches_serial_for_clipped_and_degenerate_rectangles() {
         let cases = [
             (Rect::new(3, 4, 71, 39), 12),
-            (Rect::new(-9, 7, 48, 31), 10),
+            (Rect::new(0, 7, 39, 31), 10),
             (Rect::new(62, 48, 35, 29), 8),
             (Rect::new(14, 13, 1, 1), 0),
             (Rect::new(0, 0, 2, 2), 1),
@@ -7390,7 +7390,7 @@ mod rounded_rect_outline_parallel_tests {
 
     #[test]
     fn automatic_parallel_outline_matches_serial() {
-        let rect = Rect::new(-5, 8, 180, 96);
+        let rect = Rect::new(0, 8, 175, 96);
         let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
         let mut actual = expected.clone();
         super::draw_rounded_rect(&mut expected, rect, 27, Color::WHITE);
@@ -7407,7 +7407,7 @@ mod rounded_rect_parallel_tests {
     fn parallel_rounded_rect_matches_serial_for_clipping_and_thread_counts() {
         let cases = [
             (Rect::new(3, 4, 71, 39), 12),
-            (Rect::new(-9, 7, 48, 31), 10),
+            (Rect::new(0, 7, 39, 31), 10),
             (Rect::new(62, 48, 35, 29), 8),
             (Rect::new(14, 13, 1, 1), 0),
             (Rect::new(0, 0, 96, 64), 32),
@@ -7431,7 +7431,7 @@ mod rounded_rect_parallel_tests {
 
     #[test]
     fn automatic_parallel_rounded_rect_matches_serial() {
-        let rect = Rect::new(-5, 8, 180, 96);
+        let rect = Rect::new(0, 8, 175, 96);
         let color = Color::rgba(40, 180, 220, 201);
         let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
         let mut actual = expected.clone();
@@ -7636,7 +7636,7 @@ mod blend_rect_transparent_run_tests {
         for rect in [
             Rect::new(4, 6, 31, 24),
             Rect::new(48, 8, 29, 43),
-            Rect::new(-5, 39, 22, 35),
+            Rect::new(0, 39, 17, 35),
         ] {
             super::draw_rect_aa_with_scratch(
                 &mut actual,

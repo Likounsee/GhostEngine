@@ -1786,7 +1786,7 @@ mod tests {
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
         compose_layer_groups, compose_layer_groups_cached, compose_layer_groups_with_scratch,
         compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
-        LayerGroup, LayerGroupCache, LayerGroupScratch,
+        LayerGroup, LayerGroupCache, LayerGroupChild, LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
