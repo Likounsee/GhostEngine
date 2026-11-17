@@ -657,8 +657,6 @@ pub fn draw_texture_nine_slice_clipped(
         let total = u64::from(first) + u64::from(second);
         if total <= u64::from(available) {
             (first, second)
-        } else if total == 0 {
-            (0, 0)
         } else {
             let fitted_first = (u64::from(available) * u64::from(first) / total) as u32;
             (fitted_first, available - fitted_first)

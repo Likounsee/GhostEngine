@@ -1605,25 +1605,20 @@ fn compose_layer_groups_cached_internal(
         if !group.visible || group.opacity == 0 {
             continue;
         }
-        if !cache.entries.contains_key(&id) {
-            let layer = Layer::new(group.width, group.height, Color::TRANSPARENT)?;
-            let mut damage = DamageRegion::new(group.width, group.height);
-            damage.add(Rect::new(0, 0, group.width, group.height));
-            cache.entries.insert(
-                id,
-                LayerGroupCacheEntry {
+        let entry = match cache.entries.entry(id) {
+            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::btree_map::Entry::Vacant(slot) => {
+                let layer = Layer::new(group.width, group.height, Color::TRANSPARENT)?;
+                let mut damage = DamageRegion::new(group.width, group.height);
+                damage.add(Rect::new(0, 0, group.width, group.height));
+                slot.insert(LayerGroupCacheEntry {
                     layer,
                     damage,
                     initialized: false,
                     render_count: 0,
-                },
-            );
-        }
-
-        let entry = cache
-            .entries
-            .get_mut(&id)
-            .expect("cache entry was inserted");
+                })
+            }
+        };
         if entry.layer.framebuffer().width() != group.width
             || entry.layer.framebuffer().height() != group.height
         {

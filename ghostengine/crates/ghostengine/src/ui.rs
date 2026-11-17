@@ -520,7 +520,7 @@ pub fn draw_label_ellipsized(
         let mut low = 0_usize;
         let mut high = graphemes.len();
         while low < high {
-            let middle = low + (high - low + 1) / 2;
+            let middle = low + (high - low).div_ceil(2);
             let mut candidate = graphemes[..middle].concat();
             candidate.push_str(ELLIPSIS);
             if font.measure(&candidate, pixel_size).width <= available_width {
@@ -543,6 +543,7 @@ pub fn draw_label_ellipsized(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_label_wrapped(
     target: &mut Framebuffer,
     font: &FontFace,
@@ -1421,10 +1422,7 @@ mod tests {
         draw_panel_aa(&mut target, Rect::new(4, 4, 20, 14), 5, &theme);
         assert_eq!(target.get_pixel(12, 10), Some(theme.panel));
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
-        assert!(target
-            .pixels()
-            .iter()
-            .any(|pixel| *pixel == theme.panel_border));
+        assert!(target.pixels().contains(&theme.panel_border));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != theme.panel && *pixel != theme.panel_border
         }));

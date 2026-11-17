@@ -1444,6 +1444,7 @@ fn rounded_rect_aa_coverage(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn blend_rounded_rect_aa_row(
     row: &mut [Color],
     y: usize,
@@ -1622,7 +1623,7 @@ pub fn fill_rounded_rect_aa_parallel_with_threads(
         |row, y| {
             blend_rounded_rect_aa_row(
                 row,
-                y as usize,
+                y,
                 clip_left,
                 clip_right,
                 center_x,
@@ -1976,8 +1977,7 @@ pub fn draw_polygon_aa_with_scratch(
         return;
     }
 
-    const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-
+    
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
     let max_x = vertices.iter().map(|point| point.x).max().unwrap();
@@ -2067,6 +2067,8 @@ type PolygonScanEdge = (f64, f64, f64, f64, f64, f64);
 ///
 /// Keep one scratch value alongside a renderer and pass it to repeated polygon
 /// fills to reuse edge and intersection allocations across frames.
+type AaOutlineSegment = (f64, f64, f64, f64, f64, f64, f64, f64, f64);
+
 #[derive(Debug, Default)]
 pub struct RasterizerScratch {
     polygon_edges: Vec<PolygonScanEdge>,
@@ -2077,7 +2079,7 @@ pub struct RasterizerScratch {
     aa_active_edges: Vec<usize>,
     aa_intersections: Vec<f64>,
     aa_coverage: Vec<u8>,
-    aa_outline_segments: Vec<(f64, f64, f64, f64, f64, f64, f64, f64, f64)>,
+    aa_outline_segments: Vec<AaOutlineSegment>,
     ellipse_aa_coverage: Vec<u8>,
     arc_aa_sources: Vec<Color>,
     ellipse_aa_sources: Vec<Color>,
@@ -2467,9 +2469,9 @@ pub fn fill_polygon_aa_parallel_with_threads(
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
@@ -2573,9 +2575,9 @@ pub fn fill_polygon_aa_with_scratch(
     // Cache the 17 possible source colors produced by 4x4 coverage sampling.
     // Opaque destinations are composited four pixels at a time by the SIMD backend.
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
     let min_y = vertices.iter().map(|point| point.y).min().unwrap();
@@ -2944,6 +2946,7 @@ fn accumulate_ellipse_span(
 /// The ellipse is clipped to the framebuffer. A zero radius produces an anti-aliased
 /// line along the remaining axis; a point-sized ellipse draws one pixel.
 /// Processes an ellipse scanline band with one reusable coverage buffer per worker.
+#[allow(clippy::too_many_arguments)]
 fn fill_ellipse_aa_parallel_rows(
     rows: &mut [Color],
     row_width: usize,
@@ -3053,9 +3056,9 @@ pub fn fill_ellipse_aa_parallel_with_threads(
     }
 
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     let row_width = target.width() as usize;
@@ -3180,9 +3183,9 @@ pub fn fill_ellipse_aa_with_scratch(
     // Coverage has only 17 possible values (0..=16). Cache their source
     // colors so opaque destination pixels can be composited four at a time.
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     let coverage = &mut scratch.ellipse_aa_coverage;
@@ -3339,6 +3342,7 @@ pub fn draw_ellipse_aa_parallel(
     draw_ellipse_aa_parallel_with_threads(target, center, radius_x, radius_y, color, workers);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_ellipse_aa_parallel_rows(
     rows: &mut [Color],
     row_width: usize,
@@ -3354,9 +3358,9 @@ fn draw_ellipse_aa_parallel_rows(
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     for (row_index, row_pixels) in rows.chunks_mut(row_width).enumerate() {
@@ -3953,6 +3957,7 @@ pub fn draw_arc_aa_parallel(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_arc_aa_parallel_rows(
     rows: &mut [Color],
     row_width: usize,
@@ -3971,9 +3976,9 @@ fn draw_arc_aa_parallel_rows(
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     for (row_index, row_pixels) in rows.chunks_mut(row_width).enumerate() {
@@ -4149,6 +4154,7 @@ pub fn fill_arc_aa_parallel(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fill_arc_aa_parallel_rows(
     rows: &mut [Color],
     row_width: usize,
@@ -4167,9 +4173,9 @@ fn fill_arc_aa_parallel_rows(
     const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
     let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
-    for covered in 1..=16 {
+    for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
-        coverage_colors[covered] = Color::rgba(color.r, color.g, color.b, alpha);
+        *slot = Color::rgba(color.r, color.g, color.b, alpha);
     }
 
     for (row_index, row_pixels) in rows.chunks_mut(row_width).enumerate() {

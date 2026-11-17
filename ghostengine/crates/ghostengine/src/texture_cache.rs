@@ -91,8 +91,7 @@ impl TextureCache {
         let bytes = texture
             .pixels()
             .len()
-            .checked_mul(std::mem::size_of::<crate::Color>())
-            .unwrap_or(usize::MAX);
+            .saturating_mul(std::mem::size_of::<crate::Color>());
         if bytes > self.budget_bytes {
             return Err(TextureCacheError::TextureExceedsBudget {
                 texture_bytes: bytes,
