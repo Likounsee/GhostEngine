@@ -800,6 +800,43 @@ mod tests {
     }
 
     #[test]
+    fn click_tracker_requires_time_and_spatial_proximity() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        assert_eq!(
+            tracker.record_at(Some(crate::Point::new(10, 10)), start),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(12, 12)),
+                start + Duration::from_millis(300)
+            ),
+            2
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(40, 40)),
+                start + Duration::from_millis(400)
+            ),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(40, 40)),
+                start + Duration::from_millis(1_000)
+            ),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(None, start + Duration::from_millis(1_100)),
+            1
+        );
+    }
+
+    #[test]
     fn input_state_defaults_mouse_edges_to_false() {
         let input = InputState::default();
         assert!(!input.left_mouse_down);
