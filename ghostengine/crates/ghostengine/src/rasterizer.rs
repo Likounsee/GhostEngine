@@ -215,6 +215,33 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         return;
     }
 
+    // Exact 45-degree segments land on pixel centers throughout their
+    // length. Wu's two-sample coverage loop therefore collapses to one
+    // fully covered pixel per step; draw those pixels directly.
+    if (x1 - x0).abs() == (y1 - y0).abs() {
+        if color.a == 0 {
+            return;
+        }
+        if x0 > x1 {
+            core::mem::swap(&mut x0, &mut x1);
+            core::mem::swap(&mut y0, &mut y1);
+        }
+        let step_y = if y0 <= y1 { 1 } else { -1 };
+        for offset in 0..=(x1 - x0) {
+            let x = (x0 + offset) as u32;
+            let y = (y0 + offset * step_y) as u32;
+            if let Some(row) = target.row_mut(y) {
+                let pixel = &mut row[x as usize];
+                *pixel = if color.a == u8::MAX || pixel.a == 0 {
+                    color
+                } else {
+                    color.blend_over(*pixel)
+                };
+            }
+        }
+        return;
+    }
+
     let steep = (y1 - y0).abs() > (x1 - x0).abs();
     if steep {
         core::mem::swap(&mut x0, &mut y0);
@@ -7896,4 +7923,50 @@ mod blend_rect_transparent_run_tests {
             }
         }
     }
+    #[test]
+    fn diagonal_aa_fast_path_preserves_alpha_and_endpoint_order() {
+        for background in [
+            Color::TRANSPARENT,
+            Color::BLACK,
+            Color::rgba(30, 70, 120, 113),
+        ] {
+            for color in [
+                Color::rgba(230, 70, 120, 177),
+                Color::rgba(40, 190, 210, 0),
+                Color::WHITE,
+            ] {
+                let mut forward = Framebuffer::new(24, 24, background).unwrap();
+                let mut reverse = forward.clone();
+                super::draw_line_aa(
+                    &mut forward,
+                    Point::new(3, 5),
+                    Point::new(18, 20),
+                    color,
+                );
+                super::draw_line_aa(
+                    &mut reverse,
+                    Point::new(18, 20),
+                    Point::new(3, 5),
+                    color,
+                );
+                assert_eq!(forward, reverse);
+                for offset in 0..=15 {
+                    let expected = if color.a == 0 {
+                        background
+                    } else if background.a == 0 || color.a == u8::MAX {
+                        color
+                    } else {
+                        color.blend_over(background)
+                    };
+                    assert_eq!(
+                        forward.get_pixel(3 + offset, 5 + offset),
+                        Some(expected),
+                        "offset={offset}, alpha={}",
+                        color.a
+                    );
+                }
+            }
+        }
+    }
+
 }
