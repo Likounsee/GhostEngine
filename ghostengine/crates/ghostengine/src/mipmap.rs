@@ -47,7 +47,7 @@ impl MipmapChain {
     /// Samples between adjacent mip levels using premultiplied-alpha interpolation.
     #[must_use]
     pub fn sample_trilinear(&self, x: f32, y: f32, lod: f32) -> Color {
-        if self.levels.is_empty() {
+        if self.levels.is_empty() || !x.is_finite() || !y.is_finite() {
             return Color::TRANSPARENT;
         }
         let lod = if lod.is_finite() {
@@ -58,7 +58,7 @@ impl MipmapChain {
         let lower = lod.floor() as usize;
         let upper = (lower + 1).min(self.levels.len() - 1);
         let fraction = lod - lower as f32;
-        let lower_scale = (1_u32 << lower.min(31)) as f32;
+        let lower_scale = 2.0_f32.powi(lower as i32);
         let lower_x = (x + 0.5) / lower_scale - 0.5;
         let lower_y = (y + 0.5) / lower_scale - 0.5;
         let a = sample_bilinear(&self.levels[lower], lower_x, lower_y);
@@ -66,7 +66,7 @@ impl MipmapChain {
             return a;
         }
 
-        let upper_scale = (1_u32 << upper.min(31)) as f32;
+        let upper_scale = 2.0_f32.powi(upper as i32);
         let upper_x = (x + 0.5) / upper_scale - 0.5;
         let upper_y = (y + 0.5) / upper_scale - 0.5;
         let b = sample_bilinear(&self.levels[upper], upper_x, upper_y);
@@ -353,5 +353,24 @@ mod tests {
         let base = Texture::new(1, 1, vec![Color::BLUE]).unwrap();
         let chain = MipmapChain::new(&base).unwrap();
         assert_eq!(chain.sample_trilinear(0.0, 0.0, f32::NAN), Color::BLUE);
+    }
+
+    #[test]
+    fn non_finite_coordinates_return_transparent_without_sampling() {
+        let base = Texture::new(2, 2, vec![Color::BLUE; 4]).unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+
+        assert_eq!(
+            chain.sample_trilinear(f32::NAN, 0.0, 0.0),
+            Color::TRANSPARENT
+        );
+        assert_eq!(
+            chain.sample_trilinear(0.0, f32::INFINITY, 0.0),
+            Color::TRANSPARENT
+        );
+        assert_eq!(
+            chain.sample_trilinear(f32::NEG_INFINITY, 1.0, 1.0),
+            Color::TRANSPARENT
+        );
     }
 }
