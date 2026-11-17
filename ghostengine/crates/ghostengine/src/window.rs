@@ -318,7 +318,7 @@ impl ComponentTree {
         for key in &input.shortcut_keys {
             if let Some(next) = self.activate_context_menu_shortcut(
                 *key,
-                input.control_down,
+                input.control_down || input.super_down,
                 input.alt_down,
                 input.shift_down,
             ) {
@@ -930,6 +930,26 @@ mod tests {
             tree.text_input_state(id).unwrap().selected_text(),
             Some("café")
         );
+    }
+
+    #[test]
+    fn super_modifier_activates_context_menu_shortcuts() {
+        use crate::{ContextMenuItem, ContextMenuShortcut};
+
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![ContextMenuItem::new(950, "Save").with_shortcut(
+            ContextMenuShortcut::new('s').with_control(true),
+        )]);
+        let events = tree.handle_window_input(
+            crate::Rect::new(0, 0, 100, 40),
+            &InputState {
+                shortcut_keys: vec!['s'],
+                super_down: true,
+                ..InputState::default()
+            },
+        );
+
+        assert_eq!(events.context_menu_action, Some(950));
     }
 
     #[test]
