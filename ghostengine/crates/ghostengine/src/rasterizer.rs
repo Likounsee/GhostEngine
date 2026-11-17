@@ -3413,7 +3413,8 @@ fn draw_ellipse_aa_parallel_rows(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
@@ -4026,7 +4027,8 @@ fn draw_arc_aa_parallel_rows(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);
@@ -4221,7 +4223,8 @@ fn fill_arc_aa_parallel_rows(
                 let source_quad: [Color; 4] = sources[quad_start..quad_start + 4]
                     .try_into()
                     .expect("four source pixels");
-                let destination_quad: &mut [Color; 4] = (&mut destinations[quad_start..quad_start + 4])
+                let destination_quad: &mut [Color; 4] = (&mut destinations
+                    [quad_start..quad_start + 4])
                     .try_into()
                     .expect("four destination pixels");
                 blend_variable_opaque_quad(destination_quad, source_quad);

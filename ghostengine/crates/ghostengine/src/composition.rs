@@ -1459,7 +1459,6 @@ impl LayerGroupScratch {
     }
 }
 
-
 /** Persistent off-screen surfaces indexed by application-defined group identity.
  *
  * Unlike temporary nesting-depth scratch surfaces, this cache keeps each
@@ -1556,7 +1555,11 @@ impl LayerGroupCache {
     pub fn allocated_pixel_bytes(&self) -> usize {
         self.entries.values().fold(0usize, |total, entry| {
             total.saturating_add(
-                entry.layer.framebuffer().pixels().len()
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
                     .saturating_mul(std::mem::size_of::<Color>()),
             )
         })
@@ -1617,7 +1620,10 @@ fn compose_layer_groups_cached_internal(
             );
         }
 
-        let entry = cache.entries.get_mut(&id).expect("cache entry was inserted");
+        let entry = cache
+            .entries
+            .get_mut(&id)
+            .expect("cache entry was inserted");
         if entry.layer.framebuffer().width() != group.width
             || entry.layer.framebuffer().height() != group.height
         {
@@ -1641,17 +1647,13 @@ fn compose_layer_groups_cached_internal(
                     .copy_pixels_from(scratch.layers[0].framebuffer().pixels())?;
             } else {
                 if scratch.layers.is_empty() {
-                    scratch.layers.push(Layer::from_framebuffer(
-                        entry.layer.framebuffer().clone(),
-                    ));
+                    scratch
+                        .layers
+                        .push(Layer::from_framebuffer(entry.layer.framebuffer().clone()));
                 } else {
                     let surface = scratch.layers[0].framebuffer_mut();
                     if surface.width() != group.width || surface.height() != group.height {
-                        surface.resize_and_clear(
-                            group.width,
-                            group.height,
-                            Color::TRANSPARENT,
-                        )?;
+                        surface.resize_and_clear(group.width, group.height, Color::TRANSPARENT)?;
                     }
                     surface.copy_pixels_from(entry.layer.framebuffer().pixels())?;
                 }
@@ -1678,11 +1680,7 @@ fn compose_layer_groups_cached_internal(
         entry.layer.set_transform(group.transform);
         entry.layer.set_filter(group.filter);
         if let Some(damage) = target_damage {
-            compose_layers_in_damage_regions(
-                target,
-                std::slice::from_ref(&entry.layer),
-                damage,
-            );
+            compose_layers_in_damage_regions(target, std::slice::from_ref(&entry.layer), damage);
         } else {
             compose_layers(target, std::slice::from_ref(&entry.layer));
         }
