@@ -255,7 +255,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
 
     for cluster in fallback_text_clusters(text) {
-        match cluster.as_str() {
+        match cluster {
             "\n" => {
                 max_width = max_width.max(width);
                 width = 0.0;
@@ -273,7 +273,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     continue;
                 }
                 let current_face = previous.and_then(|(_, index)| family.faces.get(index));
-                let selected = fallback_face_for_cluster(family, current_face, &cluster, &primary);
+                let selected = fallback_face_for_cluster(family, current_face, cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
@@ -332,7 +332,7 @@ pub fn draw_text_with_fallback_clipped(
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
 
     for cluster in fallback_text_clusters(text) {
-        match cluster.as_str() {
+        match cluster {
             "\n" => {
                 x = baseline.x as f32;
                 previous = None;
@@ -354,7 +354,7 @@ pub fn draw_text_with_fallback_clipped(
             }
             _ => {
                 let current_face = previous.and_then(|(_, index)| family.faces.get(index));
-                let selected = fallback_face_for_cluster(family, current_face, &cluster, &primary);
+                let selected = fallback_face_for_cluster(family, current_face, cluster, &primary);
                 let face_index = family
                     .faces
                     .iter()
@@ -692,7 +692,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
                 }
 
                 let selected =
-                    fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
+                    fallback_face_for_cluster(family, current_face.as_ref(), cluster, &primary);
 
                 if current_face
                     .as_ref()
@@ -705,7 +705,7 @@ pub fn draw_text_with_fallback_bidi_clipped(
                 if current_face.is_none() {
                     current_face = Some(selected);
                 }
-                current_text.push_str(&cluster);
+                current_text.push_str(cluster);
             }
             if let Some(face) = current_face {
                 segments.push(Segment::Glyphs(face, current_text));
@@ -830,7 +830,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
     };
 
     for cluster in fallback_text_clusters(text) {
-        match cluster.as_str() {
+        match cluster {
             "\n" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 max_width = max_width.max(pen_x - baseline.x as f32);
@@ -848,7 +848,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                     continue;
                 }
                 let selected =
-                    fallback_face_for_cluster(family, run_face.as_ref(), &cluster, primary);
+                    fallback_face_for_cluster(family, run_face.as_ref(), cluster, primary);
                 let same_face = run_face
                     .as_ref()
                     .is_some_and(|face| Arc::ptr_eq(face, &selected));
@@ -858,7 +858,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 if run_face.is_none() {
                     run_face = Some(selected);
                 }
-                run_text.push_str(&cluster);
+                run_text.push_str(cluster);
             }
         }
     }
@@ -912,7 +912,7 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
             }
 
             let selected =
-                fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
+                fallback_face_for_cluster(family, current_face.as_ref(), cluster, &primary);
             if current_face
                 .as_ref()
                 .is_some_and(|face| !Arc::ptr_eq(face, &selected))
@@ -924,7 +924,7 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
             if current_face.is_none() {
                 current_face = Some(selected);
             }
-            current_text.push_str(&cluster);
+            current_text.push_str(cluster);
         }
 
         if let Some(face) = current_face {
@@ -958,12 +958,10 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
 /// This keeps combining sequences, variation selectors, emoji modifiers,
 /// regional-indicator pairs, and ZWJ emoji sequences together during fallback
 /// selection and when an oversized word must be wrapped.
-fn fallback_text_clusters(text: &str) -> Vec<String> {
+fn fallback_text_clusters(text: &str) -> unicode_segmentation::Graphemes<'_> {
     use unicode_segmentation::UnicodeSegmentation;
 
     UnicodeSegmentation::graphemes(text, true)
-        .map(str::to_owned)
-        .collect()
 }
 
 #[derive(Clone)]
@@ -1041,7 +1039,7 @@ where
                     if !line.is_empty() && measure(&candidate) > max_width {
                         output.push(std::mem::take(line));
                     }
-                    line.push_str(&cluster);
+                    line.push_str(cluster);
                 }
             }
         }
@@ -1113,7 +1111,7 @@ fn prepare_bidi_shaped_line(
             }
 
             let selected =
-                fallback_face_for_cluster(family, current_face.as_ref(), &cluster, &primary);
+                fallback_face_for_cluster(family, current_face.as_ref(), cluster, &primary);
 
             if current_face
                 .as_ref()
@@ -1126,7 +1124,7 @@ fn prepare_bidi_shaped_line(
             if current_face.is_none() {
                 current_face = Some(selected);
             }
-            current_text.push_str(&cluster);
+            current_text.push_str(cluster);
         }
         if let Some(face) = current_face {
             segments.push(Segment::Glyphs(face, current_text));
@@ -2685,17 +2683,17 @@ mod tests {
             super::fallback_text_clusters("a\u{0301}b"),
             ["a\u{0301}", "b"]
         );
-        assert_eq!(super::fallback_text_clusters("👩‍💻x"), ["👩‍💻", "x"]);
-        assert_eq!(super::fallback_text_clusters("🇫🇷!"), ["🇫🇷", "!"]);
-        assert_eq!(super::fallback_text_clusters("👍🏽!"), ["👍🏽", "!"]);
+        assert_eq!(super::fallback_text_clusters("👩‍💻x").collect::<Vec<_>>(), ["👩‍💻", "x"]);
+        assert_eq!(super::fallback_text_clusters("🇫🇷!").collect::<Vec<_>>(), ["🇫🇷", "!"]);
+        assert_eq!(super::fallback_text_clusters("👍🏽!").collect::<Vec<_>>(), ["👍🏽", "!"]);
         assert_eq!(
             super::fallback_text_clusters("🏴\u{E0067}\u{E0062}\u{E007F}!"),
             ["🏴\u{E0067}\u{E0062}\u{E007F}", "!"]
         );
-        assert_eq!(super::fallback_text_clusters("✈️x"), ["✈️", "x"]);
-        assert_eq!(super::fallback_text_clusters("👨‍👩‍👧‍👦!"), ["👨‍👩‍👧‍👦", "!"]);
-        assert_eq!(super::fallback_text_clusters("1️⃣!"), ["1️⃣", "!"]);
-        assert_eq!(super::fallback_text_clusters("क्‍ष!"), ["क्‍ष", "!"]);
+        assert_eq!(super::fallback_text_clusters("✈️x").collect::<Vec<_>>(), ["✈️", "x"]);
+        assert_eq!(super::fallback_text_clusters("👨‍👩‍👧‍👦!").collect::<Vec<_>>(), ["👨‍👩‍👧‍👦", "!"]);
+        assert_eq!(super::fallback_text_clusters("1️⃣!").collect::<Vec<_>>(), ["1️⃣", "!"]);
+        assert_eq!(super::fallback_text_clusters("क्‍ष!").collect::<Vec<_>>(), ["क्‍ष", "!"]);
     }
 
     #[test]
