@@ -549,53 +549,74 @@ pub fn draw_texture_region_clipped(
     let source_right = source.x + source.width - 1;
     let source_bottom = source.y + source.height - 1;
     let target_width = target.width() as usize;
+    let texture_width = texture.width() as usize;
+    let source_pixels = texture.pixels();
+    let target_pixels = target.pixels_mut();
 
-    // Restrict each nine-slice patch to its own destination intersection.
-    // Without this, all nine patches scan the entire framebuffer clip and
-    // discard most pixels after doing coordinate checks.
-    for y in clip.y..clip.y + clip.height {
-        let relative_y = (y - destination.y) as f32 / destination.height as f32;
-        for x in clip.x..clip.x + clip.width {
-            let relative_x = (x - destination.x) as f32 / destination.width as f32;
-            let sampled = match filter {
-                TextureFilter::Nearest => {
-                    let sx = source.x + (relative_x * source.width as f32).floor() as u32;
-                    let sy = source.y + (relative_y * source.height as f32).floor() as u32;
-                    texture
-                        .get_pixel(sx.min(source_right), sy.min(source_bottom))
-                        .unwrap()
+    // Each row shares its vertical sampling coordinates. Keeping the filter
+    // branch outside the pixel loop avoids repeated divisions and branches.
+    match filter {
+        TextureFilter::Nearest => {
+            for y in clip.y..clip.y + clip.height {
+                let relative_y = (y - destination.y) as f32 / destination.height as f32;
+                let sy = (source.y + (relative_y * source.height as f32).floor() as u32)
+                    .min(source_bottom) as usize;
+                let target_row = y as usize * target_width;
+                let source_row = sy * texture_width;
+                for x in clip.x..clip.x + clip.width {
+                    let relative_x = (x - destination.x) as f32 / destination.width as f32;
+                    let sx = (source.x + (relative_x * source.width as f32).floor() as u32)
+                        .min(source_right) as usize;
+                    let sampled = source_pixels[source_row + sx];
+                    if sampled.a == 0 {
+                        continue;
+                    }
+                    let pixel = &mut target_pixels[target_row + x as usize];
+                    *pixel = if sampled.a == 255 {
+                        sampled
+                    } else {
+                        sampled.blend_over(*pixel)
+                    };
                 }
-                TextureFilter::Bilinear => {
+            }
+        }
+        TextureFilter::Bilinear => {
+            for y in clip.y..clip.y + clip.height {
+                let relative_y = (y - destination.y) as f32 / destination.height as f32;
+                let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
+                    .clamp(source.y as f32, source_bottom as f32);
+                let y0 = sy.floor() as usize;
+                let y1 = (y0 + 1).min(source_bottom as usize);
+                let ty = sy - y0 as f32;
+                let target_row = y as usize * target_width;
+                for x in clip.x..clip.x + clip.width {
+                    let relative_x = (x - destination.x) as f32 / destination.width as f32;
                     let sx = (source.x as f32 + relative_x * source.width as f32 - 0.5)
                         .clamp(source.x as f32, source_right as f32);
-                    let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
-                        .clamp(source.y as f32, source_bottom as f32);
                     let x0 = sx.floor() as usize;
-                    let y0 = sy.floor() as usize;
-                    sample_bilinear_prepared(
-                        texture.pixels(),
-                        texture.width() as usize,
+                    let sampled = sample_bilinear_prepared(
+                        source_pixels,
+                        texture_width,
                         BilinearCoordinates {
                             x0,
                             x1: (x0 + 1).min(source_right as usize),
                             y0,
-                            y1: (y0 + 1).min(source_bottom as usize),
+                            y1,
                             tx: sx - x0 as f32,
-                            ty: sy - y0 as f32,
+                            ty,
                         },
-                    )
+                    );
+                    if sampled.a == 0 {
+                        continue;
+                    }
+                    let pixel = &mut target_pixels[target_row + x as usize];
+                    *pixel = if sampled.a == 255 {
+                        sampled
+                    } else {
+                        sampled.blend_over(*pixel)
+                    };
                 }
-            };
-            if sampled.a == 0 {
-                continue;
             }
-            let index = y as usize * target_width + x as usize;
-            let pixel = &mut target.pixels_mut()[index];
-            *pixel = if sampled.a == 255 {
-                sampled
-            } else {
-                sampled.blend_over(*pixel)
-            };
         }
     }
 }
