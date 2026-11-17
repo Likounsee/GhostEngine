@@ -883,7 +883,7 @@ pub fn text_input_cursor_from_x(font: &FontFace, text: &str, pixel_size: f32, x:
     text.len()
 }
 
-fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width: f32) -> f32 {
+pub(crate) fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width: f32) -> f32 {
     if !cursor_width.is_finite()
         || !total_width.is_finite()
         || !viewport_width.is_finite()
