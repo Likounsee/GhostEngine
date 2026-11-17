@@ -256,38 +256,42 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         return;
     }
 
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let pixels = target.pixels_mut();
     let gradient = (y1 - y0) as f64 / (x1 - x0) as f64;
     let mut y = y0 as f64;
+
+    // The general Wu path touches two pixels for each major-axis step.
+    // Borrow the packed pixel buffer once and calculate flat indices directly,
+    // avoiding repeated row-slice setup and bounds checks through row_mut().
+    let mut plot = |px: i64, py: i64, coverage: f64| {
+        let (px, py) = if steep { (py, px) } else { (px, py) };
+        if px < 0 || py < 0 || px >= width as i64 || py >= height as i64 {
+            return;
+        }
+        let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
+        if alpha == 0 {
+            return;
+        }
+        let index = py as usize * width + px as usize;
+        let Some(pixel) = pixels.get_mut(index) else {
+            return;
+        };
+        let source = Color::rgba(color.r, color.g, color.b, alpha);
+        *pixel = if alpha == u8::MAX {
+            source
+        } else {
+            source.blend_over(*pixel)
+        };
+    };
+
     for x in x0..=x1 {
         let lower = y.floor();
         let upper_coverage = y - lower;
         let lower_coverage = 1.0 - upper_coverage;
-        let plot = |target: &mut Framebuffer, px: i64, py: i64, coverage: f64| {
-            let (px, py) = if steep { (py, px) } else { (px, py) };
-            if px < 0
-                || py < 0
-                || px >= i64::from(target.width())
-                || py >= i64::from(target.height())
-            {
-                return;
-            }
-            let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
-            if alpha == 0 {
-                return;
-            }
-            let Some(row) = target.row_mut(py as u32) else {
-                return;
-            };
-            let pixel = &mut row[px as usize];
-            let source = Color::rgba(color.r, color.g, color.b, alpha);
-            *pixel = if alpha == u8::MAX {
-                source
-            } else {
-                source.blend_over(*pixel)
-            };
-        };
-        plot(target, x, lower as i64, lower_coverage);
-        plot(target, x, lower as i64 + 1, upper_coverage);
+        plot(x, lower as i64, lower_coverage);
+        plot(x, lower as i64 + 1, upper_coverage);
         y += gradient;
     }
 }
