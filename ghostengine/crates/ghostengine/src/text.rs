@@ -247,23 +247,35 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
     let mut max_width = 0.0_f32;
     let mut lines = 1_u32;
     let mut line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
     let mut previous: Option<(char, usize)> = None;
     let space = family
         .font_for(' ')
         .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return TextMetrics::default();
+    }
 
     for cluster in fallback_text_clusters(text) {
         match cluster {
-            "\n" => {
+            "\\n" => {
                 max_width = max_width.max(width);
                 width = 0.0;
-                lines += 1;
+                let Some(next_lines) = lines.checked_add(1) else {
+                    return TextMetrics::default();
+                };
+                lines = next_lines;
                 previous = None;
             }
-            "\t" => {
+            "\\t" => {
                 width += tab_width;
+                if !width.is_finite() {
+                    return TextMetrics::default();
+                }
                 previous = None;
             }
             _ => {
@@ -279,7 +291,11 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     .iter()
                     .position(|candidate| Arc::ptr_eq(candidate, &selected))
                     .unwrap_or(0);
-                line_height = line_height.max(selected.line_height(pixel_size));
+                let selected_line_height = selected.line_height(pixel_size);
+                if !selected_line_height.is_finite() || selected_line_height <= 0.0 {
+                    return TextMetrics::default();
+                }
+                line_height = line_height.max(selected_line_height);
                 for character in cluster.chars() {
                     if is_combining_mark(character) || is_shaping_control(character) {
                         continue;
@@ -287,18 +303,27 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     if let Some((previous_character, previous_face)) = previous {
                         if previous_face == face_index {
                             width += selected.kerning(previous_character, character, pixel_size);
+                            if !width.is_finite() {
+                                return TextMetrics::default();
+                            }
                         }
                     }
                     width += selected.glyph(character, pixel_size).advance_width;
+                    if !width.is_finite() {
+                        return TextMetrics::default();
+                    }
                     previous = Some((character, face_index));
                 }
             }
         }
     }
     max_width = max_width.max(width);
+    let Some(height) = checked_text_block_height(line_height, lines as usize) else {
+        return TextMetrics::default();
+    };
     TextMetrics {
         width: max_width,
-        height: line_height * lines as f32,
+        height,
         line_count: lines,
     }
 }
