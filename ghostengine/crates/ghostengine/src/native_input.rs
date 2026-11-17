@@ -384,6 +384,8 @@ mod tests {
         apply_key_code(KeyCode::KeyC, input.super_down, false, &mut input);
         apply_key_code(KeyCode::KeyX, input.super_down, false, &mut input);
         apply_key_code(KeyCode::KeyV, input.super_down, false, &mut input);
+        input.control_down = modifiers.control_down;
+        input.super_down = modifiers.super_down;
 
         assert!(input.select_all_pressed);
         assert!(input.copy_pressed);
