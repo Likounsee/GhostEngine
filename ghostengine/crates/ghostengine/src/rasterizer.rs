@@ -8081,7 +8081,10 @@ mod diagonal_line_fast_path_tests {
             for offset in 0..=10 {
                 let x = left.x + offset;
                 let y = left.y + step_y * offset;
-                assert_eq!(framebuffer.get_pixel(x as u32, y as u32), Some(Color::WHITE));
+                assert_eq!(
+                    framebuffer.get_pixel(x as u32, y as u32),
+                    Some(Color::WHITE)
+                );
             }
             assert_eq!(
                 framebuffer
