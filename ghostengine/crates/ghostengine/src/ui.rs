@@ -1495,7 +1495,14 @@ mod tests {
         draw_panel_aa(&mut target, Rect::new(4, 4, 20, 14), 5, &theme);
         assert_eq!(target.get_pixel(12, 10), Some(theme.panel));
         assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
-        assert!(target.pixels().contains(&theme.panel_border));
+        let antialiased_border = Color::rgba(
+            theme.panel_border.r,
+            theme.panel_border.g,
+            theme.panel_border.b,
+            127,
+        )
+        .blend_over(theme.panel);
+        assert_eq!(target.get_pixel(13, 4), Some(antialiased_border));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != theme.panel && *pixel != theme.panel_border
         }));

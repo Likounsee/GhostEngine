@@ -184,9 +184,9 @@ mod tests {
 
     #[test]
     fn cache_budget_error_does_not_evict_existing_textures() {
-        let mut cache = crate::TextureCache::new(8);
+        let mut cache = crate::TextureCache::new(7);
         let existing = cache
-            .insert(crate::Texture::new(2, 1, vec![Color::RED; 2]).unwrap())
+            .insert(crate::Texture::new(1, 1, vec![Color::RED]).unwrap())
             .unwrap();
 
         assert!(matches!(
