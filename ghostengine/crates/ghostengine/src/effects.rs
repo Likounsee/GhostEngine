@@ -7,6 +7,7 @@ use crate::{Color, Framebuffer};
 pub struct EffectScratch {
     source: Vec<Color>,
     pixels: Vec<Color>,
+    weights: Vec<f64>,
 }
 
 /// Applies a separable box blur in-place using premultiplied-alpha arithmetic.
@@ -62,6 +63,84 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
     }
 }
 
+
+/// Applies a separable Gaussian blur in-place using premultiplied-alpha arithmetic.
+///
+/// The radius is the kernel half-width; standard deviation is max(radius / 2, 0.5).
+/// Edge samples are clamped to the nearest image pixel. Scratch allocations persist.
+pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut EffectScratch) {
+    if radius == 0 || target.width() == 0 || target.height() == 0 {
+        return;
+    }
+    let width = target.width() as usize;
+    let height = target.height() as usize;
+    let radius = (radius as usize).min(width.max(height).saturating_sub(1));
+    if radius == 0 {
+        return;
+    }
+
+    let sigma = (radius as f64 * 0.5).max(0.5);
+    let denominator = 2.0 * sigma * sigma;
+    scratch.weights.resize(radius + 1, 0.0);
+    for (distance, weight) in scratch.weights.iter_mut().enumerate() {
+        let distance = distance as f64;
+        *weight = (-(distance * distance) / denominator).exp();
+    }
+
+    scratch.source.resize(target.pixels().len(), Color::TRANSPARENT);
+    scratch.source.copy_from_slice(target.pixels());
+    scratch.pixels.resize(scratch.source.len(), Color::TRANSPARENT);
+
+    let radius_x = radius.min(width - 1);
+    for y in 0..height {
+        for x in 0..width {
+            let start = x.saturating_sub(radius_x);
+            let end = (x + radius_x + 1).min(width);
+            let mut sums = [0.0_f64; 4];
+            let mut total_weight = 0.0_f64;
+            for sample_x in start..end {
+                let weight = scratch.weights[x.abs_diff(sample_x)];
+                add_weighted_pixel(&mut sums, scratch.source[y * width + sample_x], weight);
+                total_weight += weight;
+            }
+            scratch.pixels[y * width + x] = weighted_color(sums, total_weight);
+        }
+    }
+
+    let radius_y = radius.min(height - 1);
+    for y in 0..height {
+        let start = y.saturating_sub(radius_y);
+        let end = (y + radius_y + 1).min(height);
+        for x in 0..width {
+            let mut sums = [0.0_f64; 4];
+            let mut total_weight = 0.0_f64;
+            for sample_y in start..end {
+                let weight = scratch.weights[y.abs_diff(sample_y)];
+                add_weighted_pixel(&mut sums, scratch.pixels[sample_y * width + x], weight);
+                total_weight += weight;
+            }
+            target.pixels_mut()[y * width + x] = weighted_color(sums, total_weight);
+        }
+    }
+}
+
+fn add_weighted_pixel(sums: &mut [f64; 4], color: Color, weight: f64) {
+    let alpha = f64::from(color.a) / 255.0;
+    sums[0] += f64::from(color.r) * alpha * weight;
+    sums[1] += f64::from(color.g) * alpha * weight;
+    sums[2] += f64::from(color.b) * alpha * weight;
+    sums[3] += alpha * weight;
+}
+
+fn weighted_color(sums: [f64; 4], total_weight: f64) -> Color {
+    if total_weight <= 0.0 || sums[3] <= 0.0 {
+        return Color::TRANSPARENT;
+    }
+    let channel = |value: f64| (value / sums[3]).round().clamp(0.0, 255.0) as u8;
+    let alpha = (sums[3] / total_weight * 255.0).round().clamp(0.0, 255.0) as u8;
+    Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
+}
+
 fn add_pixel(sums: &mut [u64; 4], color: Color, direction: i8) {
     let alpha = u64::from(color.a);
     let values = [
@@ -115,6 +194,41 @@ mod tests {
             .pixels()
             .iter()
             .all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
+    }
+
+
+    #[test]
+    fn gaussian_blur_preserves_uniform_images_and_alpha() {
+        let color = Color::rgba(20, 80, 160, 200);
+        let mut target = Framebuffer::new(7, 5, color).unwrap();
+        apply_gaussian_blur(&mut target, 3, &mut EffectScratch::default());
+        assert!(target.pixels().iter().all(|pixel| *pixel == color));
+    }
+
+    #[test]
+    fn gaussian_blur_softens_edges_without_transparent_rgb_halos() {
+        let mut target = Framebuffer::new(5, 1, Color::TRANSPARENT).unwrap();
+        target.set_pixel(2, 0, Color::RED);
+        let mut scratch = EffectScratch::default();
+        apply_gaussian_blur(&mut target, 2, &mut scratch);
+        assert!(target.pixels()[2].a > target.pixels()[1].a);
+        assert!(target.pixels()[1].a > target.pixels()[0].a);
+        assert!(target.pixels().iter().all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
+        let capacity = scratch.weights.capacity();
+        apply_gaussian_blur(&mut target, 2, &mut scratch);
+        assert_eq!(scratch.weights.capacity(), capacity);
+    }
+
+    #[test]
+    fn gaussian_blur_handles_single_pixel_axes_and_zero_radius() {
+        let mut target = Framebuffer::new(1, 3, Color::TRANSPARENT).unwrap();
+        target.set_pixel(0, 1, Color::BLUE);
+        let original = target.clone();
+        apply_gaussian_blur(&mut target, 0, &mut EffectScratch::default());
+        assert_eq!(target, original);
+        apply_gaussian_blur(&mut target, 4, &mut EffectScratch::default());
+        assert!(target.pixels().iter().all(|pixel| pixel.b == 255));
+        assert!(target.pixels()[1].a > target.pixels()[0].a);
     }
 
     #[test]
