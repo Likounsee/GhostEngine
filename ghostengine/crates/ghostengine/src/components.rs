@@ -1064,6 +1064,85 @@ impl ComponentTree {
         translated
     }
 
+    /// Updates normal UI pointer interaction and text-input caret/selection together.
+    ///
+    /// The platform adapter supplies click_count (2 for a double-click). Text
+    /// coordinates are derived from the same inner padding and scroll offset
+    /// used by draw_text_input, so callers can forward raw window coordinates.
+    pub fn update_pointer_with_text_input(
+        &mut self,
+        bounds: Rect,
+        pointer: Option<Point>,
+        pressed: bool,
+        released: bool,
+        font: &FontFace,
+        pixel_size: f32,
+        click_count: u8,
+    ) -> ComponentEvents {
+        self.layout(bounds);
+        let captured_text = self
+            .interaction
+            .captured()
+            .and_then(|index| self.focusable_ids.get(index).copied())
+            .filter(|id| {
+                matches!(
+                    self.find(*id).map(UiComponent::kind),
+                    Some(ComponentKind::TextInput { .. })
+                )
+            });
+        let pressed_text = if pressed {
+            pointer.and_then(|point| {
+                self.placed.iter().rev().find_map(|placement| {
+                    (placement.bounds.contains(point)
+                        && matches!(
+                            self.find(placement.id).map(UiComponent::kind),
+                            Some(ComponentKind::TextInput { .. })
+                        ))
+                    .then_some(placement.id)
+                })
+            })
+        } else {
+            None
+        };
+
+        let events = self.update_pointer(bounds, pointer, pressed, released);
+        let target = pressed_text.or(captured_text);
+        if let (Some(id), Some(point)) = (target, pointer) {
+            if let Some(rect) = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == id)
+                .map(|placement| placement.bounds)
+            {
+                if let Some(state) = self.text_states.get(&id) {
+                    let inset = 8_u32.min(rect.width / 2);
+                    let inner_x = rect.x.saturating_add(inset);
+                    let inner_width = rect.width.saturating_sub(inset.saturating_mul(2));
+                    let cursor_width = font.measure(
+                        &state.text()[..state.cursor()],
+                        pixel_size,
+                    ).width;
+                    let total_width = font.measure(state.text(), pixel_size).width;
+                    let scroll = crate::ui::text_input_scroll_offset(
+                        cursor_width,
+                        total_width,
+                        inner_width as f32,
+                    );
+                    let text_x = point.x as f32 - inner_x as f32 + scroll;
+                    self.handle_text_input_pointer(
+                        id,
+                        font,
+                        pixel_size,
+                        text_x,
+                        captured_text.is_some() && !pressed,
+                        if pressed { click_count.max(1) } else { 1 },
+                    );
+                }
+            }
+        }
+        events
+    }
+
     /// Installs the fallback menu used when no component-specific menu is configured.
     pub fn set_context_menu(&mut self, items: Vec<ContextMenuItem>) {
         self.context_menu_items = items;
