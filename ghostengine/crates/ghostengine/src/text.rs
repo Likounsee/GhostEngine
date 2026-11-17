@@ -2342,8 +2342,7 @@ mod tests {
             advance_x: 12.0,
             advance_y: 0.0,
         };
-        let mut target =
-            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let mut target = crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
         let before = target.pixels().to_vec();
 
         let metrics = super::draw_text_shaped_clipped(
@@ -2387,8 +2386,7 @@ mod tests {
             advance_x: f32::MAX,
             advance_y: 0.0,
         };
-        let mut target =
-            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let mut target = crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
         let before = target.pixels().to_vec();
 
         let metrics = super::draw_text_shaped_clipped(
@@ -2432,8 +2430,7 @@ mod tests {
             advance_x: 0.0,
             advance_y: 0.0,
         };
-        let mut target =
-            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let mut target = crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
         let before = target.pixels().to_vec();
 
         let metrics = super::draw_text_shaped_clipped(
@@ -2467,8 +2464,7 @@ mod tests {
             advance_x: 0.0,
             advance_y: 0.0,
         };
-        let mut target =
-            crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
+        let mut target = crate::Framebuffer::new(32, 32, crate::Color::BLACK).expect("framebuffer");
         let before = target.pixels().to_vec();
 
         let metrics = super::draw_text_shaped_transformed_clipped(
