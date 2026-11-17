@@ -106,7 +106,7 @@ impl Path {
         if !tolerance.is_finite() || tolerance <= 0.0 {
             return Err(PathError::InvalidTolerance);
         }
-        let tolerance_squared = tolerance * tolerance;
+        let tolerance_squared = f64::from(tolerance) * f64::from(tolerance);
         let mut result = FlattenedPath::default();
         let mut current: Option<usize> = None;
         for command in &self.commands {
@@ -184,32 +184,39 @@ fn validate(p: Vector) -> Result<(), PathError> {
         Err(PathError::NonFiniteCoordinate)
     }
 }
-fn distance_to_segment_squared(p: Vector, a: Vector, b: Vector) -> f32 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
+// Use f64 for intermediate geometry: finite f32 coordinates can still
+// overflow when subtracted, squared, or averaged in f32.
+fn distance_to_segment_squared(p: Vector, a: Vector, b: Vector) -> f64 {
+    let px = f64::from(p.x);
+    let py = f64::from(p.y);
+    let ax = f64::from(a.x);
+    let ay = f64::from(a.y);
+    let dx = f64::from(b.x) - ax;
+    let dy = f64::from(b.y) - ay;
     let length_squared = dx * dx + dy * dy;
-    if length_squared <= f32::EPSILON {
-        let offset_x = p.x - a.x;
-        let offset_y = p.y - a.y;
+    if length_squared <= f64::EPSILON {
+        let offset_x = px - ax;
+        let offset_y = py - ay;
         return offset_x * offset_x + offset_y * offset_y;
     }
 
-    let projection = (((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared).clamp(0.0, 1.0);
-    let closest_x = a.x + projection * dx;
-    let closest_y = a.y + projection * dy;
-    let offset_x = p.x - closest_x;
-    let offset_y = p.y - closest_y;
+    let projection = (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0);
+    let offset_x = px - (ax + projection * dx);
+    let offset_y = py - (ay + projection * dy);
     offset_x * offset_x + offset_y * offset_y
 }
 fn midpoint(a: Vector, b: Vector) -> Vector {
-    Vector::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
+    Vector::new(
+        ((f64::from(a.x) + f64::from(b.x)) * 0.5) as f32,
+        ((f64::from(a.y) + f64::from(b.y)) * 0.5) as f32,
+    )
 }
 
 fn flatten_quad(
     a: Vector,
     c: Vector,
     b: Vector,
-    tolerance_squared: f32,
+    tolerance_squared: f64,
     depth: u8,
     out: &mut Vec<Vector>,
 ) {
@@ -1485,4 +1492,21 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn curve_flattening_handles_extreme_finite_coordinates_without_overflow() {
+        let extent = f32::MAX;
+        let mut path = Path::new();
+        path.move_to(Vector::new(-extent, 0.0))
+            .quadratic_to(Vector::new(0.0, extent), Vector::new(extent, 0.0));
+
+        let flattened = path.flatten(1.0e30).unwrap();
+        let points = &flattened.subpaths[0].points;
+        assert!(points.len() > 2);
+        assert!(points.iter().all(|point| point.x.is_finite() && point.y.is_finite()));
+        assert_eq!(points.first(), Some(&Vector::new(-extent, 0.0)));
+        assert_eq!(points.last(), Some(&Vector::new(extent, 0.0)));
+    }
+
+
 }
