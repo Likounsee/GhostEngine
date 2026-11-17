@@ -1613,6 +1613,22 @@ mod tests {
     }
 
     #[test]
+    fn text_input_state_places_and_extends_caret_from_pointer_x() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = crate::FontFace::from_bytes(bytes).unwrap();
+        let mut state = TextInputState::new("Aé🙂Z");
+        let first = font.measure("A", 16.0).width;
+
+        state.set_cursor_from_x(&font, 16.0, first + 0.01, false);
+        assert_eq!(state.cursor(), "Aé".len());
+        assert_eq!(state.selection(), None);
+
+        state.set_cursor_from_x(&font, 16.0, 0.0, true);
+        assert_eq!(state.cursor(), 0);
+        assert_eq!(state.selection(), Some((0, "Aé".len())));
+    }
+
+    #[test]
     fn text_input_scroll_offset_keeps_caret_inside_viewport() {
         assert_eq!(super::text_input_scroll_offset(40.0, 180.0, 100.0), 0.0);
         assert_eq!(super::text_input_scroll_offset(150.0, 300.0, 100.0), 52.0);
