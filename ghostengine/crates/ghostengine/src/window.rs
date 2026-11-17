@@ -64,6 +64,8 @@ pub struct InputState {
     pub shift_down: bool,
     /// True while either Control key is held.
     pub control_down: bool,
+    /// True while either Command/Super key is held (macOS/Linux window managers).
+    pub super_down: bool,
     /// True while either Alt key is held.
     pub alt_down: bool,
     /// Committed or composing text delivered by a platform text service.
