@@ -49,6 +49,9 @@ pub struct InputState {
     pub left_mouse_pressed: bool,
     /// True only on the frame the left mouse button transitions to up.
     pub left_mouse_released: bool,
+    /// Number of consecutive clicks reported by the host on the press frame.
+    /// Use 2 or more for word selection; 0 is treated as a single click.
+    pub left_click_count: u8,
     pub right_mouse_down: bool,
     pub right_mouse_pressed: bool,
     /// Vertical wheel movement in pixels; positive values scroll toward later rows.
@@ -286,6 +289,19 @@ impl WindowSurface {
 /// key mapping; it is not an AZERTY/QWERTY layout implementation.
 impl ComponentTree {
     pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
+        self.handle_window_input_with_text_font(bounds, input, None)
+    }
+
+    /// Handles window input and maps pointer events to text caret positions.
+    ///
+    /// Supply the same font and pixel size used to draw text inputs. The basic
+    /// handle_window_input method remains available for applications without text metrics.
+    pub fn handle_window_input_with_text_font(
+        &mut self,
+        bounds: Rect,
+        input: &InputState,
+        text_font: Option<(&crate::FontFace, f32)>,
+    ) -> ComponentEvents {
         let mut shortcut_events = ComponentEvents::default();
         for key in &input.shortcut_keys {
             if let Some(next) = self.activate_context_menu_shortcut(
@@ -304,12 +320,24 @@ impl ComponentTree {
             }
         }
         let mut events = shortcut_events;
-        let pointer_events = self.update_pointer(
-            bounds,
-            input.mouse_position,
-            input.left_mouse_pressed,
-            input.left_mouse_released,
-        );
+        let pointer_events = if let Some((font, pixel_size)) = text_font {
+            self.update_pointer_with_text_input(
+                bounds,
+                input.mouse_position,
+                input.left_mouse_pressed,
+                input.left_mouse_released,
+                font,
+                pixel_size,
+                input.left_click_count.max(u8::from(input.left_mouse_pressed)),
+            )
+        } else {
+            self.update_pointer(
+                bounds,
+                input.mouse_position,
+                input.left_mouse_pressed,
+                input.left_mouse_released,
+            )
+        };
         merge_component_events(&mut events, pointer_events);
         if input.scroll_delta_y != 0 {
             if let Some(pointer) = input.mouse_position {
