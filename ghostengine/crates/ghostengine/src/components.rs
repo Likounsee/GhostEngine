@@ -1819,6 +1819,41 @@ impl ComponentTree {
         true
     }
 
+    /// Handles a pointer position inside a text input.
+    ///
+    /// The x coordinate is relative to the unscrolled text origin (after inner
+    /// padding and horizontal-scroll adjustment). Pass extend_selection while
+    /// dragging. A click count of two or more selects the Unicode word.
+    pub fn handle_text_input_pointer(
+        &mut self,
+        id: ComponentId,
+        font: &FontFace,
+        pixel_size: f32,
+        x: f32,
+        extend_selection: bool,
+        click_count: u8,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        if click_count >= 2 {
+            let byte_index = self
+                .text_states
+                .get(&id)
+                .map(|state| crate::text_input_cursor_from_x(font, state.text(), pixel_size, x));
+            return byte_index.is_some_and(|index| {
+                self.text_states
+                    .get_mut(&id)
+                    .is_some_and(|state| state.select_word_at(index))
+            });
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.set_cursor_from_x(font, pixel_size, x, extend_selection);
+        true
+    }
+
     /// Selects the Unicode word at a UTF-8 byte position in a text input.
     ///
     /// The position is interpreted relative to the input's text, not its
