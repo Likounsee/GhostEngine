@@ -1,6 +1,6 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::texture::sample_pixels_bilinear;
 use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
@@ -1526,6 +1526,16 @@ impl LayerGroupCache {
         self.entries.clear();
     }
 
+    /// Retains only the group identities present in the supplied frame.
+    ///
+    /// Call this when a scene is replaced or groups are permanently removed to
+    /// release surfaces that can no longer be reused. Hidden groups remain
+    /// cached as long as their identities are supplied.
+    pub fn retain_groups(&mut self, groups: &[(LayerGroupId, &LayerGroup)]) {
+        let live_ids: BTreeSet<_> = groups.iter().map(|(id, _)| *id).collect();
+        self.entries.retain(|id, _| live_ids.contains(id));
+    }
+
     /// Returns the number of persistent group surfaces.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -1601,6 +1611,7 @@ fn compose_layer_groups_cached_internal(
     cache: &mut LayerGroupCache,
     scratch: &mut LayerGroupScratch,
 ) -> Result<(), FramebufferError> {
+    cache.retain_groups(groups);
     for &(id, group) in groups {
         if !group.visible || group.opacity == 0 {
             continue;
@@ -2054,6 +2065,30 @@ mod tests {
         );
         assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
         assert_eq!(target.get_pixel(8, 1), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn cached_group_releases_surfaces_for_removed_scene_groups() {
+        let first = LayerGroup::new(2, 2).unwrap();
+        let second = LayerGroup::new(2, 2).unwrap();
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 2, Color::BLACK).unwrap();
+
+        compose_layer_groups_cached(
+            &mut target,
+            &[(1, &first), (2, &second)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(cache.len(), 2);
+
+        compose_layer_groups_cached(&mut target, &[(2, &second)], &mut cache, &mut scratch)
+            .unwrap();
+        assert_eq!(cache.len(), 1);
+        assert!(cache.framebuffer(1).is_none());
+        assert!(cache.framebuffer(2).is_some());
     }
 
     #[test]
