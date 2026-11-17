@@ -8133,7 +8133,7 @@ mod bresenham_direct_buffer_tests {
             super::draw_line(&mut forward, start, end, Color::GREEN);
             super::draw_line(&mut reverse, end, start, Color::GREEN);
             assert_eq!(forward, reverse);
-            assert!(forward.pixels().iter().any(|pixel| *pixel == Color::GREEN));
+            assert!(forward.pixels().contains(&Color::GREEN));
         }
     }
 
@@ -8147,10 +8147,7 @@ mod bresenham_direct_buffer_tests {
             Color::BLUE,
         );
 
-        assert!(framebuffer
-            .pixels()
-            .iter()
-            .any(|pixel| *pixel == Color::BLUE));
+        assert!(framebuffer.pixels().contains(&Color::BLUE));
         assert_eq!(framebuffer.width(), 9);
         assert_eq!(framebuffer.height(), 7);
     }
