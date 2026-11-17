@@ -1459,6 +1459,237 @@ impl LayerGroupScratch {
     }
 }
 
+
+/** Persistent off-screen surfaces indexed by application-defined group identity.
+ *
+ * Unlike temporary nesting-depth scratch surfaces, this cache keeps each
+ * group's pixels across frames and traversal reordering. Call mark_dirty after
+ * changing local group content. Position, opacity, blend mode, and transform
+ * are refreshed automatically and do not require rerendering local pixels.
+ */
+#[derive(Debug, Default)]
+pub struct LayerGroupCache {
+    entries: BTreeMap<LayerGroupId, LayerGroupCacheEntry>,
+}
+
+#[derive(Debug)]
+struct LayerGroupCacheEntry {
+    layer: Layer,
+    damage: DamageRegion,
+    initialized: bool,
+    render_count: u64,
+}
+
+impl LayerGroupCache {
+    /// Marks a local-space rectangle dirty for the next cached composition.
+    /// Returns false when the identity has not been cached yet.
+    pub fn mark_dirty(&mut self, id: LayerGroupId, rectangle: Rect) -> bool {
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return false;
+        };
+        entry.damage.add(rectangle);
+        true
+    }
+
+    /// Invalidates the complete cached surface for a group.
+    pub fn invalidate(&mut self, id: LayerGroupId) -> bool {
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return false;
+        };
+        entry.damage.add(Rect::new(
+            0,
+            0,
+            entry.layer.framebuffer().width(),
+            entry.layer.framebuffer().height(),
+        ));
+        true
+    }
+
+    /// Invalidates every cached group without releasing its pixel allocations.
+    pub fn invalidate_all(&mut self) {
+        for entry in self.entries.values_mut() {
+            entry.damage.add(Rect::new(
+                0,
+                0,
+                entry.layer.framebuffer().width(),
+                entry.layer.framebuffer().height(),
+            ));
+        }
+    }
+
+    /// Removes a cached group and releases its off-screen surface.
+    pub fn remove(&mut self, id: LayerGroupId) -> bool {
+        self.entries.remove(&id).is_some()
+    }
+
+    /// Removes all cached surfaces.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Returns the number of persistent group surfaces.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns true when no group surfaces are cached.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Returns the cached pixels for a group, if it has been composed.
+    #[must_use]
+    pub fn framebuffer(&self, id: LayerGroupId) -> Option<&Framebuffer> {
+        self.entries.get(&id).map(|entry| entry.layer.framebuffer())
+    }
+
+    /// Returns how many times a group's local surface has been regenerated.
+    #[must_use]
+    pub fn render_count(&self, id: LayerGroupId) -> Option<u64> {
+        self.entries.get(&id).map(|entry| entry.render_count)
+    }
+
+    /// Returns the pixel-buffer memory retained by all cached groups.
+    #[must_use]
+    pub fn allocated_pixel_bytes(&self) -> usize {
+        self.entries.values().fold(0usize, |total, entry| {
+            total.saturating_add(
+                entry.layer.framebuffer().pixels().len()
+                    .saturating_mul(std::mem::size_of::<Color>()),
+            )
+        })
+    }
+}
+
+/// Composites groups using persistent surfaces keyed by stable identity.
+///
+/// Keep each ID stable across frames and explicitly invalidate local content
+/// changes with mark_dirty or invalidate. Reordering preserves cached surfaces;
+/// a group dimension change automatically recreates and invalidates its surface.
+pub fn compose_layer_groups_cached(
+    target: &mut Framebuffer,
+    groups: &[(LayerGroupId, &LayerGroup)],
+    cache: &mut LayerGroupCache,
+    scratch: &mut LayerGroupScratch,
+) -> Result<(), FramebufferError> {
+    compose_layer_groups_cached_internal(target, groups, None, cache, scratch)
+}
+
+/// Composites cached groups only in the requested target-space damage regions.
+pub fn compose_layer_groups_cached_in_damage_regions(
+    target: &mut Framebuffer,
+    groups: &[(LayerGroupId, &LayerGroup)],
+    target_damage: &DamageRegion,
+    cache: &mut LayerGroupCache,
+    scratch: &mut LayerGroupScratch,
+) -> Result<(), FramebufferError> {
+    if target_damage.is_empty() {
+        return Ok(());
+    }
+    compose_layer_groups_cached_internal(target, groups, Some(target_damage), cache, scratch)
+}
+
+fn compose_layer_groups_cached_internal(
+    target: &mut Framebuffer,
+    groups: &[(LayerGroupId, &LayerGroup)],
+    target_damage: Option<&DamageRegion>,
+    cache: &mut LayerGroupCache,
+    scratch: &mut LayerGroupScratch,
+) -> Result<(), FramebufferError> {
+    for &(id, group) in groups {
+        if !group.visible || group.opacity == 0 {
+            continue;
+        }
+        if !cache.entries.contains_key(&id) {
+            let layer = Layer::new(group.width, group.height, Color::TRANSPARENT)?;
+            let mut damage = DamageRegion::new(group.width, group.height);
+            damage.add(Rect::new(0, 0, group.width, group.height));
+            cache.entries.insert(
+                id,
+                LayerGroupCacheEntry {
+                    layer,
+                    damage,
+                    initialized: false,
+                    render_count: 0,
+                },
+            );
+        }
+
+        let entry = cache.entries.get_mut(&id).expect("cache entry was inserted");
+        if entry.layer.framebuffer().width() != group.width
+            || entry.layer.framebuffer().height() != group.height
+        {
+            entry.layer.framebuffer_mut().resize_and_clear(
+                group.width,
+                group.height,
+                Color::TRANSPARENT,
+            )?;
+            entry.damage.reset(group.width, group.height);
+            entry.damage.add(Rect::new(0, 0, group.width, group.height));
+            entry.initialized = false;
+        }
+
+        if !entry.damage.is_empty() {
+            let dirty = entry.damage.clone();
+            if !entry.initialized || dirty.covers_entire_target() {
+                render_layer_group_into(group, scratch, 0)?;
+                entry
+                    .layer
+                    .framebuffer_mut()
+                    .copy_pixels_from(scratch.layers[0].framebuffer().pixels())?;
+            } else {
+                if scratch.layers.is_empty() {
+                    scratch.layers.push(Layer::from_framebuffer(
+                        entry.layer.framebuffer().clone(),
+                    ));
+                } else {
+                    let surface = scratch.layers[0].framebuffer_mut();
+                    if surface.width() != group.width || surface.height() != group.height {
+                        surface.resize_and_clear(
+                            group.width,
+                            group.height,
+                            Color::TRANSPARENT,
+                        )?;
+                    }
+                    surface.copy_pixels_from(entry.layer.framebuffer().pixels())?;
+                }
+                render_layer_group_partial_into(group, scratch, 0, &dirty)?;
+                let source = scratch.layers[0].framebuffer().pixels();
+                let width = group.width as usize;
+                let destination = entry.layer.framebuffer_mut().pixels_mut();
+                for rectangle in dirty.rectangles() {
+                    for y in rectangle.y..rectangle.y + rectangle.height {
+                        let start = y as usize * width + rectangle.x as usize;
+                        let end = start + rectangle.width as usize;
+                        destination[start..end].copy_from_slice(&source[start..end]);
+                    }
+                }
+            }
+            entry.damage.clear();
+            entry.initialized = true;
+            entry.render_count = entry.render_count.saturating_add(1);
+        }
+
+        entry.layer.set_position(group.x, group.y);
+        entry.layer.set_opacity(group.opacity);
+        entry.layer.set_blend_mode(group.blend_mode);
+        entry.layer.set_transform(group.transform);
+        entry.layer.set_filter(group.filter);
+        if let Some(damage) = target_damage {
+            compose_layers_in_damage_regions(
+                target,
+                std::slice::from_ref(&entry.layer),
+                damage,
+            );
+        } else {
+            compose_layers(target, std::slice::from_ref(&entry.layer));
+        }
+    }
+    Ok(())
+}
+
 /// Composites isolated groups in order, applying each group's opacity and blend
 /// mode once after all of its children have been rendered.
 ///
