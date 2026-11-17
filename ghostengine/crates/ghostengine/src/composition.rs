@@ -1784,11 +1784,80 @@ fn render_layer_group_into(
 mod tests {
     use super::{
         blend_bilinear_over_opaque, blend_bilinear_over_opaque_rows, blend_with_mode,
-        compose_layer_groups, compose_layer_groups_with_scratch, compose_layers,
-        compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer, LayerGroup,
-        LayerGroupScratch,
+        compose_layer_groups, compose_layer_groups_cached, compose_layer_groups_with_scratch,
+        compose_layers, compose_layers_in_damage_regions, BlendMode, DamageRegion, Layer,
+        LayerGroup, LayerGroupCache, LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn cached_group_surfaces_survive_reordering_without_rerendering() {
+        let mut first = LayerGroup::new(4, 4).unwrap();
+        first.add_layer(Layer::new(4, 4, Color::RED).unwrap());
+        first.set_position(1, 1);
+        let mut second = LayerGroup::new(4, 4).unwrap();
+        second.add_layer(Layer::new(4, 4, Color::BLUE).unwrap());
+        second.set_position(8, 1);
+
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(16, 8, Color::BLACK).unwrap();
+        compose_layer_groups_cached(&mut target, &[(11, &first), (22, &second)], &mut cache, &mut scratch).unwrap();
+
+        let first_allocation = cache.framebuffer(11).unwrap().pixels().as_ptr();
+        assert_eq!(cache.render_count(11), Some(1));
+        assert_eq!(cache.render_count(22), Some(1));
+        target.clear(Color::BLACK);
+        compose_layer_groups_cached(&mut target, &[(22, &second), (11, &first)], &mut cache, &mut scratch).unwrap();
+
+        assert_eq!(cache.render_count(11), Some(1));
+        assert_eq!(cache.render_count(22), Some(1));
+        assert_eq!(cache.framebuffer(11).unwrap().pixels().as_ptr(), first_allocation);
+        assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(8, 1), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn cached_group_partial_invalidation_updates_only_dirty_pixels() {
+        let mut group = LayerGroup::new(4, 4).unwrap();
+        group.add_layer(Layer::new(4, 4, Color::RED).unwrap());
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        compose_layer_groups_cached(&mut target, &[(7, &group)], &mut cache, &mut scratch).unwrap();
+
+        let mut overlay = Layer::new(2, 2, Color::BLUE).unwrap();
+        overlay.set_position(1, 1);
+        group.add_layer(overlay);
+        assert!(cache.mark_dirty(7, Rect::new(1, 1, 2, 2)));
+        target.clear(Color::BLACK);
+        compose_layer_groups_cached(&mut target, &[(7, &group)], &mut cache, &mut scratch).unwrap();
+
+        assert_eq!(cache.render_count(7), Some(2));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::RED));
+    }
+
+    #[test]
+    fn cached_group_resizes_and_rebuilds_automatically() {
+        let mut small = LayerGroup::new(2, 2).unwrap();
+        small.add_layer(Layer::new(2, 2, Color::RED).unwrap());
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(8, 4, Color::BLACK).unwrap();
+        compose_layer_groups_cached(&mut target, &[(3, &small)], &mut cache, &mut scratch).unwrap();
+
+        let mut large = LayerGroup::new(5, 2).unwrap();
+        large.add_layer(Layer::new(5, 2, Color::GREEN).unwrap());
+        compose_layer_groups_cached(&mut target, &[(3, &large)], &mut cache, &mut scratch).unwrap();
+
+        let cached = cache.framebuffer(3).unwrap();
+        assert_eq!((cached.width(), cached.height()), (5, 2));
+        assert_eq!(cache.render_count(3), Some(2));
+        assert_eq!(cached.get_pixel(4, 1), Some(Color::GREEN));
+    }
 
     #[test]
     fn stable_group_damage_tracker_survives_reordering_and_tracks_lifecycle() {
