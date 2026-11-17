@@ -451,7 +451,11 @@ impl ComponentTree {
 
         // Prefer committed Unicode text from the host text service. The legacy
         // character list is only a fallback for adapters that cannot emit text events.
-        if input.text_events.is_empty() && !input.control_down && !input.super_down && !input.alt_down {
+        if input.text_events.is_empty()
+            && !input.control_down
+            && !input.super_down
+            && !input.alt_down
+        {
             for character in &input.pressed_characters {
                 if *character == ' ' && self.focused_text_input().is_none() {
                     let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
