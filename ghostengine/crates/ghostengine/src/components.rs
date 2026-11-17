@@ -1069,6 +1069,7 @@ impl ComponentTree {
     /// The platform adapter supplies click_count (2 for a double-click). Text
     /// coordinates are derived from the same inner padding and scroll offset
     /// used by draw_text_input, so callers can forward raw window coordinates.
+    #[allow(clippy::too_many_arguments)] // Kept explicit to preserve the public pointer-input API.
     pub fn update_pointer_with_text_input(
         &mut self,
         bounds: Rect,
@@ -2534,7 +2535,7 @@ fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut Ui
 mod tests {
     use super::{
         ComponentId, ComponentKey, ComponentKind, ComponentTree, ContextMenuItem,
-        ContextMenuShortcut, TextInputEvent, UiComponent,
+        ContextMenuShortcut, FontFace, TextInputEvent, UiComponent,
     };
     use crate::{Insets, LayoutDirection, LayoutItem, Point, Rect, StackLayout, WidgetState};
 
