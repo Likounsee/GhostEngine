@@ -88,9 +88,15 @@ pub fn draw_line(target: &mut Framebuffer, start: Point, end: Point, color: Colo
     let dy = -(y1 - y0).abs();
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut error = dx + dy;
+    let width = target.width() as usize;
+    let pixels = target.pixels_mut();
 
+    // Clipping guarantees every Bresenham sample lies inside the framebuffer.
+    // Borrow the packed storage once instead of repeating set_pixel's bounds
+    // checks and index calculation for every point on the segment.
     loop {
-        target.set_pixel(x0 as u32, y0 as u32, color);
+        let index = y0 as usize * width + x0 as usize;
+        pixels[index] = color;
         if x0 == x1 && y0 == y1 {
             break;
         }
@@ -8107,5 +8113,46 @@ mod diagonal_line_fast_path_tests {
             framebuffer.pixels().iter().filter(|pixel| **pixel == Color::RED).count(),
             8
         );
+    }
+}
+
+
+#[cfg(test)]
+mod bresenham_direct_buffer_tests {
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn general_bresenham_lines_preserve_pixels_in_both_endpoint_orders() {
+        for (start, end) in [
+            (Point::new(1, 2), Point::new(13, 8)),
+            (Point::new(13, 8), Point::new(1, 2)),
+            (Point::new(2, 13), Point::new(8, 1)),
+            (Point::new(8, 1), Point::new(2, 13)),
+        ] {
+            let mut forward = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+            let mut reverse = forward.clone();
+            super::draw_line(&mut forward, start, end, Color::GREEN);
+            super::draw_line(&mut reverse, end, start, Color::GREEN);
+            assert_eq!(forward, reverse);
+            assert!(forward.pixels().iter().any(|pixel| *pixel == Color::GREEN));
+        }
+    }
+
+    #[test]
+    fn general_bresenham_line_is_safe_when_clipped_at_frame_edges() {
+        let mut framebuffer = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        super::draw_line(
+            &mut framebuffer,
+            Point::new(-100, 2),
+            Point::new(100, 5),
+            Color::BLUE,
+        );
+
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel == Color::BLUE));
+        assert_eq!(framebuffer.width(), 9);
+        assert_eq!(framebuffer.height(), 7);
     }
 }
