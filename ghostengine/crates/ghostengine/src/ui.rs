@@ -843,6 +843,31 @@ impl TextInputState {
     }
 }
 
+/// Maps a horizontal text coordinate to the nearest UTF-8 grapheme boundary.
+///
+/// The coordinate is relative to the beginning of the unscrolled text.
+#[must_use]
+pub fn text_input_cursor_from_x(font: &FontFace, text: &str, pixel_size: f32, x: f32) -> usize {
+    if text.is_empty() || !x.is_finite() || x <= 0.0 {
+        return 0;
+    }
+
+    let mut previous_boundary = 0;
+    let mut previous_width = 0.0;
+    for (start, grapheme) in text.grapheme_indices(true) {
+        let boundary = start + grapheme.len();
+        let width = font.measure(&text[..boundary], pixel_size).width;
+        let midpoint = previous_width + (width - previous_width) * 0.5;
+        if x < midpoint {
+            return previous_boundary;
+        }
+        previous_boundary = boundary;
+        previous_width = width;
+    }
+
+    text.len()
+}
+
 fn text_input_scroll_offset(cursor_width: f32, total_width: f32, viewport_width: f32) -> f32 {
     if !cursor_width.is_finite()
         || !total_width.is_finite()
@@ -1544,6 +1569,32 @@ mod tests {
         assert_eq!(list.selected(), None);
         list.move_selection(1, 0);
         assert_eq!(list.selected(), None);
+    }
+
+    #[test]
+    fn text_input_pointer_coordinates_map_to_nearest_grapheme_boundary() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = crate::FontFace::from_bytes(bytes).unwrap();
+        let text = "Aé🙂Z";
+        let first = font.measure("A", 16.0).width;
+        let second = font.measure("Aé", 16.0).width;
+        let third = font.measure("Aé🙂", 16.0).width;
+
+        assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, -4.0), 0);
+        assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, first * 0.25), 0);
+        assert_eq!(
+            super::text_input_cursor_from_x(&font, text, 16.0, first + 0.01),
+            "Aé".len()
+        );
+        assert_eq!(
+            super::text_input_cursor_from_x(&font, text, 16.0, second + 0.01),
+            "Aé🙂".len()
+        );
+        assert_eq!(
+            super::text_input_cursor_from_x(&font, text, 16.0, third + 100.0),
+            text.len()
+        );
+        assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, f32::NAN), 0);
     }
 
     #[test]
