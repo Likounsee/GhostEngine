@@ -1797,6 +1797,28 @@ impl ComponentTree {
         self.text_states.get(&id)
     }
 
+    /// Positions a text input caret from an x coordinate relative to its text origin.
+    ///
+    /// The caller is responsible for subtracting inner padding and adding the
+    /// current horizontal scroll offset to the pointer coordinate.
+    pub fn set_text_input_cursor_from_x(
+        &mut self,
+        id: ComponentId,
+        font: &FontFace,
+        pixel_size: f32,
+        x: f32,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.set_cursor_from_x(font, pixel_size, x, extend_selection);
+        true
+    }
+
     /// Selects the Unicode word at a UTF-8 byte position in a text input.
     ///
     /// The position is interpreted relative to the input's text, not its
