@@ -126,6 +126,7 @@ impl NativeInputAdapter {
                 self.super_down = false;
                 self.alt_down = false;
                 self.escape_down = false;
+                self.ime_enabled = false;
                 if self.right_mouse_down {
                     self.right_mouse_down = false;
                 }
@@ -456,6 +457,38 @@ mod tests {
             frame.text_events,
             vec![TextInputEvent::CompositionUpdate("に".to_owned())]
         );
+    }
+
+    #[test]
+    fn losing_focus_resets_modifiers_mouse_buttons_and_ime_state() {
+        use winit::event::WindowEvent;
+        use winit::keyboard::ModifiersState;
+
+        let mut adapter = NativeInputAdapter::new();
+        adapter.update_modifiers(
+            ModifiersState::SHIFT
+                | ModifiersState::CONTROL
+                | ModifiersState::SUPER
+                | ModifiersState::ALT,
+        );
+        adapter.left_mouse_down = true;
+        adapter.right_mouse_down = true;
+        adapter.ime_enabled = true;
+
+        adapter.process_window_event(&WindowEvent::Focused(false));
+
+        let frame = adapter.take_frame();
+        assert!(!frame.shift_down);
+        assert!(!frame.control_down);
+        assert!(!frame.super_down);
+        assert!(!frame.alt_down);
+        assert!(!frame.left_mouse_down);
+        assert!(!frame.right_mouse_down);
+        assert!(frame.left_mouse_released);
+        assert!(!adapter.ime_enabled);
+        assert!(frame
+            .text_events
+            .contains(&TextInputEvent::CompositionCancel));
     }
 
     #[test]
