@@ -1052,8 +1052,10 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
             for lane in 0_usize..4 {
-                let local = inverse
-                    .transform_point(crate::Vector::new((x as usize + lane) as f32 + 0.5, y as f32 + 0.5));
+                let local = inverse.transform_point(crate::Vector::new(
+                    (x as usize + lane) as f32 + 0.5,
+                    y as f32 + 0.5,
+                ));
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
@@ -1172,8 +1174,10 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
             for lane in 0_usize..4 {
-                let local = inverse
-                    .transform_point(crate::Vector::new((x as usize + lane) as f32 + 0.5, y as f32 + 0.5));
+                let local = inverse.transform_point(crate::Vector::new(
+                    (x as usize + lane) as f32 + 0.5,
+                    y as f32 + 0.5,
+                ));
                 inside[lane] = rect_contains_point(rect, local);
                 if inside[lane] {
                     visible = true;
