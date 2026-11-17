@@ -186,7 +186,7 @@ fn main() {
         .insert(texture.clone())
         .expect("benchmark texture should fit cache");
 
-    let mut atlas_builder = TextureAtlasBuilder::new(256, 256, 2);
+    let mut atlas_builder = TextureAtlasBuilder::new(512, 256, 2);
     atlas_builder
         .add(1, &texture)
         .expect("first atlas sprite should be added");
@@ -201,7 +201,7 @@ fn main() {
         .find(|region| region.id == 1)
         .expect("benchmark atlas region should exist");
     let atlas_object = {
-        let mut builder = TextureAtlasBuilder::new(256, 256, 2);
+        let mut builder = TextureAtlasBuilder::new(512, 256, 2);
         builder
             .add(1, &texture)
             .expect("atlas object sprite should be added");
