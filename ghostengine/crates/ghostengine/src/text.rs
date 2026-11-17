@@ -2680,14 +2680,14 @@ mod tests {
     #[test]
     fn shaped_fallback_wrapping_keeps_grapheme_like_sequences_together() {
         assert_eq!(
-            super::fallback_text_clusters("a\u{0301}b"),
+            super::fallback_text_clusters("a\u{0301}b").collect::<Vec<_>>(),
             ["a\u{0301}", "b"]
         );
         assert_eq!(super::fallback_text_clusters("👩‍💻x").collect::<Vec<_>>(), ["👩‍💻", "x"]);
         assert_eq!(super::fallback_text_clusters("🇫🇷!").collect::<Vec<_>>(), ["🇫🇷", "!"]);
         assert_eq!(super::fallback_text_clusters("👍🏽!").collect::<Vec<_>>(), ["👍🏽", "!"]);
         assert_eq!(
-            super::fallback_text_clusters("🏴\u{E0067}\u{E0062}\u{E007F}!"),
+            super::fallback_text_clusters("🏴\u{E0067}\u{E0062}\u{E007F}!").collect::<Vec<_>>(),
             ["🏴\u{E0067}\u{E0062}\u{E007F}", "!"]
         );
         assert_eq!(super::fallback_text_clusters("✈️x").collect::<Vec<_>>(), ["✈️", "x"]);
