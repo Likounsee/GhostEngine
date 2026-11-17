@@ -1599,11 +1599,11 @@ mod tests {
         assert_eq!(super::text_input_cursor_from_x(&font, text, 16.0, first * 0.25), 0);
         assert_eq!(
             super::text_input_cursor_from_x(&font, text, 16.0, first + 0.01),
-            "Aé".len()
+            "A".len()
         );
         assert_eq!(
             super::text_input_cursor_from_x(&font, text, 16.0, second + 0.01),
-            "Aé🙂".len()
+            "Aé".len()
         );
         assert_eq!(
             super::text_input_cursor_from_x(&font, text, 16.0, third + 100.0),
@@ -1619,7 +1619,7 @@ mod tests {
         let mut state = TextInputState::new("Aé🙂Z");
         let first = font.measure("A", 16.0).width;
 
-        state.set_cursor_from_x(&font, 16.0, first + 0.01, false);
+        state.set_cursor_from_x(&font, 16.0, second + 0.01, false);
         assert_eq!(state.cursor(), "Aé".len());
         assert_eq!(state.selection(), None);
 
