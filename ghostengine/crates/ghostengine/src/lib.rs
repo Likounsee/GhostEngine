@@ -62,7 +62,7 @@ pub use composition::{
     LayerGroupId, LayerGroupScratch,
 };
 pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
-pub use effects::{apply_box_blur, EffectScratch};
+pub use effects::{apply_box_blur, apply_gaussian_blur, EffectScratch};
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};

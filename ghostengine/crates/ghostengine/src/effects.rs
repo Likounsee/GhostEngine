@@ -66,7 +66,7 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
 /// Applies a separable Gaussian blur in-place using premultiplied-alpha arithmetic.
 ///
 /// The radius is the kernel half-width; standard deviation is max(radius / 2, 0.5).
-/// Edge samples are clamped to the nearest image pixel. Scratch allocations persist.
+/// Edge kernels are clipped to the image bounds and renormalized. Scratch allocations persist.
 pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut EffectScratch) {
     if radius == 0 || target.width() == 0 || target.height() == 0 {
         return;
