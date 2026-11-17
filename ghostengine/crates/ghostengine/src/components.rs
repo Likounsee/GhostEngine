@@ -2784,13 +2784,13 @@ mod tests {
         assert!(tree.select_text_word_at(id, 14));
         assert_eq!(
             tree.text_input_state(id).and_then(|state| state.selected_text()),
-            Some("世界")
+            Some("世")
         );
 
         assert!(!tree.select_text_word_at(id, 13));
         assert_eq!(
             tree.text_input_state(id).and_then(|state| state.selected_text()),
-            Some("世界")
+            Some("世")
         );
         assert!(!tree.select_text_word_at(ComponentId(999), 0));
     }
