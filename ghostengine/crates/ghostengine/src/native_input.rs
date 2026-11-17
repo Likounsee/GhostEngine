@@ -10,7 +10,12 @@
 //! `process_window_event`, then pass `take_frame()` to
 //! `ComponentTree::handle_window_input`.
 
-use crate::{window::InputState, ClipboardAction, Point, TextInputEvent};
+use crate::{
+    window::{ClickTracker, InputState},
+    ClipboardAction,
+    Point,
+    TextInputEvent,
+};
 use arboard::Clipboard;
 use std::{error::Error, fmt, mem};
 use winit::{
@@ -30,6 +35,7 @@ pub struct NativeInputAdapter {
     alt_down: bool,
     escape_down: bool,
     ime_enabled: bool,
+    left_click_tracker: ClickTracker,
 }
 
 impl NativeInputAdapter {
@@ -87,6 +93,8 @@ impl NativeInputAdapter {
                 if down != self.left_mouse_down {
                     if down {
                         self.frame.left_mouse_pressed = true;
+                        self.frame.left_click_count =
+                            self.left_click_tracker.record(self.mouse_position);
                     } else {
                         self.frame.left_mouse_released = true;
                     }
