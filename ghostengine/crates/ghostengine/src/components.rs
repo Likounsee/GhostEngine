@@ -2794,7 +2794,7 @@ mod tests {
         let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "Search", "Aé🙂Z")]);
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).unwrap();
-        let x = font.measure("A", 16.0).width + 0.01;
+        let x = font.measure("Aé", 16.0).width + 0.01;
 
         assert!(tree.set_text_input_cursor_from_x(id, &font, 16.0, x, false));
         assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Aé".len());
