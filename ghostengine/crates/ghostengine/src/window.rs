@@ -8,7 +8,11 @@ use crate::{
     TextInputEvent,
 };
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+    time::{Duration, Instant},
+};
 
 /// Errors returned by the optional desktop window adapter.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +99,7 @@ pub struct WindowSurface {
     presentation_buffer: Vec<u32>,
     previous_left_mouse_down: bool,
     previous_right_mouse_down: bool,
+    left_click_tracker: ClickTracker,
 }
 
 impl WindowSurface {
@@ -131,6 +136,7 @@ impl WindowSurface {
             presentation_buffer,
             previous_left_mouse_down: false,
             previous_right_mouse_down: false,
+            left_click_tracker: ClickTracker::default(),
         })
     }
 
@@ -206,6 +212,9 @@ impl WindowSurface {
         let (left_mouse_pressed, left_mouse_released) =
             button_transition(self.previous_left_mouse_down, left_mouse_down);
         self.previous_left_mouse_down = left_mouse_down;
+        let left_click_count = left_mouse_pressed
+            .then(|| self.left_click_tracker.record(mouse_position))
+            .unwrap_or(0);
         let right_mouse_down = self.window.get_mouse_down(MouseButton::Right);
         let (right_mouse_pressed, _) =
             button_transition(self.previous_right_mouse_down, right_mouse_down);
@@ -221,6 +230,7 @@ impl WindowSurface {
             left_mouse_down,
             left_mouse_pressed,
             left_mouse_released,
+            left_click_count,
             right_mouse_down,
             right_mouse_pressed,
             shift_down: self.window.is_key_down(Key::LeftShift)
@@ -467,6 +477,41 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
 }
 
 /// Resolves the edge events for a button sampled once per frame.
+#[derive(Debug, Default)]
+pub(crate) struct ClickTracker {
+    last_click: Option<(Instant, Point)>,
+    click_count: u8,
+}
+
+impl ClickTracker {
+    pub(crate) fn record(&mut self, position: Option<Point>) -> u8 {
+        self.record_at(position, Instant::now())
+    }
+
+    fn record_at(&mut self, position: Option<Point>, now: Instant) -> u8 {
+        let Some(position) = position else {
+            self.last_click = None;
+            self.click_count = 1;
+            return self.click_count;
+        };
+        let is_double_click = self.last_click.is_some_and(|(last_time, last_position)| {
+            now.duration_since(last_time) <= Duration::from_millis(500)
+                && {
+                    let dx = i64::from(position.x) - i64::from(last_position.x);
+                    let dy = i64::from(position.y) - i64::from(last_position.y);
+                    dx * dx + dy * dy <= 25
+                }
+        });
+        self.click_count = if is_double_click {
+            self.click_count.saturating_add(1).min(3)
+        } else {
+            1
+        };
+        self.last_click = Some((now, position));
+        self.click_count
+    }
+}
+
 fn button_transition(previous_down: bool, current_down: bool) -> (bool, bool) {
     (
         current_down && !previous_down,
