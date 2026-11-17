@@ -123,7 +123,7 @@ impl TextureCache {
             debug_assert!(evicted, "reclaimable cache capacity was precomputed");
         }
 
-        self.clock = self.clock.saturating_add(1);
+        self.advance_clock();
         self.entries.insert(
             handle,
             Entry {
@@ -140,7 +140,7 @@ impl TextureCache {
 
     /// Gets a texture and marks it as recently used.
     pub fn get(&mut self, handle: TextureHandle) -> Option<&Texture> {
-        self.clock = self.clock.saturating_add(1);
+        self.advance_clock();
         match self.entries.get_mut(&handle) {
             Some(entry) => {
                 entry.last_used = self.clock;
@@ -246,6 +246,26 @@ impl TextureCache {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Advances the LRU clock, rebasing timestamps before integer overflow.
+    fn advance_clock(&mut self) {
+        if self.clock == u64::MAX {
+            let mut ordered: Vec<_> = self
+                .entries
+                .iter()
+                .map(|(handle, entry)| (entry.last_used, *handle))
+                .collect();
+            ordered.sort_unstable_by_key(|(last_used, handle)| (*last_used, handle.id()));
+
+            for (index, (_, handle)) in ordered.into_iter().enumerate() {
+                if let Some(entry) = self.entries.get_mut(&handle) {
+                    entry.last_used = index as u64 + 1;
+                }
+            }
+            self.clock = self.entries.len() as u64;
+        }
+        self.clock += 1;
     }
 
     fn evict_least_recently_used(&mut self) -> bool {
@@ -424,6 +444,22 @@ mod tests {
             Some(Color::RED)
         );
         assert_eq!(cache.stats().used_bytes, 0);
+    }
+
+    #[test]
+    fn lru_clock_rebases_without_losing_eviction_order() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+
+        cache.clock = u64::MAX;
+        assert!(cache.get(first).is_some());
+        let third = cache.insert(texture(Color::GREEN, 2)).unwrap();
+
+        assert!(cache.peek(first).is_some());
+        assert!(cache.peek(second).is_none());
+        assert!(cache.peek(third).is_some());
+        assert_eq!(cache.stats().evictions, 1);
     }
 
     #[test]
