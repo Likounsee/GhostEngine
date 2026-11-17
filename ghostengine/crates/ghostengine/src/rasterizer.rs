@@ -202,15 +202,16 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
             return;
         }
         let x = x0 as usize;
+        let width = target.width() as usize;
+        let pixels = target.pixels_mut();
         for y in y0.min(y1)..=y0.max(y1) {
-            if let Some(row) = target.row_mut(y as u32) {
-                let pixel = &mut row[x];
-                *pixel = if color.a == u8::MAX || pixel.a == 0 {
-                    color
-                } else {
-                    color.blend_over(*pixel)
-                };
-            }
+            let index = y as usize * width + x;
+            let pixel = &mut pixels[index];
+            *pixel = if color.a == u8::MAX || pixel.a == 0 {
+                color
+            } else {
+                color.blend_over(*pixel)
+            };
         }
         return;
     }
@@ -227,17 +228,18 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
             core::mem::swap(&mut y0, &mut y1);
         }
         let step_y = if y0 <= y1 { 1 } else { -1 };
+        let width = target.width() as usize;
+        let pixels = target.pixels_mut();
         for offset in 0..=(x1 - x0) {
-            let x = (x0 + offset) as u32;
-            let y = (y0 + offset * step_y) as u32;
-            if let Some(row) = target.row_mut(y) {
-                let pixel = &mut row[x as usize];
-                *pixel = if color.a == u8::MAX || pixel.a == 0 {
-                    color
-                } else {
-                    color.blend_over(*pixel)
-                };
-            }
+            let x = (x0 + offset) as usize;
+            let y = (y0 + offset * step_y) as usize;
+            let index = y * width + x;
+            let pixel = &mut pixels[index];
+            *pixel = if color.a == u8::MAX || pixel.a == 0 {
+                color
+            } else {
+                color.blend_over(*pixel)
+            };
         }
         return;
     }
