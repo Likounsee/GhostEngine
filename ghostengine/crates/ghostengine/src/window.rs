@@ -788,6 +788,65 @@ mod tests {
     }
 
     #[test]
+    fn window_input_with_font_routes_click_drag_and_double_click_to_text_fields() {
+        use crate::{ComponentId, Point, Rect, UiComponent};
+
+        let id = ComponentId(301);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café monde",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = crate::FontFace::from_bytes(bytes).unwrap();
+        let bounds = Rect::new(0, 0, 240, 40);
+        let click_x = 8 + font.measure("Bonjour c", 16.0).width.round() as i32;
+
+        tree.handle_window_input_with_text_font(
+            bounds,
+            &InputState {
+                mouse_position: Some(Point::new(click_x, 20)),
+                left_mouse_pressed: true,
+                left_click_count: 1,
+                ..InputState::default()
+            },
+            Some((&font, 16.0)),
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "Bonjour c".len()
+        );
+
+        tree.handle_window_input_with_text_font(
+            bounds,
+            &InputState {
+                mouse_position: Some(Point::new(400, 20)),
+                ..InputState::default()
+            },
+            Some((&font, 16.0)),
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some(("Bonjour c".len(), "Bonjour café monde".len()))
+        );
+
+        tree.handle_window_input_with_text_font(
+            bounds,
+            &InputState {
+                mouse_position: Some(Point::new(click_x, 20)),
+                left_mouse_pressed: true,
+                left_click_count: 2,
+                ..InputState::default()
+            },
+            Some((&font, 16.0)),
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selected_text(),
+            Some("café")
+        );
+    }
+
+    #[test]
     fn sampled_window_input_edits_text_and_activates_focused_controls() {
         use crate::{ComponentId, LayoutItem, UiComponent};
         let bounds = crate::Rect::new(0, 0, 120, 40);
