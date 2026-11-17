@@ -7,7 +7,7 @@
 use crate::{
     draw_texture_region_clipped, Color, Framebuffer, Rect, Texture, TextureError, TextureFilter,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureAtlasError {
@@ -92,6 +92,7 @@ pub struct TextureAtlasBuilder {
     height: u32,
     padding: u32,
     items: Vec<AtlasItem>,
+    ids: HashSet<u64>,
 }
 
 impl TextureAtlasBuilder {
@@ -102,11 +103,12 @@ impl TextureAtlasBuilder {
             height,
             padding,
             items: Vec::new(),
+            ids: HashSet::new(),
         }
     }
 
     pub fn add(&mut self, id: u64, texture: &Texture) -> Result<(), TextureAtlasError> {
-        if self.items.iter().any(|item| item.id == id) {
+        if !self.ids.insert(id) {
             return Err(TextureAtlasError::DuplicateId);
         }
         self.items.push(AtlasItem {
