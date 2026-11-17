@@ -904,25 +904,28 @@ pub fn draw_text_with_fallback_shaped_clipped(
         }
         if let Some(face) = run_face.take() {
             if let Ok(shaped) = face.shape_text(run_text, pixel_size) {
-                if shaped_run_is_safe(&shaped, Point::new(0, 0))
-                    && pen_x.is_finite()
-                    && pen_y.is_finite()
-                    && *pen_x >= i32::MIN as f32
-                    && *pen_x <= i32::MAX as f32
-                    && pen_y >= i32::MIN as f32
-                    && pen_y <= i32::MAX as f32
-                {
-                    draw_text_shaped_clipped(
-                        target,
-                        &face,
-                        &shaped,
-                        Point::new(pen_x.round() as i32, pen_y.round() as i32),
-                        pixel_size,
-                        color,
-                        clip,
-                    );
+                if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                    *pen_x = f32::NAN;
+                } else {
+                    if pen_x.is_finite()
+                        && pen_y.is_finite()
+                        && *pen_x >= i32::MIN as f32
+                        && *pen_x <= i32::MAX as f32
+                        && pen_y >= i32::MIN as f32
+                        && pen_y <= i32::MAX as f32
+                    {
+                        draw_text_shaped_clipped(
+                            target,
+                            &face,
+                            &shaped,
+                            Point::new(pen_x.round() as i32, pen_y.round() as i32),
+                            pixel_size,
+                            color,
+                            clip,
+                        );
+                    }
+                    *pen_x += shaped.advance_x;
                 }
-                *pen_x += shaped.advance_x;
             }
         }
         run_text.clear();
