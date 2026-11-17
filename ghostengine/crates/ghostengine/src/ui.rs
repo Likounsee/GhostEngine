@@ -1617,7 +1617,7 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = crate::FontFace::from_bytes(bytes).unwrap();
         let mut state = TextInputState::new("Aé🙂Z");
-        let first = font.measure("A", 16.0).width;
+        let second = font.measure("Aé", 16.0).width;
 
         state.set_cursor_from_x(&font, 16.0, second + 0.01, false);
         assert_eq!(state.cursor(), "Aé".len());
