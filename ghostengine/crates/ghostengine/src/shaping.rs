@@ -318,10 +318,11 @@ mod tests {
             );
         }
 
+        let long_text = "سلام".repeat(128);
         assert_eq!(
-            shaper.shape("سلام", f32::MAX),
+            shaper.shape(&long_text, f32::MAX),
             Err(ShapingError::InvalidPixelSize),
-            "a size that overflows glyph metrics must be rejected"
+            "a size that overflows glyph metrics or total advances must be rejected"
         );
     }
 
