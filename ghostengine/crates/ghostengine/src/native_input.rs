@@ -12,9 +12,7 @@
 
 use crate::{
     window::{ClickTracker, InputState},
-    ClipboardAction,
-    Point,
-    TextInputEvent,
+    ClipboardAction, Point, TextInputEvent,
 };
 use arboard::Clipboard;
 use std::{error::Error, fmt, mem};
