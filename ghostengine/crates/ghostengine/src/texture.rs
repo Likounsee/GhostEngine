@@ -540,26 +540,22 @@ pub fn draw_texture_region_clipped(
     {
         return;
     }
-    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+    let Some(clip) = clip
+        .intersection(Rect::new(0, 0, target.width(), target.height()))
+        .and_then(|framebuffer_clip| framebuffer_clip.intersection(destination))
+    else {
         return;
     };
     let source_right = source.x + source.width - 1;
     let source_bottom = source.y + source.height - 1;
     let target_width = target.width() as usize;
 
+    // Restrict each nine-slice patch to its own destination intersection.
+    // Without this, all nine patches scan the entire framebuffer clip and
+    // discard most pixels after doing coordinate checks.
     for y in clip.y..clip.y + clip.height {
-        if y < destination.y
-            || u64::from(y) >= u64::from(destination.y) + u64::from(destination.height)
-        {
-            continue;
-        }
         let relative_y = (y - destination.y) as f32 / destination.height as f32;
         for x in clip.x..clip.x + clip.width {
-            if x < destination.x
-                || u64::from(x) >= u64::from(destination.x) + u64::from(destination.width)
-            {
-                continue;
-            }
             let relative_x = (x - destination.x) as f32 / destination.width as f32;
             let sampled = match filter {
                 TextureFilter::Nearest => {
