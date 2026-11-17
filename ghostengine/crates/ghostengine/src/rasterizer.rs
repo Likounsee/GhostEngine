@@ -91,8 +91,37 @@ fn clip_line(width: u32, height: u32, start: Point, end: Point) -> Option<(i64, 
     if width == 0 || height == 0 {
         return None;
     }
-    let xmax = f64::from(width.saturating_sub(1).min(i32::MAX as u32));
-    let ymax = f64::from(height.saturating_sub(1).min(i32::MAX as u32));
+    let max_x = i64::from(width.saturating_sub(1).min(i32::MAX as u32));
+    let max_y = i64::from(height.saturating_sub(1).min(i32::MAX as u32));
+
+    // Axis-aligned segments can be clipped exactly with integer comparisons.
+    // This avoids setting up the floating-point Liang-Barsky calculation for
+    // the most common line shapes while preserving the caller's endpoint order.
+    if start.y == end.y {
+        let y = i64::from(start.y);
+        if y < 0 || y > max_y {
+            return None;
+        }
+        let (x0, x1) = (i64::from(start.x), i64::from(end.x));
+        if x0.max(x1) < 0 || x0.min(x1) > max_x {
+            return None;
+        }
+        return Some((x0.clamp(0, max_x), y, x1.clamp(0, max_x), y));
+    }
+    if start.x == end.x {
+        let x = i64::from(start.x);
+        if x < 0 || x > max_x {
+            return None;
+        }
+        let (y0, y1) = (i64::from(start.y), i64::from(end.y));
+        if y0.max(y1) < 0 || y0.min(y1) > max_y {
+            return None;
+        }
+        return Some((x, y0.clamp(0, max_y), x, y1.clamp(0, max_y)));
+    }
+
+    let xmax = max_x as f64;
+    let ymax = max_y as f64;
     let (x0, y0) = (f64::from(start.x), f64::from(start.y));
     let (dx, dy) = (f64::from(end.x) - x0, f64::from(end.y) - y0);
 
@@ -7963,5 +7992,49 @@ mod blend_rect_transparent_run_tests {
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod axis_aligned_clip_tests {
+    use super::clip_line;
+    use crate::Point;
+
+    #[test]
+    fn horizontal_clipping_is_exact_and_preserves_endpoint_order() {
+        assert_eq!(
+            clip_line(5, 4, Point::new(-10, 2), Point::new(10, 2)),
+            Some((0, 2, 4, 2))
+        );
+        assert_eq!(
+            clip_line(5, 4, Point::new(10, 2), Point::new(-10, 2)),
+            Some((4, 2, 0, 2))
+        );
+    }
+
+    #[test]
+    fn vertical_clipping_is_exact_and_preserves_endpoint_order() {
+        assert_eq!(
+            clip_line(5, 4, Point::new(3, -10), Point::new(3, 10)),
+            Some((3, 0, 3, 3))
+        );
+        assert_eq!(
+            clip_line(5, 4, Point::new(3, 10), Point::new(3, -10)),
+            Some((3, 3, 3, 0))
+        );
+    }
+
+    #[test]
+    fn axis_aligned_clipping_rejects_segments_outside_the_framebuffer() {
+        assert_eq!(
+            clip_line(5, 4, Point::new(-10, 1), Point::new(-2, 1)),
+            None
+        );
+        assert_eq!(
+            clip_line(5, 4, Point::new(2, 8), Point::new(2, 12)),
+            None
+        );
+        assert_eq!(clip_line(0, 4, Point::new(0, 0), Point::new(0, 2)), None);
     }
 }
