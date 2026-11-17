@@ -883,6 +883,9 @@ pub fn draw_text_with_fallback_shaped_clipped(
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space_advance * 4.0).max(pixel_size);
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return TextMetrics::default();
+    }
     let mut pen_x = baseline.x as f32;
     let mut pen_y = baseline.y as f32;
     let mut max_width = 0.0_f32;
@@ -901,15 +904,24 @@ pub fn draw_text_with_fallback_shaped_clipped(
         }
         if let Some(face) = run_face.take() {
             if let Ok(shaped) = face.shape_text(run_text, pixel_size) {
-                draw_text_shaped_clipped(
-                    target,
-                    &face,
-                    &shaped,
-                    Point::new(pen_x.round() as i32, pen_y.round() as i32),
-                    pixel_size,
-                    color,
-                    clip,
-                );
+                if shaped_run_is_safe(&shaped, Point::new(0, 0))
+                    && pen_x.is_finite()
+                    && pen_y.is_finite()
+                    && *pen_x >= i32::MIN as f32
+                    && *pen_x <= i32::MAX as f32
+                    && pen_y >= i32::MIN as f32
+                    && pen_y <= i32::MAX as f32
+                {
+                    draw_text_shaped_clipped(
+                        target,
+                        &face,
+                        &shaped,
+                        Point::new(pen_x.round() as i32, pen_y.round() as i32),
+                        pixel_size,
+                        color,
+                        clip,
+                    );
+                }
                 *pen_x += shaped.advance_x;
             }
         }
@@ -923,12 +935,21 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 max_width = max_width.max(pen_x - baseline.x as f32);
                 pen_x = baseline.x as f32;
                 pen_y += line_height;
-                line_count = line_count.saturating_add(1);
+                let Some(next_line_count) = line_count.checked_add(1) else {
+                    return TextMetrics::default();
+                };
+                line_count = next_line_count;
+                if !pen_y.is_finite() || !pen_x.is_finite() {
+                    return TextMetrics::default();
+                }
             }
             "\t" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
                 let relative = (pen_x - baseline.x as f32).max(0.0);
                 pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
+                if !pen_x.is_finite() {
+                    return TextMetrics::default();
+                }
             }
             _ => {
                 if cluster.chars().all(is_shaping_control) {
@@ -951,10 +972,16 @@ pub fn draw_text_with_fallback_shaped_clipped(
     }
     flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
     max_width = max_width.max(pen_x - baseline.x as f32);
+    if !pen_x.is_finite() || !max_width.is_finite() {
+        return TextMetrics::default();
+    }
+    let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
+        return TextMetrics::default();
+    };
 
     TextMetrics {
         width: max_width,
-        height: line_height * line_count as f32,
+        height,
         line_count,
     }
 }
