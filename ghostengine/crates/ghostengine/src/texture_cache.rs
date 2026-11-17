@@ -161,7 +161,10 @@ impl TextureCache {
         let Some(entry) = self.entries.get_mut(&handle) else {
             return false;
         };
-        entry.retain_count = entry.retain_count.saturating_add(1);
+        let Some(retain_count) = entry.retain_count.checked_add(1) else {
+            return false;
+        };
+        entry.retain_count = retain_count;
         true
     }
 
@@ -432,6 +435,17 @@ mod tests {
         assert!(cache.peek(second).is_some());
         assert_eq!(cache.stats().entries, 2);
         assert_eq!(cache.stats().used_bytes, 16);
+    }
+
+    #[test]
+    fn retain_rejects_reference_count_overflow_without_changing_entry() {
+        let mut cache = TextureCache::new(16);
+        let handle = cache.insert(texture(Color::RED, 2)).unwrap();
+        cache.entries.get_mut(&handle).unwrap().retain_count = usize::MAX;
+
+        assert!(!cache.retain(handle));
+        assert_eq!(cache.retain_count(handle), Some(usize::MAX));
+        assert!(cache.peek(handle).is_some());
     }
 
     #[test]
