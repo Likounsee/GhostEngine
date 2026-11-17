@@ -1118,10 +1118,9 @@ impl ComponentTree {
                     let inset = 8_u32.min(rect.width / 2);
                     let inner_x = rect.x.saturating_add(inset);
                     let inner_width = rect.width.saturating_sub(inset.saturating_mul(2));
-                    let cursor_width = font.measure(
-                        &state.text()[..state.cursor()],
-                        pixel_size,
-                    ).width;
+                    let cursor_width = font
+                        .measure(&state.text()[..state.cursor()], pixel_size)
+                        .width;
                     let total_width = font.measure(state.text(), pixel_size).width;
                     let scroll = crate::ui::text_input_scroll_offset(
                         cursor_width,
@@ -1916,10 +1915,9 @@ impl ComponentTree {
             return false;
         }
         if click_count >= 2 {
-            let byte_index = self
-                .text_states
-                .get(&id)
-                .map(|state| crate::ui::text_input_cursor_from_x(font, state.text(), pixel_size, x));
+            let byte_index = self.text_states.get(&id).map(|state| {
+                crate::ui::text_input_cursor_from_x(font, state.text(), pixel_size, x)
+            });
             return byte_index.is_some_and(|index| {
                 self.text_states
                     .get_mut(&id)
@@ -2912,13 +2910,7 @@ mod tests {
 
         assert!(tree.set_text_input_cursor_from_x(id, &font, 16.0, x, false));
         assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Aé".len());
-        assert!(!tree.set_text_input_cursor_from_x(
-            ComponentId(999),
-            &font,
-            16.0,
-            x,
-            false
-        ));
+        assert!(!tree.set_text_input_cursor_from_x(ComponentId(999), &font, 16.0, x, false));
     }
 
     #[test]
@@ -3030,12 +3022,7 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).unwrap();
         let bounds = Rect::new(0, 0, 180, 40);
-        let anchor = crate::ui::text_input_cursor_from_x(
-            &font,
-            "Sélection prolongée",
-            16.0,
-            12.0,
-        );
+        let anchor = crate::ui::text_input_cursor_from_x(&font, "Sélection prolongée", 16.0, 12.0);
 
         tree.update_pointer_with_text_input(
             bounds,
