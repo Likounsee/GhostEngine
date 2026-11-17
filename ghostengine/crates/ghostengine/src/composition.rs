@@ -1598,6 +1598,7 @@ pub fn compose_layer_groups_cached_in_damage_regions(
     cache: &mut LayerGroupCache,
     scratch: &mut LayerGroupScratch,
 ) -> Result<(), FramebufferError> {
+    cache.retain_groups(groups);
     if target_damage.is_empty() {
         return Ok(());
     }
@@ -2065,6 +2066,37 @@ mod tests {
         );
         assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
         assert_eq!(target.get_pixel(8, 1), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn empty_damage_still_releases_removed_cached_groups_without_rendering() {
+        let first = LayerGroup::new(2, 2).unwrap();
+        let second = LayerGroup::new(2, 2).unwrap();
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 2, Color::BLACK).unwrap();
+        compose_layer_groups_cached(
+            &mut target,
+            &[(1, &first), (2, &second)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+        let render_count = cache.render_count(2);
+        let empty_damage = DamageRegion::new(4, 2);
+
+        compose_layer_groups_cached_in_damage_regions(
+            &mut target,
+            &[(2, &second)],
+            &empty_damage,
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert_eq!(cache.len(), 1);
+        assert!(cache.framebuffer(1).is_none());
+        assert_eq!(cache.render_count(2), render_count);
     }
 
     #[test]
