@@ -661,6 +661,21 @@ impl TextInputState {
         self.cursor = next;
     }
 
+    /// Positions the caret at the closest grapheme boundary to a text-relative x coordinate.
+    ///
+    /// The x coordinate must account for the input's inner padding and horizontal
+    /// scroll offset before calling this method.
+    pub fn set_cursor_from_x(
+        &mut self,
+        font: &FontFace,
+        pixel_size: f32,
+        x: f32,
+        extend_selection: bool,
+    ) {
+        let byte_index = text_input_cursor_from_x(font, &self.text, pixel_size, x);
+        self.set_cursor(byte_index, extend_selection);
+    }
+
     /// Selects the Unicode word containing a UTF-8 byte position.
     ///
     /// Returns false when the position is outside a word (for example, on
