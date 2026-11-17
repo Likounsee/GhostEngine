@@ -37,13 +37,27 @@ impl PathGeometryCache {
         }
     }
 
+    fn advance_clock(&mut self) {
+        if self.clock == u64::MAX {
+            // Rebase timestamps by recency rank before incrementing. Subtracting
+            // the oldest timestamp alone is insufficient when it is already zero.
+            self.entries.sort_unstable_by_key(|entry| entry.last_used);
+            for (index, entry) in self.entries.iter_mut().enumerate() {
+                entry.last_used = index as u64 + 1;
+            }
+            self.clock = self.entries.len() as u64 + 1;
+        } else {
+            self.clock += 1;
+        }
+    }
+
     pub fn get_or_flatten(
         &mut self,
         key: u64,
         path: &Path,
         tolerance: f32,
     ) -> Result<&FlattenedPath, PathError> {
-        self.clock = self.clock.wrapping_add(1);
+        self.advance_clock();
         let tolerance_bits = tolerance.to_bits();
         if let Some(index) = self
             .entries
@@ -139,6 +153,24 @@ mod tests {
         assert_eq!(cache.len(), 2);
         cache.invalidate(7);
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn lru_clock_rebases_without_losing_eviction_order() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(2);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        cache.entries[0].last_used = 0;
+        cache.entries[1].last_used = u64::MAX - 1;
+        cache.clock = u64::MAX;
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(3, &path, 0.25).unwrap();
+
+        assert!(cache.entries.iter().any(|entry| entry.key == 1));
+        assert!(!cache.entries.iter().any(|entry| entry.key == 2));
+        assert!(cache.entries.iter().any(|entry| entry.key == 3));
     }
 
     #[test]
