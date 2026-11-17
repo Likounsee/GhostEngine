@@ -367,6 +367,33 @@ mod tests {
     }
 
     #[test]
+    fn super_modifier_enables_command_style_editing_shortcuts() {
+        use winit::keyboard::ModifiersState;
+
+        let mut adapter = NativeInputAdapter::new();
+        adapter.update_modifiers(ModifiersState::SUPER);
+        let modifiers = adapter.take_frame();
+        assert!(modifiers.super_down);
+        assert!(!modifiers.control_down);
+
+        let mut input = InputState {
+            super_down: modifiers.super_down,
+            ..InputState::default()
+        };
+        apply_key_code(KeyCode::KeyA, input.super_down, false, &mut input);
+        apply_key_code(KeyCode::KeyC, input.super_down, false, &mut input);
+        apply_key_code(KeyCode::KeyX, input.super_down, false, &mut input);
+        apply_key_code(KeyCode::KeyV, input.super_down, false, &mut input);
+
+        assert!(input.select_all_pressed);
+        assert!(input.copy_pressed);
+        assert!(input.cut_pressed);
+        assert!(input.paste_pressed);
+        assert!(input.super_down);
+        assert!(!input.control_down);
+    }
+
+    #[test]
     fn logical_backspace_is_supported_when_physical_key_is_unidentified() {
         let mut input = InputState::default();
         apply_logical_key(
