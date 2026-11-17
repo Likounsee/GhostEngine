@@ -4525,7 +4525,11 @@ mod tests {
                 } else {
                     background
                 };
-                assert_eq!(actual.get_pixel(2, y), Some(expected), "alpha={alpha}, y={y}");
+                assert_eq!(
+                    actual.get_pixel(2, y),
+                    Some(expected),
+                    "alpha={alpha}, y={y}"
+                );
             }
         }
     }
