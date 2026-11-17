@@ -2323,6 +2323,10 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     }
     let space = font.glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
+    let line_height = font.line_height(pixel_size);
+    if !tab_width.is_finite() || !line_height.is_finite() {
+        return TextMetrics::default();
+    }
     let mut line_width = 0.0_f32;
     let mut max_width = 0.0_f32;
     let mut line_count = 1_u32;
@@ -2345,15 +2349,21 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
                         line_width += font.kerning(previous_character, character, pixel_size);
                     }
                     line_width += font.glyph(character, pixel_size).advance_width;
+                    if !line_width.is_finite() {
+                        return TextMetrics::default();
+                    }
                     previous = Some(character);
                 }
             }
         }
     }
     max_width = max_width.max(line_width);
+    let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
+        return TextMetrics::default();
+    };
     TextMetrics {
         width: max_width,
-        height: font.line_height(pixel_size) * line_count as f32,
+        height,
         line_count,
     }
 }
