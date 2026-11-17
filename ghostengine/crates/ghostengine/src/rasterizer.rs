@@ -8155,3 +8155,53 @@ mod bresenham_direct_buffer_tests {
         assert_eq!(framebuffer.height(), 7);
     }
 }
+
+#[cfg(test)]
+mod oblique_line_clipping_symmetry_tests {
+    use super::clip_line;
+    use crate::{Color, Framebuffer, Point};
+
+    #[test]
+    fn oblique_clipping_reverses_endpoints_symmetrically() {
+        let cases = [
+            (Point::new(-17, 3), Point::new(29, 19)),
+            (Point::new(29, 19), Point::new(-17, 3)),
+            (Point::new(4, -23), Point::new(18, 31)),
+            (Point::new(18, 31), Point::new(4, -23)),
+            (Point::new(-19, 27), Point::new(24, -11)),
+            (Point::new(24, -11), Point::new(-19, 27)),
+            (Point::new(-8, -13), Point::new(31, 28)),
+            (Point::new(31, 28), Point::new(-8, -13)),
+        ];
+
+        for (start, end) in cases {
+            let forward = clip_line(13, 11, start, end);
+            let reverse = clip_line(13, 11, end, start);
+            assert_eq!(
+                forward.map(|(x0, y0, x1, y1)| (x1, y1, x0, y0)),
+                reverse,
+                "start={start:?}, end={end:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn clipped_oblique_rasterization_is_independent_of_endpoint_order() {
+        let cases = [
+            (Point::new(-17, 3), Point::new(29, 19)),
+            (Point::new(4, -23), Point::new(18, 31)),
+            (Point::new(-19, 27), Point::new(24, -11)),
+            (Point::new(-8, -13), Point::new(31, 28)),
+        ];
+
+        for (start, end) in cases {
+            let mut forward = Framebuffer::new(13, 11, Color::BLACK).unwrap();
+            let mut reverse = forward.clone();
+            super::draw_line(&mut forward, start, end, Color::WHITE);
+            super::draw_line(&mut reverse, end, start, Color::WHITE);
+            assert_eq!(forward, reverse, "start={start:?}, end={end:?}");
+            assert_eq!(forward.width(), 13);
+            assert_eq!(forward.height(), 11);
+        }
+    }
+}
