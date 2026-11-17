@@ -119,14 +119,15 @@ impl Transform2D {
         let b = -self.m12 * inv;
         let c = -self.m21 * inv;
         let d = self.m11 * inv;
-        Some(Self::new(
+        let inverse = Self::new(
             a,
             b,
             c,
             d,
             -(a * self.tx + b * self.ty),
             -(c * self.tx + d * self.ty),
-        ))
+        );
+        inverse.is_finite().then_some(inverse)
     }
 
     #[must_use]
@@ -204,6 +205,13 @@ mod tests {
         assert!(Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0)
             .inverse()
             .is_none());
+    }
+
+    #[test]
+    fn inverse_rejects_finite_inputs_that_overflow_the_result() {
+        let transform = Transform2D::new(0.5, 0.0, 0.0, 0.5, f32::MAX, f32::MAX);
+        assert!(transform.is_finite());
+        assert!(transform.inverse().is_none());
     }
 
     #[test]
