@@ -30,6 +30,7 @@ pub struct NativeInputAdapter {
     right_mouse_down: bool,
     shift_down: bool,
     control_down: bool,
+    super_down: bool,
     alt_down: bool,
     escape_down: bool,
     ime_enabled: bool,
@@ -122,6 +123,7 @@ impl NativeInputAdapter {
             WindowEvent::Focused(false) => {
                 self.shift_down = false;
                 self.control_down = false;
+                self.super_down = false;
                 self.alt_down = false;
                 self.escape_down = false;
                 if self.right_mouse_down {
@@ -148,6 +150,7 @@ impl NativeInputAdapter {
         frame.right_mouse_down = self.right_mouse_down;
         frame.shift_down = self.shift_down;
         frame.control_down = self.control_down;
+        frame.super_down = self.super_down;
         frame.alt_down = self.alt_down;
         frame.escape_down = self.escape_down;
         frame
@@ -156,6 +159,7 @@ impl NativeInputAdapter {
     fn update_modifiers(&mut self, modifiers: ModifiersState) {
         self.shift_down = modifiers.shift_key();
         self.control_down = modifiers.control_key();
+        self.super_down = modifiers.super_key();
         self.alt_down = modifiers.alt_key();
     }
 
@@ -166,7 +170,14 @@ impl NativeInputAdapter {
                 self.escape_down = pressed;
             }
             if pressed {
-                apply_key_code(code, self.control_down, self.shift_down, &mut self.frame);
+                apply_key_code(
+                    code,
+                    self.control_down || self.super_down,
+                    self.shift_down,
+                    &mut self.frame,
+                );
+                self.frame.control_down = self.control_down;
+                self.frame.super_down = self.super_down;
             }
         }
 
@@ -197,7 +208,7 @@ impl NativeInputAdapter {
         // keys such as Backspace can expose control-character text on some
         // platform backends; inserting that value renders as an unknown glyph.
         let is_text_key = accepts_text(&event.logical_key);
-        if is_text_key && !self.ime_enabled && !self.control_down && !self.alt_down {
+        if is_text_key && !self.ime_enabled && !self.control_down && !self.super_down && !self.alt_down {
             if let Some(text) = event
                 .text
                 .as_ref()
@@ -382,18 +393,21 @@ mod tests {
         adapter.mouse_position = Some(crate::Point::new(12, 34));
         adapter.left_mouse_down = true;
         adapter.shift_down = true;
+        adapter.super_down = true;
         adapter.frame.enter_pressed = true;
 
         let first = adapter.take_frame();
         assert!(first.enter_pressed);
         assert!(first.left_mouse_down);
         assert!(first.shift_down);
+        assert!(first.super_down);
         assert_eq!(first.mouse_position, Some(crate::Point::new(12, 34)));
 
         let second = adapter.take_frame();
         assert!(!second.enter_pressed);
         assert!(second.left_mouse_down);
         assert!(second.shift_down);
+        assert!(second.super_down);
     }
 
     #[test]
