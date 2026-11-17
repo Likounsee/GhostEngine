@@ -1840,7 +1840,7 @@ impl ComponentTree {
             let byte_index = self
                 .text_states
                 .get(&id)
-                .map(|state| crate::text_input_cursor_from_x(font, state.text(), pixel_size, x));
+                .map(|state| crate::ui::text_input_cursor_from_x(font, state.text(), pixel_size, x));
             return byte_index.is_some_and(|index| {
                 self.text_states
                     .get_mut(&id)
@@ -2839,6 +2839,43 @@ mod tests {
             16.0,
             x,
             false
+        ));
+    }
+
+    #[test]
+    fn retained_text_input_pointer_supports_caret_drag_and_word_selection() {
+        let id = ComponentId(142);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café monde",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let word_x = font.measure("Bonjour ", 16.0).width + 0.1;
+        let start_x = font.measure("Bonjour", 16.0).width + 0.1;
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 1));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Bonjour café".len());
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, 0.0, true, 1));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, "Bonjour café".len()))
+        );
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, start_x, false, 2));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selected_text(),
+            Some("café")
+        );
+        assert!(!tree.handle_text_input_pointer(
+            ComponentId(999),
+            &font,
+            16.0,
+            0.0,
+            false,
+            1
         ));
     }
 
