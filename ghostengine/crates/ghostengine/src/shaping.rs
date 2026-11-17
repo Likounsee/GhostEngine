@@ -306,6 +306,33 @@ mod tests {
     }
 
     #[test]
+    fn rejects_non_finite_and_overflowing_pixel_sizes() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let shaper = OpenTypeShaper::from_bytes(bytes).expect("Noto Sans Arabic should load");
+
+        for pixel_size in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0] {
+            assert_eq!(
+                shaper.shape("سلام", pixel_size),
+                Err(ShapingError::InvalidPixelSize),
+                "pixel size {pixel_size:?} must be rejected"
+            );
+        }
+
+        assert_eq!(
+            shaper.shape("سلام", f32::MAX),
+            Err(ShapingError::InvalidPixelSize),
+            "a size that overflows glyph metrics must be rejected"
+        );
+    }
+
+    #[test]
+    fn empty_text_does_not_produce_non_finite_metrics() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let shaper = OpenTypeShaper::from_bytes(bytes).expect("Noto Sans Arabic should load");
+        assert_eq!(shaper.shape("", 16.0), Ok(ShapedText::default()));
+    }
+
+    #[test]
     fn rejects_invalid_font_data() {
         assert_eq!(
             OpenTypeShaper::from_bytes(b"not a font").err(),
