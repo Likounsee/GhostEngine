@@ -654,6 +654,28 @@ impl TextInputState {
         self.cursor = next;
     }
 
+    /// Selects the Unicode word containing a UTF-8 byte position.
+    ///
+    /// Returns false when the position is outside a word (for example, on
+    /// whitespace or punctuation). The supplied position is normalized to
+    /// the beginning of its grapheme cluster before word lookup.
+    pub fn select_word_at(&mut self, byte_index: usize) -> bool {
+        if self.text.is_empty() || byte_index >= self.text.len() {
+            return false;
+        }
+        let index = previous_grapheme_boundary(&self.text, byte_index);
+        let Some((start, word)) = self
+            .text
+            .unicode_word_indices()
+            .find(|(start, word)| *start <= index && index < *start + word.len())
+        else {
+            return false;
+        };
+        self.selection_anchor = Some(start);
+        self.cursor = start + word.len();
+        true
+    }
+
     /// Returns the selected UTF-8 text, if a non-empty selection exists.
     #[must_use]
     pub fn selected_text(&self) -> Option<&str> {
@@ -1585,6 +1607,22 @@ mod tests {
         input.cancel_composition();
         assert_eq!(input.text(), "A🙂日本語B");
         assert_eq!(input.composition(), None);
+    }
+
+    #[test]
+    fn text_input_selects_unicode_words_at_grapheme_positions() {
+        let mut input = TextInputState::new("café 世界🙂!");
+        assert!(input.select_word_at("café".len() - 1));
+        assert_eq!(input.selected_text(), Some("café"));
+
+        assert!(input.select_word_at("café ".len()));
+        assert_eq!(input.selected_text(), Some("世"));
+
+        assert!(!input.select_word_at("café 世界🙂".len()));
+        assert_eq!(input.selected_text(), Some("世"));
+
+        input.insert_text("world");
+        assert_eq!(input.text(), "café world界🙂!");
     }
 
     #[test]
