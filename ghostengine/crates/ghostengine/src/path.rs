@@ -1503,9 +1503,7 @@ mod tests {
         let flattened = path.flatten(1.0e30).unwrap();
         let points = &flattened.subpaths[0].points;
         assert!(points.len() > 2);
-        assert!(points
-            .iter()
-            .all(|point| point.x.is_finite() && point.y.is_finite()));
+        assert!(points.iter().all(|point| point.x.is_finite() && point.y.is_finite()));
         assert_eq!(points.first(), Some(&Vector::new(-extent, 0.0)));
         assert_eq!(points.last(), Some(&Vector::new(extent, 0.0)));
     }
