@@ -3030,6 +3030,12 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).unwrap();
         let bounds = Rect::new(0, 0, 180, 40);
+        let anchor = crate::ui::text_input_cursor_from_x(
+            &font,
+            "Sélection prolongée",
+            16.0,
+            12.0,
+        );
 
         tree.update_pointer_with_text_input(
             bounds,
@@ -3051,7 +3057,7 @@ mod tests {
         );
         assert_eq!(
             tree.text_input_state(id).unwrap().selection(),
-            Some((20, "Sélection prolongée".len()))
+            Some((anchor, "Sélection prolongée".len()))
         );
 
         tree.update_pointer_with_text_input(
@@ -3065,7 +3071,7 @@ mod tests {
         );
         assert_eq!(
             tree.text_input_state(id).unwrap().selection(),
-            Some((0, "Sélection prolongée".len()))
+            Some((0, anchor))
         );
         tree.update_pointer_with_text_input(
             bounds,
