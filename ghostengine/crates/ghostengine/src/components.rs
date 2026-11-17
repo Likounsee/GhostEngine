@@ -2922,6 +2922,72 @@ mod tests {
     }
 
     #[test]
+    fn component_pointer_events_place_caret_drag_select_and_double_click() {
+        let id = ComponentId(143);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café monde",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let bounds = Rect::new(0, 0, 260, 40);
+        let y = 20;
+        let word_x = 8 + font.measure("Bonjour c", 16.0).width.round() as i32;
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(word_x, y)),
+            true,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "Bonjour c".len()
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(8, y)),
+            false,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, "Bonjour c".len()))
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(8, y)),
+            false,
+            true,
+            &font,
+            16.0,
+            1,
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(word_x, y)),
+            true,
+            false,
+            &font,
+            16.0,
+            2,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selected_text(),
+            Some("café")
+        );
+    }
+
+    #[test]
     fn retained_text_input_pointer_supports_caret_drag_and_word_selection() {
         let id = ComponentId(142);
         let mut tree = ComponentTree::new(vec![UiComponent::text_input(
