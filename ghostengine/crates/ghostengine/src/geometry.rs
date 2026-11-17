@@ -79,10 +79,12 @@ impl Rect {
 
         let x = point.x as u32;
         let y = point.y as u32;
-        x >= self.x
-            && y >= self.y
-            && x < self.x.saturating_add(self.width)
-            && y < self.y.saturating_add(self.height)
+        let right = u64::from(self.x) + u64::from(self.width);
+        let bottom = u64::from(self.y) + u64::from(self.height);
+        u64::from(x) >= u64::from(self.x)
+            && u64::from(y) >= u64::from(self.y)
+            && u64::from(x) < right
+            && u64::from(y) < bottom
     }
 }
 
@@ -119,5 +121,15 @@ mod tests {
         assert!(!rect.contains(Point::new(15, 23)));
         assert!(!rect.contains(Point::new(14, 24)));
         assert!(!rect.contains(Point::new(-1, 20)));
+    }
+
+    #[test]
+    fn rectangle_contains_handles_coordinates_near_u32_limit() {
+        let rect = Rect::new(u32::MAX, u32::MAX, 1, 1);
+        assert!(rect.contains(Point::new(i32::MAX, i32::MAX)));
+
+        let rect = Rect::new(u32::MAX - 1, u32::MAX - 1, 2, 2);
+        assert!(rect.contains(Point::new(i32::MAX, i32::MAX)));
+        assert!(!rect.contains(Point::new(i32::MAX - 1, i32::MAX - 1)));
     }
 }
