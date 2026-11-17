@@ -194,9 +194,24 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
         return;
     }
 
-    // Integer-aligned opaque vertical strokes also have full coverage.
-    if color.a == u8::MAX && x0 == x1 {
-        draw_line(target, start, end, color);
+    // Integer-aligned vertical strokes have full coverage for every
+    // source alpha, just like horizontal strokes. Avoid the general Wu path
+    // (floating-point stepping and two coverage plots) for this common case.
+    if x0 == x1 {
+        if color.a == 0 {
+            return;
+        }
+        let x = x0 as usize;
+        for y in y0.min(y1)..=y0.max(y1) {
+            if let Some(row) = target.row_mut(y as u32) {
+                let pixel = &mut row[x];
+                *pixel = if color.a == u8::MAX || pixel.a == 0 {
+                    color
+                } else {
+                    color.blend_over(*pixel)
+                };
+            }
+        }
         return;
     }
 
@@ -4493,6 +4508,25 @@ mod tests {
             let mut automatic = Framebuffer::new(67, 43, background).unwrap();
             super::fill_ellipse_aa_parallel(&mut automatic, center, radius_x, radius_y, color);
             assert_eq!(automatic, expected);
+        }
+    }
+
+    #[test]
+    fn vertical_antialiased_lines_match_full_coverage_compositing() {
+        let background = Color::rgba(20, 40, 60, 255);
+        for alpha in [0_u8, 1, 64, 128, 254, 255] {
+            let color = Color::rgba(230, 70, 120, alpha);
+            let mut actual = Framebuffer::new(5, 7, background).unwrap();
+            draw_line_aa(&mut actual, Point::new(2, 1), Point::new(2, 5), color);
+
+            for y in 0..7 {
+                let expected = if (1..=5).contains(&y) {
+                    color.blend_over(background)
+                } else {
+                    background
+                };
+                assert_eq!(actual.get_pixel(2, y), Some(expected), "alpha={alpha}, y={y}");
+            }
         }
     }
 
