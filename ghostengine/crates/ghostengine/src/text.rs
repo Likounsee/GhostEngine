@@ -2307,7 +2307,7 @@ mod text_block_height_tests {
     fn text_block_height_rejects_non_finite_or_overflowing_results() {
         assert_eq!(checked_text_block_height(f32::NAN, 2), None);
         assert_eq!(checked_text_block_height(f32::INFINITY, 2), None);
-        assert_eq!(checked_text_block_height(1.0, usize::MAX), None);
+        assert_eq!(checked_text_block_height(f32::MAX, 2), None);
     }
 
     #[test]
