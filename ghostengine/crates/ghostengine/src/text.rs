@@ -1708,6 +1708,12 @@ pub fn draw_text_box_clipped(
         return TextMetrics::default();
     }
     let line_height = font.line_height(pixel_size) * options.line_spacing;
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+    let Some(block_height) = checked_text_block_height(line_height, lines.len()) else {
+        return TextMetrics::default();
+    };
     let box_width = options.max_width.unwrap_or_else(|| {
         lines
             .iter()
@@ -1744,8 +1750,8 @@ pub fn draw_text_box_clipped(
 
     TextMetrics {
         width: max_width,
-        height: line_height * lines.len() as f32,
-        line_count: lines.len() as u32,
+        height: block_height,
+        line_count: lines.len().min(u32::MAX as usize) as u32,
     }
 }
 
@@ -2279,6 +2285,36 @@ fn positioned_mark_origin_stacked(
 /// Adds one pixel of separation between vertically stacked marks.
 fn next_mark_stack_offset(current: f32, mark_height: usize) -> f32 {
     current + mark_height as f32 + 1.0
+}
+
+/// Computes a text block height without allowing floating-point overflow.
+fn checked_text_block_height(line_height: f32, line_count: usize) -> Option<f32> {
+    if !line_height.is_finite() || line_height < 0.0 {
+        return None;
+    }
+    let height = f64::from(line_height) * line_count as f64;
+    if !height.is_finite() || height > f64::from(f32::MAX) {
+        return None;
+    }
+    Some(height as f32)
+}
+
+#[cfg(test)]
+mod text_block_height_tests {
+    use super::checked_text_block_height;
+
+    #[test]
+    fn text_block_height_rejects_non_finite_or_overflowing_results() {
+        assert_eq!(checked_text_block_height(f32::NAN, 2), None);
+        assert_eq!(checked_text_block_height(f32::INFINITY, 2), None);
+        assert_eq!(checked_text_block_height(1.0, usize::MAX), None);
+    }
+
+    #[test]
+    fn text_block_height_accepts_finite_results() {
+        assert_eq!(checked_text_block_height(12.5, 4), Some(50.0));
+        assert_eq!(checked_text_block_height(0.0, 0), Some(0.0));
+    }
 }
 
 fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
