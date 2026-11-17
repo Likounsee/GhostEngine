@@ -1797,6 +1797,20 @@ impl ComponentTree {
         self.text_states.get(&id)
     }
 
+    /// Selects the Unicode word at a UTF-8 byte position in a text input.
+    ///
+    /// The position is interpreted relative to the input's text, not its
+    /// rendered coordinates. Returns false for non-text components, missing
+    /// components, or positions outside a word.
+    pub fn select_text_word_at(&mut self, id: ComponentId, byte_index: usize) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        self.text_states
+            .get_mut(&id)
+            .is_some_and(|state| state.select_word_at(byte_index))
+    }
+
     /// Inserts text, replacing any active selection.
     pub fn insert_text(&mut self, id: ComponentId, text: &str) -> bool {
         if !self.sync_text_state(id) {
@@ -2750,6 +2764,35 @@ mod tests {
             ComponentKind::TextInput { value, .. } if value == "café"
         ));
         assert!(!tree.insert_text(ComponentId(999), "x"));
+    }
+
+    #[test]
+    fn retained_text_input_selects_unicode_words_by_byte_position() {
+        let id = ComponentId(140);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café 世界!",
+        )]);
+
+        assert!(tree.select_text_word_at(id, 9));
+        assert_eq!(
+            tree.text_input_state(id).and_then(TextInputState::selected_text),
+            Some("café")
+        );
+
+        assert!(tree.select_text_word_at(id, 14));
+        assert_eq!(
+            tree.text_input_state(id).and_then(TextInputState::selected_text),
+            Some("世界")
+        );
+
+        assert!(!tree.select_text_word_at(id, 13));
+        assert_eq!(
+            tree.text_input_state(id).and_then(TextInputState::selected_text),
+            Some("世界")
+        );
+        assert!(!tree.select_text_word_at(ComponentId(999), 0));
     }
 
     #[test]
