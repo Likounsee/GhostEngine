@@ -2683,17 +2683,38 @@ mod tests {
             super::fallback_text_clusters("a\u{0301}b").collect::<Vec<_>>(),
             ["a\u{0301}", "b"]
         );
-        assert_eq!(super::fallback_text_clusters("👩‍💻x").collect::<Vec<_>>(), ["👩‍💻", "x"]);
-        assert_eq!(super::fallback_text_clusters("🇫🇷!").collect::<Vec<_>>(), ["🇫🇷", "!"]);
-        assert_eq!(super::fallback_text_clusters("👍🏽!").collect::<Vec<_>>(), ["👍🏽", "!"]);
+        assert_eq!(
+            super::fallback_text_clusters("👩‍💻x").collect::<Vec<_>>(),
+            ["👩‍💻", "x"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("🇫🇷!").collect::<Vec<_>>(),
+            ["🇫🇷", "!"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("👍🏽!").collect::<Vec<_>>(),
+            ["👍🏽", "!"]
+        );
         assert_eq!(
             super::fallback_text_clusters("🏴\u{E0067}\u{E0062}\u{E007F}!").collect::<Vec<_>>(),
             ["🏴\u{E0067}\u{E0062}\u{E007F}", "!"]
         );
-        assert_eq!(super::fallback_text_clusters("✈️x").collect::<Vec<_>>(), ["✈️", "x"]);
-        assert_eq!(super::fallback_text_clusters("👨‍👩‍👧‍👦!").collect::<Vec<_>>(), ["👨‍👩‍👧‍👦", "!"]);
-        assert_eq!(super::fallback_text_clusters("1️⃣!").collect::<Vec<_>>(), ["1️⃣", "!"]);
-        assert_eq!(super::fallback_text_clusters("क्‍ष!").collect::<Vec<_>>(), ["क्‍ष", "!"]);
+        assert_eq!(
+            super::fallback_text_clusters("✈️x").collect::<Vec<_>>(),
+            ["✈️", "x"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("👨‍👩‍👧‍👦!").collect::<Vec<_>>(),
+            ["👨‍👩‍👧‍👦", "!"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("1️⃣!").collect::<Vec<_>>(),
+            ["1️⃣", "!"]
+        );
+        assert_eq!(
+            super::fallback_text_clusters("क्‍ष!").collect::<Vec<_>>(),
+            ["क्‍ष", "!"]
+        );
     }
 
     #[test]
