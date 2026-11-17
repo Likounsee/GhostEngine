@@ -2852,19 +2852,18 @@ mod tests {
         )]);
         let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).unwrap();
-        let word_x = font.measure("Bonjour ", 16.0).width + 0.1;
-        let start_x = font.measure("Bonjour", 16.0).width + 0.1;
+        let word_x = font.measure("Bonjour c", 16.0).width + 0.1;
 
         assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 1));
-        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Bonjour café".len());
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Bonjour c".len());
 
         assert!(tree.handle_text_input_pointer(id, &font, 16.0, 0.0, true, 1));
         assert_eq!(
             tree.text_input_state(id).unwrap().selection(),
-            Some((0, "Bonjour café".len()))
+            Some((0, "Bonjour c".len()))
         );
 
-        assert!(tree.handle_text_input_pointer(id, &font, 16.0, start_x, false, 2));
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 2));
         assert_eq!(
             tree.text_input_state(id).unwrap().selected_text(),
             Some("café")
