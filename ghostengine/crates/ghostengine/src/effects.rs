@@ -63,7 +63,6 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
     }
 }
 
-
 /// Applies a separable Gaussian blur in-place using premultiplied-alpha arithmetic.
 ///
 /// The radius is the kernel half-width; standard deviation is max(radius / 2, 0.5).
@@ -87,9 +86,13 @@ pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut 
         *weight = (-(distance * distance) / denominator).exp();
     }
 
-    scratch.source.resize(target.pixels().len(), Color::TRANSPARENT);
+    scratch
+        .source
+        .resize(target.pixels().len(), Color::TRANSPARENT);
     scratch.source.copy_from_slice(target.pixels());
-    scratch.pixels.resize(scratch.source.len(), Color::TRANSPARENT);
+    scratch
+        .pixels
+        .resize(scratch.source.len(), Color::TRANSPARENT);
 
     let radius_x = radius.min(width - 1);
     for y in 0..height {
@@ -196,7 +199,6 @@ mod tests {
             .all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
     }
 
-
     #[test]
     fn gaussian_blur_preserves_uniform_images_and_alpha() {
         let color = Color::rgba(20, 80, 160, 200);
@@ -213,7 +215,10 @@ mod tests {
         apply_gaussian_blur(&mut target, 2, &mut scratch);
         assert!(target.pixels()[2].a > target.pixels()[1].a);
         assert!(target.pixels()[1].a > target.pixels()[0].a);
-        assert!(target.pixels().iter().all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
+        assert!(target
+            .pixels()
+            .iter()
+            .all(|pixel| pixel.r == 255 && pixel.g == 0 && pixel.b == 0));
         let capacity = scratch.weights.capacity();
         apply_gaussian_blur(&mut target, 2, &mut scratch);
         assert_eq!(scratch.weights.capacity(), capacity);
