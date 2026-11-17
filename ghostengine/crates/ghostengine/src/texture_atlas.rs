@@ -125,7 +125,11 @@ impl TextureAtlasBuilder {
     /// Builds an atlas object with direct ID-based sprite lookup.
     pub fn build_atlas(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build()?;
-        let regions_by_id = regions.iter().copied().map(|region| (region.id, region)).collect();
+        let regions_by_id = regions
+            .iter()
+            .copied()
+            .map(|region| (region.id, region))
+            .collect();
         Ok(TextureAtlas {
             texture,
             regions,
@@ -136,7 +140,11 @@ impl TextureAtlasBuilder {
     /// Optimized packing variant returning an ID-addressable atlas object.
     pub fn build_atlas_optimized(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build_optimized()?;
-        let regions_by_id = regions.iter().copied().map(|region| (region.id, region)).collect();
+        let regions_by_id = regions
+            .iter()
+            .copied()
+            .map(|region| (region.id, region))
+            .collect();
         Ok(TextureAtlas {
             texture,
             regions,
@@ -215,13 +223,12 @@ impl TextureAtlasBuilder {
             let source_width = item.texture.width() as usize;
             let padding = self.padding as usize;
             for padded_y in 0..padded_height as usize {
-                let source_y = (padded_y.saturating_sub(padding))
-                    .min(item.texture.height() as usize - 1);
+                let source_y =
+                    (padded_y.saturating_sub(padding)).min(item.texture.height() as usize - 1);
                 let source_start = source_y * source_width;
                 let source_row = &item.texture.pixels()[source_start..source_start + source_width];
 
-                let destination_start =
-                    (y as usize + padded_y) * self.width as usize + x as usize;
+                let destination_start = (y as usize + padded_y) * self.width as usize + x as usize;
                 let destination_row =
                     &mut pixels[destination_start..destination_start + padded_width as usize];
 
