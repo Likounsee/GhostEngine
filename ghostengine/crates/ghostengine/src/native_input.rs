@@ -208,7 +208,12 @@ impl NativeInputAdapter {
         // keys such as Backspace can expose control-character text on some
         // platform backends; inserting that value renders as an unknown glyph.
         let is_text_key = accepts_text(&event.logical_key);
-        if is_text_key && !self.ime_enabled && !self.control_down && !self.super_down && !self.alt_down {
+        if is_text_key
+            && !self.ime_enabled
+            && !self.control_down
+            && !self.super_down
+            && !self.alt_down
+        {
             if let Some(text) = event
                 .text
                 .as_ref()
