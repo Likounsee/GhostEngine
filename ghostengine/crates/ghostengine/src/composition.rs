@@ -1802,17 +1802,32 @@ mod tests {
         let mut cache = LayerGroupCache::default();
         let mut scratch = LayerGroupScratch::default();
         let mut target = Framebuffer::new(16, 8, Color::BLACK).unwrap();
-        compose_layer_groups_cached(&mut target, &[(11, &first), (22, &second)], &mut cache, &mut scratch).unwrap();
+        compose_layer_groups_cached(
+            &mut target,
+            &[(11, &first), (22, &second)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
 
         let first_allocation = cache.framebuffer(11).unwrap().pixels().as_ptr();
         assert_eq!(cache.render_count(11), Some(1));
         assert_eq!(cache.render_count(22), Some(1));
         target.clear(Color::BLACK);
-        compose_layer_groups_cached(&mut target, &[(22, &second), (11, &first)], &mut cache, &mut scratch).unwrap();
+        compose_layer_groups_cached(
+            &mut target,
+            &[(22, &second), (11, &first)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
 
         assert_eq!(cache.render_count(11), Some(1));
         assert_eq!(cache.render_count(22), Some(1));
-        assert_eq!(cache.framebuffer(11).unwrap().pixels().as_ptr(), first_allocation);
+        assert_eq!(
+            cache.framebuffer(11).unwrap().pixels().as_ptr(),
+            first_allocation
+        );
         assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
         assert_eq!(target.get_pixel(8, 1), Some(Color::BLUE));
     }
