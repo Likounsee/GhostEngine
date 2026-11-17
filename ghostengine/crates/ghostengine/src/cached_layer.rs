@@ -103,26 +103,39 @@ impl CachedLayer {
             return;
         }
 
+        let copy_width = (right - left) as usize;
+        let source_width = self.framebuffer.width() as usize;
+        let target_width = target.width() as usize;
+        let source_x = (left - i64::from(x)) as usize;
+        let target_x = left as usize;
+
         for destination_y in top..bottom {
-            let source_y = (destination_y - i64::from(y)) as u32;
-            for destination_x in left..right {
-                let source_x = (destination_x - i64::from(x)) as u32;
-                let mut source = self.framebuffer.get_pixel(source_x, source_y).unwrap();
-                if source.a == 0 {
-                    continue;
+            let source_y = (destination_y - i64::from(y)) as usize;
+            let target_y = destination_y as usize;
+            let source_start = source_y * source_width + source_x;
+            let target_start = target_y * target_width + target_x;
+            let source_row = &self.framebuffer.pixels()[source_start..source_start + copy_width];
+            let target_row =
+                &mut target.pixels_mut()[target_start..target_start + copy_width];
+
+            if opacity == 255 {
+                for (background, source) in target_row.iter_mut().zip(source_row.iter().copied()) {
+                    if source.a == 255 {
+                        *background = source;
+                    } else if source.a > 0 {
+                        *background = source.blend_over(*background);
+                    }
                 }
-                source.a = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
-                if source.a == 0 {
-                    continue;
+            } else {
+                for (background, mut source) in target_row.iter_mut().zip(source_row.iter().copied()) {
+                    if source.a == 0 {
+                        continue;
+                    }
+                    source.a = ((u16::from(source.a) * u16::from(opacity) + 127) / 255) as u8;
+                    if source.a > 0 {
+                        *background = source.blend_over(*background);
+                    }
                 }
-                let background = target
-                    .get_pixel(destination_x as u32, destination_y as u32)
-                    .unwrap();
-                target.set_pixel(
-                    destination_x as u32,
-                    destination_y as u32,
-                    source.blend_over(background),
-                );
             }
         }
     }
