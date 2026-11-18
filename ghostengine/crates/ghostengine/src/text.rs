@@ -769,11 +769,16 @@ pub fn draw_text_with_fallback_bidi_clipped(
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space_advance * 4.0).max(pixel_size);
-    let mut max_width = 0.0_f32;
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return TextMetrics::default();
+    }
+
+    let origin_x = f64::from(baseline.x);
+    let mut max_width = 0.0_f64;
     let mut line_count = 0_u32;
 
     for paragraph in text.split('\n') {
-        let mut pen_x = baseline.x as f32;
+        let mut pen_x = origin_x;
 
         for bidi_run in crate::shaping::resolve_bidi_runs(paragraph) {
             let Some(run_text) = paragraph.get(bidi_run.byte_range) else {
@@ -819,9 +824,17 @@ pub fn draw_text_with_fallback_bidi_clipped(
             for segment in segments {
                 match segment {
                     Segment::Tab => {
-                        let relative_x = (pen_x - baseline.x as f32).max(0.0);
-                        pen_x = baseline.x as f32
-                            + ((relative_x / tab_width).floor() + 1.0) * tab_width;
+                        let relative_x = (pen_x - origin_x).max(0.0);
+                        let next_x =
+                            origin_x + ((relative_x / f64::from(tab_width)).floor() + 1.0)
+                                * f64::from(tab_width);
+                        if !next_x.is_finite()
+                            || next_x < f64::from(i32::MIN)
+                            || next_x > f64::from(i32::MAX)
+                        {
+                            return TextMetrics::default();
+                        }
+                        pen_x = next_x;
                     }
                     Segment::Glyphs(face, run_text) => {
                         let Ok(shaped) = face.shape_text_with_direction(
@@ -831,37 +844,59 @@ pub fn draw_text_with_fallback_bidi_clipped(
                         ) else {
                             continue;
                         };
-                        let y = baseline.y as f32 + line_count as f32 * line_height;
-                        if pen_x.is_finite()
-                            && pen_x >= i32::MIN as f32
-                            && pen_x <= i32::MAX as f32
-                            && y.is_finite()
-                            && y >= i32::MIN as f32
-                            && y <= i32::MAX as f32
-                        {
-                            draw_text_shaped_clipped(
-                                target,
-                                &face,
-                                &shaped,
-                                Point::new(pen_x.round() as i32, y.round() as i32),
-                                pixel_size,
-                                color,
-                                clip,
-                            );
+                        if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                            return TextMetrics::default();
                         }
-                        pen_x += shaped.advance_x.abs();
+                        let next_x = pen_x + f64::from(shaped.advance_x.abs());
+                        let y = f64::from(baseline.y)
+                            + f64::from(line_count) * f64::from(line_height);
+                        if !next_x.is_finite()
+                            || next_x < f64::from(i32::MIN)
+                            || next_x > f64::from(i32::MAX)
+                            || !y.is_finite()
+                            || y < f64::from(i32::MIN)
+                            || y > f64::from(i32::MAX)
+                            || pen_x < f64::from(i32::MIN)
+                            || pen_x > f64::from(i32::MAX)
+                        {
+                            return TextMetrics::default();
+                        }
+                        draw_text_shaped_clipped(
+                            target,
+                            &face,
+                            &shaped,
+                            Point::new(pen_x.round() as i32, y.round() as i32),
+                            pixel_size,
+                            color,
+                            clip,
+                        );
+                        pen_x = next_x;
                     }
                 }
             }
         }
 
-        max_width = max_width.max(pen_x - baseline.x as f32);
-        line_count += 1;
+        let line_width = pen_x - origin_x;
+        if !line_width.is_finite() || line_width < 0.0 || line_width > f64::from(f32::MAX) {
+            return TextMetrics::default();
+        }
+        max_width = max_width.max(line_width);
+        let Some(next_line_count) = line_count.checked_add(1) else {
+            return TextMetrics::default();
+        };
+        line_count = next_line_count;
+    }
+
+    let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
+        return TextMetrics::default();
+    };
+    if max_width > f64::from(f32::MAX) {
+        return TextMetrics::default();
     }
 
     TextMetrics {
-        width: max_width,
-        height: line_height * line_count as f32,
+        width: max_width as f32,
+        height,
         line_count,
     }
 }
