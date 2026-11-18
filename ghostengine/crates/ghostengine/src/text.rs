@@ -640,17 +640,22 @@ pub fn draw_text_bidi_clipped(
     }
 
     let line_height = font.line_height(pixel_size);
-    let mut y = baseline.y as f32;
-    let mut max_width = 0.0_f32;
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+
+    let origin_x = f64::from(baseline.x);
+    let mut max_width = 0.0_f64;
     let mut line_count = 0_u32;
 
-    for paragraph_with_break in text.split_inclusive('\n') {
-        let paragraph = paragraph_with_break
-            .strip_suffix('\n')
-            .unwrap_or(paragraph_with_break);
-        let runs = crate::shaping::resolve_bidi_runs(paragraph);
-        let mut x = baseline.x as f32;
-        for run in runs {
+    for paragraph in text.split('\n') {
+        let mut pen_x = origin_x;
+        let y = f64::from(baseline.y) + f64::from(line_count) * f64::from(line_height);
+        if !y.is_finite() || y < f64::from(i32::MIN) || y > f64::from(i32::MAX) {
+            return TextMetrics::default();
+        }
+
+        for run in crate::shaping::resolve_bidi_runs(paragraph) {
             let Some(run_text) = paragraph.get(run.byte_range) else {
                 continue;
             };
@@ -658,25 +663,53 @@ pub fn draw_text_bidi_clipped(
             else {
                 continue;
             };
+            if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                return TextMetrics::default();
+            }
+
+            let next_x = pen_x + f64::from(shaped.advance_x.abs());
+            if !next_x.is_finite()
+                || next_x < f64::from(i32::MIN)
+                || next_x > f64::from(i32::MAX)
+                || pen_x < f64::from(i32::MIN)
+                || pen_x > f64::from(i32::MAX)
+            {
+                return TextMetrics::default();
+            }
+
             draw_text_shaped_clipped(
                 target,
                 font,
                 &shaped,
-                Point::new(x.round() as i32, y.round() as i32),
+                Point::new(pen_x.round() as i32, y.round() as i32),
                 pixel_size,
                 color,
                 clip,
             );
-            x += shaped.advance_x.abs();
+            pen_x = next_x;
         }
-        max_width = max_width.max(x - baseline.x as f32);
-        line_count += 1;
-        y += line_height;
+
+        let line_width = pen_x - origin_x;
+        if !line_width.is_finite() || line_width < 0.0 || line_width > f64::from(f32::MAX) {
+            return TextMetrics::default();
+        }
+        max_width = max_width.max(line_width);
+        let Some(next_line_count) = line_count.checked_add(1) else {
+            return TextMetrics::default();
+        };
+        line_count = next_line_count;
+    }
+
+    let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
+        return TextMetrics::default();
+    };
+    if max_width > f64::from(f32::MAX) {
+        return TextMetrics::default();
     }
 
     TextMetrics {
-        width: max_width,
-        height: line_height * line_count as f32,
+        width: max_width as f32,
+        height,
         line_count,
     }
 }
