@@ -2925,9 +2925,7 @@ mod tests {
                 .collect::<Vec<_>>();
             assert!(glyphs.iter().all(|glyph| !glyph.bitmap.is_empty()));
             assert!(
-                glyphs
-                    .iter()
-                    .all(|glyph| Arc::ptr_eq(glyph, &glyphs[0])),
+                glyphs.iter().all(|glyph| Arc::ptr_eq(glyph, &glyphs[0])),
                 "concurrent misses should return the single cached glyph allocation"
             );
             assert_eq!(font.cached_glyph_count(), 1);
