@@ -3464,7 +3464,7 @@ mod tests {
             (start_y..end_y)
                 .flat_map(|y| (0..320).map(move |x| (x, y)))
                 .filter(|(x, y)| {
-                    target.get_pixel(*x as i32, *y as i32) != Some(crate::Color::BLACK)
+                    target.get_pixel(*x as u32, *y as u32) != Some(crate::Color::BLACK)
                 })
                 .count()
         };
