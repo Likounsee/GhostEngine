@@ -517,8 +517,7 @@ pub fn draw_text_shaped_clipped(
 fn f32_accumulation_exceeds_range(base: f64, delta: f32) -> bool {
     let limit = f64::from(f32::MAX);
     let delta = f64::from(delta);
-    (delta > 0.0 && base > limit - delta)
-        || (delta < 0.0 && base < -limit - delta)
+    (delta > 0.0 && base > limit - delta) || (delta < 0.0 && base < -limit - delta)
 }
 
 fn shaped_run_is_safe(shaped: &ShapedText, baseline: Point) -> bool {
@@ -858,8 +857,8 @@ pub fn draw_text_with_fallback_bidi_clipped(
                 match segment {
                     Segment::Tab => {
                         let relative_x = (pen_x - origin_x).max(0.0);
-                        let next_x =
-                            origin_x + ((relative_x / f64::from(tab_width)).floor() + 1.0)
+                        let next_x = origin_x
+                            + ((relative_x / f64::from(tab_width)).floor() + 1.0)
                                 * f64::from(tab_width);
                         if !next_x.is_finite()
                             || next_x < f64::from(i32::MIN)
@@ -881,8 +880,8 @@ pub fn draw_text_with_fallback_bidi_clipped(
                             return TextMetrics::default();
                         }
                         let next_x = pen_x + f64::from(shaped.advance_x.abs());
-                        let y = f64::from(baseline.y)
-                            + f64::from(line_count) * f64::from(line_height);
+                        let y =
+                            f64::from(baseline.y) + f64::from(line_count) * f64::from(line_height);
                         if !next_x.is_finite()
                             || next_x < f64::from(i32::MIN)
                             || next_x > f64::from(i32::MAX)
@@ -2002,24 +2001,38 @@ pub fn draw_text_clipped(
 
     let visible_clip = clip.intersection(Rect::new(0, 0, target.width(), target.height()));
     let line_height = font.line_height(pixel_size);
-    let mut pen_x = baseline.x as f32;
-    let mut pen_y = baseline.y as f32;
-    let origin_x = pen_x;
+    let space_metrics = font.glyph(' ', pixel_size);
+    let tab_width = (space_metrics.advance_width * 4.0).max(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 || !tab_width.is_finite() || tab_width <= 0.0
+    {
+        return TextMetrics::default();
+    }
+
+    let origin_x = f64::from(baseline.x);
+    let mut pen_x = origin_x;
+    let mut pen_y = f64::from(baseline.y);
     let mut previous = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let mut above_mark_offset = 0.0_f32;
     let mut below_mark_offset = 0.0_f32;
-    let mut max_width: f32 = 0.0;
+    let mut max_width = 0.0_f64;
     let mut line_count = 1_u32;
-    let space_metrics = font.glyph(' ', pixel_size);
-    let tab_width = (space_metrics.advance_width * 4.0).max(pixel_size);
 
     for character in text.chars() {
         if character == '\n' {
             max_width = max_width.max(pen_x - origin_x);
             pen_x = origin_x;
-            pen_y += line_height;
-            line_count += 1;
+            pen_y += f64::from(line_height);
+            let Some(next_line_count) = line_count.checked_add(1) else {
+                return TextMetrics::default();
+            };
+            line_count = next_line_count;
+            if !pen_y.is_finite()
+                || pen_y < f64::from(i32::MIN)
+                || pen_y > f64::from(i32::MAX)
+            {
+                return TextMetrics::default();
+            }
             previous = None;
             base_anchor = None;
             above_mark_offset = 0.0;
@@ -2027,7 +2040,11 @@ pub fn draw_text_clipped(
             continue;
         }
         if character == '\t' {
-            pen_x += tab_width;
+            pen_x += f64::from(tab_width);
+            if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX)
+            {
+                return TextMetrics::default();
+            }
             previous = None;
             base_anchor = None;
             above_mark_offset = 0.0;
@@ -2037,12 +2054,22 @@ pub fn draw_text_clipped(
 
         if !is_combining_mark(character) {
             if let Some(previous_character) = previous {
-                pen_x += font.kerning(previous_character, character, pixel_size);
+                let kerning = font.kerning(previous_character, character, pixel_size);
+                if !kerning.is_finite() {
+                    return TextMetrics::default();
+                }
+                pen_x += f64::from(kerning);
             }
         }
         let glyph = font.glyph(character, pixel_size);
-        let mut glyph_left = pen_x + glyph.xmin as f32;
-        let mut glyph_top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+        if !glyph.advance_width.is_finite() {
+            return TextMetrics::default();
+        }
+        let mut glyph_left = (pen_x as f32) + glyph.xmin as f32;
+        let mut glyph_top = (pen_y as f32) - glyph.ymin as f32 - glyph.height as f32;
+        if !glyph_left.is_finite() || !glyph_top.is_finite() {
+            return TextMetrics::default();
+        }
         let combining = is_combining_mark(character);
         if combining {
             if let Some(anchor) = base_anchor {
@@ -2063,6 +2090,13 @@ pub fn draw_text_clipped(
                 } else {
                     above_mark_offset = next_mark_stack_offset(offset, glyph.height);
                 }
+                if !glyph_left.is_finite()
+                    || !glyph_top.is_finite()
+                    || !above_mark_offset.is_finite()
+                    || !below_mark_offset.is_finite()
+                {
+                    return TextMetrics::default();
+                }
             }
         } else {
             base_anchor = Some((glyph_left, glyph_top, glyph.width, glyph.height));
@@ -2077,7 +2111,13 @@ pub fn draw_text_clipped(
                 }
                 let x = glyph_left + column as f32;
                 let y = glyph_top + row as f32;
-                if x < 0.0 || y < 0.0 || x >= target.width() as f32 || y >= target.height() as f32 {
+                if !x.is_finite()
+                    || !y.is_finite()
+                    || x < 0.0
+                    || y < 0.0
+                    || x >= target.width() as f32
+                    || y >= target.height() as f32
+                {
                     continue;
                 }
                 let pixel = Point::new(x.floor() as i32, y.floor() as i32);
@@ -2091,15 +2131,27 @@ pub fn draw_text_clipped(
             }
         }
         if !combining {
-            pen_x += glyph.advance_width;
+            pen_x += f64::from(glyph.advance_width);
+            if !pen_x.is_finite()
+                || pen_x < f64::from(i32::MIN)
+                || pen_x > f64::from(i32::MAX)
+            {
+                return TextMetrics::default();
+            }
             previous = Some(character);
         }
     }
 
     max_width = max_width.max(pen_x - origin_x);
+    let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
+        return TextMetrics::default();
+    };
+    if !max_width.is_finite() || max_width < 0.0 || max_width > f64::from(f32::MAX) {
+        return TextMetrics::default();
+    }
     TextMetrics {
-        width: max_width,
-        height: line_height * line_count as f32,
+        width: max_width as f32,
+        height,
         line_count,
     }
 }
@@ -2158,9 +2210,7 @@ pub fn draw_text_transformed_clipped(
             '\n' => {
                 pen_x = origin_x;
                 pen_y += f64::from(line_height);
-                if !pen_y.is_finite()
-                    || pen_y < f64::from(i32::MIN)
-                    || pen_y > f64::from(i32::MAX)
+                if !pen_y.is_finite() || pen_y < f64::from(i32::MIN) || pen_y > f64::from(i32::MAX)
                 {
                     return TextMetrics::default();
                 }
