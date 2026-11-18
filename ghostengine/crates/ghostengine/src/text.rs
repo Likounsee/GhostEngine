@@ -344,8 +344,12 @@ pub fn draw_text_with_fallback_clipped(
     }
     let primary = Arc::clone(&family.faces[0]);
     let metrics = measure_with_fallback(family, text, pixel_size);
-    let mut x = baseline.x as f32;
-    let mut y = baseline.y;
+    let line_height = family.line_height(pixel_size);
+    if !line_height.is_finite() || line_height <= 0.0 {
+        return TextMetrics::default();
+    }
+    let mut x = baseline.x as f64;
+    let mut y = baseline.y as f64;
     let mut previous: Option<(char, usize)> = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let mut above_mark_offset = 0.0_f32;
@@ -355,23 +359,28 @@ pub fn draw_text_with_fallback_clipped(
         .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return TextMetrics::default();
+    }
 
     for cluster in fallback_text_clusters(text) {
         match cluster {
             "\n" => {
-                x = baseline.x as f32;
+                x = baseline.x as f64;
                 previous = None;
                 base_anchor = None;
                 above_mark_offset = 0.0;
                 below_mark_offset = 0.0;
-                let next_y = y as f32 + family.line_height(pixel_size);
-                if !next_y.is_finite() || next_y < i32::MIN as f32 || next_y > i32::MAX as f32 {
-                    break;
+                y += line_height as f64;
+                if !y.is_finite() || y < i32::MIN as f64 || y > i32::MAX as f64 {
+                    return TextMetrics::default();
                 }
-                y = next_y.round() as i32;
             }
             "\t" => {
-                x += tab_width;
+                x += tab_width as f64;
+                if !x.is_finite() {
+                    return TextMetrics::default();
+                }
                 previous = None;
                 base_anchor = None;
                 above_mark_offset = 0.0;
@@ -396,12 +405,26 @@ pub fn draw_text_with_fallback_clipped(
                     if !combining {
                         if let Some((previous_character, previous_face)) = previous {
                             if previous_face == face_index {
-                                x += face.kerning(previous_character, character, pixel_size);
+                                x += face.kerning(previous_character, character, pixel_size) as f64;
+                                if !x.is_finite() {
+                                    return TextMetrics::default();
+                                }
                             }
                         }
                     }
-                    let mut glyph_left = x + glyph.xmin as f32;
-                    let mut glyph_top = y as f32 - glyph.ymin as f32 - glyph.height as f32;
+                    let glyph_left_f64 = x + glyph.xmin as f64;
+                    let glyph_top_f64 = y - glyph.ymin as f64 - glyph.height as f64;
+                    if !glyph_left_f64.is_finite()
+                        || !glyph_top_f64.is_finite()
+                        || glyph_left_f64 < f32::MIN as f64
+                        || glyph_left_f64 > f32::MAX as f64
+                        || glyph_top_f64 < f32::MIN as f64
+                        || glyph_top_f64 > f32::MAX as f64
+                    {
+                        return TextMetrics::default();
+                    }
+                    let mut glyph_left = glyph_left_f64 as f32;
+                    let mut glyph_top = glyph_top_f64 as f32;
                     if combining {
                         if let Some(anchor) = base_anchor {
                             let offset = if is_below_combining_mark(character) {
@@ -427,14 +450,14 @@ pub fn draw_text_with_fallback_clipped(
                         above_mark_offset = 0.0;
                         below_mark_offset = 0.0;
                     }
-                    let draw_x = glyph_left - glyph.xmin as f32;
-                    let draw_y = glyph_top + glyph.ymin as f32 + glyph.height as f32;
+                    let draw_x = glyph_left as f64 - glyph.xmin as f64;
+                    let draw_y = glyph_top as f64 + glyph.ymin as f64 + glyph.height as f64;
                     if draw_x.is_finite()
                         && draw_y.is_finite()
-                        && draw_x >= i32::MIN as f32
-                        && draw_x <= i32::MAX as f32
-                        && draw_y >= i32::MIN as f32
-                        && draw_y <= i32::MAX as f32
+                        && draw_x >= i32::MIN as f64
+                        && draw_x <= i32::MAX as f64
+                        && draw_y >= i32::MIN as f64
+                        && draw_y <= i32::MAX as f64
                     {
                         draw_text_clipped(
                             target,
@@ -447,7 +470,10 @@ pub fn draw_text_with_fallback_clipped(
                         );
                     }
                     if !combining {
-                        x += glyph.advance_width;
+                        x += glyph.advance_width as f64;
+                        if !x.is_finite() {
+                            return TextMetrics::default();
+                        }
                         previous = Some((character, face_index));
                     }
                 }
