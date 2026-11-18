@@ -237,6 +237,16 @@ impl FontFamily {
     }
 }
 
+/// Returns the next tab stop strictly after a position, measured from line origin.
+fn next_tab_stop(position: f64, tab_width: f64) -> Option<f64> {
+    if !position.is_finite() || !tab_width.is_finite() || tab_width <= 0.0 {
+        return None;
+    }
+    let stop = (position / tab_width).floor() + 1.0;
+    let next = stop * tab_width;
+    (next.is_finite() && next >= position).then_some(next)
+}
+
 /// Measures text while selecting fallback faces character by character.
 pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -> TextMetrics {
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || family.is_empty() {
@@ -272,8 +282,11 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                 previous = None;
             }
             "\t" => {
-                width += tab_width;
-                if !width.is_finite() || width > f64::from(f32::MAX) {
+                let Some(next_width) = next_tab_stop(width, tab_width) else {
+                    return TextMetrics::default();
+                };
+                width = next_width;
+                if width > f64::from(f32::MAX) {
                     return TextMetrics::default();
                 }
                 previous = None;
@@ -389,7 +402,11 @@ pub fn draw_text_with_fallback_clipped(
                 }
             }
             "\t" => {
-                x += tab_width as f64;
+                let relative_x = x - f64::from(baseline.x);
+                let Some(next_x) = next_tab_stop(relative_x, f64::from(tab_width)) else {
+                    return TextMetrics::default();
+                };
+                x = f64::from(baseline.x) + next_x;
                 if !x.is_finite() {
                     return TextMetrics::default();
                 }
@@ -3384,6 +3401,19 @@ mod tests {
             super::TextMetrics::default()
         );
         assert_eq!(family.measure("Hello", 0.0), super::TextMetrics::default());
+    }
+
+    #[test]
+    fn tab_stops_advance_to_the_next_four_space_boundary() {
+        assert_eq!(super::next_tab_stop(0.0, 4.0), Some(4.0));
+        assert_eq!(super::next_tab_stop(1.0, 4.0), Some(4.0));
+        assert_eq!(super::next_tab_stop(3.99, 4.0), Some(4.0));
+        assert_eq!(super::next_tab_stop(4.0, 4.0), Some(8.0));
+        assert_eq!(super::next_tab_stop(8.0, 4.0), Some(12.0));
+        assert_eq!(super::next_tab_stop(-1.0, 4.0), Some(0.0));
+        assert_eq!(super::next_tab_stop(1.0, 0.0), None);
+        assert_eq!(super::next_tab_stop(f64::NAN, 4.0), None);
+        assert_eq!(super::next_tab_stop(1.0, f64::INFINITY), None);
     }
 
     #[test]
