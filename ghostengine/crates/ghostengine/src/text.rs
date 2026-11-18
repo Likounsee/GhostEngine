@@ -3437,6 +3437,44 @@ mod tests {
     }
 
     #[test]
+    fn fallback_drawing_renders_real_font_tabs_and_blank_lines() {
+        use std::sync::Arc;
+
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = Arc::new(FontFace::from_bytes(bytes).expect("Hebrew font should load"));
+        let family = super::FontFamily::new(font);
+        let mut target =
+            crate::Framebuffer::new(320, 128, crate::Color::BLACK).expect("framebuffer");
+
+        let metrics = super::draw_text_with_fallback_clipped(
+            &mut target,
+            &family,
+            "שלום\tשלום\n\nשלום",
+            crate::Point::new(8, 32),
+            24.0,
+            crate::Color::WHITE,
+            crate::Rect::new(0, 0, 320, 128),
+        );
+
+        assert_eq!(metrics.line_count, 3);
+        assert!(metrics.width.is_finite() && metrics.width > 0.0);
+        assert!(metrics.height.is_finite() && metrics.height > 0.0);
+
+        let count_ink = |start_y: usize, end_y: usize| {
+            (start_y..end_y)
+                .flat_map(|y| (0..320).map(move |x| (x, y)))
+                .filter(|(x, y)| {
+                    target.get_pixel(*x as i32, *y as i32) != Some(crate::Color::BLACK)
+                })
+                .count()
+        };
+
+        assert!(count_ink(0, 40) > 0, "first line should render");
+        assert_eq!(count_ink(40, 60), 0, "blank second line should stay empty");
+        assert!(count_ink(60, 100) > 0, "third line should render after blank line");
+    }
+
+    #[test]
     fn invalid_font_data_is_rejected() {
         assert!(FontFace::from_bytes(b"not a font").is_err());
     }
