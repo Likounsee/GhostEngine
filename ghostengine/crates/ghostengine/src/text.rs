@@ -302,7 +302,8 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     }
                     if let Some((previous_character, previous_face)) = previous {
                         if previous_face == face_index {
-                            let kerning = selected.kerning(previous_character, character, pixel_size);
+                            let kerning =
+                                selected.kerning(previous_character, character, pixel_size);
                             if !kerning.is_finite() {
                                 return TextMetrics::default();
                             }
