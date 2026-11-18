@@ -30,8 +30,7 @@ impl MipmapChain {
                     let mut sample_count = 0;
                     for sample_y in y0..=y1 {
                         for sample_x in x0..=x1 {
-                            samples[sample_count] =
-                                previous.get_pixel(sample_x, sample_y).unwrap();
+                            samples[sample_count] = previous.get_pixel(sample_x, sample_y).unwrap();
                             sample_count += 1;
                         }
                     }
@@ -267,24 +266,15 @@ mod tests {
 
     #[test]
     fn odd_sized_mipmaps_average_only_existing_edge_texels() {
-        let horizontal = Texture::new(
-            3,
-            1,
-            vec![Color::BLACK, Color::BLACK, Color::WHITE],
-        )
-        .unwrap();
+        let horizontal =
+            Texture::new(3, 1, vec![Color::BLACK, Color::BLACK, Color::WHITE]).unwrap();
         let horizontal_chain = MipmapChain::new(&horizontal).unwrap();
         assert_eq!(
             horizontal_chain.levels()[1].get_pixel(1, 0),
             Some(Color::WHITE),
         );
 
-        let vertical = Texture::new(
-            1,
-            3,
-            vec![Color::BLACK, Color::BLACK, Color::WHITE],
-        )
-        .unwrap();
+        let vertical = Texture::new(1, 3, vec![Color::BLACK, Color::BLACK, Color::WHITE]).unwrap();
         let vertical_chain = MipmapChain::new(&vertical).unwrap();
         assert_eq!(
             vertical_chain.levels()[1].get_pixel(0, 1),
