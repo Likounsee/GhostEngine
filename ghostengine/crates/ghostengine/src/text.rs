@@ -1036,9 +1036,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                     return TextMetrics::default();
                 };
                 line_count = next_line_count;
-                if !pen_y.is_finite()
-                    || pen_y < f64::from(i32::MIN)
-                    || pen_y > f64::from(i32::MAX)
+                if !pen_y.is_finite() || pen_y < f64::from(i32::MIN) || pen_y > f64::from(i32::MAX)
                 {
                     return TextMetrics::default();
                 }
@@ -1051,9 +1049,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
                 let relative = (pen_x - origin_x).max(0.0);
                 pen_x = origin_x
                     + ((relative / f64::from(tab_width)).floor() + 1.0) * f64::from(tab_width);
-                if !pen_x.is_finite()
-                    || pen_x < f64::from(i32::MIN)
-                    || pen_x > f64::from(i32::MAX)
+                if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX)
                 {
                     return TextMetrics::default();
                 }
