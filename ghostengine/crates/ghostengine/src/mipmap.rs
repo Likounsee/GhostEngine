@@ -26,12 +26,16 @@ impl MipmapChain {
                     let y0 = y * 2;
                     let x1 = (x0 + 1).min(previous.width() - 1);
                     let y1 = (y0 + 1).min(previous.height() - 1);
-                    pixels.push(average_premultiplied([
-                        previous.get_pixel(x0, y0).unwrap(),
-                        previous.get_pixel(x1, y0).unwrap(),
-                        previous.get_pixel(x0, y1).unwrap(),
-                        previous.get_pixel(x1, y1).unwrap(),
-                    ]));
+                    let mut samples = [Color::TRANSPARENT; 4];
+                    let mut sample_count = 0;
+                    for sample_y in y0..=y1 {
+                        for sample_x in x0..=x1 {
+                            samples[sample_count] =
+                                previous.get_pixel(sample_x, sample_y).unwrap();
+                            sample_count += 1;
+                        }
+                    }
+                    pixels.push(average_premultiplied(&samples[..sample_count]));
                 }
             }
             levels.push(Texture::new(width, height, pixels)?);
@@ -196,8 +200,10 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     interpolate_premultiplied(top, bottom, ty)
 }
 
-fn average_premultiplied(colors: [Color; 4]) -> Color {
-    let alpha = colors.iter().map(|color| f32::from(color.a)).sum::<f32>() * 0.25;
+fn average_premultiplied(colors: &[Color]) -> Color {
+    debug_assert!(!colors.is_empty());
+    let weight = 1.0 / colors.len() as f32;
+    let alpha = colors.iter().map(|color| f32::from(color.a)).sum::<f32>() * weight;
     if alpha <= f32::EPSILON {
         return Color::TRANSPARENT;
     }
@@ -207,7 +213,7 @@ fn average_premultiplied(colors: [Color; 4]) -> Color {
             .iter()
             .map(|color| f32::from(select(*color)) * f32::from(color.a))
             .sum::<f32>()
-            * 0.25;
+            * weight;
         (premultiplied / alpha).round().clamp(0.0, 255.0) as u8
     };
     Color::rgba(
@@ -257,6 +263,52 @@ mod tests {
             vec![(4, 4), (2, 2), (1, 1)]
         );
         assert_eq!(chain.sample_trilinear(1.0, 1.0, 1.5), Color::WHITE);
+    }
+
+    #[test]
+    fn odd_sized_mipmaps_average_only_existing_edge_texels() {
+        let horizontal = Texture::new(
+            3,
+            1,
+            vec![Color::BLACK, Color::BLACK, Color::WHITE],
+        )
+        .unwrap();
+        let horizontal_chain = MipmapChain::new(&horizontal).unwrap();
+        assert_eq!(
+            horizontal_chain.levels()[1].get_pixel(1, 0),
+            Some(Color::WHITE),
+        );
+
+        let vertical = Texture::new(
+            1,
+            3,
+            vec![Color::BLACK, Color::BLACK, Color::WHITE],
+        )
+        .unwrap();
+        let vertical_chain = MipmapChain::new(&vertical).unwrap();
+        assert_eq!(
+            vertical_chain.levels()[1].get_pixel(0, 1),
+            Some(Color::WHITE),
+        );
+    }
+
+    #[test]
+    fn odd_sized_mipmaps_keep_partial_alpha_edges_unbiased() {
+        let base = Texture::new(
+            3,
+            1,
+            vec![
+                Color::TRANSPARENT,
+                Color::TRANSPARENT,
+                Color::rgba(20, 80, 160, 128),
+            ],
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        assert_eq!(
+            chain.levels()[1].get_pixel(1, 0),
+            Some(Color::rgba(20, 80, 160, 128)),
+        );
     }
 
     #[test]
