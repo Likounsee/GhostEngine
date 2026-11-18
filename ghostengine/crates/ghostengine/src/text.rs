@@ -476,23 +476,26 @@ pub fn draw_text_shaped_clipped(
         return TextMetrics::default();
     }
 
-    let mut pen_x = baseline.x as f32;
-    let mut pen_y = baseline.y as f32;
+    let mut pen_x = f64::from(baseline.x);
+    let mut pen_y = f64::from(baseline.y);
     for shaped_glyph in &shaped.glyphs {
         let Ok(glyph_index) = u16::try_from(shaped_glyph.glyph_id) else {
-            pen_x += shaped_glyph.x_advance;
-            pen_y -= shaped_glyph.y_advance;
+            pen_x += f64::from(shaped_glyph.x_advance);
+            pen_y -= f64::from(shaped_glyph.y_advance);
             continue;
         };
         let glyph = font.glyph_index(glyph_index, pixel_size);
-        let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
-        let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
+        let left = pen_x + f64::from(shaped_glyph.x_offset) + f64::from(glyph.xmin);
+        let top = pen_y
+            - f64::from(shaped_glyph.y_offset)
+            - f64::from(glyph.ymin)
+            - glyph.height as f64;
         if left.is_finite()
             && top.is_finite()
-            && left >= i32::MIN as f32
-            && left <= i32::MAX as f32
-            && top >= i32::MIN as f32
-            && top <= i32::MAX as f32
+            && left >= f64::from(i32::MIN)
+            && left <= f64::from(i32::MAX)
+            && top >= f64::from(i32::MIN)
+            && top <= f64::from(i32::MAX)
         {
             draw_cached_glyph_clipped(
                 target,
@@ -503,8 +506,8 @@ pub fn draw_text_shaped_clipped(
                 clip,
             );
         }
-        pen_x += shaped_glyph.x_advance;
-        pen_y -= shaped_glyph.y_advance;
+        pen_x += f64::from(shaped_glyph.x_advance);
+        pen_y -= f64::from(shaped_glyph.y_advance);
     }
     TextMetrics {
         width: shaped.advance_x.abs(),
@@ -1887,22 +1890,38 @@ pub fn draw_text_shaped_transformed_clipped(
     let Some(inverse) = transform.inverse() else {
         return TextMetrics::default();
     };
-    let mut pen_x = baseline.x as f32;
-    let mut pen_y = baseline.y as f32;
+    let mut pen_x = f64::from(baseline.x);
+    let mut pen_y = f64::from(baseline.y);
     for shaped_glyph in &shaped.glyphs {
         let Ok(glyph_index) = u16::try_from(shaped_glyph.glyph_id) else {
-            pen_x += shaped_glyph.x_advance;
-            pen_y -= shaped_glyph.y_advance;
+            pen_x += f64::from(shaped_glyph.x_advance);
+            pen_y -= f64::from(shaped_glyph.y_advance);
             continue;
         };
         let glyph = font.glyph_index(glyph_index, pixel_size);
-        let left = pen_x + shaped_glyph.x_offset + glyph.xmin as f32;
-        let top = pen_y - shaped_glyph.y_offset - glyph.ymin as f32 - glyph.height as f32;
-        if left.is_finite() && top.is_finite() {
-            draw_affine_glyph(target, &glyph, left, top, color, clip, transform, inverse);
+        let left = pen_x + f64::from(shaped_glyph.x_offset) + f64::from(glyph.xmin);
+        let top = pen_y
+            - f64::from(shaped_glyph.y_offset)
+            - f64::from(glyph.ymin)
+            - glyph.height as f64;
+        if left.is_finite()
+            && top.is_finite()
+            && left.abs() <= f64::from(f32::MAX)
+            && top.abs() <= f64::from(f32::MAX)
+        {
+            draw_affine_glyph(
+                target,
+                &glyph,
+                left as f32,
+                top as f32,
+                color,
+                clip,
+                transform,
+                inverse,
+            );
         }
-        pen_x += shaped_glyph.x_advance;
-        pen_y -= shaped_glyph.y_advance;
+        pen_x += f64::from(shaped_glyph.x_advance);
+        pen_y -= f64::from(shaped_glyph.y_advance);
     }
     TextMetrics {
         width: shaped.advance_x.abs(),
