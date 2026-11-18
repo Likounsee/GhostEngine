@@ -1603,53 +1603,81 @@ pub(crate) fn prepare_shaped_text_box(
         .iter()
         .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
         .collect();
+    if widths.iter().any(|width| !width.is_finite() || *width < 0.0) {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
     let widest = widths.iter().copied().fold(0.0_f32, f32::max);
     let alignment_width = options.max_width.unwrap_or(widest);
-    let line_step = line_height * options.line_spacing;
+    let line_step = f64::from(line_height) * f64::from(options.line_spacing);
+    if !alignment_width.is_finite() || !line_step.is_finite() || line_step <= 0.0 {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
     let mut lines = Vec::with_capacity(text_lines.len());
+    let primary = Arc::clone(&family.faces[0]);
+    let space_advance = family
+        .font_for(' ')
+        .unwrap_or(primary.as_ref())
+        .glyph(' ', pixel_size)
+        .advance_width;
+    let tab_width = (space_advance * 4.0).max(pixel_size);
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
 
     for (line_index, line) in text_lines.iter().enumerate() {
         let alignment_offset = match options.align {
             TextAlign::Left => 0.0,
-            TextAlign::Center => ((alignment_width - widths[line_index]) * 0.5).max(0.0),
-            TextAlign::Right => (alignment_width - widths[line_index]).max(0.0),
+            TextAlign::Center => {
+                ((f64::from(alignment_width) - f64::from(widths[line_index])) * 0.5).max(0.0)
+            }
+            TextAlign::Right => {
+                (f64::from(alignment_width) - f64::from(widths[line_index])).max(0.0)
+            }
         };
-        let x = baseline.x as f32 + alignment_offset;
-        let y = baseline.y as f32 + line_index as f32 * line_step;
+        let x = f64::from(baseline.x) + alignment_offset;
+        let y = f64::from(baseline.y) + line_index as f64 * line_step;
         if !x.is_finite()
             || !y.is_finite()
-            || x < i32::MIN as f32
-            || x > i32::MAX as f32
-            || y < i32::MIN as f32
-            || y > i32::MAX as f32
+            || x < f64::from(i32::MIN)
+            || x > f64::from(i32::MAX)
+            || y < f64::from(i32::MIN)
+            || y > f64::from(i32::MAX)
         {
-            continue;
+            return Ok(PreparedShapedTextBox { lines: Vec::new() });
         }
 
         let mut runs = Vec::new();
         let mut current_run = String::new();
         let mut current_face: Option<Arc<FontFace>> = None;
-        let mut pen_x = 0.0_f32;
-        let primary = Arc::clone(&family.faces[0]);
+        let mut pen_x = 0.0_f64;
         for character in line.chars() {
             if character == '\t' {
                 if let Some(face) = current_face.take() {
                     let shaped = face.shape_text(&current_run, pixel_size)?;
+                    if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+                    }
+                    let advance = f64::from(shaped.advance_x);
+                    let next_pen = pen_x + advance;
+                    if !next_pen.is_finite()
+                        || next_pen < 0.0
+                        || next_pen > f64::from(f32::MAX)
+                    {
+                        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+                    }
                     runs.push(PreparedShapedTextRun {
                         font: face,
-                        offset_x: pen_x,
-                        shaped: shaped.clone(),
+                        offset_x: pen_x as f32,
+                        shaped,
                     });
-                    pen_x += shaped.advance_x;
+                    pen_x = next_pen;
                     current_run.clear();
                 }
-                let space_advance = family
-                    .font_for(' ')
-                    .unwrap_or(primary.as_ref())
-                    .glyph(' ', pixel_size)
-                    .advance_width;
-                let tab_width = (space_advance * 4.0).max(pixel_size);
-                pen_x = ((pen_x / tab_width).floor() + 1.0) * tab_width;
+                pen_x = ((pen_x / f64::from(tab_width)).floor() + 1.0)
+                    * f64::from(tab_width);
+                if !pen_x.is_finite() || pen_x > f64::from(f32::MAX) {
+                    return Ok(PreparedShapedTextBox { lines: Vec::new() });
+                }
                 continue;
             }
 
@@ -1680,12 +1708,23 @@ pub(crate) fn prepare_shaped_text_box(
             {
                 if let Some(face) = current_face.take() {
                     let shaped = face.shape_text(&current_run, pixel_size)?;
+                    if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+                    }
+                    let advance = f64::from(shaped.advance_x);
+                    let next_pen = pen_x + advance;
+                    if !next_pen.is_finite()
+                        || next_pen < 0.0
+                        || next_pen > f64::from(f32::MAX)
+                    {
+                        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+                    }
                     runs.push(PreparedShapedTextRun {
                         font: face,
-                        offset_x: pen_x,
-                        shaped: shaped.clone(),
+                        offset_x: pen_x as f32,
+                        shaped,
                     });
-                    pen_x += shaped.advance_x;
+                    pen_x = next_pen;
                 }
                 current_run.clear();
             }
@@ -1696,10 +1735,18 @@ pub(crate) fn prepare_shaped_text_box(
         }
         if let Some(face) = current_face {
             let shaped = face.shape_text(&current_run, pixel_size)?;
+            if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                return Ok(PreparedShapedTextBox { lines: Vec::new() });
+            }
+            let advance = f64::from(shaped.advance_x);
+            let end = pen_x + advance;
+            if !end.is_finite() || end < 0.0 || end > f64::from(f32::MAX) {
+                return Ok(PreparedShapedTextBox { lines: Vec::new() });
+            }
             runs.push(PreparedShapedTextRun {
                 font: face,
-                offset_x: pen_x,
-                shaped: shaped.clone(),
+                offset_x: pen_x as f32,
+                shaped,
             });
         }
         lines.push(PreparedShapedTextLine {
@@ -1761,39 +1808,59 @@ pub fn draw_text_box_with_fallback_shaped_clipped(
         .iter()
         .map(|line| measure_shaped_fallback_line(family, line, pixel_size))
         .collect();
+    if widths.iter().any(|width| !width.is_finite() || *width < 0.0) {
+        return TextMetrics::default();
+    }
     let widest = widths.iter().copied().fold(0.0_f32, f32::max);
     let alignment_width = options.max_width.unwrap_or(widest);
-    let step = line_height * options.line_spacing;
+    let step = f64::from(line_height) * f64::from(options.line_spacing);
+    let height = step * lines.len() as f64;
+    let Ok(line_count) = u32::try_from(lines.len()) else {
+        return TextMetrics::default();
+    };
+    if !alignment_width.is_finite()
+        || !step.is_finite()
+        || step <= 0.0
+        || !height.is_finite()
+        || height > f64::from(f32::MAX)
+    {
+        return TextMetrics::default();
+    }
     for (index, line) in lines.iter().enumerate() {
         let offset = match options.align {
             TextAlign::Left => 0.0,
-            TextAlign::Center => ((alignment_width - widths[index]) * 0.5).max(0.0),
-            TextAlign::Right => (alignment_width - widths[index]).max(0.0),
+            TextAlign::Center => {
+                ((f64::from(alignment_width) - f64::from(widths[index])) * 0.5).max(0.0)
+            }
+            TextAlign::Right => {
+                (f64::from(alignment_width) - f64::from(widths[index])).max(0.0)
+            }
         };
-        let x = baseline.x as f32 + offset;
-        let y = baseline.y as f32 + index as f32 * step;
-        if x.is_finite()
-            && y.is_finite()
-            && x >= i32::MIN as f32
-            && x <= i32::MAX as f32
-            && y >= i32::MIN as f32
-            && y <= i32::MAX as f32
+        let x = f64::from(baseline.x) + offset;
+        let y = f64::from(baseline.y) + index as f64 * step;
+        if !x.is_finite()
+            || !y.is_finite()
+            || x < f64::from(i32::MIN)
+            || x > f64::from(i32::MAX)
+            || y < f64::from(i32::MIN)
+            || y > f64::from(i32::MAX)
         {
-            draw_text_with_fallback_shaped_clipped(
-                target,
-                family,
-                line,
-                Point::new(x.round() as i32, y.round() as i32),
-                pixel_size,
-                color,
-                clip,
-            );
+            return TextMetrics::default();
         }
+        draw_text_with_fallback_shaped_clipped(
+            target,
+            family,
+            line,
+            Point::new(x.round() as i32, y.round() as i32),
+            pixel_size,
+            color,
+            clip,
+        );
     }
     TextMetrics {
         width: widest,
-        height: step * lines.len() as f32,
-        line_count: lines.len() as u32,
+        height: height as f32,
+        line_count,
     }
 }
 
