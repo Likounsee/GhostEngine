@@ -3471,7 +3471,10 @@ mod tests {
 
         assert!(count_ink(0, 40) > 0, "first line should render");
         assert_eq!(count_ink(40, 60), 0, "blank second line should stay empty");
-        assert!(count_ink(60, 100) > 0, "third line should render after blank line");
+        assert!(
+            count_ink(60, 100) > 0,
+            "third line should render after blank line"
+        );
     }
 
     #[test]
