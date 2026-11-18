@@ -3387,6 +3387,26 @@ mod tests {
     }
 
     #[test]
+    fn fallback_measurement_handles_real_font_tabs_and_multiple_lines() {
+        use std::sync::Arc;
+
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = Arc::new(FontFace::from_bytes(bytes).expect("Hebrew font should load"));
+        let family = super::FontFamily::new(font);
+
+        let single_line = family.measure("שלום", 24.0);
+        let multi_line = family.measure("שלום\\tשלום\\n\\nשלום", 24.0);
+
+        assert!(single_line.width.is_finite() && single_line.width > 0.0);
+        assert!(single_line.height.is_finite() && single_line.height > 0.0);
+        assert_eq!(single_line.line_count, 1);
+
+        assert!(multi_line.width.is_finite() && multi_line.width > single_line.width);
+        assert!(multi_line.height.is_finite() && multi_line.height > single_line.height);
+        assert_eq!(multi_line.line_count, 3);
+    }
+
+    #[test]
     fn invalid_font_data_is_rejected() {
         assert!(FontFace::from_bytes(b"not a font").is_err());
     }
