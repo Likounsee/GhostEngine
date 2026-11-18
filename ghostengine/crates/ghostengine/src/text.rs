@@ -1138,8 +1138,7 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
         for segment in segments {
             match segment {
                 Segment::Tab => {
-                    width = ((width / f64::from(tab_width)).floor() + 1.0)
-                        * f64::from(tab_width);
+                    width = ((width / f64::from(tab_width)).floor() + 1.0) * f64::from(tab_width);
                 }
                 Segment::Glyphs(face, run) => {
                     let Ok(shaped) =
@@ -2038,10 +2037,7 @@ pub fn draw_text_clipped(
                 return TextMetrics::default();
             };
             line_count = next_line_count;
-            if !pen_y.is_finite()
-                || pen_y < f64::from(i32::MIN)
-                || pen_y > f64::from(i32::MAX)
-            {
+            if !pen_y.is_finite() || pen_y < f64::from(i32::MIN) || pen_y > f64::from(i32::MAX) {
                 return TextMetrics::default();
             }
             previous = None;
@@ -2052,8 +2048,7 @@ pub fn draw_text_clipped(
         }
         if character == '\t' {
             pen_x += f64::from(tab_width);
-            if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX)
-            {
+            if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX) {
                 return TextMetrics::default();
             }
             previous = None;
@@ -2143,10 +2138,7 @@ pub fn draw_text_clipped(
         }
         if !combining {
             pen_x += f64::from(glyph.advance_width);
-            if !pen_x.is_finite()
-                || pen_x < f64::from(i32::MIN)
-                || pen_x > f64::from(i32::MAX)
-            {
+            if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX) {
                 return TextMetrics::default();
             }
             previous = Some(character);
@@ -2200,10 +2192,7 @@ pub fn draw_text_transformed_clipped(
     let line_height = font.line_height(pixel_size);
     let space_advance = font.glyph(' ', pixel_size).advance_width;
     let tab_width = (space_advance * 4.0).max(pixel_size);
-    if !line_height.is_finite()
-        || line_height <= 0.0
-        || !tab_width.is_finite()
-        || tab_width <= 0.0
+    if !line_height.is_finite() || line_height <= 0.0 || !tab_width.is_finite() || tab_width <= 0.0
     {
         return TextMetrics::default();
     }
@@ -2232,9 +2221,7 @@ pub fn draw_text_transformed_clipped(
             }
             '\t' => {
                 pen_x += f64::from(tab_width);
-                if !pen_x.is_finite()
-                    || pen_x < f64::from(i32::MIN)
-                    || pen_x > f64::from(i32::MAX)
+                if !pen_x.is_finite() || pen_x < f64::from(i32::MIN) || pen_x > f64::from(i32::MAX)
                 {
                     return TextMetrics::default();
                 }
@@ -2574,10 +2561,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     let space = font.glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     let line_height = font.line_height(pixel_size);
-    if !tab_width.is_finite()
-        || tab_width <= 0.0
-        || !line_height.is_finite()
-        || line_height <= 0.0
+    if !tab_width.is_finite() || tab_width <= 0.0 || !line_height.is_finite() || line_height <= 0.0
     {
         return TextMetrics::default();
     }
@@ -2598,8 +2582,8 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
                 previous = None;
             }
             '\t' => {
-                line_width = ((line_width / f64::from(tab_width)).floor() + 1.0)
-                    * f64::from(tab_width);
+                line_width =
+                    ((line_width / f64::from(tab_width)).floor() + 1.0) * f64::from(tab_width);
                 previous = None;
             }
             character => {
@@ -2620,10 +2604,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
                 }
             }
         }
-        if !line_width.is_finite()
-            || line_width < 0.0
-            || line_width > f64::from(f32::MAX)
-        {
+        if !line_width.is_finite() || line_width < 0.0 || line_width > f64::from(f32::MAX) {
             return TextMetrics::default();
         }
     }
