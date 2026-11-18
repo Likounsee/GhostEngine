@@ -243,8 +243,8 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
         return TextMetrics::default();
     }
     let primary = Arc::clone(&family.faces[0]);
-    let mut width = 0.0_f32;
-    let mut max_width = 0.0_f32;
+    let mut width = 0.0_f64;
+    let mut max_width = 0.0_f64;
     let mut lines = 1_u32;
     let mut line_height = family.line_height(pixel_size);
     if !line_height.is_finite() || line_height <= 0.0 {
@@ -255,8 +255,8 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
         .font_for(' ')
         .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size);
-    let tab_width = (space.advance_width * 4.0).max(pixel_size);
-    if !tab_width.is_finite() || tab_width <= 0.0 {
+    let tab_width = (f64::from(space.advance_width) * 4.0).max(f64::from(pixel_size));
+    if !tab_width.is_finite() || tab_width <= 0.0 || tab_width > f64::from(f32::MAX) {
         return TextMetrics::default();
     }
 
@@ -273,7 +273,7 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
             }
             "\t" => {
                 width += tab_width;
-                if !width.is_finite() {
+                if !width.is_finite() || width > f64::from(f32::MAX) {
                     return TextMetrics::default();
                 }
                 previous = None;
@@ -302,14 +302,22 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
                     }
                     if let Some((previous_character, previous_face)) = previous {
                         if previous_face == face_index {
-                            width += selected.kerning(previous_character, character, pixel_size);
-                            if !width.is_finite() {
+                            let kerning = selected.kerning(previous_character, character, pixel_size);
+                            if !kerning.is_finite() {
+                                return TextMetrics::default();
+                            }
+                            width += f64::from(kerning);
+                            if !width.is_finite() || width.abs() > f64::from(f32::MAX) {
                                 return TextMetrics::default();
                             }
                         }
                     }
-                    width += selected.glyph(character, pixel_size).advance_width;
-                    if !width.is_finite() {
+                    let advance = selected.glyph(character, pixel_size).advance_width;
+                    if !advance.is_finite() || advance < 0.0 {
+                        return TextMetrics::default();
+                    }
+                    width += f64::from(advance);
+                    if !width.is_finite() || width > f64::from(f32::MAX) {
                         return TextMetrics::default();
                     }
                     previous = Some((character, face_index));
@@ -318,11 +326,14 @@ pub fn measure_with_fallback(family: &FontFamily, text: &str, pixel_size: f32) -
         }
     }
     max_width = max_width.max(width);
+    if !max_width.is_finite() || max_width < 0.0 || max_width > f64::from(f32::MAX) {
+        return TextMetrics::default();
+    }
     let Some(height) = checked_text_block_height(line_height, lines as usize) else {
         return TextMetrics::default();
     };
     TextMetrics {
-        width: max_width,
+        width: max_width as f32,
         height,
         line_count: lines,
     }
