@@ -1090,11 +1090,14 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space * 4.0).max(pixel_size);
-    let mut width = 0.0_f32;
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return 0.0;
+    }
+    let mut width = 0.0_f64;
 
     for bidi_run in crate::shaping::resolve_bidi_runs(text) {
         let Some(run_text) = text.get(bidi_run.byte_range) else {
-            continue;
+            return 0.0;
         };
         let mut segments = Vec::new();
         let mut current_face: Option<Arc<FontFace>> = None;
@@ -1135,20 +1138,28 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
         for segment in segments {
             match segment {
                 Segment::Tab => {
-                    width = ((width / tab_width).floor() + 1.0) * tab_width;
+                    width = ((width / f64::from(tab_width)).floor() + 1.0)
+                        * f64::from(tab_width);
                 }
                 Segment::Glyphs(face, run) => {
-                    if let Ok(shaped) =
+                    let Ok(shaped) =
                         face.shape_text_with_direction(&run, pixel_size, bidi_run.direction)
-                    {
-                        width += shaped.advance_x.abs();
+                    else {
+                        return 0.0;
+                    };
+                    if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                        return 0.0;
                     }
+                    width += f64::from(shaped.advance_x.abs());
                 }
+            }
+            if !width.is_finite() || width < 0.0 || width > f64::from(f32::MAX) {
+                return 0.0;
             }
         }
     }
 
-    width
+    width as f32
 }
 
 /// Splits text at Unicode extended grapheme-cluster boundaries (UAX #29).
@@ -2563,11 +2574,16 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
     let space = font.glyph(' ', pixel_size);
     let tab_width = (space.advance_width * 4.0).max(pixel_size);
     let line_height = font.line_height(pixel_size);
-    if !tab_width.is_finite() || !line_height.is_finite() {
+    if !tab_width.is_finite()
+        || tab_width <= 0.0
+        || !line_height.is_finite()
+        || line_height <= 0.0
+    {
         return TextMetrics::default();
     }
-    let mut line_width = 0.0_f32;
-    let mut max_width = 0.0_f32;
+
+    let mut line_width = 0.0_f64;
+    let mut max_width = 0.0_f64;
     let mut line_count = 1_u32;
     let mut previous = None;
     for character in text.chars() {
@@ -2575,33 +2591,51 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
             '\n' => {
                 max_width = max_width.max(line_width);
                 line_width = 0.0;
-                line_count += 1;
+                let Some(next_line_count) = line_count.checked_add(1) else {
+                    return TextMetrics::default();
+                };
+                line_count = next_line_count;
                 previous = None;
             }
             '\t' => {
-                line_width += tab_width;
+                line_width = ((line_width / f64::from(tab_width)).floor() + 1.0)
+                    * f64::from(tab_width);
                 previous = None;
             }
             character => {
                 if !is_combining_mark(character) {
                     if let Some(previous_character) = previous {
-                        line_width += font.kerning(previous_character, character, pixel_size);
+                        let kerning = font.kerning(previous_character, character, pixel_size);
+                        if !kerning.is_finite() {
+                            return TextMetrics::default();
+                        }
+                        line_width += f64::from(kerning);
                     }
-                    line_width += font.glyph(character, pixel_size).advance_width;
-                    if !line_width.is_finite() {
+                    let advance = font.glyph(character, pixel_size).advance_width;
+                    if !advance.is_finite() || advance < 0.0 {
                         return TextMetrics::default();
                     }
+                    line_width += f64::from(advance);
                     previous = Some(character);
                 }
             }
+        }
+        if !line_width.is_finite()
+            || line_width < 0.0
+            || line_width > f64::from(f32::MAX)
+        {
+            return TextMetrics::default();
         }
     }
     max_width = max_width.max(line_width);
     let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
         return TextMetrics::default();
     };
+    if !max_width.is_finite() || max_width > f64::from(f32::MAX) {
+        return TextMetrics::default();
+    }
     TextMetrics {
-        width: max_width,
+        width: max_width as f32,
         height,
         line_count,
     }
