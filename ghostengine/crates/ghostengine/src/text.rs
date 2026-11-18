@@ -1076,10 +1076,13 @@ pub fn draw_text_with_fallback_shaped_clipped(
 /// Measures one line using OpenType shaping for each contiguous fallback-font run.
 fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32) -> f32 {
     let Some(primary) = family.faces.first().cloned() else {
-        return 0.0;
+        return f32::INFINITY;
     };
-    if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() {
+    if text.is_empty() {
         return 0.0;
+    }
+    if !pixel_size.is_finite() || pixel_size <= 0.0 {
+        return f32::INFINITY;
     }
 
     enum Segment {
@@ -1094,13 +1097,13 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
         .advance_width;
     let tab_width = (space * 4.0).max(pixel_size);
     if !tab_width.is_finite() || tab_width <= 0.0 {
-        return 0.0;
+        return f32::INFINITY;
     }
     let mut width = 0.0_f64;
 
     for bidi_run in crate::shaping::resolve_bidi_runs(text) {
         let Some(run_text) = text.get(bidi_run.byte_range) else {
-            return 0.0;
+            return f32::INFINITY;
         };
         let mut segments = Vec::new();
         let mut current_face: Option<Arc<FontFace>> = None;
@@ -1147,16 +1150,16 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
                     let Ok(shaped) =
                         face.shape_text_with_direction(&run, pixel_size, bidi_run.direction)
                     else {
-                        return 0.0;
+                        return f32::INFINITY;
                     };
                     if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
-                        return 0.0;
+                        return f32::INFINITY;
                     }
                     width += f64::from(shaped.advance_x.abs());
                 }
             }
             if !width.is_finite() || width < 0.0 || width > f64::from(f32::MAX) {
-                return 0.0;
+                return f32::INFINITY;
             }
         }
     }
