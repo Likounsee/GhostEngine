@@ -1286,6 +1286,13 @@ fn prepare_bidi_shaped_line(
     line: &str,
     pixel_size: f32,
 ) -> Result<Vec<PreparedShapedTextRun>, ShapingError> {
+    if !pixel_size.is_finite() || pixel_size <= 0.0 {
+        return Err(ShapingError::InvalidPixelSize);
+    }
+    if family.is_empty() {
+        return Ok(Vec::new());
+    }
+
     enum Segment {
         Glyphs(Arc<FontFace>, String),
         Tab,
@@ -1298,12 +1305,16 @@ fn prepare_bidi_shaped_line(
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space_advance * 4.0).max(pixel_size);
+    if !tab_width.is_finite() || tab_width <= 0.0 {
+        return Ok(Vec::new());
+    }
+
     let mut output = Vec::new();
-    let mut pen_x = 0.0_f32;
+    let mut pen_x = 0.0_f64;
 
     for bidi_run in crate::shaping::resolve_bidi_runs(line) {
         let Some(run_text) = line.get(bidi_run.byte_range) else {
-            continue;
+            return Ok(Vec::new());
         };
         let mut segments = Vec::new();
         let mut current_face: Option<Arc<FontFace>> = None;
@@ -1348,22 +1359,37 @@ fn prepare_bidi_shaped_line(
         for segment in segments {
             match segment {
                 Segment::Tab => {
-                    pen_x = ((pen_x / tab_width).floor() + 1.0) * tab_width;
+                    pen_x = ((pen_x / f64::from(tab_width)).floor() + 1.0)
+                        * f64::from(tab_width);
                 }
                 Segment::Glyphs(font, text) => {
                     let shaped =
                         font.shape_text_with_direction(&text, pixel_size, bidi_run.direction)?;
-                    let advance = shaped.advance_x.abs();
-                    if !advance.is_finite() {
-                        continue;
+                    if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
+                        return Ok(Vec::new());
+                    }
+                    let advance = f64::from(shaped.advance_x.abs());
+                    let offset_x = pen_x as f32;
+                    if !advance.is_finite()
+                        || !offset_x.is_finite()
+                        || pen_x < f64::from(i32::MIN)
+                        || pen_x > f64::from(i32::MAX)
+                    {
+                        return Ok(Vec::new());
                     }
                     output.push(PreparedShapedTextRun {
                         font,
                         shaped,
-                        offset_x: pen_x,
+                        offset_x,
                     });
                     pen_x += advance;
                 }
+            }
+            if !pen_x.is_finite()
+                || pen_x < 0.0
+                || pen_x > f64::from(i32::MAX)
+            {
+                return Ok(Vec::new());
             }
         }
     }
