@@ -65,16 +65,17 @@ impl FontFace {
 
     fn glyph_index(&self, glyph_index: u16, pixel_size: f32) -> Arc<CachedGlyph> {
         let key = (pixel_size.to_bits(), glyph_index);
-        let mut cache = self
-            .indexed_glyph_cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(glyph) = cache.get(&key) {
-            return Arc::clone(glyph);
+        {
+            let cache = self
+                .indexed_glyph_cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(glyph) = cache.get(&key) {
+                return Arc::clone(glyph);
+            }
         }
-        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
-            cache.clear();
-        }
+
+        // Rasterization can be expensive; do not serialize unrelated cache misses.
         let (metrics, bitmap) = self.font.rasterize_indexed(glyph_index, pixel_size);
         let glyph = Arc::new(CachedGlyph {
             xmin: metrics.xmin,
@@ -84,6 +85,17 @@ impl FontFace {
             advance_width: metrics.advance_width,
             bitmap: Arc::from(bitmap),
         });
+
+        let mut cache = self
+            .indexed_glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(existing) = cache.get(&key) {
+            return Arc::clone(existing);
+        }
+        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
+            cache.clear();
+        }
         cache.insert(key, Arc::clone(&glyph));
         glyph
     }
@@ -150,17 +162,17 @@ impl FontFace {
 
     fn glyph(&self, character: char, pixel_size: f32) -> Arc<CachedGlyph> {
         let key = (pixel_size.to_bits(), character);
-        let mut cache = self
-            .glyph_cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(glyph) = cache.get(&key) {
-            return Arc::clone(glyph);
+        {
+            let cache = self
+                .glyph_cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(glyph) = cache.get(&key) {
+                return Arc::clone(glyph);
+            }
         }
-        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
-            // Bound memory when applications animate font sizes or render arbitrary text.
-            cache.clear();
-        }
+
+        // Keep expensive rasterization outside the lock so parallel misses can proceed.
         let (metrics, bitmap) = self.font.rasterize(character, pixel_size);
         let glyph = Arc::new(CachedGlyph {
             xmin: metrics.xmin,
@@ -170,6 +182,18 @@ impl FontFace {
             advance_width: metrics.advance_width,
             bitmap: Arc::from(bitmap),
         });
+
+        let mut cache = self
+            .glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(existing) = cache.get(&key) {
+            return Arc::clone(existing);
+        }
+        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
+            // Bound memory when applications animate font sizes or render arbitrary text.
+            cache.clear();
+        }
         cache.insert(key, Arc::clone(&glyph));
         glyph
     }
