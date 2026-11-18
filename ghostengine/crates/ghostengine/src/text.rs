@@ -961,7 +961,7 @@ pub fn draw_text_with_fallback_shaped_clipped(
     let primary = &family.faces[0];
     let space_advance = family
         .font_for(' ')
-        .unwrap_or(primary)
+        .unwrap_or(primary.as_ref())
         .glyph(' ', pixel_size)
         .advance_width;
     let tab_width = (space_advance * 4.0).max(pixel_size);
