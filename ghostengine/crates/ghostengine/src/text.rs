@@ -2868,7 +2868,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::FontFace;
+    use super::{FontFace, MAX_CACHED_GLYPHS_PER_FONT};
 
     #[test]
     fn clearing_glyph_cache_releases_character_and_indexed_entries() {
