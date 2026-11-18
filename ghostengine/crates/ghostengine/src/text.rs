@@ -2891,6 +2891,50 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_glyph_cache_misses_share_the_inserted_bitmap() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = Arc::new(FontFace::from_bytes(bytes).expect("Hebrew font should load"));
+        let glyph_index = font.font.lookup_glyph_index('ש');
+        assert_ne!(glyph_index, 0);
+
+        for indexed in [false, true] {
+            font.clear_glyph_cache();
+            let workers = 8;
+            let barrier = Arc::new(Barrier::new(workers));
+            let handles = (0..workers)
+                .map(|_| {
+                    let font = Arc::clone(&font);
+                    let barrier = Arc::clone(&barrier);
+                    thread::spawn(move || {
+                        barrier.wait();
+                        if indexed {
+                            font.glyph_index(glyph_index, 28.0)
+                        } else {
+                            font.glyph('ש', 28.0)
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            let glyphs = handles
+                .into_iter()
+                .map(|handle| handle.join().expect("glyph worker should finish"))
+                .collect::<Vec<_>>();
+            assert!(glyphs.iter().all(|glyph| !glyph.bitmap.is_empty()));
+            assert!(
+                glyphs
+                    .iter()
+                    .all(|glyph| Arc::ptr_eq(glyph, &glyphs[0])),
+                "concurrent misses should return the single cached glyph allocation"
+            );
+            assert_eq!(font.cached_glyph_count(), 1);
+        }
+    }
+
+    #[test]
     fn malformed_shaped_metrics_are_rejected_before_rendering() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
