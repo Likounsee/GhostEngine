@@ -2891,6 +2891,24 @@ mod tests {
     }
 
     #[test]
+    fn glyph_caches_remain_bounded_after_many_distinct_entries() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+
+        for codepoint in 0x1000..(0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32 + 1) {
+            let character = char::from_u32(codepoint).expect("test codepoint should be valid");
+            let _ = font.glyph(character, 1.0);
+        }
+        assert_eq!(font.glyph_cache.lock().unwrap().len(), 1);
+
+        for glyph_index in 0..=MAX_CACHED_GLYPHS_PER_FONT as u16 {
+            let _ = font.glyph_index(glyph_index, 1.0);
+        }
+        assert_eq!(font.indexed_glyph_cache.lock().unwrap().len(), 1);
+        assert_eq!(font.cached_glyph_count(), 2);
+    }
+
+    #[test]
     fn concurrent_glyph_cache_misses_share_the_inserted_bitmap() {
         use std::sync::{Arc, Barrier};
         use std::thread;
