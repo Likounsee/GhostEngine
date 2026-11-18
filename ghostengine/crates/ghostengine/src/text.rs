@@ -2123,31 +2123,60 @@ pub fn draw_text_transformed_clipped(
         return TextMetrics::default();
     };
     let metrics = layout_metrics(font, text, pixel_size);
+    if !metrics.width.is_finite()
+        || metrics.width < 0.0
+        || !metrics.height.is_finite()
+        || metrics.height < 0.0
+    {
+        return TextMetrics::default();
+    }
     let Some(visible_clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height()))
     else {
         return metrics;
     };
     let line_height = font.line_height(pixel_size);
-    let mut pen_x = baseline.x as f32;
-    let mut pen_y = baseline.y as f32;
+    let space_advance = font.glyph(' ', pixel_size).advance_width;
+    let tab_width = (space_advance * 4.0).max(pixel_size);
+    if !line_height.is_finite()
+        || line_height <= 0.0
+        || !tab_width.is_finite()
+        || tab_width <= 0.0
+    {
+        return TextMetrics::default();
+    }
+
+    let mut pen_x = f64::from(baseline.x);
+    let mut pen_y = f64::from(baseline.y);
     let origin_x = pen_x;
     let mut previous = None;
     let mut base_anchor: Option<(f32, f32, usize, usize)> = None;
     let mut above_mark_offset = 0.0_f32;
     let mut below_mark_offset = 0.0_f32;
-    let tab_width = (font.glyph(' ', pixel_size).advance_width * 4.0).max(pixel_size);
+
     for character in text.chars() {
         match character {
             '\n' => {
                 pen_x = origin_x;
-                pen_y += line_height;
+                pen_y += f64::from(line_height);
+                if !pen_y.is_finite()
+                    || pen_y < f64::from(i32::MIN)
+                    || pen_y > f64::from(i32::MAX)
+                {
+                    return TextMetrics::default();
+                }
                 previous = None;
                 base_anchor = None;
                 above_mark_offset = 0.0;
                 below_mark_offset = 0.0;
             }
             '\t' => {
-                pen_x += tab_width;
+                pen_x += f64::from(tab_width);
+                if !pen_x.is_finite()
+                    || pen_x < f64::from(i32::MIN)
+                    || pen_x > f64::from(i32::MAX)
+                {
+                    return TextMetrics::default();
+                }
                 previous = None;
                 base_anchor = None;
                 above_mark_offset = 0.0;
@@ -2156,12 +2185,22 @@ pub fn draw_text_transformed_clipped(
             character => {
                 if !is_combining_mark(character) {
                     if let Some(previous_character) = previous {
-                        pen_x += font.kerning(previous_character, character, pixel_size);
+                        let kerning = font.kerning(previous_character, character, pixel_size);
+                        if !kerning.is_finite() {
+                            return TextMetrics::default();
+                        }
+                        pen_x += f64::from(kerning);
                     }
                 }
                 let glyph = font.glyph(character, pixel_size);
-                let mut left = pen_x + glyph.xmin as f32;
-                let mut top = pen_y - glyph.ymin as f32 - glyph.height as f32;
+                if !glyph.advance_width.is_finite() {
+                    return TextMetrics::default();
+                }
+                let mut left = (pen_x as f32) + glyph.xmin as f32;
+                let mut top = (pen_y as f32) - glyph.ymin as f32 - glyph.height as f32;
+                if !left.is_finite() || !top.is_finite() {
+                    return TextMetrics::default();
+                }
                 let combining = is_combining_mark(character);
                 if combining {
                     if let Some(anchor) = base_anchor {
@@ -2182,6 +2221,13 @@ pub fn draw_text_transformed_clipped(
                         } else {
                             above_mark_offset = next_mark_stack_offset(offset, glyph.height);
                         }
+                        if !left.is_finite()
+                            || !top.is_finite()
+                            || !above_mark_offset.is_finite()
+                            || !below_mark_offset.is_finite()
+                        {
+                            return TextMetrics::default();
+                        }
                     }
                 } else {
                     base_anchor = Some((left, top, glyph.width, glyph.height));
@@ -2199,7 +2245,13 @@ pub fn draw_text_transformed_clipped(
                     inverse,
                 );
                 if !combining {
-                    pen_x += glyph.advance_width;
+                    pen_x += f64::from(glyph.advance_width);
+                    if !pen_x.is_finite()
+                        || pen_x < f64::from(i32::MIN)
+                        || pen_x > f64::from(i32::MAX)
+                    {
+                        return TextMetrics::default();
+                    }
                     previous = Some(character);
                 }
             }
