@@ -3395,7 +3395,7 @@ mod tests {
         let family = super::FontFamily::new(font);
 
         let single_line = family.measure("שלום", 24.0);
-        let multi_line = family.measure("שלום\\tשלום\\n\\nשלום", 24.0);
+        let multi_line = family.measure("שלום\tשלום\n\nשלום", 24.0);
 
         assert!(single_line.width.is_finite() && single_line.width > 0.0);
         assert!(single_line.height.is_finite() && single_line.height > 0.0);
