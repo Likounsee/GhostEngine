@@ -2847,6 +2847,26 @@ mod tests {
     use super::FontFace;
 
     #[test]
+    fn clearing_glyph_cache_releases_character_and_indexed_entries() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let glyph_index = font.font.lookup_glyph_index('ש');
+        assert_ne!(glyph_index, 0);
+
+        let character_glyph = font.glyph('ש', 24.0);
+        let indexed_glyph = font.glyph_index(glyph_index, 24.0);
+        assert!(!character_glyph.bitmap.is_empty());
+        assert!(!indexed_glyph.bitmap.is_empty());
+        assert_eq!(font.cached_glyph_count(), 2);
+
+        font.clear_glyph_cache();
+        assert_eq!(font.cached_glyph_count(), 0);
+
+        let _ = font.glyph('ש', 24.0);
+        assert_eq!(font.cached_glyph_count(), 1);
+    }
+
+    #[test]
     fn malformed_shaped_metrics_are_rejected_before_rendering() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
