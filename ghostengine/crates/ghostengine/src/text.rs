@@ -1359,8 +1359,7 @@ fn prepare_bidi_shaped_line(
         for segment in segments {
             match segment {
                 Segment::Tab => {
-                    pen_x = ((pen_x / f64::from(tab_width)).floor() + 1.0)
-                        * f64::from(tab_width);
+                    pen_x = ((pen_x / f64::from(tab_width)).floor() + 1.0) * f64::from(tab_width);
                 }
                 Segment::Glyphs(font, text) => {
                     let shaped =
@@ -1385,10 +1384,7 @@ fn prepare_bidi_shaped_line(
                     pen_x += advance;
                 }
             }
-            if !pen_x.is_finite()
-                || pen_x < 0.0
-                || pen_x > f64::from(i32::MAX)
-            {
+            if !pen_x.is_finite() || pen_x < 0.0 || pen_x > f64::from(i32::MAX) {
                 return Ok(Vec::new());
             }
         }
@@ -1469,9 +1465,9 @@ pub(crate) fn prepare_bidi_shaped_text_box(
     for (index, line) in text_lines.iter().enumerate() {
         let alignment_offset = match options.align {
             TextAlign::Left => 0.0,
-            TextAlign::Center => (f64::from(alignment_width) - f64::from(widths[index]))
-                .mul_add(0.5, 0.0)
-                .max(0.0),
+            TextAlign::Center => {
+                ((f64::from(alignment_width) - f64::from(widths[index])) * 0.5).max(0.0)
+            },
             TextAlign::Right => {
                 (f64::from(alignment_width) - f64::from(widths[index])).max(0.0)
             }
