@@ -1397,13 +1397,18 @@ fn prepare_bidi_shaped_line(
 }
 
 fn measure_bidi_shaped_fallback_line(family: &FontFamily, line: &str, pixel_size: f32) -> f32 {
-    prepare_bidi_shaped_line(family, line, pixel_size)
-        .map(|runs| {
-            runs.iter()
-                .map(|run| run.shaped.advance_x.abs())
-                .sum::<f32>()
-        })
-        .unwrap_or(0.0)
+    let Ok(runs) = prepare_bidi_shaped_line(family, line, pixel_size) else {
+        return f32::INFINITY;
+    };
+    let Some(width) = runs.iter().try_fold(0.0_f64, |total, run| {
+        let advance = f64::from(run.shaped.advance_x.abs());
+        let next = total + advance;
+        (advance.is_finite() && next.is_finite() && next <= f64::from(f32::MAX))
+            .then_some(next)
+    }) else {
+        return f32::INFINITY;
+    };
+    width as f32
 }
 
 /// Shapes, wraps and lays out bidirectional fallback text for display-list replay.
@@ -1446,31 +1451,41 @@ pub(crate) fn prepare_bidi_shaped_text_box(
         }
     }
 
-    let mut prepared_lines = Vec::with_capacity(text_lines.len());
     let widths = text_lines
         .iter()
         .map(|line| measure_bidi_shaped_fallback_line(family, line, pixel_size))
         .collect::<Vec<_>>();
+    if widths.iter().any(|width| !width.is_finite() || *width < 0.0) {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
     let widest = widths.iter().copied().fold(0.0_f32, f32::max);
     let alignment_width = options.max_width.unwrap_or(widest);
-    let line_step = line_height * options.line_spacing;
+    let line_step = f64::from(line_height) * f64::from(options.line_spacing);
+    if !line_step.is_finite() || line_step <= 0.0 || !alignment_width.is_finite() {
+        return Ok(PreparedShapedTextBox { lines: Vec::new() });
+    }
 
+    let mut prepared_lines = Vec::with_capacity(text_lines.len());
     for (index, line) in text_lines.iter().enumerate() {
         let alignment_offset = match options.align {
             TextAlign::Left => 0.0,
-            TextAlign::Center => ((alignment_width - widths[index]) * 0.5).max(0.0),
-            TextAlign::Right => (alignment_width - widths[index]).max(0.0),
+            TextAlign::Center => (f64::from(alignment_width) - f64::from(widths[index]))
+                .mul_add(0.5, 0.0)
+                .max(0.0),
+            TextAlign::Right => {
+                (f64::from(alignment_width) - f64::from(widths[index])).max(0.0)
+            }
         };
-        let x = baseline.x as f32 + alignment_offset;
-        let y = baseline.y as f32 + index as f32 * line_step;
+        let x = f64::from(baseline.x) + alignment_offset;
+        let y = f64::from(baseline.y) + index as f64 * line_step;
         if !x.is_finite()
             || !y.is_finite()
-            || x < i32::MIN as f32
-            || x > i32::MAX as f32
-            || y < i32::MIN as f32
-            || y > i32::MAX as f32
+            || x < f64::from(i32::MIN)
+            || x > f64::from(i32::MAX)
+            || y < f64::from(i32::MIN)
+            || y > f64::from(i32::MAX)
         {
-            continue;
+            return Ok(PreparedShapedTextBox { lines: Vec::new() });
         }
         prepared_lines.push(PreparedShapedTextLine {
             baseline: Point::new(x.round() as i32, y.round() as i32),
@@ -1500,31 +1515,54 @@ pub fn draw_text_box_with_fallback_bidi_shaped_clipped(
         return TextMetrics::default();
     };
     let line_height = family.line_height(pixel_size);
-    let mut widest = 0.0_f32;
+    let mut widest = 0.0_f64;
     for line in &prepared.lines {
-        let mut width = 0.0_f32;
+        let mut width = 0.0_f64;
         for run in &line.runs {
+            let offset = f64::from(run.offset_x);
+            let advance = f64::from(run.shaped.advance_x.abs());
+            let end = offset + advance;
+            if !offset.is_finite()
+                || !advance.is_finite()
+                || !end.is_finite()
+                || end > f64::from(f32::MAX)
+                || offset < 0.0
+                || offset > f64::from(i32::MAX)
+            {
+                return TextMetrics::default();
+            }
             draw_text_shaped_clipped(
                 target,
                 &run.font,
                 &run.shaped,
                 Point::new(
-                    line.baseline.x.saturating_add(run.offset_x.round() as i32),
+                    line.baseline.x.saturating_add(offset.round() as i32),
                     line.baseline.y,
                 ),
                 pixel_size,
                 color,
                 clip,
             );
-            width = width.max(run.offset_x + run.shaped.advance_x.abs());
+            width = width.max(end);
         }
         widest = widest.max(width);
     }
-    let step = line_height * options.line_spacing;
+    let step = f64::from(line_height) * f64::from(options.line_spacing);
+    let height = step * prepared.lines.len() as f64;
+    let Ok(line_count) = u32::try_from(prepared.lines.len()) else {
+        return TextMetrics::default();
+    };
+    if !widest.is_finite()
+        || widest > f64::from(f32::MAX)
+        || !height.is_finite()
+        || height > f64::from(f32::MAX)
+    {
+        return TextMetrics::default();
+    }
     TextMetrics {
-        width: widest,
-        height: step * prepared.lines.len() as f32,
-        line_count: prepared.lines.len() as u32,
+        width: widest as f32,
+        height: height as f32,
+        line_count,
     }
 }
 
