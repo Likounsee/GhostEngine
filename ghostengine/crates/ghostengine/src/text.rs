@@ -1078,7 +1078,7 @@ fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32
     }
     let Some(primary) = family.faces.first().cloned() else {
         return f32::INFINITY;
-    }
+    };
     if !pixel_size.is_finite() || pixel_size <= 0.0 {
         return f32::INFINITY;
     }
