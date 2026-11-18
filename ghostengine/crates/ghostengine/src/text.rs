@@ -968,9 +968,11 @@ pub fn draw_text_with_fallback_shaped_clipped(
     if !tab_width.is_finite() || tab_width <= 0.0 {
         return TextMetrics::default();
     }
-    let mut pen_x = baseline.x as f32;
-    let mut pen_y = baseline.y as f32;
-    let mut max_width = 0.0_f32;
+
+    let origin_x = f64::from(baseline.x);
+    let mut pen_x = origin_x;
+    let mut pen_y = f64::from(baseline.y);
+    let mut max_width = 0.0_f64;
     let mut line_count = 1_u32;
     let mut run_text = String::new();
     let mut run_face: Option<Arc<FontFace>> = None;
@@ -978,8 +980,8 @@ pub fn draw_text_with_fallback_shaped_clipped(
     let flush_run = |target: &mut Framebuffer,
                      run_text: &mut String,
                      run_face: &mut Option<Arc<FontFace>>,
-                     pen_x: &mut f32,
-                     pen_y: f32| {
+                     pen_x: &mut f64,
+                     pen_y: f64| {
         if run_text.is_empty() {
             *run_face = None;
             return;
@@ -987,15 +989,20 @@ pub fn draw_text_with_fallback_shaped_clipped(
         if let Some(face) = run_face.take() {
             if let Ok(shaped) = face.shape_text(run_text, pixel_size) {
                 if !shaped_run_is_safe(&shaped, Point::new(0, 0)) {
-                    *pen_x = f32::NAN;
+                    *pen_x = f64::NAN;
                 } else {
-                    if pen_x.is_finite()
-                        && pen_y.is_finite()
-                        && *pen_x >= i32::MIN as f32
-                        && *pen_x <= i32::MAX as f32
-                        && pen_y >= i32::MIN as f32
-                        && pen_y <= i32::MAX as f32
+                    let next_pen = *pen_x + f64::from(shaped.advance_x);
+                    if !next_pen.is_finite()
+                        || next_pen < f64::from(i32::MIN)
+                        || next_pen > f64::from(i32::MAX)
+                        || !pen_y.is_finite()
+                        || pen_y < f64::from(i32::MIN)
+                        || pen_y > f64::from(i32::MAX)
+                        || *pen_x < f64::from(i32::MIN)
+                        || *pen_x > f64::from(i32::MAX)
                     {
+                        *pen_x = f64::NAN;
+                    } else {
                         draw_text_shaped_clipped(
                             target,
                             &face,
@@ -1005,9 +1012,11 @@ pub fn draw_text_with_fallback_shaped_clipped(
                             color,
                             clip,
                         );
+                        *pen_x = next_pen;
                     }
-                    *pen_x += shaped.advance_x;
                 }
+            } else {
+                *pen_x = f64::NAN;
             }
         }
         run_text.clear();
@@ -1017,22 +1026,35 @@ pub fn draw_text_with_fallback_shaped_clipped(
         match cluster {
             "\n" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
-                max_width = max_width.max(pen_x - baseline.x as f32);
-                pen_x = baseline.x as f32;
-                pen_y += line_height;
+                if !pen_x.is_finite() {
+                    return TextMetrics::default();
+                }
+                max_width = max_width.max(pen_x - origin_x);
+                pen_x = origin_x;
+                pen_y += f64::from(line_height);
                 let Some(next_line_count) = line_count.checked_add(1) else {
                     return TextMetrics::default();
                 };
                 line_count = next_line_count;
-                if !pen_y.is_finite() || !pen_x.is_finite() {
+                if !pen_y.is_finite()
+                    || pen_y < f64::from(i32::MIN)
+                    || pen_y > f64::from(i32::MAX)
+                {
                     return TextMetrics::default();
                 }
             }
             "\t" => {
                 flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
-                let relative = (pen_x - baseline.x as f32).max(0.0);
-                pen_x = baseline.x as f32 + ((relative / tab_width).floor() + 1.0) * tab_width;
                 if !pen_x.is_finite() {
+                    return TextMetrics::default();
+                }
+                let relative = (pen_x - origin_x).max(0.0);
+                pen_x = origin_x
+                    + ((relative / f64::from(tab_width)).floor() + 1.0) * f64::from(tab_width);
+                if !pen_x.is_finite()
+                    || pen_x < f64::from(i32::MIN)
+                    || pen_x > f64::from(i32::MAX)
+                {
                     return TextMetrics::default();
                 }
             }
@@ -1047,6 +1069,9 @@ pub fn draw_text_with_fallback_shaped_clipped(
                     .is_some_and(|face| Arc::ptr_eq(face, &selected));
                 if !same_face && !run_text.is_empty() {
                     flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
+                    if !pen_x.is_finite() {
+                        return TextMetrics::default();
+                    }
                 }
                 if run_face.is_none() {
                     run_face = Some(selected);
@@ -1056,8 +1081,11 @@ pub fn draw_text_with_fallback_shaped_clipped(
         }
     }
     flush_run(target, &mut run_text, &mut run_face, &mut pen_x, pen_y);
-    max_width = max_width.max(pen_x - baseline.x as f32);
-    if !pen_x.is_finite() || !max_width.is_finite() {
+    if !pen_x.is_finite() {
+        return TextMetrics::default();
+    }
+    max_width = max_width.max(pen_x - origin_x);
+    if !max_width.is_finite() || max_width < 0.0 || max_width > f64::from(f32::MAX) {
         return TextMetrics::default();
     }
     let Some(height) = checked_text_block_height(line_height, line_count as usize) else {
@@ -1065,12 +1093,11 @@ pub fn draw_text_with_fallback_shaped_clipped(
     };
 
     TextMetrics {
-        width: max_width,
+        width: max_width as f32,
         height,
         line_count,
     }
 }
-
 /// Measures one line using OpenType shaping for each contiguous fallback-font run.
 fn measure_shaped_fallback_line(family: &FontFamily, text: &str, pixel_size: f32) -> f32 {
     if text.is_empty() {
