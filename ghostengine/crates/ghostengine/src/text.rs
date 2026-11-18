@@ -514,6 +514,13 @@ pub fn draw_text_shaped_clipped(
 }
 
 /// Checks public shaped-run data before any glyph-cache or framebuffer access.
+fn f32_accumulation_exceeds_range(base: f64, delta: f32) -> bool {
+    let limit = f64::from(f32::MAX);
+    let delta = f64::from(delta);
+    (delta > 0.0 && base > limit - delta)
+        || (delta < 0.0 && base < -limit - delta)
+}
+
 fn shaped_run_is_safe(shaped: &ShapedText, baseline: Point) -> bool {
     if !shaped.advance_x.is_finite()
         || !shaped.advance_y.is_finite()
@@ -548,12 +555,19 @@ fn shaped_run_is_safe(shaped: &ShapedText, baseline: Point) -> bool {
     let mut pen_x = f64::from(baseline.x);
     let mut pen_y = f64::from(baseline.y);
     for glyph in &shaped.glyphs {
+        if f32_accumulation_exceeds_range(pen_x, glyph.x_offset)
+            || f32_accumulation_exceeds_range(pen_y, -glyph.y_offset)
+        {
+            return false;
+        }
         let glyph_x = pen_x + f64::from(glyph.x_offset);
         let glyph_y = pen_y - f64::from(glyph.y_offset);
         if !glyph_x.is_finite()
             || !glyph_y.is_finite()
             || glyph_x.abs() > f64::from(f32::MAX)
             || glyph_y.abs() > f64::from(f32::MAX)
+            || f32_accumulation_exceeds_range(pen_x, glyph.x_advance)
+            || f32_accumulation_exceeds_range(pen_y, -glyph.y_advance)
         {
             return false;
         }
