@@ -7807,6 +7807,19 @@ mod polygon_parallel_tests {
                     threads,
                 );
                 assert_eq!(actual, expected, "threads {threads}, vertices {vertices:?}");
+
+                let mut fallible = Framebuffer::new(79, 63, Color::rgba(11, 23, 37, 255)).unwrap();
+                super::try_fill_polygon_parallel_with_threads(
+                    &mut fallible,
+                    vertices,
+                    Color::rgba(190, 80, 220, 173),
+                    threads,
+                )
+                .unwrap();
+                assert_eq!(
+                    fallible, expected,
+                    "fallible API, threads {threads}, vertices {vertices:?}"
+                );
             }
         }
     }
