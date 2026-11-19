@@ -1290,6 +1290,11 @@ pub fn draw_texture_clipped_with_scratch(
 /// destination storage into disjoint mutable slices, so workers never share mutable
 /// pixels and no framebuffer copy is made. Small workloads and a single requested
 /// worker use the established sequential implementation.
+/// Draws a clipped texture using parallel workers.
+///
+/// This compatibility wrapper panics only if temporary allocation fails.
+/// Use `try_draw_texture_clipped_parallel_with_threads` when allocation
+/// failure must be reported to the caller.
 pub fn draw_texture_clipped_parallel_with_threads(
     target: &mut Framebuffer,
     texture: &Texture,
@@ -1298,12 +1303,28 @@ pub fn draw_texture_clipped_parallel_with_threads(
     clip: Rect,
     threads: usize,
 ) {
+    try_draw_texture_clipped_parallel_with_threads(target, texture, destination, filter, clip, threads)
+        .expect("parallel texture drawing scratch allocation failed");
+}
+
+/// Fallible parallel texture drawing.
+///
+/// All temporary lookup buffers are reserved before framebuffer pixels are
+/// changed. If allocation fails, the framebuffer is left untouched.
+pub fn try_draw_texture_clipped_parallel_with_threads(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    threads: usize,
+) -> Result<(), TextureDrawError> {
     if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
         draw_texture_clipped(target, texture, destination, filter, clip);
-        return;
+        return Ok(());
     }
     if destination.width == 0 || destination.height == 0 {
-        return;
+        return Ok(());
     }
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
@@ -1371,22 +1392,24 @@ pub fn draw_texture_clipped_parallel_with_threads(
     let right = end_x as usize;
     // Horizontal bilinear coordinates are constant for every scanline.
     // Compute them once, then let all workers reuse the immutable lookup table.
-    let horizontal_samples: Vec<_> = if filter == TextureFilter::Bilinear {
-        (first_x..end_x)
-            .map(|x| {
-                let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
-                let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
-                let x0 = source_x.floor() as usize;
-                BilinearHorizontalSample {
-                    x0,
-                    x1: (x0 + 1).min(texture.width as usize - 1),
-                    tx: source_x - x0 as f32,
-                }
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let mut horizontal_samples = Vec::new();
+    if filter == TextureFilter::Bilinear {
+        let sample_count = usize::try_from(end_x - first_x)
+            .map_err(|_| TextureDrawError::AllocationFailed)?;
+        horizontal_samples
+            .try_reserve_exact(sample_count)
+            .map_err(|_| TextureDrawError::AllocationFailed)?;
+        for x in first_x..end_x {
+            let source_x = (x as f32 + 0.5 - destination.x as f32) * source_x_scale - 0.5;
+            let source_x = source_x.clamp(0.0, texture.width as f32 - 1.0);
+            let x0 = source_x.floor() as usize;
+            horizontal_samples.push(BilinearHorizontalSample {
+                x0,
+                x1: (x0 + 1).min(texture.width as usize - 1),
+                tx: source_x - x0 as f32,
+            });
+        }
+    }
 
     // Share precomputed premultiplied horizontal samples across worker threads.
     // Bound memory use and keep the direct sampler for short or very wide draws.
@@ -1397,7 +1420,9 @@ pub fn draw_texture_clipped_parallel_with_threads(
         if end_y - first_y >= u64::from(texture.height) * 2
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024)
         {
-            let mut cache = Vec::with_capacity(cache_len.unwrap());
+            let mut cache = Vec::new();
+            cache.try_reserve_exact(cache_len.unwrap())
+                .map_err(|_| TextureDrawError::AllocationFailed)?;
             let row_width = texture.width as usize;
             for source_row in 0..texture.height as usize {
                 let source_offset = source_row * row_width;
@@ -1549,6 +1574,7 @@ pub fn draw_texture_clipped_parallel_with_threads(
             });
         }
     });
+    Ok(())
 }
 
 // Returns a conservative horizontal interval for one inverse-mapped scanline.
