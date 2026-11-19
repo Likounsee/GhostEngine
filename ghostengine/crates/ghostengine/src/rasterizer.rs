@@ -3630,16 +3630,16 @@ pub fn draw_ellipse_aa(
 }
 
 /// Draws an antialiased ellipse outline while reusing caller-owned scanline color storage.
-pub fn draw_ellipse_aa_with_scratch(
+pub fn try_draw_ellipse_aa_with_scratch(
     target: &mut Framebuffer,
     center: Point,
     radius_x: u32,
     radius_y: u32,
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     if radius_x == 0 || radius_y == 0 {
         let rx = i64::from(radius_x);
@@ -3653,7 +3653,7 @@ pub fn draw_ellipse_aa_with_scratch(
             (i64::from(center.y) + ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
         );
         draw_line_aa(target, start, end, color);
-        return;
+        return Ok(());
     }
 
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
@@ -3666,13 +3666,17 @@ pub fn draw_ellipse_aa_with_scratch(
     let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let inverse_rx_squared = 1.0 / (rx * rx);
     let inverse_ry_squared = 1.0 / (ry * ry);
     let sources = &mut scratch.ellipse_aa_sources;
-    sources.resize((right - left) as usize, Color::TRANSPARENT);
+    let row_width = (right - left) as usize;
+    sources
+        .try_reserve(row_width.saturating_sub(sources.len()))
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    sources.resize(row_width, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -4460,6 +4464,34 @@ pub fn fill_circle_aa_with_scratch(
 /// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
 pub fn draw_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     draw_ellipse_aa(target, center, radius, radius, color);
+    Ok(())
+}
+
+/// Draws an antialiased ellipse outline using reusable caller-owned storage.
+///
+/// This compatibility wrapper preserves the original infallible API.
+pub fn draw_ellipse_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_draw_ellipse_aa_with_scratch(target, center, radius_x, radius_y, color, scratch)
+        .expect("failed to allocate antialiased ellipse outline scratch storage");
+}
+
+
+/// Draws an antialiased circle outline while reusing caller-owned ellipse scanline storage.
+pub fn try_draw_circle_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
+    try_draw_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch)
 }
 
 /// Draws an antialiased circle outline while reusing caller-owned ellipse scanline storage.
@@ -4470,7 +4502,8 @@ pub fn draw_circle_aa_with_scratch(
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
-    draw_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
+    try_draw_circle_aa_with_scratch(target, center, radius, color, scratch)
+        .expect("failed to allocate antialiased circle outline scratch storage");
 }
 
 /// Fills an antialiased circle using the parallel ellipse rasterizer.
@@ -4985,6 +5018,32 @@ mod tests {
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
             assert_eq!(gradient.sample_raster(position), gradient.sample(position));
         }
+    }
+
+    #[test]
+    fn fallible_antialiased_ellipse_outline_scratch_matches_compatibility_api() {
+        let mut expected = target(20, 18);
+        let mut actual = target(20, 18);
+        let mut expected_scratch = super::RasterizerScratch::default();
+        let mut actual_scratch = super::RasterizerScratch::default();
+        super::draw_ellipse_aa_with_scratch(
+            &mut expected,
+            Point { x: 9, y: 8 },
+            7,
+            5,
+            Color::rgba(220, 90, 40, 180),
+            &mut expected_scratch,
+        );
+        super::try_draw_ellipse_aa_with_scratch(
+            &mut actual,
+            Point { x: 9, y: 8 },
+            7,
+            5,
+            Color::rgba(220, 90, 40, 180),
+            &mut actual_scratch,
+        )
+        .unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
