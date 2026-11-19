@@ -153,6 +153,21 @@ mod tests {
     }
 
     #[test]
+    fn fallible_constructor_preallocates_requested_capacity() {
+        let cache = PathGeometryCache::try_new(4).unwrap();
+        assert_eq!(cache.capacity, 4);
+        assert!(cache.is_empty());
+        assert_eq!(cache.hit_count(), 0);
+        assert_eq!(cache.miss_count(), 0);
+    }
+
+    #[test]
+    fn fallible_constructor_keeps_minimum_capacity_of_one() {
+        let cache = PathGeometryCache::try_new(0).unwrap();
+        assert_eq!(cache.capacity, 1);
+    }
+
+    #[test]
     fn reuses_geometry_and_tracks_cache_hits() {
         let path = triangle();
         let mut cache = PathGeometryCache::new(2);
