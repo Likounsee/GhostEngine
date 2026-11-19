@@ -4482,7 +4482,6 @@ pub fn draw_ellipse_aa_with_scratch(
         .expect("failed to allocate antialiased ellipse outline scratch storage");
 }
 
-
 /// Draws an antialiased circle outline while reusing caller-owned ellipse scanline storage.
 pub fn try_draw_circle_aa_with_scratch(
     target: &mut Framebuffer,
