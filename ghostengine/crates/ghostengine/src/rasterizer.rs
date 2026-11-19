@@ -3750,7 +3750,9 @@ pub fn try_draw_ellipse_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
+
 /// Draws an anti-aliased circular arc.
 ///
 /// Angles are expressed in radians from the positive X axis. Positive sweeps
@@ -4078,8 +4080,16 @@ pub fn fill_arc_aa_with_scratch(
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
-    try_fill_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
-        .expect("failed to allocate antialiased arc scratch storage");
+    try_fill_arc_aa_with_scratch(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        scratch,
+    )
+    .expect("failed to allocate antialiased arc scratch storage");
 }
 
 /// Draws an antialiased circular arc using disjoint framebuffer row bands.
@@ -4504,7 +4514,6 @@ pub fn fill_circle_aa_with_scratch(
 /// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
 pub fn draw_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, color: Color) {
     draw_ellipse_aa(target, center, radius, radius, color);
-    Ok(())
 }
 
 /// Draws an antialiased ellipse outline using reusable caller-owned storage.
