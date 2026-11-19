@@ -2530,11 +2530,10 @@ fn fill_polygon_aa_parallel_rows(
     right: u32,
     edges: &[PolygonEdge],
     coverage_colors: &[Color; 17],
+    coverage: &mut [u8],
+    intersections: &mut Vec<f64>,
 ) {
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-    let span_width = (right - left) as usize;
-    let mut coverage = vec![0_u8; span_width];
-    let mut intersections = Vec::with_capacity(edges.len());
 
     for (row_offset, full_row) in rows.chunks_mut(row_width).enumerate() {
         let y = first_y + row_offset;
@@ -2619,8 +2618,23 @@ pub fn fill_polygon_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
+    try_fill_polygon_aa_parallel_with_threads(target, vertices, color, thread_count)
+        .expect("failed to allocate parallel antialiased polygon scratch storage");
+}
+
+/// Fallibly fills an antialiased polygon using independent scanline workers.
+///
+/// Edge, coverage, and intersection storage for every worker is reserved
+/// before the framebuffer is modified. Allocation failure leaves the target
+/// unchanged.
+pub fn try_fill_polygon_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
 
     let mut coverage_colors = [Color::TRANSPARENT; 17];
@@ -2638,10 +2652,13 @@ pub fn fill_polygon_aa_parallel_with_threads(
     let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
     let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
-    let mut edges = Vec::with_capacity(vertices.len());
+    let mut edges = Vec::new();
+    edges
+        .try_reserve_exact(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
     for index in 0..vertices.len() {
         if let Some(edge) =
             PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
@@ -2650,47 +2667,63 @@ pub fn fill_polygon_aa_parallel_with_threads(
         }
     }
     if edges.is_empty() {
-        return;
+        return Ok(());
     }
 
     let row_width = target.width() as usize;
+    let row_count = (bottom - top) as usize;
+    let worker_count = thread_count.max(1).min(row_count);
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let actual_worker_count = row_count.div_ceil(rows_per_worker);
+    let span_width = (right - left) as usize;
+
+    let mut worker_scratch = Vec::new();
+    worker_scratch
+        .try_reserve_exact(actual_worker_count)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    for _ in 0..actual_worker_count {
+        let mut coverage = Vec::new();
+        coverage
+            .try_reserve_exact(span_width)
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        coverage.resize(span_width, 0);
+
+        let mut intersections = Vec::new();
+        intersections
+            .try_reserve_exact(edges.len())
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        worker_scratch.push((coverage, intersections));
+    }
+
     let start = top as usize * row_width;
     let end = bottom as usize * row_width;
     let rows = &mut target.pixels_mut()[start..end];
-    let row_count = (bottom - top) as usize;
-    let worker_count = thread_count.max(1).min(row_count);
-    if worker_count == 1 {
-        fill_polygon_aa_parallel_rows(
-            rows,
-            row_width,
-            top as usize,
-            left,
-            right,
-            &edges,
-            &coverage_colors,
-        );
-    } else {
-        let rows_per_worker = row_count.div_ceil(worker_count);
-        let pixels_per_worker = rows_per_worker * row_width;
-        std::thread::scope(|scope| {
-            for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
-                let first_y = top as usize + chunk_index * rows_per_worker;
-                let edges = &edges;
-                let coverage_colors = &coverage_colors;
-                scope.spawn(move || {
-                    fill_polygon_aa_parallel_rows(
-                        chunk,
-                        row_width,
-                        first_y,
-                        left,
-                        right,
-                        edges,
-                        coverage_colors,
-                    );
-                });
-            }
-        });
-    }
+    let pixels_per_worker = rows_per_worker * row_width;
+    std::thread::scope(|scope| {
+        for (chunk_index, (chunk, (mut coverage, mut intersections))) in rows
+            .chunks_mut(pixels_per_worker)
+            .zip(worker_scratch.into_iter())
+            .enumerate()
+        {
+            let first_y = top as usize + chunk_index * rows_per_worker;
+            let edges = &edges;
+            let coverage_colors = &coverage_colors;
+            scope.spawn(move || {
+                fill_polygon_aa_parallel_rows(
+                    chunk,
+                    row_width,
+                    first_y,
+                    left,
+                    right,
+                    edges,
+                    coverage_colors,
+                    &mut coverage,
+                    &mut intersections,
+                );
+            });
+        }
+    });
+    Ok(())
 }
 
 /// Automatically selects a worker count for antialiased polygon filling.
