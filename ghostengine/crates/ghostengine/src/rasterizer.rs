@@ -696,6 +696,12 @@ pub struct Gradient {
     radial_lookup: Option<Vec<Color>>,
 }
 
+/// Errors produced by fallible rasterizer operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RasterizerError {
+    AllocationFailed,
+}
+
 /// Errors produced while constructing a gradient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GradientError {
@@ -2307,19 +2313,19 @@ pub fn fill_polygon_parallel(target: &mut Framebuffer, vertices: &[Point], color
 /// The output is pixel-identical to fill_polygon. Reusing the same scratch
 /// value avoids allocating edge, active-edge, and intersection vectors for
 /// every draw call.
-pub fn fill_polygon_with_scratch(
+pub fn try_fill_polygon_with_scratch(
     target: &mut Framebuffer,
     vertices: &[Point],
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     let min_y = vertices.iter().map(|p| p.y).min().unwrap().max(0) as u32;
     let max_y = vertices.iter().map(|p| p.y).max().unwrap();
     if max_y < 0 || min_y >= target.height() {
-        return;
+        return Ok(());
     }
     let max_y = (max_y as u32).min(target.height() - 1);
 
@@ -2329,6 +2335,12 @@ pub fn fill_polygon_with_scratch(
         intersections,
         ..
     } = scratch;
+
+    // Reserve every buffer before touching the framebuffer. If any reservation
+    // fails, the operation returns without drawing a partial polygon.
+    edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    active_edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    intersections.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
 
     // Refill existing buffers without discarding their allocations.
     edges.clear();
@@ -2346,7 +2358,7 @@ pub fn fill_polygon_with_scratch(
         }
     }
     if edges.is_empty() {
-        return;
+        return Ok(());
     }
 
     // Activate only edges crossing the current scanline. Sorting by their
@@ -2385,7 +2397,21 @@ pub fn fill_polygon_with_scratch(
             }
         }
     }
+    Ok(())
 }
+/// Fills a polygon using caller-owned reusable scratch storage.
+///
+/// This compatibility wrapper preserves the original infallible API.
+pub fn fill_polygon_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_with_scratch(target, vertices, color, scratch)
+        .expect("failed to allocate polygon rasterizer scratch storage");
+}
+
 
 #[derive(Debug, Clone, Copy)]
 struct PolygonEdge {
@@ -4891,6 +4917,28 @@ mod tests {
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
             assert_eq!(gradient.sample_raster(position), gradient.sample(position));
         }
+    }
+
+    #[test]
+    fn fallible_polygon_scratch_matches_compatibility_api() {
+        let vertices = [
+            Point { x: 1, y: 1 },
+            Point { x: 7, y: 2 },
+            Point { x: 4, y: 7 },
+            Point { x: 2, y: 5 },
+        ];
+        let mut expected = target(10, 10);
+        let mut actual = target(10, 10);
+        super::fill_polygon(&mut expected, &vertices, Color::RED);
+        let mut scratch = super::RasterizerScratch::default();
+        super::try_fill_polygon_with_scratch(
+            &mut actual,
+            &vertices,
+            Color::RED,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
