@@ -2552,7 +2552,7 @@ fn fill_polygon_aa_parallel_rows(
                 let span_right = pair[1].min(f64::from(right));
                 if span_left < span_right {
                     accumulate_polygon_span_edges(
-                        &mut coverage,
+                        coverage,
                         left,
                         span_left.floor() as u32,
                         span_right.ceil() as u32,
@@ -3197,7 +3197,7 @@ fn fill_ellipse_aa_parallel_rows(
                 .clamp(i64::from(left), i64::from(right)) as u32;
             let end = ((span_right - SAMPLE_OFFSETS[0]).floor() as i64 + 1)
                 .clamp(i64::from(left), i64::from(right)) as u32;
-            accumulate_ellipse_span(&mut coverage, left, first, end, span_left, span_right);
+            accumulate_ellipse_span(coverage, left, first, end, span_left, span_right);
         }
 
         let row_pixels = &mut row[left as usize..right as usize];
@@ -8212,10 +8212,11 @@ mod blend_rect_transparent_run_tests {
     fn fallible_arc_scratch_apis_match_compatibility_apis() {
         let center = Point::new(15, 12);
         let color = Color::rgba(180, 70, 35, 190);
-        let mut expected_draw = target(32, 28);
-        let mut actual_draw = target(32, 28);
-        let mut expected_fill = target(32, 28);
-        let mut actual_fill = target(32, 28);
+        let background = Color::rgba(17, 29, 43, 255);
+        let mut expected_draw = Framebuffer::new(32, 28, background).unwrap();
+        let mut actual_draw = Framebuffer::new(32, 28, background).unwrap();
+        let mut expected_fill = Framebuffer::new(32, 28, background).unwrap();
+        let mut actual_fill = Framebuffer::new(32, 28, background).unwrap();
         let mut expected_scratch = super::RasterizerScratch::default();
         let mut actual_scratch = super::RasterizerScratch::default();
 
