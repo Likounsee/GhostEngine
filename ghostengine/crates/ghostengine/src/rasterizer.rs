@@ -4510,8 +4510,11 @@ pub fn try_fill_arc_aa_parallel_with_threads(
 ) -> Result<(), RasterizerError> {
     use core::f64::consts::TAU;
 
-    if color.a == 0 || target.width() == 0 || target.height() == 0
-        || !start_angle.is_finite() || !end_angle.is_finite()
+    if color.a == 0
+        || target.width() == 0
+        || target.height() == 0
+        || !start_angle.is_finite()
+        || !end_angle.is_finite()
     {
         return Ok(());
     }
@@ -4526,7 +4529,11 @@ pub fn try_fill_arc_aa_parallel_with_threads(
 
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
-    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
+    let sweep = if full_circle {
+        TAU
+    } else {
+        raw_sweep.rem_euclid(TAU)
+    };
     let radius_f = f64::from(radius);
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -4545,11 +4552,13 @@ pub fn try_fill_arc_aa_parallel_with_threads(
     let actual_worker_count = row_count.div_ceil(rows_per_worker);
     let span_width = (right - left) as usize;
     let mut worker_sources = Vec::new();
-    worker_sources.try_reserve_exact(actual_worker_count)
+    worker_sources
+        .try_reserve_exact(actual_worker_count)
         .map_err(|_| RasterizerError::AllocationFailed)?;
     for _ in 0..actual_worker_count {
         let mut sources = Vec::new();
-        sources.try_reserve_exact(span_width)
+        sources
+            .try_reserve_exact(span_width)
             .map_err(|_| RasterizerError::AllocationFailed)?;
         sources.resize(span_width, Color::TRANSPARENT);
         worker_sources.push(sources);
@@ -4560,8 +4569,10 @@ pub fn try_fill_arc_aa_parallel_with_threads(
     let rows = &mut target.pixels_mut()[start_index..end_index];
     let pixels_per_worker = rows_per_worker * row_width;
     std::thread::scope(|scope| {
-        for (chunk_index, (chunk, mut sources)) in rows.chunks_mut(pixels_per_worker)
-            .zip(worker_sources.into_iter()).enumerate()
+        for (chunk_index, (chunk, mut sources)) in rows
+            .chunks_mut(pixels_per_worker)
+            .zip(worker_sources.into_iter())
+            .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
             scope.spawn(move || {
@@ -8510,10 +8521,19 @@ mod blend_rect_transparent_run_tests {
                     assert_eq!(actual, expected, "worker_count={workers}");
                     let mut fallible = initial.clone();
                     super::try_draw_arc_aa_parallel_with_threads(
-                        &mut fallible, center, radius, start, end, color, workers,
+                        &mut fallible,
+                        center,
+                        radius,
+                        start,
+                        end,
+                        color,
+                        workers,
                     )
                     .unwrap();
-                    assert_eq!(fallible, expected, "fallible outline, worker_count={workers}");
+                    assert_eq!(
+                        fallible, expected,
+                        "fallible outline, worker_count={workers}"
+                    );
                 }
                 let mut automatic = initial;
                 super::draw_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
@@ -8565,10 +8585,19 @@ mod blend_rect_transparent_run_tests {
                     assert_eq!(actual, expected, "worker_count={workers}");
                     let mut fallible = initial.clone();
                     super::try_fill_arc_aa_parallel_with_threads(
-                        &mut fallible, center, radius, start, end, color, workers,
+                        &mut fallible,
+                        center,
+                        radius,
+                        start,
+                        end,
+                        color,
+                        workers,
                     )
                     .unwrap();
-                    assert_eq!(fallible, expected, "fallible sector, worker_count={workers}");
+                    assert_eq!(
+                        fallible, expected,
+                        "fallible sector, worker_count={workers}"
+                    );
                 }
                 let mut automatic = initial;
                 super::fill_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
