@@ -3178,9 +3178,9 @@ fn fill_ellipse_aa_parallel_rows(
     rx: f64,
     inverse_ry: f64,
     coverage_colors: &[Color; 17],
+    coverage: &mut [u8],
 ) {
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-    let mut coverage = vec![0_u8; (right - left) as usize];
     for (row_offset, row) in rows.chunks_mut(row_width).enumerate() {
         let y = first_y + row_offset;
         coverage.fill(0);
@@ -3255,12 +3255,35 @@ pub fn fill_ellipse_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
+    try_fill_ellipse_aa_parallel_with_threads(
+        target,
+        center,
+        radius_x,
+        radius_y,
+        color,
+        thread_count,
+    )
+    .expect("failed to allocate parallel antialiased ellipse scratch storage");
+}
+
+/// Fallibly fills an antialiased ellipse using disjoint scanline workers.
+///
+/// Every worker's coverage buffer is reserved before the framebuffer is
+/// modified. Allocation failure leaves the target unchanged.
+pub fn try_fill_ellipse_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     if radius_x == 0 || radius_y == 0 || thread_count <= 1 {
         fill_ellipse_aa(target, center, radius_x, radius_y, color);
-        return;
+        return Ok(());
     }
 
     let cx = f64::from(center.x);
@@ -3272,7 +3295,7 @@ pub fn fill_ellipse_aa_parallel_with_threads(
     let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let mut coverage_colors = [Color::TRANSPARENT; 17];
@@ -3282,29 +3305,35 @@ pub fn fill_ellipse_aa_parallel_with_threads(
     }
 
     let row_width = target.width() as usize;
-    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
     let row_count = (bottom - top) as usize;
     let worker_count = thread_count.max(1).min(row_count);
-    if worker_count == 1 {
-        fill_ellipse_aa_parallel_rows(
-            rows,
-            row_width,
-            top as usize,
-            left,
-            right,
-            cx,
-            cy,
-            rx,
-            ry.recip(),
-            &coverage_colors,
-        );
-        return;
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let actual_worker_count = row_count.div_ceil(rows_per_worker);
+    let span_width = (right - left) as usize;
+
+    let mut worker_coverage = Vec::new();
+    worker_coverage
+        .try_reserve_exact(actual_worker_count)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    for _ in 0..actual_worker_count {
+        let mut coverage = Vec::new();
+        coverage
+            .try_reserve_exact(span_width)
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        coverage.resize(span_width, 0);
+        worker_coverage.push(coverage);
     }
 
-    let rows_per_worker = row_count.div_ceil(worker_count);
+    let start = top as usize * row_width;
+    let end = bottom as usize * row_width;
+    let rows = &mut target.pixels_mut()[start..end];
     let pixels_per_worker = rows_per_worker * row_width;
     std::thread::scope(|scope| {
-        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+        for (chunk_index, (chunk, mut coverage)) in rows
+            .chunks_mut(pixels_per_worker)
+            .zip(worker_coverage.into_iter())
+            .enumerate()
+        {
             let first_y = top as usize + chunk_index * rows_per_worker;
             let colors = &coverage_colors;
             scope.spawn(move || {
@@ -3319,10 +3348,12 @@ pub fn fill_ellipse_aa_parallel_with_threads(
                     rx,
                     ry.recip(),
                     colors,
+                    &mut coverage,
                 );
             });
         }
     });
+    Ok(())
 }
 
 /// Automatically selects workers for sufficiently large antialiased ellipses.
@@ -4828,6 +4859,20 @@ mod tests {
                 assert_eq!(
                     actual, expected,
                     "worker count: {workers}, center: {center:?}, radii: {radius_x}/{radius_y}"
+                );
+                let mut fallible = Framebuffer::new(67, 43, background).unwrap();
+                super::try_fill_ellipse_aa_parallel_with_threads(
+                    &mut fallible,
+                    center,
+                    radius_x,
+                    radius_y,
+                    color,
+                    workers,
+                )
+                .unwrap();
+                assert_eq!(
+                    fallible, expected,
+                    "fallible API, worker count: {workers}, center: {center:?}"
                 );
             }
             let mut automatic = Framebuffer::new(67, 43, background).unwrap();
