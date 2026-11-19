@@ -14,6 +14,7 @@ pub enum TextureAtlasError {
     ZeroDimension,
     DuplicateId,
     AtlasFull,
+    AllocationFailed,
     Texture(TextureError),
 }
 
@@ -170,7 +171,11 @@ impl TextureAtlasBuilder {
         let count = (self.width as usize)
             .checked_mul(self.height as usize)
             .ok_or(TextureAtlasError::AtlasFull)?;
-        let mut pixels = vec![Color::TRANSPARENT; count];
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(count)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        pixels.resize(count, Color::TRANSPARENT);
         if optimized {
             self.items.sort_by(|left, right| {
                 right
