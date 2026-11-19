@@ -10,6 +10,13 @@ struct Entry {
     geometry: FlattenedPath,
 }
 
+/// Errors returned when a path geometry cache cannot be created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathGeometryCacheError {
+    /// The cache could not reserve its initial entry storage.
+    AllocationFailed,
+}
+
 /// Reuses flattened path geometry across frames.
 ///
 /// The caller supplies a stable key and must invalidate it when the source path
@@ -25,16 +32,28 @@ pub struct PathGeometryCache {
 }
 
 impl PathGeometryCache {
-    #[must_use]
-    pub fn new(capacity: usize) -> Self {
+    /// Creates a cache while reporting failure to reserve its initial storage.
+    pub fn try_new(capacity: usize) -> Result<Self, PathGeometryCacheError> {
         let capacity = capacity.max(1);
-        Self {
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(capacity)
+            .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
+        Ok(Self {
             capacity,
             clock: 0,
             hits: 0,
             misses: 0,
-            entries: Vec::with_capacity(capacity),
-        }
+            entries,
+        })
+    }
+
+    /// Creates a cache with preallocated entry storage.
+    ///
+    /// Prefer [`Self::try_new`] when allocation failure must be handled.
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        Self::try_new(capacity).expect("failed to allocate path geometry cache")
     }
 
     fn advance_clock(&mut self) {
