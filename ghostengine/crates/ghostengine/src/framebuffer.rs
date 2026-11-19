@@ -56,6 +56,21 @@ impl Framebuffer {
         })
     }
 
+    /// Creates an independent copy, reporting allocation failure instead of panicking.
+    pub fn try_clone(&self) -> Result<Self, FramebufferError> {
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(self.pixels.len())
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+        pixels.extend_from_slice(&self.pixels);
+
+        Ok(Self {
+            width: self.width,
+            height: self.height,
+            pixels,
+        })
+    }
+
     #[must_use]
     pub const fn width(&self) -> u32 {
         self.width
@@ -225,6 +240,24 @@ mod tests {
             .pixels()
             .iter()
             .all(|pixel| *pixel == Color::BLUE));
+    }
+
+    #[test]
+    fn try_clone_copies_pixels_into_independent_storage() {
+        let mut original = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        original.pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::WHITE,
+        ]);
+
+        let copied = original.try_clone().unwrap();
+
+        assert_eq!(copied.width(), original.width());
+        assert_eq!(copied.height(), original.height());
+        assert_eq!(copied.pixels(), original.pixels());
+        assert_ne!(copied.pixels().as_ptr(), original.pixels().as_ptr());
     }
 
     #[test]
