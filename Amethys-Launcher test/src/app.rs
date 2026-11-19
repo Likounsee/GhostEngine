@@ -154,17 +154,29 @@ impl App {
     }
 
     fn blit(&self, fb: &mut Framebuffer) {
-        let (w, fbw) = (WIN_W as usize, fb.width() as usize);
-        if fbw < w {
+        let (logical_w, target_w) = (WIN_W as usize, fb.width() as usize);
+        if target_w < logical_w {
             return;
         }
+
         let rows = (fb.height() as usize).min(WIN_H as usize);
-        let off = self.scroll.offset() as usize;
-        let side = SIDE_W as usize;
+        let offset = self.scroll.offset() as usize;
+        let sidebar_w = SIDE_W as usize;
+        let source = self.content.pixels();
+        let target = fb.pixels_mut();
+
+        // Borrow the destination pixel buffer only once per frame. The previous
+        // implementation repeatedly requested mutable access inside the row loop.
         for y in 0..rows {
-            let dst = fb.pixels_mut();
-            dst[y * fbw..y * fbw + side].copy_from_slice(&self.content.pixels()[y * w..y * w + side]);
-            dst[y * fbw + side..y * fbw + w].copy_from_slice(&self.content.pixels()[(y + off) * w + side..(y + off) * w + w]);
+            let dst_start = y * target_w;
+            let src_start = y * logical_w;
+            target[dst_start..dst_start + sidebar_w]
+                .copy_from_slice(&source[src_start..src_start + sidebar_w]);
+
+            let content_src_start = (y + offset) * logical_w + sidebar_w;
+            let content_dst_start = dst_start + sidebar_w;
+            target[content_dst_start..content_dst_start + logical_w]
+                .copy_from_slice(&source[content_src_start..content_src_start + logical_w]);
         }
     }
 
