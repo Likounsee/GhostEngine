@@ -98,7 +98,7 @@ pub use rasterizer::{
     fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_circle_aa_with_scratch,
     fill_ellipse_aa_parallel, fill_ellipse_aa_parallel_with_threads, fill_ellipse_aa_with_scratch,
     fill_polygon_aa, fill_polygon_aa_parallel, fill_polygon_aa_parallel_with_threads,
-    fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads,
+    fill_polygon_aa_with_scratch, try_fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads,
     fill_polygon_with_scratch, try_fill_polygon_with_scratch, fill_rect_clipped, fill_rect_linear_gradient_parallel,
     fill_rect_linear_gradient_parallel_with_threads, fill_rect_parallel_with_threads,
     fill_rect_radial_gradient_parallel, fill_rect_radial_gradient_parallel_with_threads,
