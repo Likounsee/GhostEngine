@@ -109,13 +109,18 @@ impl TextureAtlasBuilder {
     }
 
     pub fn add(&mut self, id: u64, texture: &Texture) -> Result<(), TextureAtlasError> {
-        if !self.ids.insert(id) {
+        if self.ids.contains(&id) {
             return Err(TextureAtlasError::DuplicateId);
         }
-        self.items.push(AtlasItem {
-            id,
-            texture: texture.clone(),
-        });
+        self.ids
+            .try_reserve(1)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        self.items
+            .try_reserve(1)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        let texture = texture.clone();
+        self.ids.insert(id);
+        self.items.push(AtlasItem { id, texture });
         Ok(())
     }
 
@@ -126,11 +131,7 @@ impl TextureAtlasBuilder {
     /// Builds an atlas object with direct ID-based sprite lookup.
     pub fn build_atlas(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build()?;
-        let regions_by_id = regions
-            .iter()
-            .copied()
-            .map(|region| (region.id, region))
-            .collect();
+        let regions_by_id = Self::build_region_index(&regions)?;
         Ok(TextureAtlas {
             texture,
             regions,
@@ -141,16 +142,25 @@ impl TextureAtlasBuilder {
     /// Optimized packing variant returning an ID-addressable atlas object.
     pub fn build_atlas_optimized(self) -> Result<TextureAtlas, TextureAtlasError> {
         let (texture, regions) = self.build_optimized()?;
-        let regions_by_id = regions
-            .iter()
-            .copied()
-            .map(|region| (region.id, region))
-            .collect();
+        let regions_by_id = Self::build_region_index(&regions)?;
         Ok(TextureAtlas {
             texture,
             regions,
             regions_by_id,
         })
+    }
+
+    fn build_region_index(
+        regions: &[AtlasRegion],
+    ) -> Result<HashMap<u64, AtlasRegion>, TextureAtlasError> {
+        let mut regions_by_id = HashMap::new();
+        regions_by_id
+            .try_reserve(regions.len())
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        for region in regions {
+            regions_by_id.insert(region.id, *region);
+        }
+        Ok(regions_by_id)
     }
 
     /// Packs larger sprites first to reduce shelf fragmentation.
@@ -186,7 +196,10 @@ impl TextureAtlasBuilder {
                     .then_with(|| left.id.cmp(&right.id))
             });
         }
-        let mut regions = Vec::with_capacity(self.items.len());
+        let mut regions = Vec::new();
+        regions
+            .try_reserve_exact(self.items.len())
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
         let mut x = 0_u32;
         let mut y = 0_u32;
         let mut shelf_height = 0_u32;
