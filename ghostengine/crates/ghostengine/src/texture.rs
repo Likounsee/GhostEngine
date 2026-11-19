@@ -788,6 +788,13 @@ pub fn draw_texture_nine_slice_clipped(
     }
 }
 
+/// Errors returned by fallible texture drawing operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureDrawError {
+    /// Temporary sampling storage could not be allocated.
+    AllocationFailed,
+}
+
 /// Reusable temporary storage for repeated texture draws.
 #[derive(Debug, Default)]
 pub struct TextureDrawScratch {
@@ -806,6 +813,85 @@ struct BilinearCacheKey {
     destination_width: u32,
     first_x: u64,
     end_x: u64,
+}
+
+/// Draws a clipped texture while reporting temporary-buffer allocation failures.
+///
+/// The destination is left unchanged if the required scratch storage cannot be
+/// reserved. Existing scratch allocations are reused whenever they are large enough.
+pub fn try_draw_texture_clipped_with_scratch(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) -> Result<(), TextureDrawError> {
+    if destination.width == 0 || destination.height == 0 {
+        return Ok(());
+    }
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return Ok(());
+    };
+    let first_x = u64::from(destination.x).max(u64::from(clip.x));
+    let end_x = (u64::from(destination.x) + u64::from(destination.width))
+        .min(u64::from(clip.x) + u64::from(clip.width));
+    let first_y = u64::from(destination.y).max(u64::from(clip.y));
+    let end_y = (u64::from(destination.y) + u64::from(destination.height))
+        .min(u64::from(clip.y) + u64::from(clip.height));
+    if first_x >= end_x || first_y >= end_y {
+        return Ok(());
+    }
+
+    // The opaque 1:1 fast path performs row copies and needs no scratch storage.
+    let direct_copy = filter == TextureFilter::Nearest
+        && texture.fully_opaque
+        && destination.width == texture.width
+        && destination.height == texture.height;
+    if !direct_copy {
+        let visible_width = (end_x - first_x) as usize;
+        match filter {
+            TextureFilter::Nearest => {
+                if scratch.nearest_columns.capacity() < visible_width {
+                    scratch.nearest_columns
+                        .try_reserve_exact(visible_width.saturating_sub(scratch.nearest_columns.len()))
+                        .map_err(|_| TextureDrawError::AllocationFailed)?;
+                }
+            }
+            TextureFilter::Bilinear => {
+                if scratch.horizontal_samples.capacity() < visible_width {
+                    scratch.horizontal_samples
+                        .try_reserve_exact(visible_width.saturating_sub(scratch.horizontal_samples.len()))
+                        .map_err(|_| TextureDrawError::AllocationFailed)?;
+                }
+                let cache_len = (texture.height as usize).checked_mul(visible_width);
+                let cache_bytes = cache_len
+                    .and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+                let should_cache = end_y - first_y >= u64::from(texture.height) * 2
+                    && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
+                let key = BilinearCacheKey {
+                    texture_id: texture.id,
+                    texture_width: texture.width,
+                    texture_height: texture.height,
+                    destination_x: destination.x,
+                    destination_width: destination.width,
+                    first_x,
+                    end_x,
+                };
+                if should_cache && scratch.cached_bilinear_key != Some(key) {
+                    let required = cache_len.expect("cache length checked with cache byte size");
+                    if scratch.horizontal_cache.capacity() < required {
+                        scratch.horizontal_cache
+                            .try_reserve_exact(required.saturating_sub(scratch.horizontal_cache.len()))
+                            .map_err(|_| TextureDrawError::AllocationFailed)?;
+                    }
+                }
+            }
+        }
+    }
+
+    draw_texture_clipped_with_scratch(target, texture, destination, filter, clip, scratch);
+    Ok(())
 }
 
 /// Draws a texture while reusing temporary storage between calls.
@@ -2760,6 +2846,42 @@ mod tests {
         );
 
         assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
+    fn fallible_texture_scratch_draw_matches_standard_draw_for_both_filters() {
+        let texture = Texture::new(
+            3,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 255),
+                Color::rgba(20, 220, 80, 180),
+                Color::TRANSPARENT,
+                Color::rgba(30, 60, 240, 90),
+                Color::WHITE,
+                Color::rgba(240, 180, 20, 255),
+            ],
+        )
+        .unwrap();
+        let destination = Rect::new(1, 1, 6, 6);
+        let clip = Rect::new(2, 0, 5, 7);
+        let mut scratch = TextureDrawScratch::default();
+
+        for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
+            let mut expected = Framebuffer::new(9, 8, Color::rgb(12, 24, 36)).unwrap();
+            let mut actual = expected.clone();
+            draw_texture_clipped(&mut expected, &texture, destination, filter, clip);
+            super::try_draw_texture_clipped_with_scratch(
+                &mut actual,
+                &texture,
+                destination,
+                filter,
+                clip,
+                &mut scratch,
+            )
+            .unwrap();
+            assert_eq!(actual.pixels(), expected.pixels(), "filter: {filter:?}");
+        }
     }
 
     #[test]
