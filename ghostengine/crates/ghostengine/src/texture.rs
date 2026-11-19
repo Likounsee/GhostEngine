@@ -853,15 +853,21 @@ pub fn try_draw_texture_clipped_with_scratch(
         match filter {
             TextureFilter::Nearest => {
                 if scratch.nearest_columns.capacity() < visible_width {
-                    scratch.nearest_columns
-                        .try_reserve_exact(visible_width.saturating_sub(scratch.nearest_columns.len()))
+                    scratch
+                        .nearest_columns
+                        .try_reserve_exact(
+                            visible_width.saturating_sub(scratch.nearest_columns.len()),
+                        )
                         .map_err(|_| TextureDrawError::AllocationFailed)?;
                 }
             }
             TextureFilter::Bilinear => {
                 if scratch.horizontal_samples.capacity() < visible_width {
-                    scratch.horizontal_samples
-                        .try_reserve_exact(visible_width.saturating_sub(scratch.horizontal_samples.len()))
+                    scratch
+                        .horizontal_samples
+                        .try_reserve_exact(
+                            visible_width.saturating_sub(scratch.horizontal_samples.len()),
+                        )
                         .map_err(|_| TextureDrawError::AllocationFailed)?;
                 }
                 let cache_len = (texture.height as usize).checked_mul(visible_width);
@@ -881,8 +887,11 @@ pub fn try_draw_texture_clipped_with_scratch(
                 if should_cache && scratch.cached_bilinear_key != Some(key) {
                     let required = cache_len.expect("cache length checked with cache byte size");
                     if scratch.horizontal_cache.capacity() < required {
-                        scratch.horizontal_cache
-                            .try_reserve_exact(required.saturating_sub(scratch.horizontal_cache.len()))
+                        scratch
+                            .horizontal_cache
+                            .try_reserve_exact(
+                                required.saturating_sub(scratch.horizontal_cache.len()),
+                            )
                             .map_err(|_| TextureDrawError::AllocationFailed)?;
                     }
                 }
