@@ -2285,7 +2285,7 @@ pub fn try_fill_polygon_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, mut intersections)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_intersections.into_iter())
+            .zip(worker_intersections)
             .enumerate()
         {
             let first_y = min_y + chunk_index * rows_per_worker;
@@ -2522,6 +2522,8 @@ fn accumulate_polygon_span_edges(
 }
 
 /// Processes a disjoint band of antialiased polygon rows with reusable worker-local buffers.
+// This worker kernel receives its row partition, geometry, and reusable buffers separately.
+#[allow(clippy::too_many_arguments)]
 fn fill_polygon_aa_parallel_rows(
     rows: &mut [Color],
     row_width: usize,
@@ -2702,7 +2704,7 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, (mut coverage, mut intersections))) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_scratch.into_iter())
+            .zip(worker_scratch)
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
@@ -3331,7 +3333,7 @@ pub fn try_fill_ellipse_aa_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, mut coverage)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_coverage.into_iter())
+            .zip(worker_coverage)
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
@@ -3614,7 +3616,7 @@ pub fn try_draw_ellipse_aa_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, mut sources)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_sources.into_iter())
+            .zip(worker_sources)
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
@@ -4329,7 +4331,7 @@ pub fn try_draw_arc_aa_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, mut sources)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_sources.into_iter())
+            .zip(worker_sources)
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
@@ -4571,7 +4573,7 @@ pub fn try_fill_arc_aa_parallel_with_threads(
     std::thread::scope(|scope| {
         for (chunk_index, (chunk, mut sources)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_sources.into_iter())
+            .zip(worker_sources)
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
