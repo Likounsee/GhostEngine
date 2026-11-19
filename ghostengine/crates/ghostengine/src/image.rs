@@ -40,6 +40,8 @@ pub enum ImageDecodeError {
     /// The reader could not inspect or decode the encoded bytes.
     Reader(std::io::Error),
     Decode(::image::ImageError),
+    /// The decoded pixel buffer could not be allocated.
+    AllocationFailed,
     Texture(TextureError),
     Cache(TextureCacheError),
 }
@@ -53,6 +55,9 @@ impl fmt::Display for ImageDecodeError {
             }
             Self::Reader(error) => write!(formatter, "could not read image header: {error}"),
             Self::Decode(error) => write!(formatter, "could not decode image: {error}"),
+            Self::AllocationFailed => {
+                formatter.write_str("could not allocate decoded image pixel storage")
+            }
             Self::Texture(error) => write!(formatter, "invalid decoded texture: {error:?}"),
             Self::Cache(error) => write!(formatter, "could not cache decoded texture: {error:?}"),
         }
@@ -66,6 +71,7 @@ impl Error for ImageDecodeError {
             Self::Decode(error) => Some(error),
             Self::UnknownFormat
             | Self::UnsupportedFormat(_)
+            | Self::AllocationFailed
             | Self::Texture(_)
             | Self::Cache(_) => None,
         }
@@ -132,10 +138,19 @@ pub fn decode_texture_with_options(
         .map_err(ImageDecodeError::Decode)?
         .into_rgba8();
     let (width, height) = rgba.dimensions();
-    let pixels = rgba
-        .pixels()
-        .map(|pixel| Color::rgba(pixel[0], pixel[1], pixel[2], pixel[3]))
-        .collect();
+    let pixel_count = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(ImageDecodeError::AllocationFailed)?;
+    let raw_pixels = rgba.into_raw();
+    let mut pixels = Vec::new();
+    pixels
+        .try_reserve_exact(pixel_count)
+        .map_err(|_| ImageDecodeError::AllocationFailed)?;
+    pixels.extend(
+        raw_pixels
+            .chunks_exact(4)
+            .map(|pixel| Color::rgba(pixel[0], pixel[1], pixel[2], pixel[3])),
+    );
 
     Texture::new(width, height, pixels).map_err(ImageDecodeError::Texture)
 }
