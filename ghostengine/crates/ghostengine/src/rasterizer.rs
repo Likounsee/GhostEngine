@@ -4907,6 +4907,20 @@ mod tests {
                     "worker count: {workers}, center: {center:?}, radii: {radius_x}/{radius_y}"
                 );
                 let mut fallible = Framebuffer::new(67, 43, background).unwrap();
+                super::try_draw_ellipse_aa_parallel_with_threads(
+                    &mut fallible,
+                    center,
+                    radius_x,
+                    radius_y,
+                    color,
+                    workers,
+                )
+                .unwrap();
+                assert_eq!(
+                    fallible, expected,
+                    "fallible API, worker count: {workers}, center: {center:?}"
+                );
+                let mut fallible = Framebuffer::new(67, 43, background).unwrap();
                 super::try_fill_ellipse_aa_parallel_with_threads(
                     &mut fallible,
                     center,
