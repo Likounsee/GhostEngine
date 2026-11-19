@@ -175,8 +175,8 @@ impl App {
 
             let content_src_start = (y + offset) * logical_w + sidebar_w;
             let content_dst_start = dst_start + sidebar_w;
-            target[content_dst_start..content_dst_start + logical_w]
-                .copy_from_slice(&source[content_src_start..content_src_start + logical_w]);
+            target[content_dst_start..dst_start + logical_w]
+                .copy_from_slice(&source[content_src_start..(y + offset + 1) * logical_w]);
         }
     }
 
