@@ -4435,6 +4435,17 @@ pub fn fill_circle_aa(target: &mut Framebuffer, center: Point, radius: u32, colo
 }
 
 /// Fills an antialiased circle while reusing caller-owned ellipse coverage storage.
+pub fn try_fill_circle_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
+    try_fill_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch)
+}
+
+/// Fills an antialiased circle while reusing caller-owned ellipse coverage storage.
 pub fn fill_circle_aa_with_scratch(
     target: &mut Framebuffer,
     center: Point,
@@ -4442,7 +4453,8 @@ pub fn fill_circle_aa_with_scratch(
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
-    fill_ellipse_aa_with_scratch(target, center, radius, radius, color, scratch);
+    try_fill_circle_aa_with_scratch(target, center, radius, color, scratch)
+        .expect("failed to allocate antialiased circle rasterizer scratch storage");
 }
 
 /// Draws an anti-aliased circle outline with the ellipse coverage rasterizer.
@@ -4973,6 +4985,30 @@ mod tests {
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
             assert_eq!(gradient.sample_raster(position), gradient.sample(position));
         }
+    }
+
+    #[test]
+    fn fallible_antialiased_circle_scratch_matches_compatibility_api() {
+        let mut expected = target(18, 18);
+        let mut actual = target(18, 18);
+        let mut expected_scratch = super::RasterizerScratch::default();
+        let mut actual_scratch = super::RasterizerScratch::default();
+        super::fill_circle_aa_with_scratch(
+            &mut expected,
+            Point { x: 8, y: 8 },
+            6,
+            Color::rgba(40, 160, 90, 200),
+            &mut expected_scratch,
+        );
+        super::try_fill_circle_aa_with_scratch(
+            &mut actual,
+            Point { x: 8, y: 8 },
+            6,
+            Color::rgba(40, 160, 90, 200),
+            &mut actual_scratch,
+        )
+        .unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
