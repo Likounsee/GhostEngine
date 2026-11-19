@@ -2744,7 +2744,7 @@ pub fn try_fill_polygon_aa_with_scratch(
         PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
     }));
     if edges.is_empty() {
-        return;
+        return Ok(());
     }
 
     // Keep edges ordered by their first covered sub-scanline. The four
