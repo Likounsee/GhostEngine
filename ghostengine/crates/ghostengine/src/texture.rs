@@ -16,6 +16,7 @@ pub enum TextureError {
     ZeroDimension,
     SizeOverflow,
     PixelCountMismatch,
+    AllocationFailed,
 }
 
 /// Sampling mode used when a texture or transformed layer is scaled.
@@ -67,6 +68,22 @@ impl Texture {
             height,
             pixels,
             fully_opaque,
+        })
+    }
+
+    /// Creates an independent texture copy while reporting allocation failure.
+    pub(crate) fn try_clone(&self) -> Result<Self, TextureError> {
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(self.pixels.len())
+            .map_err(|_| TextureError::AllocationFailed)?;
+        pixels.extend_from_slice(&self.pixels);
+        Ok(Self {
+            id: next_texture_id(),
+            width: self.width,
+            height: self.height,
+            pixels,
+            fully_opaque: self.fully_opaque,
         })
     }
 
