@@ -2338,9 +2338,15 @@ pub fn try_fill_polygon_with_scratch(
 
     // Reserve every buffer before touching the framebuffer. If any reservation
     // fails, the operation returns without drawing a partial polygon.
-    edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
-    active_edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
-    intersections.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    edges
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    active_edges
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    intersections
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
 
     // Refill existing buffers without discarding their allocations.
     edges.clear();
@@ -2411,7 +2417,6 @@ pub fn fill_polygon_with_scratch(
     try_fill_polygon_with_scratch(target, vertices, color, scratch)
         .expect("failed to allocate polygon rasterizer scratch storage");
 }
-
 
 #[derive(Debug, Clone, Copy)]
 struct PolygonEdge {
@@ -2731,10 +2736,18 @@ pub fn try_fill_polygon_aa_with_scratch(
 
     // Reserve all scratch storage before modifying the target. A failed
     // reservation leaves the framebuffer untouched.
-    edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
-    edge_order.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
-    active_edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
-    intersections.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    edges
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    edge_order
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    active_edges
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    intersections
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
     coverage
         .try_reserve((right - left) as usize)
         .map_err(|_| RasterizerError::AllocationFailed)?;
@@ -2904,7 +2917,6 @@ pub fn fill_polygon_aa_with_scratch(
     try_fill_polygon_aa_with_scratch(target, vertices, color, scratch)
         .expect("failed to allocate antialiased polygon rasterizer scratch storage");
 }
-
 
 /// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
 pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
@@ -3435,7 +3447,6 @@ pub fn fill_ellipse_aa_with_scratch(
     try_fill_ellipse_aa_with_scratch(target, center, radius_x, radius_y, color, scratch)
         .expect("failed to allocate antialiased ellipse rasterizer scratch storage");
 }
-
 
 /// Draws an antialiased ellipse outline using disjoint row bands.
 pub fn draw_ellipse_aa_parallel_with_threads(
