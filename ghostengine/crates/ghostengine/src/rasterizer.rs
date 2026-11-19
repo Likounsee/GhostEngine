@@ -3779,7 +3779,7 @@ pub fn draw_arc_aa(
 }
 
 /// Draws an antialiased arc while reusing caller-owned scanline color storage.
-pub fn draw_arc_aa_with_scratch(
+pub fn try_draw_arc_aa_with_scratch(
     target: &mut Framebuffer,
     center: Point,
     radius: u32,
@@ -3787,7 +3787,7 @@ pub fn draw_arc_aa_with_scratch(
     end_angle: f32,
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     use core::f64::consts::TAU;
 
     if color.a == 0
@@ -3796,12 +3796,12 @@ pub fn draw_arc_aa_with_scratch(
         || !start_angle.is_finite()
         || !end_angle.is_finite()
     {
-        return;
+        return Ok(());
     }
 
     let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
     if raw_sweep == 0.0 {
-        return;
+        return Ok(());
     }
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
@@ -3818,19 +3818,23 @@ pub fn draw_arc_aa_with_scratch(
     let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     if radius == 0.0 {
         if full_circle || sweep > 0.0 {
             draw_pixel(target, center, color);
         }
-        return;
+        return Ok(());
     }
 
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
     let sources = &mut scratch.arc_aa_sources;
-    sources.resize((right - left) as usize, Color::TRANSPARENT);
+    let row_width = (right - left) as usize;
+    sources
+        .try_reserve(row_width.saturating_sub(sources.len()))
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    sources.resize(row_width, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -3898,8 +3902,22 @@ pub fn draw_arc_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
-/// Fills an anti-aliased circular sector (pie slice).
+
+/// Draws an antialiased arc using reusable caller-owned storage.
+pub fn draw_arc_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_draw_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
+        .expect("failed to allocate antialiased arc scratch storage");
+}/// Fills an anti-aliased circular sector (pie slice).
 ///
 /// Angles are radians measured from the positive X axis. Positive sweeps are
 /// clockwise in framebuffer coordinates; an end angle below the start angle
@@ -3926,7 +3944,7 @@ pub fn fill_arc_aa(
 }
 
 /// Fills an antialiased arc sector while reusing caller-owned scanline color storage.
-pub fn fill_arc_aa_with_scratch(
+pub fn try_fill_arc_aa_with_scratch(
     target: &mut Framebuffer,
     center: Point,
     radius: u32,
@@ -3934,7 +3952,7 @@ pub fn fill_arc_aa_with_scratch(
     end_angle: f32,
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     use core::f64::consts::TAU;
 
     if color.a == 0
@@ -3943,12 +3961,12 @@ pub fn fill_arc_aa_with_scratch(
         || !start_angle.is_finite()
         || !end_angle.is_finite()
     {
-        return;
+        return Ok(());
     }
 
     let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
     if raw_sweep == 0.0 {
-        return;
+        return Ok(());
     }
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
@@ -3965,14 +3983,18 @@ pub fn fill_arc_aa_with_scratch(
     let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     // Compute one source row, then composite contiguous opaque destination
     // runs. This lets SIMD groups cross the old four-pixel chunk boundaries.
     const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
     let sources = &mut scratch.arc_aa_sources;
-    sources.resize((right - left) as usize, Color::TRANSPARENT);
+    let row_width = (right - left) as usize;
+    sources
+        .try_reserve(row_width.saturating_sub(sources.len()))
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    sources.resize(row_width, Color::TRANSPARENT);
     for y in top..bottom {
         sources.fill(Color::TRANSPARENT);
         for (index, source) in sources.iter_mut().enumerate() {
@@ -4041,8 +4063,22 @@ pub fn fill_arc_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
-/// Draws an antialiased circular arc using disjoint framebuffer row bands.
+
+/// Fills an antialiased arc sector using reusable caller-owned storage.
+pub fn fill_arc_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
+        .expect("failed to allocate antialiased arc scratch storage");
+}/// Draws an antialiased circular arc using disjoint framebuffer row bands.
 pub fn draw_arc_aa_parallel_with_threads(
     target: &mut Framebuffer,
     center: Point,
