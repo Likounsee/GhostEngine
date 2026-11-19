@@ -118,7 +118,9 @@ impl TextureAtlasBuilder {
         self.items
             .try_reserve(1)
             .map_err(|_| TextureAtlasError::AllocationFailed)?;
-        let texture = texture.clone();
+        let texture = texture
+            .try_clone()
+            .map_err(TextureAtlasError::Texture)?;
         self.ids.insert(id);
         self.items.push(AtlasItem { id, texture });
         Ok(())
@@ -276,6 +278,16 @@ impl TextureAtlasBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn texture_try_clone_copies_pixels_into_an_independent_texture() {
+        let original = Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let copied = original.try_clone().unwrap();
+
+        assert_eq!(copied, original);
+        assert_ne!(copied.id, original.id);
+        assert_eq!(copied.pixels(), original.pixels());
+    }
 
     #[test]
     fn packs_textures_and_preserves_region_pixels() {
