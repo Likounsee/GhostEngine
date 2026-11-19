@@ -283,7 +283,7 @@ mod tests {
         let copied = original.try_clone().unwrap();
 
         assert_eq!(copied, original);
-        assert_ne!(copied.id, original.id);
+        assert_ne!(copied.pixels().as_ptr(), original.pixels().as_ptr());
         assert_eq!(copied.pixels(), original.pixels());
     }
 
