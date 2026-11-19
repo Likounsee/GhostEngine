@@ -88,9 +88,7 @@ impl Texture {
     }
 
     /// Copies framebuffer pixels into a texture while reporting allocation failure.
-    pub fn try_from_framebuffer(
-        framebuffer: &Framebuffer,
-    ) -> Result<Self, TextureError> {
+    pub fn try_from_framebuffer(framebuffer: &Framebuffer) -> Result<Self, TextureError> {
         let mut pixels = Vec::new();
         pixels
             .try_reserve_exact(framebuffer.pixels().len())
