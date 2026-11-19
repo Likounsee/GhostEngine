@@ -118,9 +118,7 @@ impl TextureAtlasBuilder {
         self.items
             .try_reserve(1)
             .map_err(|_| TextureAtlasError::AllocationFailed)?;
-        let texture = texture
-            .try_clone()
-            .map_err(TextureAtlasError::Texture)?;
+        let texture = texture.try_clone().map_err(TextureAtlasError::Texture)?;
         self.ids.insert(id);
         self.items.push(AtlasItem { id, texture });
         Ok(())
