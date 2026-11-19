@@ -71,8 +71,41 @@ impl Texture {
         })
     }
 
+    /// Creates a texture by copying a borrowed row-major pixel slice.
+    ///
+    /// This method reports allocation failure through TextureError.
+    pub fn try_from_pixels(
+        width: u32,
+        height: u32,
+        source: &[Color],
+    ) -> Result<Self, TextureError> {
+        if width == 0 || height == 0 {
+            return Err(TextureError::ZeroDimension);
+        }
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(TextureError::SizeOverflow)?;
+        if source.len() != expected {
+            return Err(TextureError::PixelCountMismatch);
+        }
+
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(expected)
+            .map_err(|_| TextureError::AllocationFailed)?;
+        pixels.extend_from_slice(source);
+        let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
+        Ok(Self {
+            id: next_texture_id(),
+            width,
+            height,
+            pixels,
+            fully_opaque,
+        })
+    }
+
     /// Creates an independent texture copy while reporting allocation failure.
-    pub(crate) fn try_clone(&self) -> Result<Self, TextureError> {
+    pub fn try_clone(&self) -> Result<Self, TextureError> {
         let mut pixels = Vec::new();
         pixels
             .try_reserve_exact(self.pixels.len())
@@ -2795,6 +2828,42 @@ mod tests {
         assert_eq!(texture.height(), 1);
         assert!(texture.is_fully_opaque());
         assert!(texture.pixels().iter().all(|pixel| *pixel == Color::GREEN));
+    }
+
+    #[test]
+    fn fallible_texture_clone_copies_pixels_into_independent_storage() {
+        let original = Texture::new(2, 1, vec![Color::RED, Color::rgba(0, 0, 255, 128)]).unwrap();
+        let copied = original.try_clone().unwrap();
+
+        assert_eq!(copied.width(), original.width());
+        assert_eq!(copied.height(), original.height());
+        assert_eq!(copied.pixels(), original.pixels());
+        assert_ne!(copied.pixels().as_ptr(), original.pixels().as_ptr());
+        assert_eq!(copied.is_fully_opaque(), original.is_fully_opaque());
+    }
+
+    #[test]
+    fn fallible_texture_creation_copies_borrowed_pixels() {
+        let source = [Color::RED, Color::GREEN, Color::BLUE, Color::WHITE];
+        let texture = Texture::try_from_pixels(2, 2, &source).unwrap();
+
+        assert_eq!(texture.width(), 2);
+        assert_eq!(texture.height(), 2);
+        assert_eq!(texture.pixels(), &source);
+        assert!(texture.is_fully_opaque());
+        assert_ne!(texture.pixels().as_ptr(), source.as_ptr());
+    }
+
+    #[test]
+    fn fallible_texture_creation_validates_dimensions_and_pixel_count() {
+        assert!(matches!(
+            Texture::try_from_pixels(0, 1, &[]),
+            Err(super::TextureError::ZeroDimension)
+        ));
+        assert!(matches!(
+            Texture::try_from_pixels(2, 2, &[Color::RED]),
+            Err(super::TextureError::PixelCountMismatch)
+        ));
     }
 
     #[test]
