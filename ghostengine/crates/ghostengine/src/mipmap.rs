@@ -10,7 +10,12 @@ pub struct MipmapChain {
 
 impl MipmapChain {
     pub fn new(base: &Texture) -> Result<Self, TextureError> {
-        let mut levels = vec![base.clone()];
+        let mut levels = Vec::new();
+        levels
+            .try_reserve_exact(1)
+            .map_err(|_| TextureError::AllocationFailed)?;
+        levels.push(base.try_clone()?);
+
         while levels
             .last()
             .is_some_and(|level| level.width() > 1 || level.height() > 1)
@@ -18,7 +23,13 @@ impl MipmapChain {
             let previous = levels.last().expect("base mip level always exists");
             let width = previous.width().div_ceil(2);
             let height = previous.height().div_ceil(2);
-            let mut pixels = Vec::with_capacity(width as usize * height as usize);
+            let pixel_count = (width as usize)
+                .checked_mul(height as usize)
+                .ok_or(TextureError::SizeOverflow)?;
+            let mut pixels = Vec::new();
+            pixels
+                .try_reserve_exact(pixel_count)
+                .map_err(|_| TextureError::AllocationFailed)?;
 
             for y in 0..height {
                 for x in 0..width {
@@ -37,7 +48,11 @@ impl MipmapChain {
                     pixels.push(average_premultiplied(&samples[..sample_count]));
                 }
             }
-            levels.push(Texture::new(width, height, pixels)?);
+            let level = Texture::try_from_pixels(width, height, &pixels)?;
+            levels
+                .try_reserve(1)
+                .map_err(|_| TextureError::AllocationFailed)?;
+            levels.push(level);
         }
         Ok(Self { levels })
     }
