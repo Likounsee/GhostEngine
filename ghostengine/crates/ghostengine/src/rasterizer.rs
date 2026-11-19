@@ -5077,13 +5077,8 @@ mod tests {
         let mut actual = target(10, 10);
         super::fill_polygon(&mut expected, &vertices, Color::RED);
         let mut scratch = super::RasterizerScratch::default();
-        super::try_fill_polygon_with_scratch(
-            &mut actual,
-            &vertices,
-            Color::RED,
-            &mut scratch,
-        )
-        .unwrap();
+        super::try_fill_polygon_with_scratch(&mut actual, &vertices, Color::RED, &mut scratch)
+            .unwrap();
         assert_eq!(actual.pixels(), expected.pixels());
     }
 
