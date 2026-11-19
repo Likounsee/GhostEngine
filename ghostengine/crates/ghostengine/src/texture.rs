@@ -87,6 +87,25 @@ impl Texture {
         })
     }
 
+    /// Copies framebuffer pixels into a texture while reporting allocation failure.
+    pub fn try_from_framebuffer(
+        framebuffer: &Framebuffer,
+    ) -> Result<Self, TextureError> {
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(framebuffer.pixels().len())
+            .map_err(|_| TextureError::AllocationFailed)?;
+        pixels.extend_from_slice(framebuffer.pixels());
+        let fully_opaque = pixels.iter().all(|pixel| pixel.a == 255);
+        Ok(Self {
+            id: next_texture_id(),
+            width: framebuffer.width(),
+            height: framebuffer.height(),
+            pixels,
+            fully_opaque,
+        })
+    }
+
     /// Copies the pixels from an existing framebuffer.
     #[must_use]
     pub fn from_framebuffer(framebuffer: &Framebuffer) -> Self {
@@ -2670,6 +2689,19 @@ mod tests {
         let texture = Texture::from_framebuffer(&framebuffer);
         framebuffer.clear(Color::RED);
         assert_eq!(texture.get_pixel(0, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn fallible_framebuffer_conversion_copies_pixels_into_independent_texture() {
+        let framebuffer = Framebuffer::new(2, 1, Color::GREEN).unwrap();
+        let original_storage = framebuffer.pixels().as_ptr();
+        let texture = Texture::try_from_framebuffer(&framebuffer).unwrap();
+
+        assert_ne!(texture.pixels().as_ptr(), original_storage);
+        assert_eq!(texture.width(), 2);
+        assert_eq!(texture.height(), 1);
+        assert!(texture.is_fully_opaque());
+        assert!(texture.pixels().iter().all(|pixel| *pixel == Color::GREEN));
     }
 
     #[test]
