@@ -4904,6 +4904,13 @@ mod tests {
     }
 
     #[test]
+    fn gradient_lookup_tables_keep_expected_sizes() {
+        let gradient = test_gradient();
+        assert_eq!(gradient.lookup.as_ref().map(Vec::len), Some(4096));
+        assert_eq!(gradient.radial_lookup.as_ref().map(Vec::len), Some(65_536));
+    }
+
+    #[test]
     fn gradient_rejects_invalid_stop_definitions() {
         use super::{Gradient, GradientError, GradientStop};
         assert_eq!(Gradient::new(vec![]), Err(GradientError::TooFewStops));
