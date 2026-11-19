@@ -3917,7 +3917,9 @@ pub fn draw_arc_aa_with_scratch(
 ) {
     try_draw_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
         .expect("failed to allocate antialiased arc scratch storage");
-}/// Fills an anti-aliased circular sector (pie slice).
+}
+
+/// Fills an anti-aliased circular sector (pie slice).
 ///
 /// Angles are radians measured from the positive X axis. Positive sweeps are
 /// clockwise in framebuffer coordinates; an end angle below the start angle
@@ -4078,7 +4080,9 @@ pub fn fill_arc_aa_with_scratch(
 ) {
     try_fill_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
         .expect("failed to allocate antialiased arc scratch storage");
-}/// Draws an antialiased circular arc using disjoint framebuffer row bands.
+}
+
+/// Draws an antialiased circular arc using disjoint framebuffer row bands.
 pub fn draw_arc_aa_parallel_with_threads(
     target: &mut Framebuffer,
     center: Point,
@@ -7910,6 +7914,36 @@ mod blend_rect_transparent_run_tests {
         super::blend_rect(&mut actual, rect, source);
         assert_eq!(actual, expected);
     }
+    #[test]
+    fn fallible_arc_scratch_apis_match_compatibility_apis() {
+        let center = Point::new(15, 12);
+        let color = Color::rgba(180, 70, 35, 190);
+        let mut expected_draw = target(32, 28);
+        let mut actual_draw = target(32, 28);
+        let mut expected_fill = target(32, 28);
+        let mut actual_fill = target(32, 28);
+        let mut expected_scratch = super::RasterizerScratch::default();
+        let mut actual_scratch = super::RasterizerScratch::default();
+
+        super::draw_arc_aa_with_scratch(
+            &mut expected_draw, center, 10, 0.3, 2.4, color, &mut expected_scratch,
+        );
+        super::try_draw_arc_aa_with_scratch(
+            &mut actual_draw, center, 10, 0.3, 2.4, color, &mut actual_scratch,
+        )
+        .unwrap();
+        super::fill_arc_aa_with_scratch(
+            &mut expected_fill, center, 10, 0.3, 2.4, color, &mut expected_scratch,
+        );
+        super::try_fill_arc_aa_with_scratch(
+            &mut actual_fill, center, 10, 0.3, 2.4, color, &mut actual_scratch,
+        )
+        .unwrap();
+
+        assert_eq!(actual_draw.pixels(), expected_draw.pixels());
+        assert_eq!(actual_fill.pixels(), expected_fill.pixels());
+    }
+
     #[test]
     fn arc_aa_reuses_scratch_scanline_across_draws() {
         let mut scratch = super::RasterizerScratch::default();
