@@ -3917,8 +3917,16 @@ pub fn draw_arc_aa_with_scratch(
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
-    try_draw_arc_aa_with_scratch(target, center, radius, start_angle, end_angle, color, scratch)
-        .expect("failed to allocate antialiased arc scratch storage");
+    try_draw_arc_aa_with_scratch(
+        target,
+        center,
+        radius,
+        start_angle,
+        end_angle,
+        color,
+        scratch,
+    )
+    .expect("failed to allocate antialiased arc scratch storage");
 }
 
 /// Fills an anti-aliased circular sector (pie slice).
@@ -7935,17 +7943,41 @@ mod blend_rect_transparent_run_tests {
         let mut actual_scratch = super::RasterizerScratch::default();
 
         super::draw_arc_aa_with_scratch(
-            &mut expected_draw, center, 10, 0.3, 2.4, color, &mut expected_scratch,
+            &mut expected_draw,
+            center,
+            10,
+            0.3,
+            2.4,
+            color,
+            &mut expected_scratch,
         );
         super::try_draw_arc_aa_with_scratch(
-            &mut actual_draw, center, 10, 0.3, 2.4, color, &mut actual_scratch,
+            &mut actual_draw,
+            center,
+            10,
+            0.3,
+            2.4,
+            color,
+            &mut actual_scratch,
         )
         .unwrap();
         super::fill_arc_aa_with_scratch(
-            &mut expected_fill, center, 10, 0.3, 2.4, color, &mut expected_scratch,
+            &mut expected_fill,
+            center,
+            10,
+            0.3,
+            2.4,
+            color,
+            &mut expected_scratch,
         );
         super::try_fill_arc_aa_with_scratch(
-            &mut actual_fill, center, 10, 0.3, 2.4, color, &mut actual_scratch,
+            &mut actual_fill,
+            center,
+            10,
+            0.3,
+            2.4,
+            color,
+            &mut actual_scratch,
         )
         .unwrap();
 
