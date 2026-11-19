@@ -39,6 +39,8 @@ pub enum TextureCacheError {
     HandleExhausted,
     /// The cache cannot fit the texture without evicting retained entries.
     CacheFullyRetained,
+    /// The cache cannot reserve storage for another entry.
+    AllocationFailed,
 }
 
 #[derive(Debug)]
@@ -118,6 +120,13 @@ impl TextureCache {
         if reclaimable_bytes < required_bytes {
             return Err(TextureCacheError::CacheFullyRetained);
         }
+
+        // Reserve before evicting anything: if allocation fails, the cache
+        // remains unchanged and the caller keeps the texture they passed in.
+        self.entries
+            .try_reserve(1)
+            .map_err(|_| TextureCacheError::AllocationFailed)?;
+
         while self.used_bytes > self.budget_bytes - bytes {
             let evicted = self.evict_least_recently_used();
             debug_assert!(evicted, "reclaimable cache capacity was precomputed");
