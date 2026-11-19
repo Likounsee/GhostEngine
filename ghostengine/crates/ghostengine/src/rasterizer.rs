@@ -8463,6 +8463,12 @@ mod blend_rect_transparent_run_tests {
                         workers,
                     );
                     assert_eq!(actual, expected, "worker_count={workers}");
+                    let mut fallible = initial.clone();
+                    super::try_draw_arc_aa_parallel_with_threads(
+                        &mut fallible, center, radius, start, end, color, workers,
+                    )
+                    .unwrap();
+                    assert_eq!(fallible, expected, "fallible outline, worker_count={workers}");
                 }
                 let mut automatic = initial;
                 super::draw_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
@@ -8512,6 +8518,12 @@ mod blend_rect_transparent_run_tests {
                         workers,
                     );
                     assert_eq!(actual, expected, "worker_count={workers}");
+                    let mut fallible = initial.clone();
+                    super::try_fill_arc_aa_parallel_with_threads(
+                        &mut fallible, center, radius, start, end, color, workers,
+                    )
+                    .unwrap();
+                    assert_eq!(fallible, expected, "fallible sector, worker_count={workers}");
                 }
                 let mut automatic = initial;
                 super::fill_arc_aa_parallel(&mut automatic, center, radius, start, end, color);
