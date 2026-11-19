@@ -1327,7 +1327,7 @@ pub fn try_draw_texture_clipped_parallel_with_threads(
         return Ok(());
     }
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
-        return;
+        return Ok(());
     };
 
     let destination_right = u64::from(destination.x) + u64::from(destination.width);
@@ -1394,8 +1394,8 @@ pub fn try_draw_texture_clipped_parallel_with_threads(
     // Compute them once, then let all workers reuse the immutable lookup table.
     let mut horizontal_samples = Vec::new();
     if filter == TextureFilter::Bilinear {
-        let sample_count = usize::try_from(end_x - first_x)
-            .map_err(|_| TextureDrawError::AllocationFailed)?;
+        let sample_count =
+            usize::try_from(end_x - first_x).map_err(|_| TextureDrawError::AllocationFailed)?;
         horizontal_samples
             .try_reserve_exact(sample_count)
             .map_err(|_| TextureDrawError::AllocationFailed)?;
@@ -1421,7 +1421,8 @@ pub fn try_draw_texture_clipped_parallel_with_threads(
             && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024)
         {
             let mut cache = Vec::new();
-            cache.try_reserve_exact(cache_len.unwrap())
+            cache
+                .try_reserve_exact(cache_len.unwrap())
                 .map_err(|_| TextureDrawError::AllocationFailed)?;
             let row_width = texture.width as usize;
             for source_row in 0..texture.height as usize {
