@@ -2832,12 +2832,7 @@ mod tests {
 
     #[test]
     fn fallible_texture_clone_copies_pixels_into_independent_storage() {
-        let original = Texture::new(
-            2,
-            1,
-            vec![Color::RED, Color::rgba(0, 0, 255, 128)],
-        )
-        .unwrap();
+        let original = Texture::new(2, 1, vec![Color::RED, Color::rgba(0, 0, 255, 128)]).unwrap();
         let copied = original.try_clone().unwrap();
 
         assert_eq!(copied.width(), original.width());
