@@ -3293,16 +3293,16 @@ pub fn fill_ellipse_aa(
 /// Fills an antialiased ellipse while reusing caller-owned scanline coverage storage.
 ///
 /// Reusing the scratch value avoids allocating the coverage row for every ellipse.
-pub fn fill_ellipse_aa_with_scratch(
+pub fn try_fill_ellipse_aa_with_scratch(
     target: &mut Framebuffer,
     center: Point,
     radius_x: u32,
     radius_y: u32,
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     if radius_x == 0 || radius_y == 0 {
         let rx = i64::from(radius_x);
@@ -3316,7 +3316,7 @@ pub fn fill_ellipse_aa_with_scratch(
             (i64::from(center.y) + ry).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
         );
         draw_line_aa(target, start, end, color);
-        return;
+        return Ok(());
     }
 
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
@@ -3329,7 +3329,7 @@ pub fn fill_ellipse_aa_with_scratch(
     let right = (cx + rx + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + ry + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let inverse_ry = ry.recip();
@@ -3343,6 +3343,9 @@ pub fn fill_ellipse_aa_with_scratch(
     }
 
     let coverage = &mut scratch.ellipse_aa_coverage;
+    coverage
+        .try_reserve((right - left) as usize)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
     coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
         coverage.fill(0);
@@ -3415,7 +3418,24 @@ pub fn fill_ellipse_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
+
+/// Fills an antialiased ellipse while reusing caller-owned scanline storage.
+///
+/// This compatibility wrapper preserves the original infallible API.
+pub fn fill_ellipse_aa_with_scratch(
+    target: &mut Framebuffer,
+    center: Point,
+    radius_x: u32,
+    radius_y: u32,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_ellipse_aa_with_scratch(target, center, radius_x, radius_y, color, scratch)
+        .expect("failed to allocate antialiased ellipse rasterizer scratch storage");
+}
+
 
 /// Draws an antialiased ellipse outline using disjoint row bands.
 pub fn draw_ellipse_aa_parallel_with_threads(
@@ -4942,6 +4962,32 @@ mod tests {
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
             assert_eq!(gradient.sample_raster(position), gradient.sample(position));
         }
+    }
+
+    #[test]
+    fn fallible_antialiased_ellipse_scratch_matches_compatibility_api() {
+        let mut expected = target(18, 16);
+        let mut actual = target(18, 16);
+        let mut expected_scratch = super::RasterizerScratch::default();
+        let mut actual_scratch = super::RasterizerScratch::default();
+        super::fill_ellipse_aa_with_scratch(
+            &mut expected,
+            Point { x: 8, y: 7 },
+            6,
+            4,
+            Color::rgba(60, 140, 220, 190),
+            &mut expected_scratch,
+        );
+        super::try_fill_ellipse_aa_with_scratch(
+            &mut actual,
+            Point { x: 8, y: 7 },
+            6,
+            4,
+            Color::rgba(60, 140, 220, 190),
+            &mut actual_scratch,
+        )
+        .unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
