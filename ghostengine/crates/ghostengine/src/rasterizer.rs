@@ -4241,32 +4241,44 @@ pub fn draw_arc_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
+    try_draw_arc_aa_parallel_with_threads(
+        target, center, radius, start_angle, end_angle, color, thread_count,
+    )
+    .expect("failed to allocate parallel antialiased arc scratch storage");
+}
+
+/// Fallibly draws an antialiased circular arc with disjoint scanline workers.
+///
+/// Worker source buffers are allocated before drawing; allocation failure
+/// leaves the framebuffer unchanged.
+pub fn try_draw_arc_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
     use core::f64::consts::TAU;
 
-    if color.a == 0
-        || target.width() == 0
-        || target.height() == 0
-        || !start_angle.is_finite()
-        || !end_angle.is_finite()
+    if color.a == 0 || target.width() == 0 || target.height() == 0
+        || !start_angle.is_finite() || !end_angle.is_finite()
     {
-        return;
+        return Ok(());
     }
     let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
     if raw_sweep == 0.0 {
-        return;
+        return Ok(());
     }
     if radius == 0 || thread_count <= 1 {
         draw_arc_aa(target, center, radius, start_angle, end_angle, color);
-        return;
+        return Ok(());
     }
 
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
-    let sweep = if full_circle {
-        TAU
-    } else {
-        raw_sweep.rem_euclid(TAU)
-    };
+    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
     let radius = f64::from(radius);
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -4275,36 +4287,44 @@ pub fn draw_arc_aa_parallel_with_threads(
     let right = (cx + radius + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + radius + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let row_width = target.width() as usize;
-    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
     let row_count = (bottom - top) as usize;
     let worker_count = thread_count.min(row_count).max(1);
     let rows_per_worker = row_count.div_ceil(worker_count);
+    let actual_worker_count = row_count.div_ceil(rows_per_worker);
+    let span_width = (right - left) as usize;
+    let mut worker_sources = Vec::new();
+    worker_sources.try_reserve_exact(actual_worker_count)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    for _ in 0..actual_worker_count {
+        let mut sources = Vec::new();
+        sources.try_reserve_exact(span_width)
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        sources.resize(span_width, Color::TRANSPARENT);
+        worker_sources.push(sources);
+    }
+
+    let start_index = top as usize * row_width;
+    let end_index = bottom as usize * row_width;
+    let rows = &mut target.pixels_mut()[start_index..end_index];
     let pixels_per_worker = rows_per_worker * row_width;
     std::thread::scope(|scope| {
-        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+        for (chunk_index, (chunk, mut sources)) in rows.chunks_mut(pixels_per_worker)
+            .zip(worker_sources.into_iter()).enumerate()
+        {
             let first_y = top as usize + chunk_index * rows_per_worker;
             scope.spawn(move || {
                 draw_arc_aa_parallel_rows(
-                    chunk,
-                    row_width,
-                    first_y,
-                    left,
-                    right,
-                    cx,
-                    cy,
-                    radius,
-                    start,
-                    sweep,
-                    full_circle,
-                    color,
+                    chunk, row_width, first_y, left, right, cx, cy, radius,
+                    start, sweep, full_circle, color, &mut sources,
                 );
             });
         }
     });
+    Ok(())
 }
 
 /// Automatically selects workers for sufficiently large antialiased arcs.
@@ -4349,10 +4369,10 @@ fn draw_arc_aa_parallel_rows(
     sweep: f64,
     full_circle: bool,
     color: Color,
+    sources: &mut [Color],
 ) {
     use core::f64::consts::TAU;
     const SAMPLE_OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
-    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
     for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
@@ -4435,31 +4455,44 @@ pub fn fill_arc_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
+    try_fill_arc_aa_parallel_with_threads(
+        target, center, radius, start_angle, end_angle, color, thread_count,
+    )
+    .expect("failed to allocate parallel antialiased sector scratch storage");
+}
+
+/// Fallibly fills an antialiased circular sector with disjoint scanline workers.
+///
+/// Worker source buffers are allocated before drawing; allocation failure
+/// leaves the framebuffer unchanged.
+pub fn try_fill_arc_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    start_angle: f32,
+    end_angle: f32,
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
     use core::f64::consts::TAU;
 
-    if color.a == 0
-        || target.width() == 0
-        || target.height() == 0
-        || !start_angle.is_finite()
-        || !end_angle.is_finite()
+    if color.a == 0 || target.width() == 0 || target.height() == 0
+        || !start_angle.is_finite() || !end_angle.is_finite()
     {
-        return;
+        return Ok(());
     }
     let raw_sweep = f64::from(end_angle) - f64::from(start_angle);
     if raw_sweep == 0.0 {
-        return;
+        return Ok(());
     }
-    if thread_count <= 1 {
+    if radius == 0 || thread_count <= 1 {
         fill_arc_aa(target, center, radius, start_angle, end_angle, color);
-        return;
+        return Ok(());
     }
+
     let full_circle = raw_sweep.abs() >= TAU;
     let start = f64::from(start_angle).rem_euclid(TAU);
-    let sweep = if full_circle {
-        TAU
-    } else {
-        raw_sweep.rem_euclid(TAU)
-    };
+    let sweep = if full_circle { TAU } else { raw_sweep.rem_euclid(TAU) };
     let radius_f = f64::from(radius);
     let cx = f64::from(center.x);
     let cy = f64::from(center.y);
@@ -4468,40 +4501,44 @@ pub fn fill_arc_aa_parallel_with_threads(
     let right = (cx + radius_f + 1.0).ceil().min(f64::from(target.width())) as u32;
     let bottom = (cy + radius_f + 1.0).ceil().min(f64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
-    }
-    if radius == 0 {
-        fill_arc_aa(target, center, radius, start_angle, end_angle, color);
-        return;
+        return Ok(());
     }
 
     let row_width = target.width() as usize;
-    let rows = &mut target.pixels_mut()[top as usize * row_width..bottom as usize * row_width];
     let row_count = (bottom - top) as usize;
     let worker_count = thread_count.min(row_count).max(1);
     let rows_per_worker = row_count.div_ceil(worker_count);
+    let actual_worker_count = row_count.div_ceil(rows_per_worker);
+    let span_width = (right - left) as usize;
+    let mut worker_sources = Vec::new();
+    worker_sources.try_reserve_exact(actual_worker_count)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    for _ in 0..actual_worker_count {
+        let mut sources = Vec::new();
+        sources.try_reserve_exact(span_width)
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        sources.resize(span_width, Color::TRANSPARENT);
+        worker_sources.push(sources);
+    }
+
+    let start_index = top as usize * row_width;
+    let end_index = bottom as usize * row_width;
+    let rows = &mut target.pixels_mut()[start_index..end_index];
     let pixels_per_worker = rows_per_worker * row_width;
     std::thread::scope(|scope| {
-        for (chunk_index, chunk) in rows.chunks_mut(pixels_per_worker).enumerate() {
+        for (chunk_index, (chunk, mut sources)) in rows.chunks_mut(pixels_per_worker)
+            .zip(worker_sources.into_iter()).enumerate()
+        {
             let first_y = top as usize + chunk_index * rows_per_worker;
             scope.spawn(move || {
                 fill_arc_aa_parallel_rows(
-                    chunk,
-                    row_width,
-                    first_y,
-                    left,
-                    right,
-                    cx,
-                    cy,
-                    radius_f,
-                    start,
-                    sweep,
-                    full_circle,
-                    color,
+                    chunk, row_width, first_y, left, right, cx, cy, radius_f,
+                    start, sweep, full_circle, color, &mut sources,
                 );
             });
         }
     });
+    Ok(())
 }
 
 /// Automatically selects workers for sufficiently large antialiased sectors.
@@ -4546,10 +4583,10 @@ fn fill_arc_aa_parallel_rows(
     sweep: f64,
     full_circle: bool,
     color: Color,
+    sources: &mut [Color],
 ) {
     use core::f64::consts::TAU;
     const SAMPLE_OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
-    let mut sources = vec![Color::TRANSPARENT; (right - left) as usize];
     let mut coverage_colors = [Color::TRANSPARENT; 17];
     for (covered, slot) in coverage_colors.iter_mut().enumerate().skip(1) {
         let alpha = (u16::from(color.a) * covered as u16 / 16) as u8;
