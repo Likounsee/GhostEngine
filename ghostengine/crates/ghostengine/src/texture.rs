@@ -964,7 +964,7 @@ pub fn draw_texture_clipped_with_scratch(
     let end_x = destination_right.min(clip_right);
     let end_y = destination_bottom.min(clip_bottom);
     if first_x >= end_x || first_y >= end_y {
-        return;
+        return Ok(());
     }
 
     // A 1:1 opaque nearest-neighbor draw is a pair of contiguous row
@@ -1303,8 +1303,15 @@ pub fn draw_texture_clipped_parallel_with_threads(
     clip: Rect,
     threads: usize,
 ) {
-    try_draw_texture_clipped_parallel_with_threads(target, texture, destination, filter, clip, threads)
-        .expect("parallel texture drawing scratch allocation failed");
+    try_draw_texture_clipped_parallel_with_threads(
+        target,
+        texture,
+        destination,
+        filter,
+        clip,
+        threads,
+    )
+    .expect("parallel texture drawing scratch allocation failed");
 }
 
 /// Fallible parallel texture drawing.
