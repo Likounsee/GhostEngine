@@ -95,7 +95,7 @@ pub use rasterizer::{
     draw_rounded_rect_aa, draw_rounded_rect_parallel, draw_rounded_rect_parallel_with_threads,
     draw_triangle_aa, draw_triangle_aa_with_scratch, fill_arc_aa, fill_arc_aa_parallel,
     fill_arc_aa_parallel_with_threads, fill_arc_aa_with_scratch, fill_circle_aa,
-    fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_circle_aa_with_scratch, try_fill_circle_aa_with_scratch,
+    fill_circle_aa_parallel, fill_circle_aa_parallel_with_threads, fill_circle_aa_with_scratch,
     fill_ellipse_aa_parallel, fill_ellipse_aa_parallel_with_threads, fill_ellipse_aa_with_scratch,
     fill_polygon_aa, fill_polygon_aa_parallel, fill_polygon_aa_parallel_with_threads,
     fill_polygon_aa_with_scratch, fill_polygon_parallel, fill_polygon_parallel_with_threads,
@@ -106,8 +106,9 @@ pub use rasterizer::{
     fill_rounded_rect_aa_parallel_with_threads, fill_rounded_rect_parallel,
     fill_rounded_rect_parallel_with_threads, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, fill_triangle_aa, fill_triangle_aa_with_scratch,
-    try_fill_ellipse_aa_with_scratch, try_fill_polygon_aa_with_scratch,
-    try_fill_polygon_with_scratch, Gradient, GradientError, GradientStop, RasterizerError,
+    try_fill_circle_aa_with_scratch, try_fill_ellipse_aa_with_scratch,
+    try_fill_polygon_aa_with_scratch, try_fill_polygon_with_scratch, Gradient, GradientError,
+    GradientStop, RasterizerError,
     RasterizerScratch,
 };
 pub use shaping::{
