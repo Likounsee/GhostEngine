@@ -2690,14 +2690,14 @@ pub fn fill_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Colo
 ///
 /// Reusing the same scratch value avoids allocating polygon edges, edge ordering,
 /// active edges, intersections, and per-row coverage for every draw call.
-pub fn fill_polygon_aa_with_scratch(
+pub fn try_fill_polygon_aa_with_scratch(
     target: &mut Framebuffer,
     vertices: &[Point],
     color: Color,
     scratch: &mut RasterizerScratch,
-) {
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
@@ -2717,7 +2717,7 @@ pub fn fill_polygon_aa_with_scratch(
     let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
     let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let RasterizerScratch {
@@ -2728,6 +2728,16 @@ pub fn fill_polygon_aa_with_scratch(
         aa_coverage: coverage,
         ..
     } = scratch;
+
+    // Reserve all scratch storage before modifying the target. A failed
+    // reservation leaves the framebuffer untouched.
+    edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    edge_order.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    active_edges.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    intersections.try_reserve(vertices.len()).map_err(|_| RasterizerError::AllocationFailed)?;
+    coverage
+        .try_reserve((right - left) as usize)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
 
     edges.clear();
     edges.extend((0..vertices.len()).filter_map(|index| {
@@ -2879,7 +2889,22 @@ pub fn fill_polygon_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
+
+/// Fills an antialiased polygon using reusable scratch storage.
+///
+/// This compatibility wrapper preserves the original infallible API.
+pub fn fill_polygon_aa_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_aa_with_scratch(target, vertices, color, scratch)
+        .expect("failed to allocate antialiased polygon rasterizer scratch storage");
+}
+
 
 /// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
 pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
@@ -4917,6 +4942,34 @@ mod tests {
         for position in [0.0, 0.25, 0.4999, 0.5, 0.5001, 0.75, 1.0] {
             assert_eq!(gradient.sample_raster(position), gradient.sample(position));
         }
+    }
+
+    #[test]
+    fn fallible_antialiased_polygon_scratch_matches_compatibility_api() {
+        let vertices = [
+            Point { x: 1, y: 1 },
+            Point { x: 7, y: 2 },
+            Point { x: 4, y: 7 },
+            Point { x: 2, y: 5 },
+        ];
+        let mut expected = target(10, 10);
+        let mut actual = target(10, 10);
+        let mut expected_scratch = super::RasterizerScratch::default();
+        let mut actual_scratch = super::RasterizerScratch::default();
+        super::fill_polygon_aa_with_scratch(
+            &mut expected,
+            &vertices,
+            Color::rgba(200, 80, 40, 180),
+            &mut expected_scratch,
+        );
+        super::try_fill_polygon_aa_with_scratch(
+            &mut actual,
+            &vertices,
+            Color::rgba(200, 80, 40, 180),
+            &mut actual_scratch,
+        )
+        .unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
