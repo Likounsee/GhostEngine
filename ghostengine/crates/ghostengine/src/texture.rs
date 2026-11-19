@@ -873,7 +873,7 @@ pub fn try_draw_texture_clipped_with_scratch(
     let end_y = (u64::from(destination.y) + u64::from(destination.height))
         .min(u64::from(clip.y) + u64::from(clip.height));
     if first_x >= end_x || first_y >= end_y {
-        return;
+        return Ok(());
     }
 
     // The opaque 1:1 fast path performs row copies and needs no scratch storage.
@@ -964,7 +964,7 @@ pub fn draw_texture_clipped_with_scratch(
     let end_x = destination_right.min(clip_right);
     let end_y = destination_bottom.min(clip_bottom);
     if first_x >= end_x || first_y >= end_y {
-        return Ok(());
+        return;
     }
 
     // A 1:1 opaque nearest-neighbor draw is a pair of contiguous row
@@ -1385,7 +1385,7 @@ pub fn try_draw_texture_clipped_parallel_with_threads(
                 });
             }
         });
-        return;
+        return Ok(());
     }
 
     let width = target.width() as usize;
