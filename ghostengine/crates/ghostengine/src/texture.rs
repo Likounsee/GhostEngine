@@ -865,8 +865,8 @@ pub fn try_draw_texture_clipped_with_scratch(
                         .map_err(|_| TextureDrawError::AllocationFailed)?;
                 }
                 let cache_len = (texture.height as usize).checked_mul(visible_width);
-                let cache_bytes = cache_len
-                    .and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+                let cache_bytes =
+                    cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
                 let should_cache = end_y - first_y >= u64::from(texture.height) * 2
                     && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
                 let key = BilinearCacheKey {
