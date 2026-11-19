@@ -2211,21 +2211,39 @@ pub fn fill_polygon_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
+    try_fill_polygon_parallel_with_threads(target, vertices, color, thread_count)
+        .expect("failed to allocate parallel polygon scratch storage");
+}
+
+/// Fallibly fills a polygon using independent scanline workers.
+///
+/// All edge and worker-local intersection buffers are reserved before the
+/// framebuffer is modified. An allocation failure therefore leaves the
+/// target unchanged.
+pub fn try_fill_polygon_parallel_with_threads(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
 
     let min_y = vertices.iter().map(|point| point.y).min().unwrap().max(0) as usize;
     let max_y = vertices.iter().map(|point| point.y).max().unwrap();
     if max_y < 0 || min_y >= target.height() as usize {
-        return;
+        return Ok(());
     }
     let max_y = (max_y as usize).min(target.height() as usize - 1);
     if min_y > max_y {
-        return;
+        return Ok(());
     }
 
-    let mut edges = Vec::with_capacity(vertices.len());
+    let mut edges = Vec::new();
+    edges
+        .try_reserve_exact(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
     for index in 0..vertices.len() {
         let a = vertices[index];
         let b = vertices[(index + 1) % vertices.len()];
@@ -2240,59 +2258,62 @@ pub fn fill_polygon_parallel_with_threads(
         }
     }
     if edges.is_empty() {
-        return;
+        return Ok(());
+    }
+
+    let row_count = max_y - min_y + 1;
+    let worker_count = thread_count.max(1).min(row_count);
+    let mut worker_intersections = Vec::new();
+    worker_intersections
+        .try_reserve_exact(worker_count)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    for _ in 0..worker_count {
+        let mut intersections = Vec::new();
+        intersections
+            .try_reserve_exact(edges.len())
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        worker_intersections.push(intersections);
     }
 
     let row_width = target.width() as usize;
     let start = min_y * row_width;
     let end = (max_y + 1) * row_width;
-    process_rows_with_y_mut(
-        &mut target.pixels_mut()[start..end],
-        row_width,
-        min_y,
-        thread_count,
-        |row, y| {
-            let scan_y = y as f64 + 0.5;
-            if edges.len() <= 64 {
-                let mut intersections = [0.0_f64; 64];
-                let mut count = 0;
-                for &(edge_min_y, edge_max_y, ax, ay, bx, by) in &edges {
-                    if edge_min_y <= scan_y && edge_max_y > scan_y {
-                        let t = (scan_y - ay) / (by - ay);
-                        intersections[count] = ax + t * (bx - ax);
-                        count += 1;
+    let rows = &mut target.pixels_mut()[start..end];
+    let rows_per_worker = row_count.div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * row_width;
+
+    std::thread::scope(|scope| {
+        for (chunk_index, (chunk, mut intersections)) in rows
+            .chunks_mut(pixels_per_worker)
+            .zip(worker_intersections.into_iter())
+            .enumerate()
+        {
+            let first_y = min_y + chunk_index * rows_per_worker;
+            let edges = &edges;
+            scope.spawn(move || {
+                for (row_offset, row) in chunk.chunks_mut(row_width).enumerate() {
+                    let scan_y = (first_y + row_offset) as f64 + 0.5;
+                    intersections.clear();
+                    for &(edge_min_y, edge_max_y, ax, ay, bx, by) in edges {
+                        if edge_min_y <= scan_y && edge_max_y > scan_y {
+                            let t = (scan_y - ay) / (by - ay);
+                            intersections.push(ax + t * (bx - ax));
+                        }
+                    }
+                    intersections.sort_unstable_by(f64::total_cmp);
+                    for pair in intersections.chunks_exact(2) {
+                        let first = (pair[0] - 0.5).ceil().max(0.0) as usize;
+                        let end = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(row_width);
+                        let start = first.min(row_width);
+                        if start < end {
+                            row[start..end].fill(color);
+                        }
                     }
                 }
-                let intersections = &mut intersections[..count];
-                intersections.sort_unstable_by(f64::total_cmp);
-                for pair in intersections.chunks_exact(2) {
-                    let first = (pair[0] - 0.5).ceil().max(0.0) as usize;
-                    let end = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(row_width);
-                    let start = first.min(row_width);
-                    if start < end {
-                        row[start..end].fill(color);
-                    }
-                }
-            } else {
-                let mut intersections = Vec::with_capacity(edges.len());
-                for &(edge_min_y, edge_max_y, ax, ay, bx, by) in &edges {
-                    if edge_min_y <= scan_y && edge_max_y > scan_y {
-                        let t = (scan_y - ay) / (by - ay);
-                        intersections.push(ax + t * (bx - ax));
-                    }
-                }
-                intersections.sort_unstable_by(f64::total_cmp);
-                for pair in intersections.chunks_exact(2) {
-                    let first = (pair[0] - 0.5).ceil().max(0.0) as usize;
-                    let end = ((pair[1] - 0.5).ceil().max(0.0) as usize).min(row_width);
-                    let start = first.min(row_width);
-                    if start < end {
-                        row[start..end].fill(color);
-                    }
-                }
-            }
-        },
-    );
+            });
+        }
+    });
+    Ok(())
 }
 
 /// Automatically selects a worker count for polygon filling.
