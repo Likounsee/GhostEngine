@@ -688,12 +688,12 @@ pub struct GradientStop {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gradient {
     stops: Vec<GradientStop>,
-    // A high-resolution lookup table accelerates per-pixel raster sampling.
-    // It is only used when stops are strictly increasing, so hard edges remain exact.
-    lookup: Option<Box<[Color]>>,
+    // Fallibly allocated lookup tables accelerate per-pixel raster sampling.
+    // They are only used when stops are strictly increasing, so hard edges remain exact.
+    lookup: Option<Vec<Color>>,
     // Radial gradients can index directly with normalized squared distance,
     // avoiding a square root for every destination pixel.
-    radial_lookup: Option<Box<[Color]>>,
+    radial_lookup: Option<Vec<Color>>,
 }
 
 /// Errors produced while constructing a gradient.
@@ -701,6 +701,7 @@ pub struct Gradient {
 pub enum GradientError {
     TooFewStops,
     InvalidPosition,
+    AllocationFailed,
 }
 
 impl Gradient {
@@ -722,15 +723,15 @@ impl Gradient {
             .all(|pair| pair[0].position < pair[1].position)
         {
             const LOOKUP_SIZE: usize = 4096;
-            Some(
-                (0..LOOKUP_SIZE)
-                    .map(|index| {
-                        let position = index as f32 / (LOOKUP_SIZE - 1) as f32;
-                        sample_gradient_stops(&stops, position)
-                    })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            )
+            let mut lookup = Vec::new();
+            lookup
+                .try_reserve_exact(LOOKUP_SIZE)
+                .map_err(|_| GradientError::AllocationFailed)?;
+            for index in 0..LOOKUP_SIZE {
+                let position = index as f32 / (LOOKUP_SIZE - 1) as f32;
+                lookup.push(sample_gradient_stops(&stops, position));
+            }
+            Some(lookup)
         } else {
             None
         };
@@ -739,15 +740,15 @@ impl Gradient {
             // center, where sqrt changes fastest. 65,536 entries keep the
             // resulting color error within approximately one 8-bit channel.
             const RADIAL_LOOKUP_SIZE: usize = 65_536;
-            Some(
-                (0..RADIAL_LOOKUP_SIZE)
-                    .map(|index| {
-                        let squared_position = index as f32 / (RADIAL_LOOKUP_SIZE - 1) as f32;
-                        sample_gradient_stops(&stops, squared_position.sqrt())
-                    })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            )
+            let mut radial_lookup = Vec::new();
+            radial_lookup
+                .try_reserve_exact(RADIAL_LOOKUP_SIZE)
+                .map_err(|_| GradientError::AllocationFailed)?;
+            for index in 0..RADIAL_LOOKUP_SIZE {
+                let squared_position = index as f32 / (RADIAL_LOOKUP_SIZE - 1) as f32;
+                radial_lookup.push(sample_gradient_stops(&stops, squared_position.sqrt()));
+            }
+            Some(radial_lookup)
         } else {
             None
         };
