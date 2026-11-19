@@ -2283,7 +2283,10 @@ mod tests {
 
     #[test]
     fn parallel_texture_draw_matches_sequential_for_both_filters_and_alpha() {
-        use super::draw_texture_clipped_parallel_with_threads;
+        use super::{
+            draw_texture_clipped_parallel_with_threads,
+            try_draw_texture_clipped_parallel_with_threads,
+        };
 
         let texture = Texture::new(
             257,
@@ -2318,7 +2321,19 @@ mod tests {
                     4,
                 );
 
+                let mut fallible_parallel = Framebuffer::new(640, 480, background).unwrap();
+                try_draw_texture_clipped_parallel_with_threads(
+                    &mut fallible_parallel,
+                    &texture,
+                    destination,
+                    filter,
+                    clip,
+                    4,
+                )
+                .unwrap();
+
                 assert_eq!(parallel.pixels(), sequential.pixels());
+                assert_eq!(fallible_parallel.pixels(), sequential.pixels());
             }
         }
     }
