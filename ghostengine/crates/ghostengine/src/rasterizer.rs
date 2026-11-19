@@ -4794,7 +4794,21 @@ pub fn fill_circle_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
-    fill_ellipse_aa_parallel_with_threads(target, center, radius, radius, color, thread_count);
+    try_fill_circle_aa_parallel_with_threads(target, center, radius, color, thread_count)
+        .expect("failed to allocate parallel antialiased circle fill scratch storage");
+}
+
+/// Fallibly fills an antialiased circle using parallel scanline workers.
+pub fn try_fill_circle_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
+    try_fill_ellipse_aa_parallel_with_threads(
+        target, center, radius, radius, color, thread_count,
+    )
 }
 
 /// Automatically selects workers for sufficiently large antialiased circle fills.
@@ -4810,7 +4824,21 @@ pub fn draw_circle_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) {
-    draw_ellipse_aa_parallel_with_threads(target, center, radius, radius, color, thread_count);
+    try_draw_circle_aa_parallel_with_threads(target, center, radius, color, thread_count)
+        .expect("failed to allocate parallel antialiased circle outline scratch storage");
+}
+
+/// Fallibly draws an antialiased circle outline using parallel scanline workers.
+pub fn try_draw_circle_aa_parallel_with_threads(
+    target: &mut Framebuffer,
+    center: Point,
+    radius: u32,
+    color: Color,
+    thread_count: usize,
+) -> Result<(), RasterizerError> {
+    try_draw_ellipse_aa_parallel_with_threads(
+        target, center, radius, radius, color, thread_count,
+    )
 }
 
 /// Automatically selects workers for sufficiently large antialiased circle outlines.
@@ -6672,6 +6700,40 @@ mod circle_aa_tests {
         assert_eq!(actual, expected);
         assert_eq!(actual.get_pixel(8, 7), Some(Color::BLACK));
         assert!(actual.pixels().iter().any(|pixel| pixel.r > 0));
+    }
+
+    #[test]
+    fn fallible_parallel_circle_apis_match_ellipse_apis() {
+        let center = Point::new(13, 11);
+        let radius = 8;
+        let color = Color::rgba(190, 75, 130, 171);
+        for workers in [0, 1, 2, 4, 8] {
+            let mut expected_fill =
+                Framebuffer::new(31, 27, Color::rgba(12, 20, 28, 255)).unwrap();
+            let mut actual_fill = expected_fill.clone();
+            super::try_fill_ellipse_aa_parallel_with_threads(
+                &mut expected_fill, center, radius, radius, color, workers,
+            )
+            .unwrap();
+            super::try_fill_circle_aa_parallel_with_threads(
+                &mut actual_fill, center, radius, color, workers,
+            )
+            .unwrap();
+            assert_eq!(actual_fill, expected_fill, "fill, workers={workers}");
+
+            let mut expected_draw =
+                Framebuffer::new(31, 27, Color::rgba(12, 20, 28, 255)).unwrap();
+            let mut actual_draw = expected_draw.clone();
+            super::try_draw_ellipse_aa_parallel_with_threads(
+                &mut expected_draw, center, radius, radius, color, workers,
+            )
+            .unwrap();
+            super::try_draw_circle_aa_parallel_with_threads(
+                &mut actual_draw, center, radius, color, workers,
+            )
+            .unwrap();
+            assert_eq!(actual_draw, expected_draw, "outline, workers={workers}");
+        }
     }
 
     #[test]
