@@ -1014,10 +1014,7 @@ mod tests {
             .line_to(Vector::new(-extent, 2.0))
             .close();
 
-        let draw_cases: [
-            fn(&mut Framebuffer, &Path, Color, f32) -> Result<(), PathError>;
-            4
-        ] = [
+        let draw_cases: [fn(&mut Framebuffer, &Path, Color, f32) -> Result<(), PathError>; 4] = [
             fill_path_even_odd,
             super::fill_path_non_zero,
             fill_path_even_odd_aa,
