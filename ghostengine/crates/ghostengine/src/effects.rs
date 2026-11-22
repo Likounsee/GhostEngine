@@ -1,6 +1,6 @@
 //! Reusable CPU image effects.
 
-use crate::{Color, Framebuffer};
+use crate::{Color, Framebuffer, FramebufferError};
 
 /// Retained temporary storage for separable blur passes.
 #[derive(Debug, Default)]
@@ -8,6 +8,7 @@ pub struct EffectScratch {
     source: Vec<Color>,
     pixels: Vec<Color>,
     weights: Vec<f64>,
+    shadow: Option<Framebuffer>,
 }
 
 /// Applies a separable box blur in-place using premultiplied-alpha arithmetic.
@@ -123,6 +124,109 @@ pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut 
                 total_weight += weight;
             }
             target.pixels_mut()[y * width + x] = weighted_color(sums, total_weight);
+        }
+    }
+}
+
+
+/// Draws a source image over a tinted, blurred copy of its alpha mask.
+///
+/// The shadow is placed behind the source at (x + offset_x, y + offset_y).
+/// The padded surface and blur buffers are retained in scratch for reuse.
+/// A zero blur radius produces a hard-edged shadow. Pixels are clipped safely.
+pub fn draw_drop_shadow(
+    target: &mut Framebuffer,
+    source: &Framebuffer,
+    x: i32,
+    y: i32,
+    offset_x: i32,
+    offset_y: i32,
+    blur_radius: u32,
+    color: Color,
+    scratch: &mut EffectScratch,
+) -> Result<(), FramebufferError> {
+    if color.a != 0 {
+        let padding = blur_radius
+            .checked_mul(2)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        let shadow_width = source
+            .width()
+            .checked_add(padding)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        let shadow_height = source
+            .height()
+            .checked_add(padding)
+            .ok_or(FramebufferError::SizeOverflow)?;
+
+        let mut shadow = match scratch.shadow.take() {
+            Some(mut cached) => {
+                if let Err(error) = cached.resize_and_clear(
+                    shadow_width,
+                    shadow_height,
+                    Color::TRANSPARENT,
+                ) {
+                    scratch.shadow = Some(cached);
+                    return Err(error);
+                }
+                cached
+            }
+            None => Framebuffer::new(shadow_width, shadow_height, Color::TRANSPARENT)?,
+        };
+
+        let inset = blur_radius as usize;
+        let shadow_width_usize = shadow_width as usize;
+        for source_y in 0..source.height() as usize {
+            let source_start = source_y * source.width() as usize;
+            let shadow_start = (source_y + inset) * shadow_width_usize + inset;
+            for source_x in 0..source.width() as usize {
+                let alpha = source.pixels()[source_start + source_x].a;
+                shadow.pixels_mut()[shadow_start + source_x] =
+                    Color::rgba(color.r, color.g, color.b, alpha);
+            }
+        }
+
+        apply_gaussian_blur(&mut shadow, blur_radius, scratch);
+        for pixel in shadow.pixels_mut() {
+            pixel.a = ((u16::from(pixel.a) * u16::from(color.a) + 127) / 255) as u8;
+        }
+
+        let shadow_x = i64::from(x) + i64::from(offset_x) - i64::from(blur_radius);
+        let shadow_y = i64::from(y) + i64::from(offset_y) - i64::from(blur_radius);
+        composite_framebuffer(target, &shadow, shadow_x, shadow_y);
+        scratch.shadow = Some(shadow);
+    }
+
+    composite_framebuffer(target, source, i64::from(x), i64::from(y));
+    Ok(())
+}
+
+fn composite_framebuffer(target: &mut Framebuffer, source: &Framebuffer, x: i64, y: i64) {
+    let left = x.max(0);
+    let top = y.max(0);
+    let right = (x + i64::from(source.width())).min(i64::from(target.width()));
+    let bottom = (y + i64::from(source.height())).min(i64::from(target.height()));
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    let width = (right - left) as usize;
+    let source_x = (left - x) as usize;
+    let target_x = left as usize;
+    let source_width = source.width() as usize;
+    let target_width = target.width() as usize;
+
+    for destination_y in top..bottom {
+        let source_y = (destination_y - y) as usize;
+        let source_start = source_y * source_width + source_x;
+        let target_start = destination_y as usize * target_width + target_x;
+        let source_row = &source.pixels()[source_start..source_start + width];
+        let target_row = &mut target.pixels_mut()[target_start..target_start + width];
+        for (foreground, background) in source_row.iter().copied().zip(target_row) {
+            if foreground.a == 255 {
+                *background = foreground;
+            } else if foreground.a != 0 {
+                *background = foreground.blend_over(*background);
+            }
         }
     }
 }
