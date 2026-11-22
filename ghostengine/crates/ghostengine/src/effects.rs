@@ -280,6 +280,94 @@ mod tests {
     use crate::Framebuffer;
 
     #[test]
+    fn drop_shadow_is_drawn_behind_source_and_reuses_surface() {
+        let source = Framebuffer::new(1, 1, Color::WHITE).unwrap();
+        let mut target = Framebuffer::new(5, 3, Color::BLACK).unwrap();
+        let mut scratch = EffectScratch::default();
+
+        draw_drop_shadow(
+            &mut target,
+            &source,
+            1,
+            1,
+            2,
+            0,
+            0,
+            Color::RED,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert_eq!(target.get_pixel(1, 1), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(3, 1), Some(Color::RED));
+        let allocation = scratch.shadow.as_ref().unwrap().pixels().as_ptr();
+
+        target.clear(Color::BLACK);
+        draw_drop_shadow(
+            &mut target,
+            &source,
+            1,
+            1,
+            2,
+            0,
+            0,
+            Color::RED,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(scratch.shadow.as_ref().unwrap().pixels().as_ptr(), allocation);
+        assert_eq!(target.get_pixel(3, 1), Some(Color::RED));
+    }
+
+    #[test]
+    fn blurred_drop_shadow_spreads_alpha_without_colored_halos() {
+        let source = Framebuffer::new(1, 1, Color::WHITE).unwrap();
+        let mut target = Framebuffer::new(5, 5, Color::BLACK).unwrap();
+
+        draw_drop_shadow(
+            &mut target,
+            &source,
+            2,
+            2,
+            0,
+            0,
+            1,
+            Color::rgba(255, 0, 0, 200),
+            &mut EffectScratch::default(),
+        )
+        .unwrap();
+
+        assert_eq!(target.get_pixel(2, 2), Some(Color::WHITE));
+        let adjacent = target.get_pixel(1, 2).unwrap();
+        assert!(adjacent.r > 0);
+        assert_eq!(adjacent.g, 0);
+        assert_eq!(adjacent.b, 0);
+        assert!(adjacent.a == 255);
+    }
+
+    #[test]
+    fn transparent_shadow_color_still_draws_source() {
+        let source = Framebuffer::new(1, 1, Color::WHITE).unwrap();
+        let mut target = Framebuffer::new(2, 1, Color::BLACK).unwrap();
+
+        draw_drop_shadow(
+            &mut target,
+            &source,
+            1,
+            0,
+            0,
+            0,
+            2,
+            Color::TRANSPARENT,
+            &mut EffectScratch::default(),
+        )
+        .unwrap();
+
+        assert_eq!(target.get_pixel(1, 0), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
     fn blur_preserves_uniform_images() {
         let mut target = Framebuffer::new(5, 3, Color::rgba(20, 80, 160, 200)).unwrap();
         apply_box_blur(&mut target, 2, &mut EffectScratch::default());
