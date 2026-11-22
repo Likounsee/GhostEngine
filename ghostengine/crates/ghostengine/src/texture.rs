@@ -929,6 +929,9 @@ pub fn draw_texture_nine_slice_clipped(
 /// Draws a nine-slice image while reusing texture sampling storage across all
 /// nine patches. Keep the scratch value between frames to avoid up to nine
 /// independent temporary allocations per scaled panel.
+// Keep the drawing parameters explicit: grouping them would make this low-level
+// rendering API less discoverable and would add a one-use configuration type.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_texture_nine_slice_clipped_with_scratch(
     target: &mut Framebuffer,
     texture: &Texture,
