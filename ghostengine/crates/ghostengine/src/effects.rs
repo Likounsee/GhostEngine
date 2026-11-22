@@ -2,6 +2,30 @@
 
 use crate::{Color, Framebuffer, FramebufferError};
 
+/// Configuration for a CPU drop shadow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DropShadowOptions {
+    /// Horizontal displacement from the source image.
+    pub offset_x: i32,
+    /// Vertical displacement from the source image.
+    pub offset_y: i32,
+    /// Gaussian blur half-width in pixels.
+    pub blur_radius: u32,
+    /// Shadow tint, including its maximum opacity.
+    pub color: Color,
+}
+
+impl Default for DropShadowOptions {
+    fn default() -> Self {
+        Self {
+            offset_x: 0,
+            offset_y: 2,
+            blur_radius: 4,
+            color: Color::rgba(0, 0, 0, 128),
+        }
+    }
+}
+
 /// Retained temporary storage for separable blur passes.
 #[derive(Debug, Default)]
 pub struct EffectScratch {
@@ -138,12 +162,10 @@ pub fn draw_drop_shadow(
     source: &Framebuffer,
     x: i32,
     y: i32,
-    offset_x: i32,
-    offset_y: i32,
-    blur_radius: u32,
-    color: Color,
+    options: DropShadowOptions,
     scratch: &mut EffectScratch,
 ) -> Result<(), FramebufferError> {
+    let DropShadowOptions { offset_x, offset_y, blur_radius, color } = options;
     if color.a != 0 {
         let padding = blur_radius
             .checked_mul(2)
@@ -287,10 +309,12 @@ mod tests {
             &source,
             1,
             1,
-            2,
-            0,
-            0,
-            Color::RED,
+            DropShadowOptions {
+                offset_x: 2,
+                offset_y: 0,
+                blur_radius: 0,
+                color: Color::RED,
+            },
             &mut scratch,
         )
         .unwrap();
@@ -305,10 +329,12 @@ mod tests {
             &source,
             1,
             1,
-            2,
-            0,
-            0,
-            Color::RED,
+            DropShadowOptions {
+                offset_x: 2,
+                offset_y: 0,
+                blur_radius: 0,
+                color: Color::RED,
+            },
             &mut scratch,
         )
         .unwrap();
@@ -329,10 +355,12 @@ mod tests {
             &source,
             2,
             2,
-            0,
-            0,
-            1,
-            Color::rgba(255, 0, 0, 200),
+            DropShadowOptions {
+                offset_x: 0,
+                offset_y: 0,
+                blur_radius: 1,
+                color: Color::rgba(255, 0, 0, 200),
+            },
             &mut EffectScratch::default(),
         )
         .unwrap();
@@ -355,10 +383,12 @@ mod tests {
             &source,
             1,
             0,
-            0,
-            0,
-            2,
-            Color::TRANSPARENT,
+            DropShadowOptions {
+                offset_x: 0,
+                offset_y: 0,
+                blur_radius: 2,
+                color: Color::TRANSPARENT,
+            },
             &mut EffectScratch::default(),
         )
         .unwrap();
