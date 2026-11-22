@@ -46,6 +46,7 @@ pub enum HostPlatform {
     Windows,
     Linux,
     MacOs,
+    Headless,
     Other,
 }
 
@@ -105,8 +106,17 @@ impl std::error::Error for HostError {}
 /// preserve event order, report physical drawable dimensions, and reject or
 /// explicitly report unsupported optional capabilities. The renderer only
 /// supplies a completed CPU framebuffer; it never receives native handles.
-pub trait HostBackend {
+pub trait HostBackend: Sized {
     type BackendError;
+
+    /// Creates a backend using a validated common window configuration.
+    fn create(config: HostWindowConfig) -> Result<Self, Self::BackendError>;
+
+    /// Returns whether the host is still accepting events and presenting frames.
+    fn is_open(&self) -> bool;
+
+    /// Closes the host and releases its native or in-memory presentation resources.
+    fn close(&mut self);
 
     /// Returns the host platform selected by this backend.
     fn platform(&self) -> HostPlatform;
