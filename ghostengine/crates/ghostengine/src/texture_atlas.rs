@@ -5,8 +5,8 @@
 //! region IDs and can rebuild an atlas when their asset set changes.
 
 use crate::{
-    draw_texture_region_clipped, draw_texture_region_clipped_with_scratch, Color, Framebuffer, Rect,
-    Texture, TextureDrawScratch, TextureError, TextureFilter,
+    draw_texture_region_clipped, draw_texture_region_clipped_with_scratch, Color, Framebuffer,
+    Rect, Texture, TextureDrawScratch, TextureError, TextureFilter,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -467,13 +467,7 @@ mod tests {
         let mut actual = expected.clone();
         let mut scratch = TextureDrawScratch::default();
 
-        assert!(atlas.draw_region(
-            &mut expected,
-            7,
-            destination,
-            TextureFilter::Bilinear,
-            clip,
-        ));
+        assert!(atlas.draw_region(&mut expected, 7, destination, TextureFilter::Bilinear, clip,));
         assert!(atlas.draw_region_with_scratch(
             &mut actual,
             7,
@@ -483,7 +477,6 @@ mod tests {
             &mut scratch,
         ));
         assert_eq!(actual.pixels(), expected.pixels());
-        
         actual.clear(Color::BLACK);
         assert!(atlas.draw_region_with_scratch(
             &mut actual,
