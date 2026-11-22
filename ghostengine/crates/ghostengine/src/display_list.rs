@@ -2172,8 +2172,8 @@ mod tests {
         assert_eq!(stats.commands_submitted, 2);
         assert_eq!(stats.commands_executed, 2);
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
-        assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
-        assert!(target.pixels().iter().any(|pixel| *pixel == Color::RED));
+        assert!(target.pixels().contains(&Color::WHITE));
+        assert!(target.pixels().contains(&Color::RED));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != Color::WHITE && *pixel != Color::RED
         }));
