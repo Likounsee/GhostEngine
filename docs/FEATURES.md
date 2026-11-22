@@ -88,6 +88,19 @@ These are design targets, **not implemented Cargo features yet**:
 Do not add a Cargo feature merely to reserve its name. Each planned feature
 must have a real implementation, tests, documentation and a clear fallback.
 
+## 2D gradient rasterization
+
+The CPU rasterizer supports multi-stop linear, radial and conic gradients.
+Conic gradients use a clockwise angular coordinate in framebuffer space and
+share the same alpha-compositing rules as the other gradient fills. The
+transformed-rectangle API also supports conic gradients with affine transforms
+and an explicit clip rectangle through
+`fill_transformed_rect_conic_gradient_clipped`.
+
+Serial and row-parallel conic gradient fills are covered by equivalence tests.
+The transformed path rejects singular/non-finite transforms and avoids writes
+outside the supplied clip or framebuffer bounds.
+
 ## CPU surface export
 
 The core framebuffer remains an owned, tightly packed RGBA buffer. The
