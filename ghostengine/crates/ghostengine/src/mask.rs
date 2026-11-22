@@ -1,6 +1,6 @@
 //! Alpha-mask operations for clipped CPU framebuffers.
 
-use crate::{Color, Framebuffer, Point, Rect};
+use crate::{Framebuffer, Point, Rect};
 
 /// Multiplies destination alpha by a mask's alpha channel inside the clip.
 ///
