@@ -61,8 +61,6 @@ fn accumulate_horizontal_coverage(
     previous_x: f32,
     x: f32,
 ) {
-    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-
     if previous_x >= x || min_x >= max_x {
         return;
     }
@@ -92,6 +90,7 @@ fn accumulate_horizontal_coverage(
         previous_x: f32,
         x: f32,
     ) {
+        const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
         for pixel_x in start..end {
             let sample_count = OFFSETS
                 .iter()
