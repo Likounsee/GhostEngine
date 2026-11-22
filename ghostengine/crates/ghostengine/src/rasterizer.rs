@@ -8961,7 +8961,6 @@ mod oblique_line_clipping_symmetry_tests {
     }
 }
 
-
 /// Fills a clipped rectangle using per-operation CPU rendering options.
 ///
 /// The options control the worker limit and the minimum area at which
@@ -9003,8 +9002,10 @@ pub fn blend_rect_with_options(
 
 #[cfg(test)]
 mod render_options_tests {
-    use crate::{blend_rect, blend_rect_with_options, fill_rect, fill_rect_with_options, Color,
-        Framebuffer, Rect, RenderOptions};
+    use crate::{
+        blend_rect, blend_rect_with_options, fill_rect, fill_rect_with_options, Color, Framebuffer,
+        Rect, RenderOptions,
+    };
 
     #[test]
     fn configured_fill_matches_serial_output() {
