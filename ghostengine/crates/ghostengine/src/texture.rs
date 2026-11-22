@@ -918,6 +918,31 @@ pub fn draw_texture_nine_slice_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
+    draw_texture_nine_slice_clipped_with_scratch(
+        target,
+        texture,
+        source,
+        destination,
+        margins,
+        filter,
+        clip,
+        &mut TextureDrawScratch::default(),
+    );
+}
+
+/// Draws a nine-slice image while reusing texture sampling storage across all
+/// nine patches. Keep the scratch value between frames to avoid up to nine
+/// independent temporary allocations per scaled panel.
+pub fn draw_texture_nine_slice_clipped_with_scratch(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    source: Rect,
+    destination: Rect,
+    margins: NineSliceMargins,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) {
     if source.width == 0
         || source.height == 0
         || destination.width == 0
@@ -994,7 +1019,7 @@ pub fn draw_texture_nine_slice_clipped(
             {
                 continue;
             }
-            draw_texture_region_clipped(
+            draw_texture_region_clipped_with_scratch(
                 target,
                 texture,
                 Rect::new(
@@ -1011,11 +1036,11 @@ pub fn draw_texture_nine_slice_clipped(
                 ),
                 filter,
                 clip,
+                scratch,
             );
         }
     }
 }
-
 /// Errors returned by fallible texture drawing operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureDrawError {
