@@ -105,14 +105,15 @@ adapters incrementally. Do not create three empty crates or duplicate the
 renderer now. Keep the current window adapters as transitional integration
 paths until the common host API can replace them without breaking examples.
 
-The first platform-neutral contract now exists in `host.rs` and is
-re-exported from the crate root. It defines window configuration validation,
-normalized lifecycle/resize/focus/redraw/input events, capability reporting,
-physical drawable sizing, scale-factor reporting and framebuffer presentation.
+The platform-neutral contract now exists in `host.rs` and is re-exported from
+the crate root. It defines validated window configuration, backend creation and
+closure, normalized lifecycle/resize/focus/redraw/input events, capability
+reporting, physical drawable sizing, scale-factor reporting and framebuffer
+presentation. `HeadlessHost` is the first implementation and provides
+repeatable, display-free lifecycle, event, resize and presentation behavior.
 `SurfaceDescriptor` and `Framebuffer::write_to_surface` remain the explicit
-pixel-memory boundary. The contract is not yet a completed host implementation:
-headless behavior and the three real platform adapters still need to be built
-and validated.
+pixel-memory boundary. The native Windows, Linux and macOS adapters still need
+to implement this contract and pass platform CI.
 
 ## 4. Core API rules
 
