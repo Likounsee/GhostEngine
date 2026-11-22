@@ -18,7 +18,12 @@ fn subtract_rect(source: Rect, cutter: Rect, output: &mut Vec<Rect>) {
     let intersection_bottom = u64::from(intersection.y) + u64::from(intersection.height);
 
     if intersection.y > source.y {
-        output.push(Rect::new(source.x, source.y, source.width, intersection.y - source.y));
+        output.push(Rect::new(
+            source.x,
+            source.y,
+            source.width,
+            intersection.y - source.y,
+        ));
     }
     if intersection_bottom < source_bottom {
         output.push(Rect::new(
