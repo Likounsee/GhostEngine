@@ -21,8 +21,9 @@ use crate::text::{
     prepare_bidi_shaped_text_box, prepare_shaped_text_box, FontFace, FontFamily, TextLayoutOptions,
 };
 use crate::texture::{
-    draw_texture_clipped_with_scratch, draw_texture_transformed_clipped, Texture,
-    TextureDrawScratch, TextureFilter,
+    draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped_with_scratch,
+    draw_texture_transformed_clipped, NineSliceMargins, Texture, TextureDrawScratch,
+    TextureFilter,
 };
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
@@ -111,6 +112,14 @@ enum Command {
         texture: Arc<Texture>,
         destination: Rect,
         transform: Transform2D,
+        filter: TextureFilter,
+        clip: Rect,
+    },
+    DrawNineSliceTexture {
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        margins: NineSliceMargins,
         filter: TextureFilter,
         clip: Rect,
     },
@@ -986,6 +995,37 @@ impl DisplayList {
         }
     }
 
+    /// Records a nine-slice texture for resizable UI panels.
+    ///
+    /// Nine-slice patches are axis-aligned in framebuffer coordinates. The active
+    /// clip is captured, but an active affine transform is rejected rather than
+    /// silently producing incorrectly scaled borders. Returns false when a
+    /// non-identity transform is active or no visible clip exists.
+    pub fn draw_nine_slice_texture(
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        margins: NineSliceMargins,
+        filter: TextureFilter,
+    ) -> bool {
+        if self.active_transform() != Transform2D::IDENTITY {
+            return false;
+        }
+        let Some(clip) = self.active_clip() else {
+            return false;
+        };
+        self.commands.push(Command::DrawNineSliceTexture {
+            texture,
+            source,
+            destination,
+            margins,
+            filter,
+            clip,
+        });
+        true
+    }
+
     /// Records a linear-gradient rectangle. The rectangle and gradient coordinates
     /// are local to the active affine transform; clipping does not alter sampling.
     pub fn fill_linear_gradient(
@@ -1250,6 +1290,27 @@ impl DisplayList {
                             *clip,
                         )
                     }
+                }
+                Command::DrawNineSliceTexture {
+                    texture,
+                    source,
+                    destination,
+                    margins,
+                    filter,
+                    clip,
+                } => {
+                    let visible = destination.width > 0
+                        && destination.height > 0
+                        && destination.intersection(*clip).is_some_and(|rect| {
+                            rect.intersection(Rect::new(0, 0, target.width(), target.height()))
+                                .is_some()
+                        });
+                    if visible {
+                        draw_texture_nine_slice_clipped_with_scratch(
+                            target, texture, *source, *destination, *margins, *filter, *clip, scratch,
+                        );
+                    }
+                    visible
                 }
                 Command::LinearGradient {
                     rect,
@@ -2280,6 +2341,62 @@ mod tests {
             .iter()
             .any(|pixel| { *pixel != Color::BLACK && *pixel != Color::WHITE }));
         assert!(target.pixels().contains(&Color::WHITE));
+    }
+
+    #[test]
+    fn nine_slice_texture_command_replays_with_clip_and_reusable_scratch() {
+        let texture = std::sync::Arc::new(
+            crate::Texture::new(
+                3,
+                3,
+                vec![
+                    Color::RED, Color::GREEN, Color::BLUE,
+                    Color::YELLOW, Color::WHITE, Color::CYAN,
+                    Color::MAGENTA, Color::rgb(80, 90, 100), Color::BLACK,
+                ],
+            )
+            .unwrap(),
+        );
+        let source = Rect::new(0, 0, 3, 3);
+        let destination = Rect::new(1, 1, 7, 5);
+        let margins = crate::NineSliceMargins::new(1, 1, 1, 1);
+        let clip = Rect::new(2, 0, 5, 6);
+
+        let mut list = DisplayList::new();
+        list.push_clip(clip);
+        assert!(list.draw_nine_slice_texture(
+            std::sync::Arc::clone(&texture), source, destination, margins,
+            crate::TextureFilter::Bilinear,
+        ));
+        assert_eq!(list.len(), 1);
+
+        let mut expected = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        crate::draw_texture_nine_slice_clipped(
+            &mut expected, &texture, source, destination, margins,
+            crate::TextureFilter::Bilinear, clip,
+        );
+        let mut actual = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        let mut scratch = crate::TextureDrawScratch::default();
+        let stats = list.replay_with_scratch(&mut actual, &mut scratch);
+
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
+        assert_eq!(stats.commands_skipped, 0);
+    }
+
+    #[test]
+    fn nine_slice_texture_rejects_active_affine_transform() {
+        let texture = std::sync::Arc::new(
+            crate::Texture::new(1, 1, vec![Color::WHITE]).unwrap(),
+        );
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(Transform2D::translation(1.0, 0.0)));
+        assert!(!list.draw_nine_slice_texture(
+            texture, Rect::new(0, 0, 1, 1), Rect::new(0, 0, 3, 3),
+            crate::NineSliceMargins::new(0, 0, 0, 0), crate::TextureFilter::Nearest,
+        ));
+        assert!(list.is_empty());
     }
 
     #[test]
