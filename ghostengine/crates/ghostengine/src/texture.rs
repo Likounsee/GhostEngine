@@ -596,6 +596,29 @@ pub fn draw_texture_region_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) {
+    draw_texture_region_clipped_with_scratch(
+        target,
+        texture,
+        source,
+        destination,
+        filter,
+        clip,
+        &mut TextureDrawScratch::default(),
+    );
+}
+
+/// Draws a texture region while reusing horizontal bilinear samples across scanlines.
+///
+/// Keep the scratch value between frames to avoid repeating allocations for atlas sprites.
+pub fn draw_texture_region_clipped_with_scratch(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    source: Rect,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) {
     if source.width == 0
         || source.height == 0
         || destination.width == 0
@@ -680,6 +703,49 @@ pub fn draw_texture_region_clipped(
                     }));
 
             let horizontal_step = source.width as f32 / destination.width as f32;
+            let cache_len = (source.height as usize).checked_mul(clip.width as usize);
+            let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+            let use_region_cache = clip.height >= source.height.saturating_mul(2)
+                && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
+            if use_region_cache {
+                let required = cache_len.expect("cache length validated with byte size");
+                scratch.region_horizontal_cache.clear();
+                if scratch.region_horizontal_cache.capacity() < required {
+                    scratch.region_horizontal_cache.reserve(required - scratch.region_horizontal_cache.len());
+                }
+                let mut sx = (source.x as f32
+                    + ((clip.x - destination.x) as f32 + 0.5)
+                        * source.width as f32 / destination.width as f32
+                    - 0.5)
+                    .clamp(source.x as f32, source_right as f32);
+                for source_y in source.y..=source_bottom {
+                    let row_offset = source_y as usize * texture_width;
+                    for _ in 0..clip.width {
+                        let x0 = sx.floor() as usize;
+                        let x1 = (x0 + 1).min(source_right as usize);
+                        let tx = sx - x0 as f32;
+                        let left = source_pixels[row_offset + x0];
+                        let right = source_pixels[row_offset + x1];
+                        let inverse_x = 1.0 - tx;
+                        let left_alpha = f32::from(left.a) * inverse_x;
+                        let right_alpha = f32::from(right.a) * tx;
+                        scratch.region_horizontal_cache.push([
+                            f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                            f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                            f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                            left_alpha + right_alpha,
+                        ]);
+                        sx = (sx + horizontal_step).min(source_right as f32);
+                    }
+                    sx = (source.x as f32
+                        + ((clip.x - destination.x) as f32 + 0.5)
+                            * source.width as f32 / destination.width as f32
+                        - 0.5)
+                        .clamp(source.x as f32, source_right as f32);
+                }
+            } else {
+                scratch.region_horizontal_cache.clear();
+            }
             let first_relative_x =
                 ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
             let first_sx = (source.x as f32 + first_relative_x * source.width as f32 - 0.5)
@@ -695,7 +761,38 @@ pub fn draw_texture_region_clipped(
                 let target_row = y as usize * target_width;
                 let mut sx = first_sx;
 
-                if source_region_is_opaque {
+                if use_region_cache {
+                    let top_start = (y0 - source.y as usize) * clip.width as usize;
+                    let bottom_start = (y1 - source.y as usize) * clip.width as usize;
+                    let top_samples = &scratch.region_horizontal_cache
+                        [top_start..top_start + clip.width as usize];
+                    let bottom_samples = &scratch.region_horizontal_cache
+                        [bottom_start..bottom_start + clip.width as usize];
+                    for (column, (top, bottom)) in top_samples.iter().zip(bottom_samples).enumerate() {
+                        let pixel = &mut target_pixels[target_row + clip.x as usize + column];
+                        if pixel.a == 255 {
+                            blend_cached_bilinear_over_opaque(top, bottom, 1.0 - ty, ty, pixel);
+                        } else {
+                            let sampled = sample_bilinear_prepared(
+                                source_pixels,
+                                texture_width,
+                                BilinearCoordinates {
+                                    x0: 0,
+                                    x1: 0,
+                                    y0,
+                                    y1,
+                                    tx: 0.0,
+                                    ty,
+                                },
+                            );
+                            if sampled.a == 255 {
+                                *pixel = sampled;
+                            } else if sampled.a != 0 {
+                                *pixel = sampled.blend_over(*pixel);
+                            }
+                        }
+                    }
+                } else if source_region_is_opaque {
                     // Resolve the two source rows once per destination row.
                     // The previous per-pixel helper repeated both row-offset
                     // multiplications for every sample in the horizontal run.
@@ -912,6 +1009,7 @@ pub struct TextureDrawScratch {
     nearest_columns: Vec<usize>,
     horizontal_samples: Vec<(usize, usize, f32)>,
     horizontal_cache: Vec<[f32; 4]>,
+    region_horizontal_cache: Vec<[f32; 4]>,
     cached_bilinear_key: Option<BilinearCacheKey>,
 }
 
