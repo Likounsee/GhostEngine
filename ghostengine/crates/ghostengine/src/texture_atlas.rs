@@ -5,7 +5,8 @@
 //! region IDs and can rebuild an atlas when their asset set changes.
 
 use crate::{
-    draw_texture_region_clipped, Color, Framebuffer, Rect, Texture, TextureError, TextureFilter,
+    draw_texture_region_clipped, draw_texture_region_clipped_with_scratch, Color, Framebuffer, Rect,
+    Texture, TextureDrawScratch, TextureError, TextureFilter,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -40,6 +41,30 @@ pub fn draw_atlas_region_clipped(
     clip: Rect,
 ) {
     draw_texture_region_clipped(target, atlas, region.rect, destination, filter, clip);
+}
+
+/// Draws an atlas entry while reusing bilinear sampling storage between frames.
+///
+/// Keep the scratch object alongside the renderer or scene so repeated draws
+/// of the same sprite can reuse their horizontal samples.
+pub fn draw_atlas_region_clipped_with_scratch(
+    target: &mut Framebuffer,
+    atlas: &Texture,
+    region: AtlasRegion,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) {
+    draw_texture_region_clipped_with_scratch(
+        target,
+        atlas,
+        region.rect,
+        destination,
+        filter,
+        clip,
+        scratch,
+    );
 }
 
 /// A built texture atlas with stable ID-based region lookup.
@@ -82,6 +107,31 @@ impl TextureAtlas {
             return false;
         };
         draw_atlas_region_clipped(target, &self.texture, region, destination, filter, clip);
+        true
+    }
+
+    /// Draws a sprite by ID while reusing caller-owned sampling storage.
+    pub fn draw_region_with_scratch(
+        &self,
+        target: &mut Framebuffer,
+        id: u64,
+        destination: Rect,
+        filter: TextureFilter,
+        clip: Rect,
+        scratch: &mut TextureDrawScratch,
+    ) -> bool {
+        let Some(region) = self.region(id) else {
+            return false;
+        };
+        draw_atlas_region_clipped_with_scratch(
+            target,
+            &self.texture,
+            region,
+            destination,
+            filter,
+            clip,
+            scratch,
+        );
         true
     }
 }
