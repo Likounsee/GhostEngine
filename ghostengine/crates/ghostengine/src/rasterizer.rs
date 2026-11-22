@@ -1600,6 +1600,75 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
     visible
 }
 
+/// Fills an affine-transformed rectangle with a conic gradient.
+/// The center and angular origin are expressed in local rectangle coordinates.
+/// Angles are clockwise in framebuffer coordinates (positive Y points down).
+pub fn fill_transformed_rect_conic_gradient_clipped(
+    target: &mut Framebuffer,
+    rect: Rect,
+    transform: crate::Transform2D,
+    center: crate::Vector,
+    start_angle: f32,
+    gradient: &Gradient,
+    clip: Rect,
+) -> bool {
+    if !transform.is_finite()
+        || !center.x.is_finite()
+        || !center.y.is_finite()
+        || !start_angle.is_finite()
+        || rect.width == 0
+        || rect.height == 0
+    {
+        return false;
+    }
+    let Some(inverse) = transform.inverse() else {
+        return false;
+    };
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return false;
+    };
+    let corners = transformed_rect_corners(rect, transform);
+    if corners
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return false;
+    }
+    let Some((left, top, right, bottom)) = transformed_bounds(&corners, clip) else {
+        return false;
+    };
+
+    const TAU: f32 = core::f32::consts::TAU;
+    let mut visible = false;
+    for y in top..bottom {
+        let Some(row) = target.row_mut(y) else {
+            continue;
+        };
+        for x in left..right {
+            let local = inverse.transform_point(crate::Vector::new(
+                x as f32 + 0.5,
+                y as f32 + 0.5,
+            ));
+            if !rect_contains_point(rect, local) {
+                continue;
+            }
+            visible = true;
+            let angle = (local.y - center.y).atan2(local.x - center.x);
+            let position = (angle - start_angle).rem_euclid(TAU) / TAU;
+            let color = gradient.sample_raster(position);
+            let pixel = &mut row[x as usize];
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
+            } else {
+                color.blend_over(*pixel)
+            };
+        }
+    }
+    visible
+}
+
 fn transformed_rect_corners(rect: Rect, transform: crate::Transform2D) -> [crate::Vector; 4] {
     let left = rect.x as f32;
     let top = rect.y as f32;
@@ -9350,5 +9419,68 @@ mod render_options_tests {
         fill_rect(&mut expected, rect, Color::WHITE);
         fill_rect_with_options(&mut actual, rect, Color::WHITE, RenderOptions::serial());
         assert_eq!(actual, expected);
+    }
+}
+
+#[cfg(test)]
+mod transformed_conic_gradient_tests {
+    use super::{fill_transformed_rect_conic_gradient_clipped, Gradient, GradientStop};
+    use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
+
+    fn gradient() -> Gradient {
+        Gradient::new(vec![
+            GradientStop { position: 0.0, color: Color::RED },
+            GradientStop { position: 0.25, color: Color::GREEN },
+            GradientStop { position: 0.5, color: Color::BLUE },
+            GradientStop { position: 0.75, color: Color::WHITE },
+            GradientStop { position: 1.0, color: Color::RED },
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn transformed_conic_gradient_respects_clip_and_reports_visibility() {
+        let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
+        let visible = fill_transformed_rect_conic_gradient_clipped(
+            &mut target,
+            Rect::new(1, 1, 6, 6),
+            Transform2D::IDENTITY,
+            Vector::new(4.0, 4.0),
+            0.0,
+            &gradient(),
+            Rect::new(2, 2, 3, 3),
+        );
+
+        assert!(visible);
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(5, 5), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| *pixel != Color::BLACK));
+    }
+
+    #[test]
+    fn transformed_conic_gradient_supports_translation_and_rejects_invalid_transform() {
+        let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
+        let translated = Transform2D::translation(Vector::new(3.0, 1.0));
+        assert!(fill_transformed_rect_conic_gradient_clipped(
+            &mut target,
+            Rect::new(1, 1, 4, 4),
+            translated,
+            Vector::new(3.0, 3.0),
+            0.0,
+            &gradient(),
+            Rect::new(0, 0, 12, 10),
+        ));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| *pixel != Color::BLACK));
+
+        assert!(!fill_transformed_rect_conic_gradient_clipped(
+            &mut target,
+            Rect::new(1, 1, 4, 4),
+            Transform2D::scale(0.0, 0.0),
+            Vector::new(3.0, 3.0),
+            0.0,
+            &gradient(),
+            Rect::new(0, 0, 12, 10),
+        ));
     }
 }
