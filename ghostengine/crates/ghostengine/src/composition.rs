@@ -5,10 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::texture::sample_pixels_bilinear;
 use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
 
-/// A bounded collection of framebuffer regions that need recomposition.
-///
-/// Added rectangles are clipped to the dimensions supplied at construction.
-/// Overlapping rectangles are represented as an exact, disjoint union.
+// Subtracts the intersection with the cutter while preserving exact coverage.
 fn subtract_rect(source: Rect, cutter: Rect, output: &mut Vec<Rect>) {
     let Some(intersection) = source.intersection(cutter) else {
         output.push(source);
@@ -49,6 +46,10 @@ fn subtract_rect(source: Rect, cutter: Rect, output: &mut Vec<Rect>) {
     }
 }
 
+/// A bounded collection of framebuffer regions that need recomposition.
+///
+/// Added rectangles are clipped to the dimensions supplied at construction.
+/// Overlapping rectangles are represented as an exact, disjoint union.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageRegion {
     width: u32,
