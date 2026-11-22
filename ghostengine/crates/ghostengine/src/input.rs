@@ -6,6 +6,7 @@
 use crate::{
     ClipboardAction, ComponentEvents, ComponentKey, ComponentTree, Point, Rect, TextInputEvent,
 };
+#[cfg(feature = "native-input")]
 use std::time::{Duration, Instant};
 
 /// Input sampled once per application frame.
@@ -58,12 +59,14 @@ pub struct InputState {
 }
 
 /// Resolves the edge events for a button sampled once per frame.
+#[cfg(feature = "native-input")]
 #[derive(Debug, Default)]
 pub(crate) struct ClickTracker {
     last_click: Option<(Instant, Point)>,
     click_count: u8,
 }
 
+#[cfg(feature = "native-input")]
 impl ClickTracker {
     pub(crate) fn record(&mut self, position: Option<Point>) -> u8 {
         self.record_at(position, Instant::now())
@@ -282,7 +285,7 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-input"))]
 mod tests {
     #[test]
     fn click_tracker_requires_time_and_spatial_proximity() {
