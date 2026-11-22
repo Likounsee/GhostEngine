@@ -15,8 +15,8 @@ enum Command {
 struct FillEdge {
     min_y: f32,
     max_y: f32,
-    min_x: f32,
-    inverse_slope: f32,
+    min_x: f64,
+    inverse_slope: f64,
     winding: i32,
 }
 
@@ -32,14 +32,19 @@ impl FillEdge {
         Some(Self {
             min_y: lower.y,
             max_y: upper.y,
-            min_x: lower.x,
-            inverse_slope: (upper.x - lower.x) / (upper.y - lower.y),
+            // Finite f32 endpoints can still overflow during f32 subtraction
+            // (for example, -f32::MAX to f32::MAX). Keep interpolation in f64.
+            min_x: f64::from(lower.x),
+            inverse_slope: (f64::from(upper.x) - f64::from(lower.x))
+                / (f64::from(upper.y) - f64::from(lower.y)),
             winding: if a.y < b.y { 1 } else { -1 },
         })
     }
 
     fn x_at(self, sample_y: f32) -> f32 {
-        self.min_x + (sample_y - self.min_y) * self.inverse_slope
+        (self.min_x
+            + (f64::from(sample_y) - f64::from(self.min_y)) * self.inverse_slope)
+            as f32
     }
 
     fn crosses(self, sample_y: f32) -> bool {
@@ -973,6 +978,19 @@ mod tests {
         }
 
         assert!(super::FillEdge::new(Vector::new(1.0, 2.0), Vector::new(5.0, 2.0)).is_none());
+    }
+
+    #[test]
+    fn fill_edge_interpolation_avoids_overflow_for_extreme_finite_coordinates() {
+        let extent = f32::MAX;
+        let edge = super::FillEdge::new(
+            Vector::new(-extent, 0.0),
+            Vector::new(extent, 2.0),
+        )
+        .expect("non-horizontal edge");
+
+        assert_eq!(edge.x_at(1.0), 0.0);
+        assert!(edge.x_at(0.5).is_finite());
     }
 
     #[test]
