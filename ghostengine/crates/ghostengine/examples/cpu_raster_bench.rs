@@ -324,6 +324,10 @@ fn main() {
     layer_group.set_opacity(235);
     let mut layer_group_scratch = ghostengine::LayerGroupScratch::with_capacity(3);
     layer_group_scratch.reserve_surfaces(1);
+    let cached_layer_groups = [(1_u64, &layer_group)];
+    let mut layer_group_cache = ghostengine::LayerGroupCache::default();
+    let mut cached_layer_group_scratch = ghostengine::LayerGroupScratch::with_capacity(3);
+    cached_layer_group_scratch.reserve_surfaces(1);
 
     println!("GhostEngine — benchmark global CPU");
     println!("Resolution: {WIDTH}x{HEIGHT} (scene scaled 4x from 480x270)");
@@ -830,6 +834,19 @@ fn main() {
                     &mut layer_group_scratch,
                 )
                 .expect("group benchmark composition should succeed");
+            },
+        ),
+        measure(
+            "Nested layer groups (persistent cache)",
+            iterations,
+            |target| {
+                ghostengine::compose_layer_groups_cached(
+                    target,
+                    &cached_layer_groups,
+                    &mut layer_group_cache,
+                    &mut cached_layer_group_scratch,
+                )
+                .expect("cached group benchmark composition should succeed");
             },
         ),
         measure("Transformed layer (nearest)", iterations, |target| {
