@@ -2423,6 +2423,73 @@ mod tests {
     }
 
     #[test]
+    fn nine_slice_reuses_scratch_and_matches_stateless_rendering() {
+        use super::{
+            draw_texture_nine_slice_clipped, draw_texture_nine_slice_clipped_with_scratch,
+            NineSliceMargins,
+        };
+
+        let pixels = (0..16)
+            .map(|index| {
+                Color::rgba(
+                    (index * 13) as u8,
+                    (index * 7) as u8,
+                    (255 - index * 9) as u8,
+                    if index % 3 == 0 { 128 } else { 255 },
+                )
+            })
+            .collect();
+        let texture = Texture::new(4, 4, pixels).unwrap();
+        let source = Rect::new(0, 0, 4, 4);
+        let destination = Rect::new(1, 1, 13, 11);
+        let margins = NineSliceMargins::new(1, 1, 1, 1);
+        let clip = Rect::new(0, 0, 15, 13);
+
+        let mut expected = Framebuffer::new(15, 13, Color::rgb(20, 30, 40)).unwrap();
+        draw_texture_nine_slice_clipped(
+            &mut expected,
+            &texture,
+            source,
+            destination,
+            margins,
+            TextureFilter::Bilinear,
+            clip,
+        );
+
+        let mut actual = Framebuffer::new(15, 13, Color::rgb(20, 30, 40)).unwrap();
+        let mut scratch = TextureDrawScratch::default();
+        draw_texture_nine_slice_clipped_with_scratch(
+            &mut actual,
+            &texture,
+            source,
+            destination,
+            margins,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert!(!scratch.horizontal_samples.is_empty());
+        let samples_ptr = scratch.horizontal_samples.as_ptr();
+        let samples_capacity = scratch.horizontal_samples.capacity();
+
+        actual.clear(Color::rgb(20, 30, 40));
+        draw_texture_nine_slice_clipped_with_scratch(
+            &mut actual,
+            &texture,
+            source,
+            destination,
+            margins,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(scratch.horizontal_samples.as_ptr(), samples_ptr);
+        assert_eq!(scratch.horizontal_samples.capacity(), samples_capacity);
+    }
+
+    #[test]
     fn nine_slice_compresses_borders_when_destination_is_too_small() {
         use super::{draw_texture_nine_slice_clipped, NineSliceMargins};
 
