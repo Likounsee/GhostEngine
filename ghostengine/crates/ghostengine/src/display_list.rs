@@ -2183,13 +2183,8 @@ mod tests {
     fn display_list_circle_primitives_support_fill_stroke_and_zero_radius() {
         let mut list = DisplayList::new();
         list.fill_circle(Point::new(3, 3), 2, Color::WHITE).unwrap();
-        list.stroke_circle_aa(
-            Point::new(3, 3),
-            2,
-            StrokeStyle::new(1.0),
-            Color::RED,
-        )
-        .unwrap();
+        list.stroke_circle_aa(Point::new(3, 3), 2, StrokeStyle::new(1.0), Color::RED)
+            .unwrap();
         list.fill_circle_aa(Point::new(6, 6), 0, Color::BLUE)
             .unwrap();
         let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
