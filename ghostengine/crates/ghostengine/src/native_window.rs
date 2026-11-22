@@ -200,7 +200,7 @@ where
 
 impl<F> ApplicationHandler for NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
