@@ -11,8 +11,8 @@ use crate::path::{
 };
 use crate::rasterizer::{
     draw_line, draw_line_aa_clipped, fill_rects_clipped,
-    fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
-    Gradient,
+    fill_transformed_rect_conic_gradient_clipped, fill_transformed_rect_linear_gradient_clipped,
+    fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{stroke_path_aa_clipped, stroke_path_clipped, StrokeError, StrokeStyle};
@@ -126,6 +126,14 @@ enum Command {
         rect: Rect,
         center: crate::Vector,
         radius: f32,
+        transform: Transform2D,
+        gradient: Gradient,
+        clip: Rect,
+    },
+    ConicGradient {
+        rect: Rect,
+        center: crate::Vector,
+        start_angle: f32,
         transform: Transform2D,
         gradient: Gradient,
         clip: Rect,
@@ -1021,6 +1029,28 @@ impl DisplayList {
         }
     }
 
+    /// Records a conic-gradient rectangle. The center and start angle are local
+    /// to the active affine transform. Angles are measured clockwise in framebuffer
+    /// coordinates, matching the rasterizer's conic-gradient convention.
+    pub fn fill_conic_gradient(
+        &mut self,
+        rect: Rect,
+        center: crate::Vector,
+        start_angle: f32,
+        gradient: Gradient,
+    ) {
+        if let Some(clip) = self.active_clip() {
+            self.commands.push(Command::ConicGradient {
+                rect,
+                center,
+                start_angle,
+                transform: self.active_transform(),
+                gradient,
+                clip,
+            });
+        }
+    }
+
     /// Executes commands in submission order and returns basic replay counters.
     ///
     /// A temporary texture workspace is created for this replay. Applications
@@ -1240,6 +1270,16 @@ impl DisplayList {
                     clip,
                 } => fill_transformed_rect_radial_gradient_clipped(
                     target, *rect, *transform, *center, *radius, gradient, *clip,
+                ),
+                Command::ConicGradient {
+                    rect,
+                    center,
+                    start_angle,
+                    transform,
+                    gradient,
+                    clip,
+                } => fill_transformed_rect_conic_gradient_clipped(
+                    target, *rect, *transform, *center, *start_angle, gradient, *clip,
                 ),
             };
             if executed {
@@ -2125,6 +2165,27 @@ mod tests {
         assert_eq!(target.get_pixel(4, 3), Some(Color::rgb(90, 90, 90)));
         assert_eq!(target.get_pixel(2, 1), Some(Color::WHITE));
         assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn conic_gradient_replays_with_transform_and_nested_clip() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(2.0, 1.0)));
+        list.push_clip(Rect::new(2, 1, 3, 3));
+        list.fill_conic_gradient(
+            Rect::new(0, 0, 4, 4),
+            crate::Vector::new(2.0, 2.0),
+            0.0,
+            black_to_white_gradient(),
+        );
+        let mut target = Framebuffer::new(7, 7, Color::RED).unwrap();
+        let stats = list.replay(&mut target);
+
+        assert_eq!(target.get_pixel(2, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
+        assert_eq!(stats.commands_submitted, 1);
         assert_eq!(stats.commands_executed, 1);
     }
 
