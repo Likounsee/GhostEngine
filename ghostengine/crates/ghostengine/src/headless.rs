@@ -192,8 +192,7 @@ mod tests {
 
     #[test]
     fn resize_updates_drawable_and_queues_event() {
-        let mut host =
-            HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
         host.resize(128, 96).unwrap();
 
         assert_eq!(host.drawable_size(), (128, 96));
@@ -237,8 +236,7 @@ mod tests {
 
     #[test]
     fn rejects_frame_with_wrong_dimensions() {
-        let mut host =
-            HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
         let frame = Framebuffer::new(1, 1, Color::BLACK).unwrap();
         assert_eq!(
             host.present(&frame),
@@ -248,10 +246,9 @@ mod tests {
 
     #[test]
     fn lifecycle_can_be_created_and_closed_through_common_trait() {
-        let mut host = <HeadlessHost as HostBackend>::create(HostWindowConfig::new(
-            "lifecycle", 16, 16,
-        ))
-        .unwrap();
+        let mut host =
+            <HeadlessHost as HostBackend>::create(HostWindowConfig::new("lifecycle", 16, 16))
+                .unwrap();
         assert!(host.is_open());
         host.close();
         assert!(!host.is_open());
