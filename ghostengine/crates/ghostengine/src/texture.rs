@@ -709,42 +709,54 @@ pub fn draw_texture_region_clipped_with_scratch(
                 && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
             if use_region_cache {
                 let required = cache_len.expect("cache length validated with byte size");
-                scratch.region_horizontal_cache.clear();
-                if scratch.region_horizontal_cache.capacity() < required {
-                    scratch.region_horizontal_cache.reserve(required - scratch.region_horizontal_cache.len());
-                }
-                let mut sx = (source.x as f32
-                    + ((clip.x - destination.x) as f32 + 0.5)
-                        * source.width as f32 / destination.width as f32
-                    - 0.5)
-                    .clamp(source.x as f32, source_right as f32);
-                for source_y in source.y..=source_bottom {
-                    let row_offset = source_y as usize * texture_width;
-                    for _ in 0..clip.width {
-                        let x0 = sx.floor() as usize;
-                        let x1 = (x0 + 1).min(source_right as usize);
-                        let tx = sx - x0 as f32;
-                        let left = source_pixels[row_offset + x0];
-                        let right = source_pixels[row_offset + x1];
-                        let inverse_x = 1.0 - tx;
-                        let left_alpha = f32::from(left.a) * inverse_x;
-                        let right_alpha = f32::from(right.a) * tx;
-                        scratch.region_horizontal_cache.push([
-                            f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
-                            f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
-                            f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
-                            left_alpha + right_alpha,
-                        ]);
-                        sx = (sx + horizontal_step).min(source_right as f32);
+                let cache_key = RegionBilinearCacheKey {
+                    texture_id: texture.id,
+                    source,
+                    destination_x: destination.x,
+                    destination_width: destination.width,
+                    clip_x: clip.x,
+                    clip_width: clip.width,
+                };
+                let cache_is_valid = scratch.cached_region_bilinear_key == Some(cache_key)
+                    && scratch.region_horizontal_cache.len() == required;
+                if !cache_is_valid {
+                    scratch.region_horizontal_cache.clear();
+                    if scratch.region_horizontal_cache.capacity() < required {
+                        scratch.region_horizontal_cache.reserve(
+                            required - scratch.region_horizontal_cache.len(),
+                        );
                     }
-                    sx = (source.x as f32
+                    let first_sx = (source.x as f32
                         + ((clip.x - destination.x) as f32 + 0.5)
                             * source.width as f32 / destination.width as f32
                         - 0.5)
                         .clamp(source.x as f32, source_right as f32);
+                    for source_y in source.y..=source_bottom {
+                        let row_offset = source_y as usize * texture_width;
+                        let mut sx = first_sx;
+                        for _ in 0..clip.width {
+                            let x0 = sx.floor() as usize;
+                            let x1 = (x0 + 1).min(source_right as usize);
+                            let tx = sx - x0 as f32;
+                            let left = source_pixels[row_offset + x0];
+                            let right = source_pixels[row_offset + x1];
+                            let inverse_x = 1.0 - tx;
+                            let left_alpha = f32::from(left.a) * inverse_x;
+                            let right_alpha = f32::from(right.a) * tx;
+                            scratch.region_horizontal_cache.push([
+                                f32::from(left.r) * left_alpha + f32::from(right.r) * right_alpha,
+                                f32::from(left.g) * left_alpha + f32::from(right.g) * right_alpha,
+                                f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
+                                left_alpha + right_alpha,
+                            ]);
+                            sx = (sx + horizontal_step).min(source_right as f32);
+                        }
+                    }
+                    scratch.cached_region_bilinear_key = Some(cache_key);
                 }
             } else {
                 scratch.region_horizontal_cache.clear();
+                scratch.cached_region_bilinear_key = None;
             }
             let first_relative_x =
                 ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
@@ -1019,6 +1031,7 @@ pub struct TextureDrawScratch {
     horizontal_cache: Vec<[f32; 4]>,
     region_horizontal_cache: Vec<[f32; 4]>,
     cached_bilinear_key: Option<BilinearCacheKey>,
+    cached_region_bilinear_key: Option<RegionBilinearCacheKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1030,6 +1043,16 @@ struct BilinearCacheKey {
     destination_width: u32,
     first_x: u64,
     end_x: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RegionBilinearCacheKey {
+    texture_id: u64,
+    source: Rect,
+    destination_x: u32,
+    destination_width: u32,
+    clip_x: u32,
+    clip_width: u32,
 }
 
 /// Draws a clipped texture while reporting temporary-buffer allocation failures.
