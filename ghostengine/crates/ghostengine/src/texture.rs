@@ -712,25 +712,50 @@ pub fn draw_texture_region_clipped(
                         sx = (sx + horizontal_step).min(source_right as f32);
                     }
                 } else {
+                    let top_offset = y0 * texture_width;
+                    let bottom_offset = y1 * texture_width;
+                    let top_row = &source_pixels[top_offset..top_offset + texture_width];
+                    let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
+
                     for x in clip.x..clip.x + clip.width {
                         let x0 = sx.floor() as usize;
-                        let sampled = sample_bilinear_prepared(
-                            source_pixels,
-                            texture_width,
-                            BilinearCoordinates {
-                                x0,
-                                x1: (x0 + 1).min(source_right as usize),
-                                y0,
-                                y1,
-                                tx: sx - x0 as f32,
+                        let sample = BilinearHorizontalSample {
+                            x0,
+                            x1: (x0 + 1).min(source_right as usize),
+                            tx: sx - x0 as f32,
+                        };
+                        let pixel = &mut target_pixels[target_row + x as usize];
+
+                        // Match the main texture renderer: when the destination is
+                        // opaque, composite the premultiplied bilinear sample directly.
+                        // This avoids converting to straight-alpha bytes and blending
+                        // those bytes again for every atlas pixel.
+                        if pixel.a == 255 {
+                            blend_bilinear_rows_over_opaque(
+                                top_row,
+                                bottom_row,
+                                sample,
                                 ty,
-                            },
-                        );
-                        if sampled.a == 255 {
-                            target_pixels[target_row + x as usize] = sampled;
-                        } else if sampled.a != 0 {
-                            let pixel = &mut target_pixels[target_row + x as usize];
-                            *pixel = sampled.blend_over(*pixel);
+                                pixel,
+                            );
+                        } else {
+                            let sampled = sample_bilinear_prepared(
+                                source_pixels,
+                                texture_width,
+                                BilinearCoordinates {
+                                    x0: sample.x0,
+                                    x1: sample.x1,
+                                    y0,
+                                    y1,
+                                    tx: sample.tx,
+                                    ty,
+                                },
+                            );
+                            if sampled.a == 255 {
+                                *pixel = sampled;
+                            } else if sampled.a != 0 {
+                                *pixel = sampled.blend_over(*pixel);
+                            }
                         }
                         sx = (sx + horizontal_step).min(source_right as f32);
                     }
@@ -2193,8 +2218,8 @@ pub fn draw_texture_transformed_clipped(
 mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
-        draw_texture_transformed_clipped, sample_bilinear_prepared, BilinearCoordinates, Texture,
-        TextureError, TextureFilter,
+        draw_texture_region_clipped, draw_texture_transformed_clipped, sample_bilinear_prepared,
+        BilinearCoordinates, Texture, TextureError, TextureFilter,
     };
     use crate::{
         draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch,
@@ -3274,5 +3299,49 @@ mod render_options_tests {
         );
 
         assert_eq!(actual, expected);
+    }    
+    #[test]
+    fn atlas_bilinear_matches_regular_texture_draw_over_opaque_destination() {
+        let source_pixels = vec![
+            Color::WHITE,
+            Color::rgba(220, 40, 30, 180),
+            Color::rgba(20, 210, 80, 220),
+            Color::BLACK,
+            Color::rgba(30, 60, 230, 150),
+            Color::rgba(240, 180, 20, 200),
+            Color::WHITE,
+            Color::rgba(120, 40, 200, 90),
+            Color::BLACK,
+        ];
+        let atlas = Texture::new(3, 3, source_pixels.clone()).unwrap();
+        let region_pixels = vec![
+            source_pixels[4],
+            source_pixels[5],
+            source_pixels[7],
+            source_pixels[8],
+        ];
+        let region_texture = Texture::new(2, 2, region_pixels).unwrap();
+        let destination = Rect::new(1, 1, 7, 6);
+        let clip = Rect::new(0, 0, 10, 9);
+        let mut atlas_target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
+        let mut texture_target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
+
+        draw_texture_region_clipped(
+            &mut atlas_target,
+            &atlas,
+            Rect::new(1, 1, 2, 2),
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+        );
+        draw_texture(
+            &mut texture_target,
+            &region_texture,
+            destination,
+            TextureFilter::Bilinear,
+        );
+
+        assert_eq!(atlas_target.pixels(), texture_target.pixels());
     }
+
 }
