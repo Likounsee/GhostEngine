@@ -45,6 +45,10 @@ jobs:
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features
 
+      - name: Test native input without minifb
+        working-directory: ghostengine
+        run: cargo test --workspace --all-targets --no-default-features --features native-input
+
       - name: Run tests with all optional features
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --all-features
