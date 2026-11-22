@@ -11,7 +11,7 @@
 //! `ComponentTree::handle_window_input`.
 
 use crate::{
-    window::{ClickTracker, InputState},
+    input::{ClickTracker, InputState},
     ClipboardAction, Point, TextInputEvent,
 };
 use arboard::Clipboard;
