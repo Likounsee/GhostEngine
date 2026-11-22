@@ -1284,6 +1284,35 @@ pub fn draw_texture_clipped_with_scratch(
     }
 }
 
+/// Draws a clipped texture using per-operation CPU rendering options.
+///
+/// The worker limit and configured area threshold are resolved for the
+/// destination region. The texture renderer retains its conservative internal
+/// cutoff for parallel work to avoid thread overhead on small blits.
+pub fn draw_texture_clipped_with_options(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    options: crate::RenderOptions,
+) {
+    let area = u64::from(destination.width) * u64::from(destination.height);
+    let threads = options.worker_count(area);
+    if threads <= 1 {
+        draw_texture_clipped(target, texture, destination, filter, clip);
+    } else {
+        draw_texture_clipped_parallel_with_threads(
+            target,
+            texture,
+            destination,
+            filter,
+            clip,
+            threads,
+        );
+    }
+}
+
 /// Draws a clipped texture using independent row bands on scoped worker threads.
 ///
 /// The operation preserves the sequential sampler's pixel results. It splits the
