@@ -122,9 +122,6 @@ impl CachedLayer {
                     target_row.copy_from_slice(source_row);
                     continue;
                 }
-                if source_row.iter().all(|source| source.a == 0) {
-                    continue;
-                }
                 for (background, source) in target_row.iter_mut().zip(source_row.iter().copied()) {
                     if source.a == 255 {
                         *background = source;
