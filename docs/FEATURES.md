@@ -87,17 +87,18 @@ features are transitional adapters, not the final public platform architecture.
 The CPU rendering core, `InputState`, `SurfaceDescriptor` and framebuffer
 export are platform-independent building blocks.
 
-The first platform-neutral contract is now implemented in `host.rs` and
-re-exported from the crate root: `HostWindowConfig`, `HostEvent`,
-`HostCapabilities`, `HostBackend`, `HostPlatform` and `HostError`.
-It defines normalized lifecycle/resize/focus/redraw/input events, physical
-drawable sizing, scale-factor reporting, capability discovery and framebuffer
-presentation without exposing native handles.
+The platform-neutral contract is implemented in `host.rs` and re-exported
+from the crate root. It defines validated window configuration, backend
+creation/closure, normalized lifecycle/resize/focus/redraw/input events,
+physical drawable sizing, scale-factor reporting, capability discovery and
+framebuffer presentation without exposing native handles.
 
-This is the contract foundation, not a claim that the three concrete adapters
-are finished. The next implementation work is a headless backend and then
-verified Windows, Linux and macOS adapters. Do not duplicate the renderer or
-add empty OS-specific feature flags.
+The deterministic `HeadlessHost` backend is implemented in `headless.rs`. It
+supports ordered event delivery, resize notifications, lifecycle closure,
+framebuffer presentation and explicit rejection of operations after closure.
+Its tests cover these behaviors without a display server. The native Windows,
+Linux and macOS adapters are still in progress; the existing Winit/softbuffer
+integration remains transitional until it is connected to this contract.
 
 ## Planned feature groups
 
