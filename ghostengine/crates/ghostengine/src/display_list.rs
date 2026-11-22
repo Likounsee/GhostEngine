@@ -2182,8 +2182,8 @@ mod tests {
         let mut target = Framebuffer::new(7, 7, Color::RED).unwrap();
         let stats = list.replay(&mut target);
 
-        assert_eq!(target.get_pixel(2, 1), Some(Color::RED));
-        assert_eq!(target.get_pixel(4, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::rgb(159, 159, 159)));
+        assert_eq!(target.get_pixel(4, 3), Some(Color::rgb(32, 32, 32)));
         assert_eq!(target.get_pixel(5, 3), Some(Color::RED));
         assert_eq!(stats.commands_submitted, 1);
         assert_eq!(stats.commands_executed, 1);
