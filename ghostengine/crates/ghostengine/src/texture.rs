@@ -2218,8 +2218,8 @@ pub fn draw_texture_transformed_clipped(
 mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
-        draw_texture_region_clipped, draw_texture_transformed_clipped, sample_bilinear_prepared,
-        BilinearCoordinates, Texture, TextureError, TextureFilter,
+        draw_texture_transformed_clipped, sample_bilinear_prepared, BilinearCoordinates, Texture,
+        TextureError, TextureFilter,
     };
     use crate::{
         draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch,
@@ -3217,8 +3217,9 @@ mod tests {
 #[cfg(test)]
 mod render_options_tests {
     use crate::{
-        draw_texture_clipped, draw_texture_clipped_with_options, Color, Framebuffer, Rect,
-        RenderOptions, Texture, TextureFilter,
+        draw_texture, draw_texture_clipped, draw_texture_clipped_with_options,
+        draw_texture_region_clipped, Color, Framebuffer, Rect, RenderOptions, Texture,
+        TextureFilter,
     };
 
     #[test]
@@ -3299,7 +3300,8 @@ mod render_options_tests {
         );
 
         assert_eq!(actual, expected);
-    }    
+    }
+
     #[test]
     fn atlas_bilinear_matches_regular_texture_draw_over_opaque_destination() {
         let source_pixels = vec![
