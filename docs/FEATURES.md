@@ -106,3 +106,23 @@ for caller-owned native/display buffers:
 This is a CPU-side interoperability API, not a GPU surface or a platform
 window implementation. The framebuffer's internal pixel representation is
 unchanged, so existing rasterizers retain their current fast row-major path.
+
+
+## CPU benchmark protocol
+
+Run the same release benchmark on each comparison machine, with the same
+GhostEngine commit, Rust toolchain and feature set:
+
+```sh
+cargo run -p ghostengine --release --example cpu_raster_bench -- 50
+```
+
+The final argument is the iteration count per workload (the 4K-to-1080p
+workload is capped at 20 frames). The benchmark prints the detected CPU,
+logical thread count, enabled SIMD/parallel features, Rust version, build
+mode, per-operation average time and estimated operation FPS. Use release
+builds only; debug results are explicitly marked non-comparable. For fair
+results, connect laptops to AC power, select the same OS power mode, close
+heavy background tasks, and run the benchmark twice after a warm-up run.
+Compare the same named workload rows rather than combining individual FPS
+values into a whole-engine frame rate.
