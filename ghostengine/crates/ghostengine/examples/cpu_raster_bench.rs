@@ -340,6 +340,17 @@ fn main() {
     println!("CPU: {}", cpu_name());
     println!("Rust: {}", rustc_version());
     println!(
+        "CPU logical threads: {}",
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+    );
+    println!("SIMD feature: {}", cfg!(feature = "simd"));
+    println!(
+        "Parallel-rendering feature: {}",
+        cfg!(feature = "parallel-rendering")
+    );
+    println!(
         "Build: {}",
         if cfg!(debug_assertions) {
             "debug (non-comparable)"
