@@ -703,6 +703,32 @@ pub fn draw_texture_region_clipped_with_scratch(
                     }));
 
             let horizontal_step = source.width as f32 / destination.width as f32;
+            let first_relative_x =
+                ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
+            let first_sx = source.x as f32 + first_relative_x * source.width as f32 - 0.5;
+
+            // Horizontal source coordinates are identical on every scanline.
+            // Resolve them once instead of repeating float mapping, clamping and
+            // floor conversion for every row of an atlas sprite.
+            scratch.horizontal_samples.clear();
+            let visible_width = clip.width as usize;
+            if scratch.horizontal_samples.capacity() < visible_width {
+                scratch
+                    .horizontal_samples
+                    .reserve(visible_width - scratch.horizontal_samples.len());
+            }
+            let mut raw_sx = first_sx;
+            for _ in 0..clip.width {
+                let sx = raw_sx.clamp(source.x as f32, source_right as f32);
+                let x0 = sx.floor() as usize;
+                scratch.horizontal_samples.push((
+                    x0,
+                    (x0 + 1).min(source_right as usize),
+                    sx - x0 as f32,
+                ));
+                raw_sx += horizontal_step;
+            }
+
             let cache_len = (source.height as usize).checked_mul(clip.width as usize);
             let cache_bytes =
                 cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
@@ -727,18 +753,9 @@ pub fn draw_texture_region_clipped_with_scratch(
                             .region_horizontal_cache
                             .reserve(required - scratch.region_horizontal_cache.len());
                     }
-                    let first_sx = source.x as f32
-                        + ((clip.x - destination.x) as f32 + 0.5) * source.width as f32
-                            / destination.width as f32
-                        - 0.5;
                     for source_y in source.y..=source_bottom {
                         let row_offset = source_y as usize * texture_width;
-                        let mut raw_sx = first_sx;
-                        for _ in 0..clip.width {
-                            let sx = raw_sx.clamp(source.x as f32, source_right as f32);
-                            let x0 = sx.floor() as usize;
-                            let x1 = (x0 + 1).min(source_right as usize);
-                            let tx = sx - x0 as f32;
+                        for &(x0, x1, tx) in &scratch.horizontal_samples {
                             let left = source_pixels[row_offset + x0];
                             let right = source_pixels[row_offset + x1];
                             let inverse_x = 1.0 - tx;
@@ -750,7 +767,6 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
                                 left_alpha + right_alpha,
                             ]);
-                            raw_sx += horizontal_step;
                         }
                     }
                     scratch.cached_region_bilinear_key = Some(cache_key);
@@ -759,10 +775,6 @@ pub fn draw_texture_region_clipped_with_scratch(
                 scratch.region_horizontal_cache.clear();
                 scratch.cached_region_bilinear_key = None;
             }
-            let first_relative_x =
-                ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
-            let first_sx = source.x as f32 + first_relative_x * source.width as f32 - 0.5;
-
             for y in clip.y..clip.y + clip.height {
                 let relative_y = ((y - destination.y) as f32 + 0.5) / destination.height as f32;
                 let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
@@ -778,17 +790,13 @@ pub fn draw_texture_region_clipped_with_scratch(
                         [top_start..top_start + clip.width as usize];
                     let bottom_samples = &scratch.region_horizontal_cache
                         [bottom_start..bottom_start + clip.width as usize];
-                    let mut fallback_sx = first_sx;
-                    for (column, (top, bottom)) in
-                        top_samples.iter().zip(bottom_samples).enumerate()
+                    for (column, ((top, bottom), &(x0, x1, tx))) in top_samples
+                        .iter()
+                        .zip(bottom_samples)
+                        .zip(&scratch.horizontal_samples)
+                        .enumerate()
                     {
-                        let sx = fallback_sx.clamp(source.x as f32, source_right as f32);
-                        let x0 = sx.floor() as usize;
-                        let sample = BilinearHorizontalSample {
-                            x0,
-                            x1: (x0 + 1).min(source_right as usize),
-                            tx: sx - x0 as f32,
-                        };
+                        let sample = BilinearHorizontalSample { x0, x1, tx };
                         let pixel = &mut target_pixels[target_row + clip.x as usize + column];
                         if pixel.a == 255 {
                             blend_cached_bilinear_over_opaque(top, bottom, 1.0 - ty, ty, pixel);
@@ -811,7 +819,6 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 *pixel = sampled.blend_over(*pixel);
                             }
                         }
-                        fallback_sx += horizontal_step;
                     }
                 } else if source_region_is_opaque {
                     // Resolve the two source rows once per destination row.
@@ -822,22 +829,16 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let top_row = &source_pixels[top_offset..top_offset + texture_width];
                     let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
 
-                    let mut raw_sx = first_sx;
-                    for x in clip.x..clip.x + clip.width {
-                        let sx = raw_sx.clamp(source.x as f32, source_right as f32);
-                        let x0 = sx.floor() as usize;
+                    for (column, &(x0, x1, tx)) in
+                        scratch.horizontal_samples.iter().enumerate()
+                    {
                         let sampled = sample_bilinear_opaque_rows(
                             top_row,
                             bottom_row,
-                            BilinearHorizontalSample {
-                                x0,
-                                x1: (x0 + 1).min(source_right as usize),
-                                tx: sx - x0 as f32,
-                            },
+                            BilinearHorizontalSample { x0, x1, tx },
                             ty,
                         );
-                        target_pixels[target_row + x as usize] = sampled;
-                        raw_sx += horizontal_step;
+                        target_pixels[target_row + clip.x as usize + column] = sampled;
                     }
                 } else {
                     let top_offset = y0 * texture_width;
@@ -845,16 +846,11 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let top_row = &source_pixels[top_offset..top_offset + texture_width];
                     let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
 
-                    let mut raw_sx = first_sx;
-                    for x in clip.x..clip.x + clip.width {
-                        let sx = raw_sx.clamp(source.x as f32, source_right as f32);
-                        let x0 = sx.floor() as usize;
-                        let sample = BilinearHorizontalSample {
-                            x0,
-                            x1: (x0 + 1).min(source_right as usize),
-                            tx: sx - x0 as f32,
-                        };
-                        let pixel = &mut target_pixels[target_row + x as usize];
+                    for (column, &(x0, x1, tx)) in
+                        scratch.horizontal_samples.iter().enumerate()
+                    {
+                        let sample = BilinearHorizontalSample { x0, x1, tx };
+                        let pixel = &mut target_pixels[target_row + clip.x as usize + column];
 
                         // Match the main texture renderer: when the destination is
                         // opaque, composite the premultiplied bilinear sample directly.
@@ -881,7 +877,6 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 *pixel = sampled.blend_over(*pixel);
                             }
                         }
-                        raw_sx += horizontal_step;
                     }
                 }
             }
