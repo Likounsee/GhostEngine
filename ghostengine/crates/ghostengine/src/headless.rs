@@ -144,8 +144,7 @@ mod tests {
 
     #[test]
     fn delivers_queued_events_in_order_and_clears_them() {
-        let mut host =
-            HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
         host.queue_event(HostEvent::FocusChanged { focused: false });
         host.request_redraw();
 
@@ -173,7 +172,13 @@ mod tests {
         assert_eq!(host.drawable_size(), (128, 96));
         let mut events = Vec::new();
         host.poll_events(&mut events);
-        assert_eq!(events, [HostEvent::Resized { width: 128, height: 96 }]);
+        assert_eq!(
+            events,
+            [HostEvent::Resized {
+                width: 128,
+                height: 96
+            }]
+        );
     }
 
     #[test]
@@ -191,8 +196,7 @@ mod tests {
 
     #[test]
     fn presents_an_independent_frame_copy() {
-        let mut host =
-            HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
         let mut frame = Framebuffer::new(2, 1, Color::BLACK).unwrap();
         frame.set_pixel(0, 0, Color::RED);
 
