@@ -22,7 +22,8 @@ use crate::text::{
 };
 use crate::texture::{
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped_with_scratch,
-    draw_texture_transformed_clipped, NineSliceMargins, Texture, TextureDrawScratch,
+    draw_texture_region_clipped_with_scratch, draw_texture_transformed_clipped,
+    NineSliceMargins, Texture, TextureDrawScratch,
     TextureFilter,
 };
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
@@ -112,6 +113,13 @@ enum Command {
         texture: Arc<Texture>,
         destination: Rect,
         transform: Transform2D,
+        filter: TextureFilter,
+        clip: Rect,
+    },
+    DrawTextureRegion {
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
         filter: TextureFilter,
         clip: Rect,
     },
@@ -995,6 +1003,43 @@ impl DisplayList {
         }
     }
 
+    /// Records a clipped atlas-region texture draw.
+    ///
+    /// Atlas-region commands are axis-aligned. An active affine transform is
+    /// rejected rather than silently sampling the wrong source region.
+    /// Returns false for invalid source bounds, empty destinations, or transforms.
+    pub fn draw_texture_region(
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        filter: TextureFilter,
+    ) -> bool {
+        if self.active_transform() != Transform2D::IDENTITY
+            || source.width == 0
+            || source.height == 0
+            || destination.width == 0
+            || destination.height == 0
+            || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
+            || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
+            || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
+            || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
+        {
+            return false;
+        }
+        let Some(clip) = self.active_clip() else {
+            return false;
+        };
+        self.commands.push(Command::DrawTextureRegion {
+            texture,
+            source,
+            destination,
+            filter,
+            clip,
+        });
+        true
+    }
+
     /// Records a nine-slice texture for resizable UI panels.
     ///
     /// Nine-slice patches are axis-aligned in framebuffer coordinates. The active
@@ -1290,6 +1335,24 @@ impl DisplayList {
                             *clip,
                         )
                     }
+                }
+                Command::DrawTextureRegion {
+                    texture,
+                    source,
+                    destination,
+                    filter,
+                    clip,
+                } => {
+                    let visible = destination.intersection(*clip).is_some_and(|rect| {
+                        rect.intersection(Rect::new(0, 0, target.width(), target.height()))
+                            .is_some()
+                    });
+                    if visible {
+                        draw_texture_region_clipped_with_scratch(
+                            target, texture, *source, *destination, *filter, *clip, scratch,
+                        );
+                    }
+                    visible
                 }
                 Command::DrawNineSliceTexture {
                     texture,
@@ -2341,6 +2404,61 @@ mod tests {
             .iter()
             .any(|pixel| { *pixel != Color::BLACK && *pixel != Color::WHITE }));
         assert!(target.pixels().contains(&Color::WHITE));
+    }
+
+    #[test]
+    fn texture_region_command_replays_atlas_subrectangle_with_clip() {
+        let texture = std::sync::Arc::new(
+            crate::Texture::new(
+                4,
+                2,
+                vec![
+                    Color::RED, Color::GREEN, Color::BLUE, Color::WHITE,
+                    Color::YELLOW, Color::CYAN, Color::MAGENTA, Color::BLACK,
+                ],
+            )
+            .unwrap(),
+        );
+        let source = Rect::new(1, 0, 2, 2);
+        let destination = Rect::new(1, 1, 4, 4);
+        let clip = Rect::new(2, 0, 2, 5);
+        let mut list = DisplayList::new();
+        list.push_clip(clip);
+        assert!(list.draw_texture_region(
+            std::sync::Arc::clone(&texture), source, destination,
+            crate::TextureFilter::Bilinear,
+        ));
+
+        let mut expected = Framebuffer::new(7, 6, Color::BLACK).unwrap();
+        crate::draw_texture_region_clipped(
+            &mut expected, &texture, source, destination,
+            crate::TextureFilter::Bilinear, clip,
+        );
+        let mut actual = Framebuffer::new(7, 6, Color::BLACK).unwrap();
+        let mut scratch = crate::TextureDrawScratch::default();
+        let stats = list.replay_with_scratch(&mut actual, &mut scratch);
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
+        assert_eq!(stats.commands_skipped, 0);
+    }
+
+    #[test]
+    fn texture_region_rejects_invalid_source_and_active_transform() {
+        let texture = std::sync::Arc::new(
+            crate::Texture::new(2, 2, vec![Color::WHITE; 4]).unwrap(),
+        );
+        let mut list = DisplayList::new();
+        assert!(!list.draw_texture_region(
+            std::sync::Arc::clone(&texture), Rect::new(1, 1, 2, 2),
+            Rect::new(0, 0, 2, 2), crate::TextureFilter::Nearest,
+        ));
+        assert!(list.push_transform(Transform2D::translation(1.0, 0.0)));
+        assert!(!list.draw_texture_region(
+            texture, Rect::new(0, 0, 1, 1), Rect::new(0, 0, 2, 2),
+            crate::TextureFilter::Nearest,
+        ));
+        assert!(list.is_empty());
     }
 
     #[test]
