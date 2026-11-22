@@ -22,9 +22,8 @@ use crate::text::{
 };
 use crate::texture::{
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped_with_scratch,
-    draw_texture_region_clipped_with_scratch, draw_texture_transformed_clipped,
-    NineSliceMargins, Texture, TextureDrawScratch,
-    TextureFilter,
+    draw_texture_region_clipped_with_scratch, draw_texture_transformed_clipped, NineSliceMargins,
+    Texture, TextureDrawScratch, TextureFilter,
 };
 use crate::{Color, Framebuffer, Point, Rect, Transform2D};
 use std::sync::Arc;
@@ -1349,7 +1348,13 @@ impl DisplayList {
                     });
                     if visible {
                         draw_texture_region_clipped_with_scratch(
-                            target, texture, *source, *destination, *filter, *clip, scratch,
+                            target,
+                            texture,
+                            *source,
+                            *destination,
+                            *filter,
+                            *clip,
+                            scratch,
                         );
                     }
                     visible
@@ -1370,7 +1375,14 @@ impl DisplayList {
                         });
                     if visible {
                         draw_texture_nine_slice_clipped_with_scratch(
-                            target, texture, *source, *destination, *margins, *filter, *clip, scratch,
+                            target,
+                            texture,
+                            *source,
+                            *destination,
+                            *margins,
+                            *filter,
+                            *clip,
+                            scratch,
                         );
                     }
                     visible
@@ -1403,7 +1415,13 @@ impl DisplayList {
                     gradient,
                     clip,
                 } => fill_transformed_rect_conic_gradient_clipped(
-                    target, *rect, *transform, *center, *start_angle, gradient, *clip,
+                    target,
+                    *rect,
+                    *transform,
+                    *center,
+                    *start_angle,
+                    gradient,
+                    *clip,
                 ),
             };
             if executed {
@@ -2413,8 +2431,14 @@ mod tests {
                 4,
                 2,
                 vec![
-                    Color::RED, Color::GREEN, Color::BLUE, Color::WHITE,
-                    Color::YELLOW, Color::CYAN, Color::MAGENTA, Color::BLACK,
+                    Color::RED,
+                    Color::GREEN,
+                    Color::BLUE,
+                    Color::WHITE,
+                    Color::YELLOW,
+                    Color::CYAN,
+                    Color::MAGENTA,
+                    Color::BLACK,
                 ],
             )
             .unwrap(),
@@ -2425,14 +2449,20 @@ mod tests {
         let mut list = DisplayList::new();
         list.push_clip(clip);
         assert!(list.draw_texture_region(
-            std::sync::Arc::clone(&texture), source, destination,
+            std::sync::Arc::clone(&texture),
+            source,
+            destination,
             crate::TextureFilter::Bilinear,
         ));
 
         let mut expected = Framebuffer::new(7, 6, Color::BLACK).unwrap();
         crate::draw_texture_region_clipped(
-            &mut expected, &texture, source, destination,
-            crate::TextureFilter::Bilinear, clip,
+            &mut expected,
+            &texture,
+            source,
+            destination,
+            crate::TextureFilter::Bilinear,
+            clip,
         );
         let mut actual = Framebuffer::new(7, 6, Color::BLACK).unwrap();
         let mut scratch = crate::TextureDrawScratch::default();
@@ -2445,17 +2475,20 @@ mod tests {
 
     #[test]
     fn texture_region_rejects_invalid_source_and_active_transform() {
-        let texture = std::sync::Arc::new(
-            crate::Texture::new(2, 2, vec![Color::WHITE; 4]).unwrap(),
-        );
+        let texture =
+            std::sync::Arc::new(crate::Texture::new(2, 2, vec![Color::WHITE; 4]).unwrap());
         let mut list = DisplayList::new();
         assert!(!list.draw_texture_region(
-            std::sync::Arc::clone(&texture), Rect::new(1, 1, 2, 2),
-            Rect::new(0, 0, 2, 2), crate::TextureFilter::Nearest,
+            std::sync::Arc::clone(&texture),
+            Rect::new(1, 1, 2, 2),
+            Rect::new(0, 0, 2, 2),
+            crate::TextureFilter::Nearest,
         ));
         assert!(list.push_transform(Transform2D::translation(1.0, 0.0)));
         assert!(!list.draw_texture_region(
-            texture, Rect::new(0, 0, 1, 1), Rect::new(0, 0, 2, 2),
+            texture,
+            Rect::new(0, 0, 1, 1),
+            Rect::new(0, 0, 2, 2),
             crate::TextureFilter::Nearest,
         ));
         assert!(list.is_empty());
@@ -2468,9 +2501,15 @@ mod tests {
                 3,
                 3,
                 vec![
-                    Color::RED, Color::GREEN, Color::BLUE,
-                    Color::YELLOW, Color::WHITE, Color::CYAN,
-                    Color::MAGENTA, Color::rgb(80, 90, 100), Color::BLACK,
+                    Color::RED,
+                    Color::GREEN,
+                    Color::BLUE,
+                    Color::YELLOW,
+                    Color::WHITE,
+                    Color::CYAN,
+                    Color::MAGENTA,
+                    Color::rgb(80, 90, 100),
+                    Color::BLACK,
                 ],
             )
             .unwrap(),
@@ -2483,15 +2522,23 @@ mod tests {
         let mut list = DisplayList::new();
         list.push_clip(clip);
         assert!(list.draw_nine_slice_texture(
-            std::sync::Arc::clone(&texture), source, destination, margins,
+            std::sync::Arc::clone(&texture),
+            source,
+            destination,
+            margins,
             crate::TextureFilter::Bilinear,
         ));
         assert_eq!(list.len(), 1);
 
         let mut expected = Framebuffer::new(9, 7, Color::BLACK).unwrap();
         crate::draw_texture_nine_slice_clipped(
-            &mut expected, &texture, source, destination, margins,
-            crate::TextureFilter::Bilinear, clip,
+            &mut expected,
+            &texture,
+            source,
+            destination,
+            margins,
+            crate::TextureFilter::Bilinear,
+            clip,
         );
         let mut actual = Framebuffer::new(9, 7, Color::BLACK).unwrap();
         let mut scratch = crate::TextureDrawScratch::default();
@@ -2505,14 +2552,15 @@ mod tests {
 
     #[test]
     fn nine_slice_texture_rejects_active_affine_transform() {
-        let texture = std::sync::Arc::new(
-            crate::Texture::new(1, 1, vec![Color::WHITE]).unwrap(),
-        );
+        let texture = std::sync::Arc::new(crate::Texture::new(1, 1, vec![Color::WHITE]).unwrap());
         let mut list = DisplayList::new();
         assert!(list.push_transform(Transform2D::translation(1.0, 0.0)));
         assert!(!list.draw_nine_slice_texture(
-            texture, Rect::new(0, 0, 1, 1), Rect::new(0, 0, 3, 3),
-            crate::NineSliceMargins::new(0, 0, 0, 0), crate::TextureFilter::Nearest,
+            texture,
+            Rect::new(0, 0, 1, 1),
+            Rect::new(0, 0, 3, 3),
+            crate::NineSliceMargins::new(0, 0, 0, 0),
+            crate::TextureFilter::Nearest,
         ));
         assert!(list.is_empty());
     }
