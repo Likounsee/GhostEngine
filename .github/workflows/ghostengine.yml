@@ -45,6 +45,14 @@ jobs:
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features
 
+      - name: Test SIMD without automatic parallel selection
+        working-directory: ghostengine
+        run: cargo test --workspace --all-targets --no-default-features --features simd
+
+      - name: Test parallel rendering with scalar blending
+        working-directory: ghostengine
+        run: cargo test --workspace --all-targets --no-default-features --features parallel-rendering
+
       - name: Test native input without minifb
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features --features native-input

@@ -418,9 +418,15 @@ pub fn compose_layers_auto(target: &mut Framebuffer, layers: &[Layer]) {
 
     let threads = {
         #[cfg(feature = "parallel-rendering")]
-        { std::thread::available_parallelism().map(usize::from).unwrap_or(1) }
+        {
+            std::thread::available_parallelism()
+                .map(usize::from)
+                .unwrap_or(1)
+        }
         #[cfg(not(feature = "parallel-rendering"))]
-        { 1 }
+        {
+            1
+        }
     };
     compose_layers_parallel_with_threads(target, layers, threads);
 }

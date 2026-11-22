@@ -12,6 +12,8 @@ presentation, native input and image decoding are opt-in capabilities.
 | `native-input` | Winit event translation, keyboard/text/IME input and system clipboard | minifb or window creation |
 | `native-window` | Winit window/event-loop integration and softbuffer presentation; implies `native-input` | minifb or GPU rendering |
 | `image-decoding` | BMP, JPEG, PNG and PNM decoding into CPU textures | Any window system |
+| `simd` | Safe `wide`-based pixel blending (enabled by default) | The scalar fallback |
+| `parallel-rendering` | Automatic worker selection for large raster/composition work (enabled by default) | Explicit worker-count APIs |
 
 The shared `InputState` and `ComponentTree::handle_window_input` API live
 in the platform-independent `input` module. This allows either window adapter
@@ -33,10 +35,22 @@ cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
 ```
 
-Both `simd` and `parallel-rendering` are enabled by default. Use `--no-default-features`
-to validate or ship the scalar, single-threaded CPU fallback. The explicit
-`*_parallel_with_threads` APIs remain callable when automatic parallel selection
-is disabled; pass one worker to force serial execution.
+Both `simd` and `parallel-rendering` are enabled by default. Use
+`--no-default-features` to validate or ship the scalar, single-threaded CPU
+fallback. The explicit `*_parallel_with_threads` APIs remain callable when
+automatic parallel selection is disabled; pass one worker to force serial
+execution.
+
+```sh
+# Scalar + single-threaded fallback
+cargo test -p ghostengine --no-default-features
+
+# SIMD only, without automatic parallel selection
+cargo test -p ghostengine --no-default-features --features simd
+
+# Parallel worker selection with scalar blending
+cargo test -p ghostengine --no-default-features --features parallel-rendering
+```
 
 Features are additive Cargo capabilities. Avoid enabling both window adapters
 unless an application deliberately needs both: they have separate event-loop
@@ -58,11 +72,6 @@ and presentation models.
 
 These are design targets, **not implemented Cargo features yet**:
 
-- `parallel-rendering`: enables automatic worker selection for large raster and
-  transformed-layer composition operations. Explicit `*_parallel_with_threads`
-  APIs remain available as an application-controlled opt-in.
-- `simd`: enables the safe `wide` pixel kernels. When disabled, the same pixel
-  operations use scalar integer blending.
 - `platform-windows`, `platform-linux`, `platform-macos`: platform-specific
   presentation adapters after each target has a verified implementation.
 - `secure-display`: platform-backed protected surfaces, capture restrictions

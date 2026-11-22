@@ -33,7 +33,12 @@ pub(crate) fn blend_opaque_quad(
 
 #[cfg(not(feature = "simd"))]
 #[inline]
-pub(crate) fn blend_opaque_quad(pixels: &mut [Color; 4], source: Color, source_alpha: u32, inverse_source_alpha: u32) {
+pub(crate) fn blend_opaque_quad(
+    pixels: &mut [Color; 4],
+    source: Color,
+    source_alpha: u32,
+    inverse_source_alpha: u32,
+) {
     let blend_channel = |source: u8, destination: u8| -> u8 {
         ((u32::from(source) * source_alpha
             + u32::from(destination) * inverse_source_alpha
