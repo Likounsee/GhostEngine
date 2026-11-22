@@ -430,7 +430,12 @@ impl DisplayList {
         if radius_x == 0 || radius_y == 0 {
             return Ok(());
         }
-        self.fill_path(ellipse_path(center, radius_x, radius_y), Transform2D::IDENTITY, color, 0.25)
+        self.fill_path(
+            ellipse_path(center, radius_x, radius_y),
+            Transform2D::IDENTITY,
+            color,
+            0.25,
+        )
     }
 
     /// Records a 4x4 supersampled antialiased ellipse fill.
@@ -1436,7 +1441,9 @@ mod tests {
             .filter_map(|x| target.get_pixel(x, 3))
             .collect::<Vec<_>>();
         assert!(row.iter().any(|pixel| *pixel != Color::BLACK));
-        assert!(row.iter().any(|pixel| *pixel != Color::BLACK && *pixel != Color::WHITE));
+        assert!(row
+            .iter()
+            .any(|pixel| *pixel != Color::BLACK && *pixel != Color::WHITE));
         assert_eq!(stats.commands_executed, 1);
     }
 
