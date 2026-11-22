@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [features]
 default = []
 window = ["dep:minifb"]
-native-input = ["window", "dep:winit", "dep:arboard"]
+native-input = ["dep:winit", "dep:arboard"]
 native-window = ["native-input", "dep:softbuffer"]
 image-decoding = ["dep:image"]
 
