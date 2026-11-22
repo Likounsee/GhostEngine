@@ -9016,7 +9016,9 @@ mod render_options_tests {
             &mut actual,
             rect,
             Color::rgba(20, 40, 60, 255),
-            RenderOptions::new().with_max_threads(2).with_parallel_threshold(0),
+            RenderOptions::new()
+                .with_max_threads(2)
+                .with_parallel_threshold(0),
         );
         assert_eq!(actual, expected);
     }
@@ -9031,7 +9033,9 @@ mod render_options_tests {
             &mut actual,
             rect,
             Color::rgba(200, 20, 40, 127),
-            RenderOptions::new().with_max_threads(2).with_parallel_threshold(0),
+            RenderOptions::new()
+                .with_max_threads(2)
+                .with_parallel_threshold(0),
         );
         assert_eq!(actual, expected);
     }
