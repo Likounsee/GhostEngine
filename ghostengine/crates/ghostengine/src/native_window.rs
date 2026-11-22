@@ -4,7 +4,7 @@
 //! framebuffer and softbuffer copies those pixels to the native window.
 
 use crate::{
-    window::InputState, Color, Framebuffer, FramebufferError, NativeClipboard, NativeInputAdapter,
+    input::InputState, Color, Framebuffer, FramebufferError, NativeClipboard, NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
 use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
