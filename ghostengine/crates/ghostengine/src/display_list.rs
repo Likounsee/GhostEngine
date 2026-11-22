@@ -1255,8 +1255,9 @@ mod tests {
 
         let mut target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
-        let edge_alpha = target.get_pixel(1, 3).unwrap().a;
-        assert!(edge_alpha > 0 && edge_alpha < 255);
+        let edge = target.get_pixel(1, 3).unwrap();
+        assert_ne!(edge, Color::BLACK);
+        assert_ne!(edge, Color::WHITE);
         assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
         assert_eq!(stats.commands_executed, 2);
     }
