@@ -33,6 +33,11 @@ cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
 ```
 
+Both `simd` and `parallel-rendering` are enabled by default. Use `--no-default-features`
+to validate or ship the scalar, single-threaded CPU fallback. The explicit
+`*_parallel_with_threads` APIs remain callable when automatic parallel selection
+is disabled; pass one worker to force serial execution.
+
 Features are additive Cargo capabilities. Avoid enabling both window adapters
 unless an application deliberately needs both: they have separate event-loop
 and presentation models.
@@ -53,9 +58,11 @@ and presentation models.
 
 These are design targets, **not implemented Cargo features yet**:
 
-- `parallel-rendering`: bounded worker scheduling and deterministic parallel
-  rasterization controls.
-- `simd`: selectable optimized pixel kernels with a scalar fallback.
+- `parallel-rendering`: enables automatic worker selection for large raster and
+  transformed-layer composition operations. Explicit `*_parallel_with_threads`
+  APIs remain available as an application-controlled opt-in.
+- `simd`: enables the safe `wide` pixel kernels. When disabled, the same pixel
+  operations use scalar integer blending.
 - `platform-windows`, `platform-linux`, `platform-macos`: platform-specific
   presentation adapters after each target has a verified implementation.
 - `secure-display`: platform-backed protected surfaces, capture restrictions
