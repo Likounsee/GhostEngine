@@ -60,20 +60,30 @@ impl NativeWindowSurface {
     ///
     /// This is an event-loop entry point and should normally be called from
     /// the application's main thread. Winit's event loop can only be run once.
-    pub fn run<F>(title: &str, width: u32, height: u32, mut draw: F) -> Result<(), NativeWindowError>
+    pub fn run<F>(
+        title: &str,
+        width: u32,
+        height: u32,
+        mut draw: F,
+    ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool + 'static,
     {
-        Self::run_with_host_events(title, width, height, move |framebuffer, events, clipboard| {
-            let input = events
-                .into_iter()
-                .find_map(|event| match event {
-                    HostEvent::Input(input) => Some(input),
-                    _ => None,
-                })
-                .unwrap_or_default();
-            draw(framebuffer, input, clipboard)
-        })
+        Self::run_with_host_events(
+            title,
+            width,
+            height,
+            move |framebuffer, events, clipboard| {
+                let input = events
+                    .into_iter()
+                    .find_map(|event| match event {
+                        HostEvent::Input(input) => Some(input),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                draw(framebuffer, input, clipboard)
+            },
+        )
     }
 
     /// Runs the native window while delivering normalized common host events.
@@ -267,13 +277,15 @@ where
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                self.pending_events.push(HostEvent::ScaleFactorChanged { scale_factor });
+                self.pending_events
+                    .push(HostEvent::ScaleFactorChanged { scale_factor });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
             }
             WindowEvent::Focused(focused) => {
-                self.pending_events.push(HostEvent::FocusChanged { focused });
+                self.pending_events
+                    .push(HostEvent::FocusChanged { focused });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
