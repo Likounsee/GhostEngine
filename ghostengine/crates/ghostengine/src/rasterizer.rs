@@ -1035,8 +1035,7 @@ fn fill_rect_linear_gradient_with_threads(
     let length_squared = dx * dx + dy * dy;
     let left = rect.x.min(target.width()) as usize;
     let top = rect.y.min(target.height()) as usize;
-    let right = (u64::from(rect.x) + u64::from(rect.width))
-        .min(u64::from(target.width())) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as usize;
     let bottom =
         (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as usize;
     if left >= right || top >= bottom {
@@ -1286,7 +1285,14 @@ pub fn fill_rect_conic_gradient_parallel_with_threads(
     gradient: &Gradient,
     thread_count: usize,
 ) {
-    fill_rect_conic_gradient_with_threads(target, rect, center, start_angle, gradient, thread_count);
+    fill_rect_conic_gradient_with_threads(
+        target,
+        rect,
+        center,
+        start_angle,
+        gradient,
+        thread_count,
+    );
 }
 
 fn fill_rect_conic_gradient_with_threads(
@@ -1297,18 +1303,14 @@ fn fill_rect_conic_gradient_with_threads(
     gradient: &Gradient,
     thread_count: usize,
 ) {
-    if !center.x.is_finite()
-        || !center.y.is_finite()
-        || !start_angle.is_finite()
-    {
+    if !center.x.is_finite() || !center.y.is_finite() || !start_angle.is_finite() {
         return;
     }
     let left = rect.x.min(target.width()) as usize;
     let top = rect.y.min(target.height()) as usize;
-    let right = (u64::from(rect.x) + u64::from(rect.width))
-        .min(u64::from(target.width())) as usize;
-    let bottom = (u64::from(rect.y) + u64::from(rect.height))
-        .min(u64::from(target.height())) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as usize;
+    let bottom =
+        (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as usize;
     if left >= right || top >= bottom {
         return;
     }
