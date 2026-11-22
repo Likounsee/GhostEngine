@@ -319,6 +319,64 @@ impl DisplayList {
         }
     }
 
+    /// Records a filled triangle using the active transform and clip stack.
+    pub fn fill_triangle(
+        &mut self,
+        a: Point,
+        b: Point,
+        c: Point,
+        color: Color,
+    ) -> Result<(), PathError> {
+        self.fill_path(triangle_path(a, b, c), Transform2D::IDENTITY, color, 0.25)
+    }
+
+    /// Records a 4x4 supersampled antialiased triangle fill.
+    pub fn fill_triangle_aa(
+        &mut self,
+        a: Point,
+        b: Point,
+        c: Point,
+        color: Color,
+    ) -> Result<(), PathError> {
+        self.fill_path_aa(triangle_path(a, b, c), Transform2D::IDENTITY, color, 0.25)
+    }
+
+    /// Records a triangle outline using the active transform and clip stack.
+    pub fn stroke_triangle(
+        &mut self,
+        a: Point,
+        b: Point,
+        c: Point,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        self.stroke_path(
+            triangle_path(a, b, c),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records a 4x4 supersampled antialiased triangle outline.
+    pub fn stroke_triangle_aa(
+        &mut self,
+        a: Point,
+        b: Point,
+        c: Point,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        self.stroke_path_aa(
+            triangle_path(a, b, c),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
     /// Records a one-pixel line. Its endpoints are transformed when recorded.
     pub fn line(&mut self, start: Point, end: Point, color: Color) {
         if let Some(clip) = self.active_clip() {
@@ -1159,6 +1217,15 @@ impl DisplayList {
             None => Some(Rect::new(0, 0, u32::MAX, u32::MAX)),
         }
     }
+}
+
+fn triangle_path(a: Point, b: Point, c: Point) -> Path {
+    let mut path = Path::new();
+    path.move_to(crate::Vector::new(a.x as f32, a.y as f32))
+        .line_to(crate::Vector::new(b.x as f32, b.y as f32))
+        .line_to(crate::Vector::new(c.x as f32, c.y as f32))
+        .close();
+    path
 }
 
 fn rectangle_path(rect: Rect) -> Path {
@@ -2035,6 +2102,39 @@ mod tests {
         assert_eq!(stats.commands_executed, 0);
         assert_eq!(stats.commands_skipped, 1);
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::RED));
+    }
+
+    #[test]
+    fn display_list_triangle_fills_and_strokes_respect_transform_and_clip() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(1.0, 1.0)));
+        list.push_clip(Rect::new(2, 2, 5, 5));
+        list.fill_triangle_aa(
+            Point::new(0, 0),
+            Point::new(5, 0),
+            Point::new(0, 5),
+            Color::WHITE,
+        )
+        .unwrap();
+        list.stroke_triangle_aa(
+            Point::new(0, 0),
+            Point::new(5, 0),
+            Point::new(0, 5),
+            crate::StrokeStyle::new(1.0),
+            Color::RED,
+        )
+        .unwrap();
+
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 2);
+        assert_eq!(stats.commands_executed, 2);
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::RED));
+        assert!(target.pixels().iter().any(|pixel| {
+            *pixel != Color::BLACK && *pixel != Color::WHITE && *pixel != Color::RED
+        }));
     }
 
     #[test]
