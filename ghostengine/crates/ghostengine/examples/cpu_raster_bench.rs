@@ -5,15 +5,15 @@ use std::time::{Duration, Instant};
 use ghostengine::{
     blend_rect, blend_rect_with_options, compose_layers_auto, compose_layers_parallel_with_threads,
     draw_atlas_region_clipped, draw_atlas_region_clipped_with_scratch,
-    draw_mipmapped_texture_clipped, draw_text,
-    draw_texture_clipped_auto, draw_texture_clipped_parallel_with_threads,
-    draw_texture_clipped_with_options, draw_texture_clipped_with_scratch,
-    draw_texture_nine_slice_clipped, draw_texture_transformed_clipped_parallel_with_threads,
-    fill_path_even_odd, fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path,
-    stroke_path_aa, stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient,
-    GradientStop, Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect,
-    RenderOptions, StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch,
-    TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
+    draw_mipmapped_texture_clipped, draw_text, draw_texture_clipped_auto,
+    draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_options,
+    draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
+    draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
+    fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
+    stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
+    Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, RenderOptions,
+    StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch, TextureFilter,
+    Transform2D, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -650,22 +650,26 @@ fn main() {
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),
-        measure("Texture atlas region bilinear reused scratch", iterations, |target| {
-            draw_atlas_region_clipped_with_scratch(
-                target,
-                &texture_atlas,
-                atlas_region,
-                Rect::new(
-                    80 * SCALE_U32,
-                    35 * SCALE_U32,
-                    320 * SCALE_U32,
-                    200 * SCALE_U32,
-                ),
-                TextureFilter::Bilinear,
-                Rect::new(0, 0, WIDTH, HEIGHT),
-                &mut atlas_draw_scratch,
-            );
-        }),
+        measure(
+            "Texture atlas region bilinear reused scratch",
+            iterations,
+            |target| {
+                draw_atlas_region_clipped_with_scratch(
+                    target,
+                    &texture_atlas,
+                    atlas_region,
+                    Rect::new(
+                        80 * SCALE_U32,
+                        35 * SCALE_U32,
+                        320 * SCALE_U32,
+                        200 * SCALE_U32,
+                    ),
+                    TextureFilter::Bilinear,
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                    &mut atlas_draw_scratch,
+                );
+            },
+        ),
         measure("Texture atlas ID lookup + draw", iterations, |target| {
             black_box(atlas_object.draw_region(
                 target,
