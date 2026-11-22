@@ -49,6 +49,7 @@ pub struct HeadlessHost {
     config: HostWindowConfig,
     events: VecDeque<HostEvent>,
     presented_frame: Option<Framebuffer>,
+    open: bool,
 }
 
 impl HeadlessHost {
@@ -59,6 +60,7 @@ impl HeadlessHost {
             config,
             events: VecDeque::new(),
             presented_frame: None,
+            open: true,
         })
     }
 
@@ -88,8 +90,23 @@ impl HeadlessHost {
 impl HostBackend for HeadlessHost {
     type BackendError = HeadlessHostError;
 
+    fn create(config: HostWindowConfig) -> Result<Self, Self::BackendError> {
+        Self::new(config)
+    }
+
+    fn is_open(&self) -> bool {
+        self.open
+    }
+
+    fn close(&mut self) {
+        if self.open {
+            self.open = false;
+            self.queue_event(HostEvent::CloseRequested);
+        }
+    }
+
     fn platform(&self) -> HostPlatform {
-        HostPlatform::Other
+        HostPlatform::Headless
     }
 
     fn capabilities(&self) -> HostCapabilities {
@@ -220,9 +237,23 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_can_be_created_and_closed_through_common_trait() {
+        let mut host = <HeadlessHost as HostBackend>::create(HostWindowConfig::new(
+            "lifecycle", 16, 16,
+        ))
+        .unwrap();
+        assert!(host.is_open());
+        host.close();
+        assert!(!host.is_open());
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert_eq!(events, [HostEvent::CloseRequested]);
+    }
+
+    #[test]
     fn reports_headless_capabilities() {
         let host = HeadlessHost::default();
-        assert_eq!(host.platform(), HostPlatform::Other);
+        assert_eq!(host.platform(), HostPlatform::Headless);
         assert!(!host.capabilities().windowing);
         assert!(!host.capabilities().clipboard);
         assert_eq!(host.scale_factor(), 1.0);
