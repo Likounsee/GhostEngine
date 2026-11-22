@@ -17,7 +17,8 @@ presentation, native input and image decoding are opt-in capabilities.
 
 The shared `InputState` and `ComponentTree::handle_window_input` API live
 in the platform-independent `input` module. This allows either window adapter
-to feed the same retained UI interaction pipeline.
+to feed the same retained UI interaction pipeline. `InputState` is also re-exported
+from `window` when the `window` feature is enabled, preserving the older path.
 
 ## Common build selections
 
