@@ -12,6 +12,7 @@ pub mod effects;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
+pub mod headless;
 pub mod host;
 #[cfg(feature = "image-decoding")]
 pub mod image;
@@ -72,6 +73,7 @@ pub use effects::{
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use headless::{HeadlessHost, HeadlessHostError};
 pub use host::{
     current_host_platform, HostBackend, HostCapabilities, HostError, HostEvent, HostPlatform,
     HostWindowConfig,
