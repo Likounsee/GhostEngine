@@ -679,12 +679,12 @@ pub fn draw_texture_region_clipped(
                 });
 
             let horizontal_step = source.width as f32 / destination.width as f32;
-            let first_relative_x = (clip.x - destination.x) as f32 / destination.width as f32;
+            let first_relative_x = ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
             let first_sx = (source.x as f32 + first_relative_x * source.width as f32 - 0.5)
                 .clamp(source.x as f32, source_right as f32);
 
             for y in clip.y..clip.y + clip.height {
-                let relative_y = (y - destination.y) as f32 / destination.height as f32;
+                let relative_y = ((y - destination.y) as f32 + 0.5) / destination.height as f32;
                 let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
                     .clamp(source.y as f32, source_bottom as f32);
                 let y0 = sy.floor() as usize;
