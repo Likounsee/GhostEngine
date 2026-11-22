@@ -5,7 +5,7 @@
 
 use crate::{
     input::{ClickTracker, InputState},
-    Color, ComponentTree, Framebuffer, Point, Rect,
+    Color, Framebuffer, Point,
 };
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
@@ -493,10 +493,9 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use super::{
-        key_to_character, pack_rgb, ClipboardAction, ComponentTree, InputState, TextInputEvent,
-        WindowError,
+        key_to_character, pack_rgb, InputState, WindowError,
     };
-    use crate::Color;
+    use crate::{ClipboardAction, ComponentTree, Rect, TextInputEvent, Color};
     use minifb::Key;
 
     #[test]
