@@ -3,11 +3,8 @@
 //! GhostEngine renders the frame. minifb only creates a host window, forwards
 //! input and presents the completed CPU pixel buffer.
 
-use crate::{
-    input::ClickTracker,
-    Color, Framebuffer, Point,
-};
 pub use crate::input::InputState;
+use crate::{input::ClickTracker, Color, Framebuffer, Point};
 
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
