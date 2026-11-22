@@ -131,6 +131,7 @@ pub use stroke::{
     stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_aa_parallel_with_threads,
     stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle,
 };
+pub use surface::{AlphaMode, ColorSpace, PixelFormat, SurfaceDescriptor, SurfaceError};
 pub use text::{
     draw_text, draw_text_bidi_clipped, draw_text_box_clipped, draw_text_box_transformed_clipped,
     draw_text_box_with_fallback_bidi_shaped_clipped, draw_text_box_with_fallback_shaped_clipped,
@@ -141,9 +142,9 @@ pub use text::{
 };
 pub use texture::{
     draw_texture, draw_texture_auto, draw_texture_clipped, draw_texture_clipped_auto,
-    draw_texture_clipped_with_options,
-    draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_scratch,
-    draw_texture_nine_slice_clipped, draw_texture_region_clipped, draw_texture_transformed_clipped,
+    draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_options,
+    draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
+    draw_texture_region_clipped, draw_texture_transformed_clipped,
     draw_texture_transformed_clipped_parallel_with_threads,
     try_draw_texture_clipped_parallel_with_threads, try_draw_texture_clipped_with_scratch,
     NineSliceMargins, Texture, TextureDrawError, TextureDrawScratch, TextureError, TextureFilter,
