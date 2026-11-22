@@ -2356,8 +2356,8 @@ mod tests {
         TextureError, TextureFilter,
     };
     use crate::{
-        draw_texture_clipped_with_scratch, Color, Framebuffer, Rect, TextureDrawScratch,
-        Transform2D,
+        draw_texture_clipped_with_scratch, draw_texture_region_clipped_with_scratch, Color,
+        Framebuffer, Rect, TextureDrawScratch, Transform2D,
     };
 
     fn two_color_texture() -> Texture {
