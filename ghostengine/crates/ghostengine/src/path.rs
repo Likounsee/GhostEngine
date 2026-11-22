@@ -1016,7 +1016,8 @@ mod tests {
             .line_to(Vector::new(-extent, 2.0))
             .close();
 
-        let draw_cases: [fn(&mut Framebuffer, &Path, Color, f32) -> Result<(), PathError>; 4] = [
+        type DrawCase = fn(&mut Framebuffer, &Path, Color, f32) -> Result<(), PathError>;
+        let draw_cases: [DrawCase; 4] = [
             fill_path_even_odd,
             super::fill_path_non_zero,
             fill_path_even_odd_aa,
@@ -1163,7 +1164,7 @@ mod tests {
     fn even_odd_fill_preserves_contours_thinner_than_f32_epsilon() {
         let top = 0.5 - f32::EPSILON / 4.0;
         let bottom = 0.5 + f32::EPSILON / 2.0;
-        assert!(bottom - top < f32::EPSILON);
+        assert!((bottom - top).abs() < f32::EPSILON);
 
         let mut path = Path::new();
         path.move_to(Vector::new(0.0, top))
