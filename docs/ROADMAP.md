@@ -93,7 +93,60 @@ until the common API covers their required behavior and the examples have been
 ported. Do not remove a working integration merely to make the architecture
 look cleaner.
 
-## 5. Software 3D foundation
+## 5. 2D v1 integration and production hardening
+
+This is the final 2D v1 milestone. It closes the gap between the renderer,
+the common host contract and real application integrations.
+
+**Deliverables**
+- A stable render-target and presentation interface with explicit pixel
+  format, alpha mode, color space, dimensions and row stride.
+- Windows, Linux and macOS host adapters implementing the same public API.
+- A shared application example using the common API on all three platforms.
+- An interactive browser-style frontend example with toolbar, address field,
+  buttons, text and pointer/keyboard interaction.
+- Host-supplied surfaces and memory-backed framebuffer paths.
+- Resource lifetime, memory budgets, cache policies and robust error handling.
+- Property/fuzz tests for geometry, clipping, image decoding and buffer bounds.
+- API documentation, examples, migration policy and security review.
+
+**Acceptance criteria**
+- Same minimal application source builds against the common API on Windows,
+  Linux and macOS.
+- Each adapter handles lifecycle, resize, DPI, focus, pointer, keyboard and
+  text input/IME wherever supported, and presents CPU-rendered frames.
+- Headless rendering remains usable without a window system.
+- CI compiles and tests supported target adapters; real-window smoke tests are
+  tracked separately where CI has no display.
+- No known bounds-validation or memory-safety gaps remain in supported paths.
+- Performance is measured against recorded baselines; no optimization is
+  declared successful without before/after measurements.
+
+## 6. Hardware acceleration (next major phase after 2D v1)
+
+This phase starts only after all 2D v1 acceptance criteria are met. It adds a
+hardware-accelerated rendering path while keeping the CPU renderer as a
+supported fallback and correctness reference. This is not a 2D v2 milestone.
+
+**Deliverables**
+- A feasibility and architecture study for a GhostEngine-owned GPU path.
+- Platform and driver compatibility analysis for Windows, Linux and macOS.
+- Device discovery, capability reporting and deterministic CPU fallback.
+- Resource, command submission, synchronization, lifetime and device-loss
+  design before backend implementation.
+- GPU implementation and real-device validation, selected after the study.
+
+**Acceptance criteria**
+- CPU rendering remains fully usable without hardware acceleration.
+- GPU and CPU outputs are compared with deterministic correctness tests.
+- No hardware support is claimed until implemented and tested on real devices.
+- Performance claims use repeatable benchmarks on documented hardware.
+
+## 7. 3D rendering (only after GPU acceleration)
+
+3D development starts after the GPU phase has a working, validated foundation.
+It must reuse the established resource and submission architecture rather than
+introducing a second unrelated backend.
 
 **Deliverables**
 - Mesh and vertex/index data structures.
@@ -104,39 +157,8 @@ look cleaner.
 
 **Acceptance criteria**
 - Unit tests cover clipping, depth ordering and interpolation.
-- Deterministic test scenes cover a rotating or static 3D object.
-- CPU-only CI executes the 3D tests.
-
-## 6. Interactive application frontend and host surfaces
-
-**Deliverables**
-- Stable render-target/presentation interfaces.
-- Optional Windows/Linux window adapter for presenting GhostEngine-owned CPU frames and collecting input.
-- Framebuffer conversion with explicit pixel format and dimensions.
-- Interactive browser-style frontend example with toolbar, address field, buttons, text and pointer/keyboard interaction.
-- Host-supplied surface adapter and memory-backed framebuffer path.
-- Bare-metal integration notes for ArchiaOS.
-
-**Acceptance criteria**
-- No desktop window system is required by the headless framebuffer path.
-- The browser-style frontend opens on Windows/Linux and displays frames produced by GhostEngine's CPU renderer.
-- Mouse and keyboard input reach the application layer.
-- Buffer bounds and pixel format conversion are tested.
-- UEFI/real-hardware validation is tracked separately from host-side unit tests.
-
-## 4. Hardware acceleration (next major phase after 2D v1)
-
-This phase starts only after GhostEngine 2D v1 is complete. It adds a hardware-accelerated rendering path while keeping the CPU renderer as a supported fallback and correctness reference. GPU work is a separate major phase; it is not a 2D v2 milestone.
-
-**Deliverables**
-- A feasibility study for a GhostEngine-owned hardware path.
-- A platform and driver compatibility analysis.
-- A separate architecture proposal, reviewed before any implementation.
-
-**Acceptance criteria**
-- No Vulkan, DirectX, OpenGL or WebGPU dependency is introduced.
-- CPU rendering remains fully usable without hardware acceleration.
-- No hardware support is claimed until it is implemented and tested on real devices.
+- Deterministic scenes cover a rotating or static 3D object.
+- CPU fallback and supported GPU backends remain consistent where practical.
 
 ## 7. Production readiness
 
