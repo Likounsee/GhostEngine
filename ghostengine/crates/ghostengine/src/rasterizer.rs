@@ -1657,7 +1657,8 @@ pub fn fill_transformed_rect_conic_gradient_clipped(
         let Some(row) = target.row_mut(y) else {
             continue;
         };
-        let mut local = inverse.transform_point(crate::Vector::new(left as f32 + 0.5, y as f32 + 0.5));
+        let mut local =
+            inverse.transform_point(crate::Vector::new(left as f32 + 0.5, y as f32 + 0.5));
         for x in left..right {
             let sample = local;
             local.x += local_x_step.x;
