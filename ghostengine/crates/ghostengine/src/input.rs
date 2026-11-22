@@ -3,7 +3,9 @@
 //! This module has no dependency on a particular windowing library, allowing
 //! applications to select the minifb or winit adapter independently.
 
-use crate::{Point, TextInputEvent};
+use crate::{
+    ClipboardAction, ComponentEvents, ComponentKey, ComponentTree, Point, Rect, TextInputEvent,
+};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -86,6 +88,196 @@ impl ClickTracker {
         };
         self.last_click = Some((now, position));
         self.click_count
+    }
+}
+
+/// Routes one sampled native input frame into the retained component tree.
+///
+/// Unicode text and IME composition are supplied through text_events by
+/// the host text-input service. The minifb fallback remains a limited physical
+/// key mapping; it is not an AZERTY/QWERTY layout implementation.
+impl ComponentTree {
+    pub fn handle_window_input(&mut self, bounds: Rect, input: &InputState) -> ComponentEvents {
+        self.handle_window_input_with_text_font(bounds, input, None)
+    }
+
+    /// Handles window input and maps pointer events to text caret positions.
+    ///
+    /// Supply the same font and pixel size used to draw text inputs. The basic
+    /// handle_window_input method remains available for applications without text metrics.
+    pub fn handle_window_input_with_text_font(
+        &mut self,
+        bounds: Rect,
+        input: &InputState,
+        text_font: Option<(&crate::FontFace, f32)>,
+    ) -> ComponentEvents {
+        let mut shortcut_events = ComponentEvents::default();
+        for key in &input.shortcut_keys {
+            if let Some(next) = self.activate_context_menu_shortcut(
+                *key,
+                input.control_down || input.super_down,
+                input.alt_down,
+                input.shift_down,
+            ) {
+                merge_component_events(&mut shortcut_events, next);
+                break;
+            }
+        }
+        if input.right_mouse_pressed {
+            if let Some(pointer) = input.mouse_position {
+                self.open_context_menu_for_at(bounds, pointer);
+            }
+        }
+        let mut events = shortcut_events;
+        let pointer_events = if let Some((font, pixel_size)) = text_font {
+            self.update_pointer_with_text_input(
+                bounds,
+                input.mouse_position,
+                input.left_mouse_pressed,
+                input.left_mouse_released,
+                font,
+                pixel_size,
+                input
+                    .left_click_count
+                    .max(u8::from(input.left_mouse_pressed)),
+            )
+        } else {
+            self.update_pointer(
+                bounds,
+                input.mouse_position,
+                input.left_mouse_pressed,
+                input.left_mouse_released,
+            )
+        };
+        merge_component_events(&mut events, pointer_events);
+        if input.scroll_delta_y != 0 {
+            if let Some(pointer) = input.mouse_position {
+                self.scroll_list_view_at(pointer, input.scroll_delta_y);
+            }
+        }
+
+        if input.escape_down && self.context_menu_is_open() {
+            let next = self.handle_key(bounds, ComponentKey::Escape, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.tab_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Tab, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.enter_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Enter, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.space_pressed {
+            let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
+            merge_component_events(&mut events, next);
+        }
+        if input.left_pressed {
+            self.handle_key(
+                bounds,
+                if input.control_down || input.super_down {
+                    ComponentKey::WordLeft
+                } else {
+                    ComponentKey::ArrowLeft
+                },
+                input.shift_down,
+            );
+        }
+        if input.right_pressed {
+            self.handle_key(
+                bounds,
+                if input.control_down || input.super_down {
+                    ComponentKey::WordRight
+                } else {
+                    ComponentKey::ArrowRight
+                },
+                input.shift_down,
+            );
+        }
+        if input.home_pressed {
+            self.handle_key(bounds, ComponentKey::Home, input.shift_down);
+        }
+        if input.end_pressed {
+            self.handle_key(bounds, ComponentKey::End, input.shift_down);
+        }
+        if input.backspace_pressed {
+            self.handle_key(
+                bounds,
+                if input.control_down || input.super_down {
+                    ComponentKey::DeleteWordBackward
+                } else {
+                    ComponentKey::Backspace
+                },
+                input.shift_down,
+            );
+        }
+        if input.delete_pressed {
+            self.handle_key(
+                bounds,
+                if input.control_down || input.super_down {
+                    ComponentKey::DeleteWordForward
+                } else {
+                    ComponentKey::Delete
+                },
+                input.shift_down,
+            );
+        }
+        if input.select_all_pressed {
+            if let Some(id) = self.focused_text_input() {
+                self.select_all_text(id);
+            }
+        }
+        if let Some(id) = self.focused_text_input() {
+            for event in &input.text_events {
+                self.handle_text_input_event(id, event.clone());
+            }
+            if input.copy_pressed {
+                events.clipboard_action = self.copy_selected_text(id).map(ClipboardAction::Copy);
+            }
+            if input.cut_pressed {
+                events.clipboard_action = self.cut_selected_text(id).map(ClipboardAction::Copy);
+            }
+            if input.paste_pressed {
+                if let Some(text) = input.clipboard_text.as_deref() {
+                    self.insert_text(id, text);
+                } else {
+                    events.clipboard_action = Some(ClipboardAction::Paste);
+                }
+            }
+        }
+
+        // Prefer committed Unicode text from the host text service. The legacy
+        // character list is only a fallback for adapters that cannot emit text events.
+        if input.text_events.is_empty()
+            && !input.control_down
+            && !input.super_down
+            && !input.alt_down
+        {
+            for character in &input.pressed_characters {
+                if *character == ' ' && self.focused_text_input().is_none() {
+                    let next = self.handle_key(bounds, ComponentKey::Space, input.shift_down);
+                    merge_component_events(&mut events, next);
+                } else if self.focused_text_input().is_some() {
+                    self.insert_text_focused(&character.to_string());
+                }
+            }
+        }
+        events
+    }
+}
+
+fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
+    if next.activated.is_some() {
+        target.activated = next.activated;
+    }
+    if next.focus_changed.is_some() {
+        target.focus_changed = next.focus_changed;
+    }
+    if next.context_menu_action.is_some() {
+        target.context_menu_action = next.context_menu_action;
+    }
+    if next.context_menu_target.is_some() {
+        target.context_menu_target = next.context_menu_target;
     }
 }
 
