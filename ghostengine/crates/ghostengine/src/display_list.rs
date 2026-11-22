@@ -1372,7 +1372,7 @@ fn rounded_rect_path(rect: Rect, radius: u32) -> Path {
 #[cfg(test)]
 mod tests {
     use super::DisplayList;
-    use crate::{Color, Framebuffer, Point, Rect};
+    use crate::{Color, Framebuffer, Point, Rect, StrokeStyle, Transform2D};
 
     #[test]
     fn display_list_capacity_is_reused_between_frames() {
