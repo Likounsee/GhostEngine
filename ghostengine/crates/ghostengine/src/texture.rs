@@ -829,9 +829,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let top_row = &source_pixels[top_offset..top_offset + texture_width];
                     let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
 
-                    for (column, &(x0, x1, tx)) in
-                        scratch.horizontal_samples.iter().enumerate()
-                    {
+                    for (column, &(x0, x1, tx)) in scratch.horizontal_samples.iter().enumerate() {
                         let sampled = sample_bilinear_opaque_rows(
                             top_row,
                             bottom_row,
