@@ -104,9 +104,7 @@ impl core::fmt::Display for SurfaceError {
             Self::SizeOverflow => f.write_str("surface byte size overflows usize"),
             Self::StrideTooSmall => f.write_str("surface row stride is smaller than one row"),
             Self::BufferTooSmall => f.write_str("destination buffer is smaller than the surface"),
-            Self::DimensionMismatch => {
-                f.write_str("surface and framebuffer dimensions differ")
-            }
+            Self::DimensionMismatch => f.write_str("surface and framebuffer dimensions differ"),
         }
     }
 }
@@ -132,7 +130,11 @@ impl Framebuffer {
         }
 
         let bpp = descriptor.pixel_format.bytes_per_pixel();
-        for (y, row) in self.pixels().chunks_exact(self.width() as usize).enumerate() {
+        for (y, row) in self
+            .pixels()
+            .chunks_exact(self.width() as usize)
+            .enumerate()
+        {
             let row_start = y * descriptor.row_stride;
             for (x, pixel) in row.iter().copied().enumerate() {
                 let [r, g, b, a] = convert_pixel(pixel, descriptor);
@@ -161,8 +163,7 @@ fn convert_pixel(pixel: Color, descriptor: SurfaceDescriptor) -> [u8; 4] {
     let mut r = pixel.r;
     let mut g = pixel.g;
     let mut b = pixel.b;
-    let a = if descriptor.alpha_mode == AlphaMode::Opaque || !descriptor.pixel_format.has_alpha()
-    {
+    let a = if descriptor.alpha_mode == AlphaMode::Opaque || !descriptor.pixel_format.has_alpha() {
         255
     } else {
         pixel.a
