@@ -4,9 +4,11 @@
 //! input and presents the completed CPU pixel buffer.
 
 use crate::{
-    input::{ClickTracker, InputState},
+    input::ClickTracker,
     Color, Framebuffer, Point,
 };
+pub use crate::input::InputState;
+
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use std::{error::Error, fmt};
 
@@ -39,8 +41,6 @@ impl fmt::Display for WindowError {
 }
 
 impl Error for WindowError {}
-
-/// Input sampled once per application frame.
 
 /// A fixed-size host window that presents GhostEngine's CPU framebuffer.
 pub struct WindowSurface {
@@ -492,7 +492,7 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use super::{key_to_character, pack_rgb, InputState, WindowError};
-    use crate::{ClipboardAction, Color, ComponentTree, Rect, TextInputEvent};
+    use crate::{ClipboardAction, Color, ComponentTree, TextInputEvent};
     use minifb::Key;
 
     #[test]

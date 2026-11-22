@@ -8,6 +8,7 @@ use crate::{
 };
 use std::time::{Duration, Instant};
 
+/// Input sampled once per application frame.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct InputState {
     pub mouse_position: Option<Point>,
@@ -283,8 +284,6 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
 
 #[cfg(test)]
 mod tests {
-    use super::ClickTracker;
-
     #[test]
     fn click_tracker_requires_time_and_spatial_proximity() {
         use std::time::{Duration, Instant};
