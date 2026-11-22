@@ -87,3 +87,22 @@ These are design targets, **not implemented Cargo features yet**:
 
 Do not add a Cargo feature merely to reserve its name. Each planned feature
 must have a real implementation, tests, documentation and a clear fallback.
+
+## CPU surface export
+
+The core framebuffer remains an owned, tightly packed RGBA buffer. The
+platform-independent `surface` API now provides an explicit export boundary
+for caller-owned native/display buffers:
+
+- `SurfaceDescriptor` declares dimensions, byte row stride, pixel layout,
+  alpha handling and output color space.
+- `PixelFormat` supports RGB8, BGR8, RGBA8 and BGRA8.
+- `AlphaMode` supports straight, premultiplied and opaque output.
+- `ColorSpace` supports sRGB and linear-sRGB output.
+- `Framebuffer::write_to_surface` converts into borrowed memory, preserves
+  row padding and validates dimensions, stride and destination capacity
+  before writing any bytes.
+
+This is a CPU-side interoperability API, not a GPU surface or a platform
+window implementation. The framebuffer's internal pixel representation is
+unchanged, so existing rasterizers retain their current fast row-major path.
