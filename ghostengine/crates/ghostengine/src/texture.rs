@@ -629,8 +629,8 @@ pub fn draw_texture_region_clipped(
             let source_width = u64::from(source.width);
             let first_offset = u64::from(clip.x - destination.x);
             let first_scaled = first_offset * source_width;
-            let mut source_offset = first_scaled / destination_width;
-            let mut error = first_scaled % destination_width;
+            let source_offset = first_scaled / destination_width;
+            let error = first_scaled % destination_width;
             let step_whole = source_width / destination_width;
             let step_remainder = source_width % destination_width;
 
@@ -662,9 +662,6 @@ pub fn draw_texture_region_clipped(
                     }
                 }
 
-                // Keep the row-independent starting coordinate explicit. This
-                // also avoids coupling horizontal rounding to the row loop.
-                let _ = (&mut source_offset, &mut error);
             }
         }
         TextureFilter::Bilinear => {
