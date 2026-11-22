@@ -112,6 +112,16 @@ compressed when the destination is smaller than the combined borders.
 workspace across all nine patches and across frames; applications rendering
 repeated UI panels should retain one `TextureDrawScratch` per render context.
 
+## Display-list nine-slice commands
+
+The ordered `DisplayList` API can record nine-slice texture commands using shared
+`Arc<Texture>` storage. Replay preserves command order and the clip captured at
+record time, and reuses the renderer's `TextureDrawScratch` across all nine patches
+and successive frames. Nine-slice commands are currently framebuffer-axis-aligned;
+an active affine transform is rejected when recording instead of silently applying
+incorrect border scaling. Use the direct texture API when transformed nine-slice
+rendering is required.
+
 ## CPU surface export
 
 The core framebuffer remains an owned, tightly packed RGBA buffer. The
