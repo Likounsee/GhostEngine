@@ -4,7 +4,8 @@
 //! framebuffer and softbuffer copies those pixels to the native window.
 
 use crate::{
-    input::InputState, Color, Framebuffer, FramebufferError, NativeClipboard, NativeInputAdapter,
+    input::InputState, Color, Framebuffer, FramebufferError, HostEvent, NativeClipboard,
+    NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
 use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
@@ -59,9 +60,35 @@ impl NativeWindowSurface {
     ///
     /// This is an event-loop entry point and should normally be called from
     /// the application's main thread. Winit's event loop can only be run once.
-    pub fn run<F>(title: &str, width: u32, height: u32, draw: F) -> Result<(), NativeWindowError>
+    pub fn run<F>(title: &str, width: u32, height: u32, mut draw: F) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool + 'static,
+    {
+        Self::run_with_host_events(title, width, height, move |framebuffer, events, clipboard| {
+            let input = events
+                .into_iter()
+                .find_map(|event| match event {
+                    HostEvent::Input(input) => Some(input),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            draw(framebuffer, input, clipboard)
+        })
+    }
+
+    /// Runs the native window while delivering normalized common host events.
+    ///
+    /// This entry point exposes resize, scale-factor, focus, close, redraw and
+    /// accumulated input events without leaking Winit types to the application.
+    /// Returning false from the callback closes the window.
+    pub fn run_with_host_events<F>(
+        title: &str,
+        width: u32,
+        height: u32,
+        draw: F,
+    ) -> Result<(), NativeWindowError>
+    where
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
     {
         if width == 0 || height == 0 {
             return Err(NativeWindowError::InvalidDimensions);
@@ -84,6 +111,7 @@ impl NativeWindowSurface {
             clipboard,
             surface: None,
             window: None,
+            pending_events: Vec::new(),
             draw,
         };
         event_loop
@@ -101,12 +129,13 @@ struct NativeApp<F> {
     clipboard: NativeClipboard,
     surface: Option<Surface<OwnedDisplayHandle, Arc<Window>>>,
     window: Option<Arc<Window>>,
+    pending_events: Vec<HostEvent>,
     draw: F,
 }
 
 impl<F> NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
 {
     fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
@@ -180,6 +209,13 @@ where
             Ok(surface) => {
                 self.surface = Some(surface);
                 self.window = Some(window.clone());
+                self.pending_events.push(HostEvent::Resized {
+                    width: self.initial_size.width,
+                    height: self.initial_size.height,
+                });
+                self.pending_events.push(HostEvent::ScaleFactorChanged {
+                    scale_factor: window.scale_factor(),
+                });
                 window.request_redraw();
             }
             Err(_) => event_loop.exit(),
@@ -201,16 +237,28 @@ where
         }
         self.input.process_window_event(&event);
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.pending_events.push(HostEvent::CloseRequested);
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
             WindowEvent::Resized(size) => {
                 self.resize_framebuffer(size);
+                self.pending_events.push(HostEvent::Resized {
+                    width: size.width,
+                    height: size.height,
+                });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
                 let input = self.input.take_frame();
-                if !(self.draw)(&mut self.framebuffer, input, &mut self.clipboard) {
+                self.pending_events.push(HostEvent::RedrawRequested);
+                self.pending_events.push(HostEvent::Input(input));
+                let events = std::mem::take(&mut self.pending_events);
+                if !(self.draw)(&mut self.framebuffer, events, &mut self.clipboard) {
                     event_loop.exit();
                     return;
                 }
@@ -218,8 +266,19 @@ where
                     event_loop.exit();
                 }
             }
-            WindowEvent::Focused(_)
-            | WindowEvent::KeyboardInput { .. }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.pending_events.push(HostEvent::ScaleFactorChanged { scale_factor });
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Focused(focused) => {
+                self.pending_events.push(HostEvent::FocusChanged { focused });
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::KeyboardInput { .. }
             | WindowEvent::Ime(_)
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
