@@ -8,7 +8,47 @@ use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform
 /// A bounded collection of framebuffer regions that need recomposition.
 ///
 /// Added rectangles are clipped to the dimensions supplied at construction.
-/// Overlapping rectangles are coalesced into conservative bounding rectangles.
+/// Overlapping rectangles are represented as an exact, disjoint union.
+fn subtract_rect(source: Rect, cutter: Rect, output: &mut Vec<Rect>) {
+    let Some(intersection) = source.intersection(cutter) else {
+        output.push(source);
+        return;
+    };
+
+    let source_right = u64::from(source.x) + u64::from(source.width);
+    let source_bottom = u64::from(source.y) + u64::from(source.height);
+    let intersection_right = u64::from(intersection.x) + u64::from(intersection.width);
+    let intersection_bottom = u64::from(intersection.y) + u64::from(intersection.height);
+
+    if intersection.y > source.y {
+        output.push(Rect::new(source.x, source.y, source.width, intersection.y - source.y));
+    }
+    if intersection_bottom < source_bottom {
+        output.push(Rect::new(
+            source.x,
+            intersection_bottom as u32,
+            source.width,
+            (source_bottom - intersection_bottom) as u32,
+        ));
+    }
+    if intersection.x > source.x {
+        output.push(Rect::new(
+            source.x,
+            intersection.y,
+            intersection.x - source.x,
+            intersection.height,
+        ));
+    }
+    if intersection_right < source_right {
+        output.push(Rect::new(
+            intersection_right as u32,
+            intersection.y,
+            (source_right - intersection_right) as u32,
+            intersection.height,
+        ));
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageRegion {
     width: u32,
@@ -66,46 +106,69 @@ impl DamageRegion {
 
     /// Adds a rectangle, clipping it to the configured framebuffer bounds.
     ///
-    /// Overlapping entries are merged. The resulting rectangles remain disjoint,
-    /// so a damaged pixel is never composited twice.
+    /// Overlapping coverage is split into disjoint rectangles before insertion.
+    /// Only rectangles sharing a complete edge are coalesced, so the stored
+    /// region remains an exact representation of damaged pixels.
     pub fn add(&mut self, rectangle: Rect) {
         let bounds = Rect::new(0, 0, self.width, self.height);
-        let Some(mut merged) = rectangle.intersection(bounds) else {
+        let Some(clipped) = rectangle.intersection(bounds) else {
             return;
         };
 
+        let mut pending = vec![clipped];
+        for existing in &self.rectangles {
+            let mut remaining = Vec::new();
+            for candidate in pending {
+                subtract_rect(candidate, *existing, &mut remaining);
+            }
+            pending = remaining;
+            if pending.is_empty() {
+                return;
+            }
+        }
+
+        self.rectangles.extend(pending);
+
+        // Coalesce only exact full-edge neighbors. This cannot fill an
+        // undamaged gap in an L-shaped or diagonal region.
         let mut index = 0;
         while index < self.rectangles.len() {
-            let current = self.rectangles[index];
-            let overlaps = merged.intersection(current).is_some();
-            let shares_full_horizontal_edge = merged.y == current.y
-                && merged.height == current.height
-                && (u64::from(merged.x) + u64::from(merged.width) == u64::from(current.x)
-                    || u64::from(current.x) + u64::from(current.width) == u64::from(merged.x));
-            let shares_full_vertical_edge = merged.x == current.x
-                && merged.width == current.width
-                && (u64::from(merged.y) + u64::from(merged.height) == u64::from(current.y)
-                    || u64::from(current.y) + u64::from(current.height) == u64::from(merged.y));
-            if overlaps || shares_full_horizontal_edge || shares_full_vertical_edge {
-                let current = self.rectangles.swap_remove(index);
-                let left = merged.x.min(current.x);
-                let top = merged.y.min(current.y);
-                let right = (u64::from(merged.x) + u64::from(merged.width))
-                    .max(u64::from(current.x) + u64::from(current.width));
-                let bottom = (u64::from(merged.y) + u64::from(merged.height))
-                    .max(u64::from(current.y) + u64::from(current.height));
-                merged = Rect::new(
-                    left,
-                    top,
-                    (right - u64::from(left)) as u32,
-                    (bottom - u64::from(top)) as u32,
-                );
-                index = 0;
-            } else {
+            let mut other = index + 1;
+            let mut merged = false;
+            while other < self.rectangles.len() {
+                let first = self.rectangles[index];
+                let second = self.rectangles[other];
+                let horizontal = first.y == second.y
+                    && first.height == second.height
+                    && (u64::from(first.x) + u64::from(first.width) == u64::from(second.x)
+                        || u64::from(second.x) + u64::from(second.width) == u64::from(first.x));
+                let vertical = first.x == second.x
+                    && first.width == second.width
+                    && (u64::from(first.y) + u64::from(first.height) == u64::from(second.y)
+                        || u64::from(second.y) + u64::from(second.height) == u64::from(first.y));
+                if horizontal || vertical {
+                    let left = first.x.min(second.x);
+                    let top = first.y.min(second.y);
+                    let right = (u64::from(first.x) + u64::from(first.width))
+                        .max(u64::from(second.x) + u64::from(second.width));
+                    let bottom = (u64::from(first.y) + u64::from(first.height))
+                        .max(u64::from(second.y) + u64::from(second.height));
+                    self.rectangles[index] = Rect::new(
+                        left,
+                        top,
+                        (right - u64::from(left)) as u32,
+                        (bottom - u64::from(top)) as u32,
+                    );
+                    self.rectangles.swap_remove(other);
+                    merged = true;
+                    break;
+                }
+                other += 1;
+            }
+            if !merged {
                 index += 1;
             }
         }
-        self.rectangles.push(merged);
     }
 
     /// Returns the disjoint rectangles currently marked for recomposition.
@@ -2553,6 +2616,28 @@ mod tests {
 
         assert_eq!(damage.rectangles(), &[Rect::new(0, 0, 5, 3)]);
         assert_eq!(damage.area(), 15);
+    }
+
+    #[test]
+    fn damage_region_preserves_exact_coverage_for_overlapping_l_shapes() {
+        let mut damage = DamageRegion::new(4, 4);
+        damage.add(Rect::new(0, 0, 2, 2));
+        damage.add(Rect::new(1, 1, 2, 2));
+
+        assert_eq!(damage.area(), 7);
+        assert!(!damage.covers_entire_target());
+        let mut covered = [[false; 4]; 4];
+        for rectangle in damage.rectangles() {
+            for y in rectangle.y..rectangle.y + rectangle.height {
+                for x in rectangle.x..rectangle.x + rectangle.width {
+                    assert!(!covered[y as usize][x as usize]);
+                    covered[y as usize][x as usize] = true;
+                }
+            }
+        }
+        assert!(covered[0][0] && covered[1][0] && covered[0][1]);
+        assert!(covered[1][1] && covered[2][1] && covered[1][2] && covered[2][2]);
+        assert!(!covered[0][2] && !covered[2][0] && !covered[3][3]);
     }
 
     #[test]
