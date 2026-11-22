@@ -8960,3 +8960,89 @@ mod oblique_line_clipping_symmetry_tests {
         }
     }
 }
+
+
+/// Fills a clipped rectangle using per-operation CPU rendering options.
+///
+/// The options control the worker limit and the minimum area at which
+/// parallel execution is worthwhile. The result is pixel-identical to
+/// `fill_rect`.
+pub fn fill_rect_with_options(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    options: crate::RenderOptions,
+) {
+    let area = clipped_rect_bounds(target, rect)
+        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
+        .unwrap_or(0);
+    let threads = options.worker_count(area);
+    if threads <= 1 {
+        fill_rect(target, rect, color);
+    } else {
+        fill_rect_parallel_with_threads(target, rect, color, threads);
+    }
+}
+
+/// Alpha-composites a clipped rectangle using per-operation CPU rendering options.
+///
+/// Fully transparent colors remain a no-op. The configured worker limit and
+/// area threshold are applied after clipping to the framebuffer.
+pub fn blend_rect_with_options(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    options: crate::RenderOptions,
+) {
+    let area = clipped_rect_bounds(target, rect)
+        .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
+        .unwrap_or(0);
+    let threads = options.worker_count(area);
+    blend_rect_with_threads(target, rect, color, threads);
+}
+
+#[cfg(test)]
+mod render_options_tests {
+    use crate::{blend_rect, blend_rect_with_options, fill_rect, fill_rect_with_options, Color,
+        Framebuffer, Rect, RenderOptions};
+
+    #[test]
+    fn configured_fill_matches_serial_output() {
+        let mut expected = Framebuffer::new(256, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let rect = Rect::new(4, 8, 240, 112);
+        fill_rect(&mut expected, rect, Color::rgba(20, 40, 60, 255));
+        fill_rect_with_options(
+            &mut actual,
+            rect,
+            Color::rgba(20, 40, 60, 255),
+            RenderOptions::new().with_max_threads(2).with_parallel_threshold(0),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn configured_blend_matches_serial_output() {
+        let mut expected = Framebuffer::new(256, 128, Color::BLUE).unwrap();
+        let mut actual = expected.clone();
+        let rect = Rect::new(4, 8, 240, 112);
+        blend_rect(&mut expected, rect, Color::rgba(200, 20, 40, 127));
+        blend_rect_with_options(
+            &mut actual,
+            rect,
+            Color::rgba(200, 20, 40, 127),
+            RenderOptions::new().with_max_threads(2).with_parallel_threshold(0),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn configured_fill_respects_serial_mode() {
+        let mut expected = Framebuffer::new(32, 32, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let rect = Rect::new(0, 0, 32, 32);
+        fill_rect(&mut expected, rect, Color::WHITE);
+        fill_rect_with_options(&mut actual, rect, Color::WHITE, RenderOptions::serial());
+        assert_eq!(actual, expected);
+    }
+}
