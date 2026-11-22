@@ -14,7 +14,7 @@ use crate::rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
-use crate::stroke::{stroke_path_clipped, StrokeError, StrokeStyle};
+use crate::stroke::{stroke_path_aa_clipped, stroke_path_clipped, StrokeError, StrokeStyle};
 use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
     prepare_bidi_shaped_text_box, prepare_shaped_text_box, FontFace, FontFamily, TextLayoutOptions,
@@ -83,6 +83,7 @@ enum Command {
         style: StrokeStyle,
         color: Color,
         tolerance: f32,
+        antialias: bool,
         clip: Rect,
     },
     DrawText {
@@ -426,6 +427,30 @@ impl DisplayList {
         color: Color,
         tolerance: f32,
     ) -> Result<(), StrokeError> {
+        self.record_stroke_path(path, transform, style, color, tolerance, false)
+    }
+
+    /// Records a 4x4 supersampled antialiased vector-path stroke.
+    pub fn stroke_path_aa(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        style: StrokeStyle,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), StrokeError> {
+        self.record_stroke_path(path, transform, style, color, tolerance, true)
+    }
+
+    fn record_stroke_path(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        style: StrokeStyle,
+        color: Color,
+        tolerance: f32,
+        antialias: bool,
+    ) -> Result<(), StrokeError> {
         if !style.width.is_finite() || style.width <= 0.0 {
             return Err(StrokeError::InvalidWidth);
         }
@@ -441,6 +466,7 @@ impl DisplayList {
                 style,
                 color,
                 tolerance,
+                antialias,
                 clip,
             });
         }
@@ -810,10 +836,19 @@ impl DisplayList {
                     style,
                     color,
                     tolerance,
+                    antialias,
                     clip,
                 } => {
-                    stroke_path_clipped(target, path, *transform, *style, *color, *tolerance, *clip)
-                        .is_ok()
+                    let result = if *antialias {
+                        stroke_path_aa_clipped(
+                            target, path, *transform, *style, *color, *tolerance, *clip,
+                        )
+                    } else {
+                        stroke_path_clipped(
+                            target, path, *transform, *style, *color, *tolerance, *clip,
+                        )
+                    };
+                    result.is_ok()
                 }
                 Command::DrawText {
                     font,
@@ -1226,6 +1261,32 @@ mod tests {
         assert_eq!(even_target.get_pixel(4, 4), Some(Color::BLACK));
         assert_eq!(non_zero_target.get_pixel(4, 4), Some(Color::RED));
         assert_eq!(non_zero_target.get_pixel(2, 2), Some(Color::RED));
+    }
+
+    #[test]
+    fn display_list_supports_antialiased_path_strokes() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.25, 3.5))
+            .line_to(crate::Vector::new(7.25, 3.5));
+
+        let mut list = DisplayList::new();
+        list.stroke_path_aa(
+            path,
+            crate::Transform2D::IDENTITY,
+            StrokeStyle::new(1.0),
+            Color::WHITE,
+            0.25,
+        )
+        .unwrap();
+
+        let mut target = Framebuffer::new(9, 7, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        let row = (0..9)
+            .filter_map(|x| target.get_pixel(x, 3))
+            .collect::<Vec<_>>();
+        assert!(row.iter().any(|pixel| *pixel != Color::BLACK));
+        assert!(row.iter().any(|pixel| *pixel != Color::BLACK && *pixel != Color::WHITE));
+        assert_eq!(stats.commands_executed, 1);
     }
 
     #[test]
