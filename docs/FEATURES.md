@@ -112,6 +112,16 @@ compressed when the destination is smaller than the combined borders.
 workspace across all nine patches and across frames; applications rendering
 repeated UI panels should retain one `TextureDrawScratch` per render context.
 
+## Display-list atlas-region commands
+
+The ordered `DisplayList` API can record a draw from a source rectangle inside a
+shared texture, making atlas sprites available to retained command lists. Replay
+preserves submission order and captured clipping, and uses the renderer's reusable
+texture-sampling scratch buffer. Region commands currently require an identity
+affine transform; invalid source bounds and empty rectangles are rejected while
+recording. The direct texture-region API remains available for callers needing
+other rendering arrangements.
+
 ## Display-list nine-slice commands
 
 The ordered `DisplayList` API can record nine-slice texture commands using shared
