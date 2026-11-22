@@ -670,13 +670,14 @@ pub fn draw_texture_region_clipped(
             // transparent unused space. Detect that once, then use the cheaper
             // opaque interpolation path instead of alpha-premultiplied sampling
             // and source-over branching for every output pixel.
-            let source_region_is_opaque = source_area <= clip_area
-                && (source.y..source.y + source.height).all(|row| {
-                    let start = row as usize * texture_width + source.x as usize;
-                    source_pixels[start..start + source.width as usize]
-                        .iter()
-                        .all(|pixel| pixel.a == 255)
-                });
+            let source_region_is_opaque = texture.is_fully_opaque()
+                || (source_area <= clip_area
+                    && (source.y..source.y + source.height).all(|row| {
+                        let start = row as usize * texture_width + source.x as usize;
+                        source_pixels[start..start + source.width as usize]
+                            .iter()
+                            .all(|pixel| pixel.a == 255)
+                    }));
 
             let horizontal_step = source.width as f32 / destination.width as f32;
             let first_relative_x =
