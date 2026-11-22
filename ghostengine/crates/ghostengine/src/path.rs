@@ -1005,6 +1005,36 @@ mod tests {
     }
 
     #[test]
+    fn all_fill_rules_handle_extreme_finite_coordinates() {
+        let extent = f32::MAX;
+        let mut path = Path::new();
+        path.move_to(Vector::new(-extent, 0.0))
+            .line_to(Vector::new(extent, 0.0))
+            .line_to(Vector::new(extent, 2.0))
+            .line_to(Vector::new(-extent, 2.0))
+            .close();
+
+        let draw_cases: [
+            fn(&mut Framebuffer, &Path, Color, f32) -> Result<(), PathError>;
+            4
+        ] = [
+            fill_path_even_odd,
+            super::fill_path_non_zero,
+            fill_path_even_odd_aa,
+            super::fill_path_non_zero_aa,
+        ];
+
+        for draw in draw_cases {
+            let mut target = Framebuffer::new(4, 2, Color::BLACK).unwrap();
+            draw(&mut target, &path, Color::WHITE, 0.1).unwrap();
+            assert!(
+                target.pixels().iter().all(|pixel| *pixel == Color::WHITE),
+                "fill mode failed for a contour spanning finite f32 extremes"
+            );
+        }
+    }
+
+    #[test]
     fn active_edge_fill_matches_full_scan_for_complex_clipped_contours() {
         fn reference_full_scan(target: &mut Framebuffer, path: &Path, color: Color, clip: Rect) {
             let flattened = path.flatten(0.2).unwrap();
