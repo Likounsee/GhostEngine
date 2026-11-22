@@ -768,7 +768,14 @@ pub fn draw_texture_region_clipped_with_scratch(
                         [top_start..top_start + clip.width as usize];
                     let bottom_samples = &scratch.region_horizontal_cache
                         [bottom_start..bottom_start + clip.width as usize];
+                    let mut fallback_sx = first_sx;
                     for (column, (top, bottom)) in top_samples.iter().zip(bottom_samples).enumerate() {
+                        let x0 = fallback_sx.floor() as usize;
+                        let sample = BilinearHorizontalSample {
+                            x0,
+                            x1: (x0 + 1).min(source_right as usize),
+                            tx: fallback_sx - x0 as f32,
+                        };
                         let pixel = &mut target_pixels[target_row + clip.x as usize + column];
                         if pixel.a == 255 {
                             blend_cached_bilinear_over_opaque(top, bottom, 1.0 - ty, ty, pixel);
@@ -777,11 +784,11 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 source_pixels,
                                 texture_width,
                                 BilinearCoordinates {
-                                    x0: 0,
-                                    x1: 0,
+                                    x0: sample.x0,
+                                    x1: sample.x1,
                                     y0,
                                     y1,
-                                    tx: 0.0,
+                                    tx: sample.tx,
                                     ty,
                                 },
                             );
@@ -791,6 +798,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 *pixel = sampled.blend_over(*pixel);
                             }
                         }
+                        fallback_sx = (fallback_sx + horizontal_step).min(source_right as f32);
                     }
                 } else if source_region_is_opaque {
                     // Resolve the two source rows once per destination row.
