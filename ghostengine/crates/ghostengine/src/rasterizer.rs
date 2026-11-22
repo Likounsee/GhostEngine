@@ -5289,6 +5289,19 @@ mod tests {
         Framebuffer::new(width, height, Color::BLACK).unwrap()
     }
 
+    fn patterned_frame() -> Framebuffer {
+        let mut target = Framebuffer::new(173, 119, Color::BLACK).unwrap();
+        for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
+            *pixel = Color::rgba(
+                (index % 251) as u8,
+                (index % 193) as u8,
+                (index % 157) as u8,
+                (index % 256) as u8,
+            );
+        }
+        target
+    }
+
     #[test]
     fn parallel_antialiased_ellipse_fill_matches_serial_for_worker_counts() {
         for (center, radius_x, radius_y, color, background) in [
