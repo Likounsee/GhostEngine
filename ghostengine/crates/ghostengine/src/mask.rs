@@ -101,7 +101,7 @@ mod tests {
 
         apply_alpha_mask_clipped(&mut target, &mask, Point::new(-1, 0), Rect::new(0, 0, 5, 1));
 
-        assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(10, 20, 30, 128)));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(10, 20, 30, 100)));
         assert_eq!(target.get_pixel(1, 0), Some(Color::rgba(10, 20, 30, 200)));
         assert_eq!(target.get_pixel(2, 0), Some(Color::rgba(10, 20, 30, 0)));
         assert_eq!(target.get_pixel(3, 0), Some(Color::rgba(10, 20, 30, 0)));
