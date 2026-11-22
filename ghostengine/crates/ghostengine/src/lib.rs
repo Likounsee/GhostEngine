@@ -72,8 +72,8 @@ pub use image::{
     decode_texture, decode_texture_into_cache, decode_texture_with_options,
     decode_texture_with_options_into_cache, ImageDecodeError, ImageDecodeOptions,
 };
-pub use interaction::{InteractionEvents, UiInteraction};
 pub use input::InputState;
+pub use interaction::{InteractionEvents, UiInteraction};
 pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
 pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};

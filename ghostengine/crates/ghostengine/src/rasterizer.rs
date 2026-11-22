@@ -457,7 +457,9 @@ fn process_rows_with_y_mut<F>(
 fn automatic_worker_count() -> usize {
     #[cfg(feature = "parallel-rendering")]
     {
-        std::thread::available_parallelism().map(usize::from).unwrap_or(1)
+        std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
     }
     #[cfg(not(feature = "parallel-rendering"))]
     {
