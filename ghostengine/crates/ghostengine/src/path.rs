@@ -42,9 +42,7 @@ impl FillEdge {
     }
 
     fn x_at(self, sample_y: f32) -> f32 {
-        (self.min_x
-            + (f64::from(sample_y) - f64::from(self.min_y)) * self.inverse_slope)
-            as f32
+        (self.min_x + (f64::from(sample_y) - f64::from(self.min_y)) * self.inverse_slope) as f32
     }
 
     fn crosses(self, sample_y: f32) -> bool {
@@ -983,11 +981,8 @@ mod tests {
     #[test]
     fn fill_edge_interpolation_avoids_overflow_for_extreme_finite_coordinates() {
         let extent = f32::MAX;
-        let edge = super::FillEdge::new(
-            Vector::new(-extent, 0.0),
-            Vector::new(extent, 2.0),
-        )
-        .expect("non-horizontal edge");
+        let edge = super::FillEdge::new(Vector::new(-extent, 0.0), Vector::new(extent, 2.0))
+            .expect("non-horizontal edge");
 
         assert_eq!(edge.x_at(1.0), 0.0);
         assert!(edge.x_at(0.5).is_finite());
