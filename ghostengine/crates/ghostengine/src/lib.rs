@@ -12,6 +12,7 @@ pub mod effects;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
+pub mod host;
 #[cfg(feature = "image-decoding")]
 pub mod image;
 pub mod input;
