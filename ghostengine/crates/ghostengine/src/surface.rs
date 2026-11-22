@@ -35,7 +35,7 @@ pub struct SurfaceDescriptor {
 impl SurfaceDescriptor {
     #[must_use]
     pub const fn tightly_packed(width: u32, height: u32, pixel_format: PixelFormat, alpha_mode: AlphaMode, color_space: ColorSpace) -> Self {
-        Self { width, height, row_stride: width as usize * pixel_format.bytes_per_pixel(), pixel_format, alpha_mode, color_space }
+        Self { width, height, row_stride: (width as usize).saturating_mul(pixel_format.bytes_per_pixel()), pixel_format, alpha_mode, color_space }
     }
 
     pub fn minimum_row_bytes(self) -> Result<usize, SurfaceError> {
@@ -95,11 +95,11 @@ impl Framebuffer {
 fn convert_pixel(pixel: Color, descriptor: SurfaceDescriptor) -> [u8; 4] {
     let mut r = pixel.r; let mut g = pixel.g; let mut b = pixel.b;
     let a = if descriptor.alpha_mode == AlphaMode::Opaque || !descriptor.pixel_format.has_alpha() { 255 } else { pixel.a };
-    if descriptor.alpha_mode == AlphaMode::Premultiplied && descriptor.pixel_format.has_alpha() {
-        r = multiply_alpha(r, a); g = multiply_alpha(g, a); b = multiply_alpha(b, a);
-    }
     if descriptor.color_space == ColorSpace::LinearSrgb {
         r = srgb_to_linear(r); g = srgb_to_linear(g); b = srgb_to_linear(b);
+    }
+    if descriptor.alpha_mode == AlphaMode::Premultiplied && descriptor.pixel_format.has_alpha() {
+        r = multiply_alpha(r, a); g = multiply_alpha(g, a); b = multiply_alpha(b, a);
     }
     [r, g, b, a]
 }
