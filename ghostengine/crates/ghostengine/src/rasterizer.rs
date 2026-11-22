@@ -9002,10 +9002,8 @@ pub fn blend_rect_with_options(
 
 #[cfg(test)]
 mod render_options_tests {
-    use crate::{
-        blend_rect, blend_rect_with_options, fill_rect, fill_rect_with_options, Color, Framebuffer,
-        Rect, RenderOptions,
-    };
+    use super::{blend_rect, blend_rect_with_options, fill_rect, fill_rect_with_options};
+    use crate::{Color, Framebuffer, Rect, RenderOptions};
 
     #[test]
     fn configured_fill_matches_serial_output() {
