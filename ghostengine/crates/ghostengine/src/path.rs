@@ -22,7 +22,10 @@ struct FillEdge {
 
 impl FillEdge {
     fn new(a: Vector, b: Vector) -> Option<Self> {
-        if (a.y - b.y).abs() <= f32::EPSILON {
+        // Only exactly horizontal edges are irrelevant to scan conversion.
+        // An epsilon test incorrectly discards very thin but valid contours
+        // that still cross a pixel-center sample.
+        if a.y == b.y {
             return None;
         }
         let (lower, upper) = if a.y < b.y { (a, b) } else { (b, a) };
@@ -1096,6 +1099,25 @@ mod tests {
         let points = &flattened.subpaths[0].points;
         assert!(points.len() > 2);
         assert!(points.iter().any(|point| point.x > 10.0));
+    }
+
+    #[test]
+    fn even_odd_fill_preserves_contours_thinner_than_f32_epsilon() {
+        let top = 0.5 - f32::EPSILON / 4.0;
+        let bottom = 0.5 + f32::EPSILON / 2.0;
+        assert!(bottom - top < f32::EPSILON);
+
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, top))
+            .line_to(Vector::new(4.0, top))
+            .line_to(Vector::new(4.0, bottom))
+            .line_to(Vector::new(0.0, bottom))
+            .close();
+
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+        fill_path_even_odd(&mut target, &path, Color::WHITE, 0.1).unwrap();
+
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
     }
 
     #[test]
