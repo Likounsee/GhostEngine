@@ -644,8 +644,8 @@ pub fn draw_texture_region_clipped(
                 let mut x_error = error;
 
                 for x in clip.x..clip.x + clip.width {
-                    let sx = (u64::from(source.x) + sx_offset)
-                        .min(u64::from(source_right)) as usize;
+                    let sx =
+                        (u64::from(source.x) + sx_offset).min(u64::from(source_right)) as usize;
                     let sampled = source_pixels[source_row + sx];
                     if sampled.a == 255 {
                         target_pixels[target_row + x as usize] = sampled;
@@ -661,7 +661,6 @@ pub fn draw_texture_region_clipped(
                         x_error -= destination_width;
                     }
                 }
-
             }
         }
         TextureFilter::Bilinear => {
@@ -680,8 +679,7 @@ pub fn draw_texture_region_clipped(
                 });
 
             let horizontal_step = source.width as f32 / destination.width as f32;
-            let first_relative_x =
-                (clip.x - destination.x) as f32 / destination.width as f32;
+            let first_relative_x = (clip.x - destination.x) as f32 / destination.width as f32;
             let first_sx = (source.x as f32 + first_relative_x * source.width as f32 - 0.5)
                 .clamp(source.x as f32, source_right as f32);
 
@@ -3190,7 +3188,6 @@ mod tests {
         assert_eq!(scratch.horizontal_cache.as_ptr(), cache_ptr);
     }
 }
-
 
 #[cfg(test)]
 mod render_options_tests {
