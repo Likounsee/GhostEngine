@@ -54,6 +54,62 @@ Create crates only when their API is justified. The following is the intended ev
 
 Do not create empty crates just to match this list. Start with a compact workspace and split once code ownership is clear.
 
+## 3.1 Common application API and per-OS platform backends
+
+**Architecture decision for the first usable 2D release:** applications use one
+GhostEngine host API. Windows, Linux and macOS are three implementations behind
+that API, not three incompatible public APIs that every application must learn.
+
+The dependency direction is:
+
+```text
+Application (browser, emulator, UI, ...)
+              |
+      GhostEngine common API
+      |                    |
+  2D renderer         Host/platform contract
+  CPU framebuffer     window, events, clipboard,
+  display lists       presentation surface
+                           |
+                 platform implementation
+                  /         |         \
+             Windows      Linux      macOS
+```
+
+Rules:
+
+- The 2D renderer, framebuffer, geometry, display lists, resources and input
+  event types remain platform-independent.
+- The common host API owns the lifecycle visible to applications: create/close
+  a window, query drawable size and scale, receive normalized input/text events,
+  request redraw, present a frame, and access optional clipboard capabilities.
+- Platform implementations translate native OS events and presentation
+  requirements into those common types. Native handles and OS-specific types
+  must not leak into the renderer or ordinary application code.
+- Presentation is a boundary: the CPU renderer produces pixels; the platform
+  backend validates the pixel format/stride and transfers the frame to the
+  native surface. A backend must not silently change rendering semantics.
+- Capabilities that differ by OS (clipboard, IME, display scaling, window
+  decorations, protected surfaces, etc.) are queried explicitly. Unsupported
+  features return a typed result; they are never silently emulated as success.
+- A headless backend remains available for tests, servers, image generation and
+  applications that provide their own surface.
+- Backend selection is internal to the common API (compile-time target
+  selection or an explicit backend choice where useful). Applications should
+  not need separate Windows/Linux/macOS rendering code.
+
+**Implementation timing:** define and test the common contract during 2D
+finalization, because the existing framebuffer and input types are already
+platform-independent. Implement and validate the Windows, Linux and macOS
+adapters incrementally. Do not create three empty crates or duplicate the
+renderer now. Keep the current window adapters as transitional integration
+paths until the common host API can replace them without breaking examples.
+
+The existing `SurfaceDescriptor` and `Framebuffer::write_to_surface` form
+part of the presentation boundary, but they are not by themselves a complete
+window API: lifecycle, event normalization, redraw scheduling, resize/scale
+handling and backend capabilities still need a shared contract.
+
 ## 4. Core API rules
 
 - Use explicit pixel formats, color spaces and alpha conventions. Document whether colors are linear or sRGB at each boundary.
