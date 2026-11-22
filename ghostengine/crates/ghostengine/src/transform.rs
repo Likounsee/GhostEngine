@@ -107,7 +107,7 @@ impl Transform2D {
     pub fn inverse(self) -> Option<Self> {
         let det = self.determinant();
         if !det.is_finite()
-            || det.abs() <= f32::EPSILON
+            || det == 0.0
             || ![self.m11, self.m12, self.m21, self.m22, self.tx, self.ty]
                 .iter()
                 .all(|v| v.is_finite())
@@ -205,6 +205,15 @@ mod tests {
         assert!(Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0)
             .inverse()
             .is_none());
+    }
+
+    #[test]
+    fn inverse_accepts_small_but_well_conditioned_scales() {
+        let transform = Transform2D::scale(0.0001, 0.0001);
+        let inverse = transform.inverse().expect("non-zero scale is invertible");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
     }
 
     #[test]
