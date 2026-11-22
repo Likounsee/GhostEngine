@@ -1533,7 +1533,8 @@ mod tests {
     fn display_list_fills_ellipse_with_active_transform() {
         let mut list = DisplayList::new();
         list.push_transform(Transform2D::translation(2.0, 1.0));
-        list.fill_ellipse(Point::new(4, 4), 2, 2, Color::RED).unwrap();
+        list.fill_ellipse(Point::new(4, 4), 2, 2, Color::RED)
+            .unwrap();
         list.pop_transform();
 
         let mut target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
@@ -1568,9 +1569,10 @@ mod tests {
         let mut target = Framebuffer::new(10, 8, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
         assert_eq!(target.get_pixel(4, 3), Some(Color::WHITE));
-        assert!(target.pixels().iter().any(|pixel| {
-            *pixel != Color::BLACK && *pixel != Color::WHITE
-        }));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| { *pixel != Color::BLACK && *pixel != Color::WHITE }));
         assert_eq!(stats.commands_executed, 1);
     }
 
