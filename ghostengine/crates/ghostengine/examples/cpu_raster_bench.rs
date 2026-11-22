@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 
 use ghostengine::{
     blend_rect, blend_rect_with_options, compose_layers_auto, compose_layers_parallel_with_threads,
-    draw_atlas_region_clipped, draw_mipmapped_texture_clipped, draw_text,
+    draw_atlas_region_clipped, draw_atlas_region_clipped_with_scratch,
+    draw_mipmapped_texture_clipped, draw_text,
     draw_texture_clipped_auto, draw_texture_clipped_parallel_with_threads,
     draw_texture_clipped_with_options, draw_texture_clipped_with_scratch,
     draw_texture_nine_slice_clipped, draw_texture_transformed_clipped_parallel_with_threads,
@@ -200,6 +201,7 @@ fn main() {
         .iter()
         .find(|region| region.id == 1)
         .expect("benchmark atlas region should exist");
+    let mut atlas_draw_scratch = TextureDrawScratch::default();
     let atlas_object = {
         let mut builder = TextureAtlasBuilder::new(512, 256, 2);
         builder
@@ -642,6 +644,22 @@ fn main() {
                 ),
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
+            );
+        }),
+        measure("Texture atlas region bilinear reused scratch", iterations, |target| {
+            draw_atlas_region_clipped_with_scratch(
+                target,
+                &texture_atlas,
+                atlas_region,
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                &mut atlas_draw_scratch,
             );
         }),
         measure("Texture atlas ID lookup + draw", iterations, |target| {
