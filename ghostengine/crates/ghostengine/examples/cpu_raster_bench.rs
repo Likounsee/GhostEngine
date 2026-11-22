@@ -3,16 +3,17 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use ghostengine::{
-    blend_rect, compose_layers_auto, compose_layers_parallel_with_threads,
+    blend_rect, blend_rect_with_options, compose_layers_auto, compose_layers_parallel_with_threads,
     draw_atlas_region_clipped, draw_mipmapped_texture_clipped, draw_text,
     draw_texture_clipped_auto, draw_texture_clipped_parallel_with_threads,
+    draw_texture_clipped_with_options,
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, StrokeStyle,
     Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch, TextureFilter, Transform2D,
-    UiTheme, Vector, WidgetState,
+    RenderOptions, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -398,6 +399,32 @@ fn main() {
                 raster_threads,
             );
         }),
+        measure("Rectangle fill (configured options)", iterations, |target| {
+            ghostengine::rasterizer::fill_rect_with_options(
+                target,
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
+                Color::rgb(45, 130, 220),
+                RenderOptions::new(),
+            );
+        }),
+        measure("Rectangle alpha blend (configured options)", iterations, |target| {
+            blend_rect_with_options(
+                target,
+                Rect::new(
+                    24 * SCALE_U32,
+                    24 * SCALE_U32,
+                    420 * SCALE_U32,
+                    220 * SCALE_U32,
+                ),
+                Color::rgba(220, 90, 55, 150),
+                RenderOptions::new(),
+            );
+        }),
         measure("Rectangle alpha blend (parallel)", iterations, |target| {
             ghostengine::rasterizer::blend_rect_parallel(
                 target,
@@ -704,6 +731,21 @@ fn main() {
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
                 raster_threads,
+            );
+        }),
+        measure("Texture bilinear (configured options)", iterations, |target| {
+            draw_texture_clipped_with_options(
+                target,
+                &texture,
+                Rect::new(
+                    80 * SCALE_U32,
+                    35 * SCALE_U32,
+                    320 * SCALE_U32,
+                    200 * SCALE_U32,
+                ),
+                TextureFilter::Bilinear,
+                Rect::new(0, 0, WIDTH, HEIGHT),
+                RenderOptions::new(),
             );
         }),
         measure("Texture bilinear (auto)", iterations, |target| {
