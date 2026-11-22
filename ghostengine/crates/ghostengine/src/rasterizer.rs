@@ -1035,7 +1035,8 @@ fn fill_rect_linear_gradient_with_threads(
     let length_squared = dx * dx + dy * dy;
     let left = rect.x.min(target.width()) as usize;
     let top = rect.y.min(target.height()) as usize;
-    let right = (u64::from(rect.x) + u64::from(rect.width)).min(u64::from(target.width())) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width))
+        .min(u64::from(target.width())) as usize;
     let bottom =
         (u64::from(rect.y) + u64::from(rect.height)).min(u64::from(target.height())) as usize;
     if left >= right || top >= bottom {
@@ -1266,7 +1267,14 @@ pub fn fill_rect_conic_gradient_parallel(
     gradient: &Gradient,
 ) {
     let thread_count = parallel_thread_count_for_rect(target, rect);
-    fill_rect_conic_gradient_with_threads(target, rect, center, start_angle, gradient, thread_count);
+    fill_rect_conic_gradient_with_threads(
+        target,
+        rect,
+        center,
+        start_angle,
+        gradient,
+        thread_count,
+    );
 }
 
 /// Fills a conic gradient using the requested number of safe row workers.
@@ -5805,12 +5813,28 @@ mod tests {
     #[test]
     fn conic_gradient_samples_clockwise_and_clips_to_rectangle() {
         let gradient = super::Gradient::new(vec![
-            super::GradientStop { position: 0.0, color: Color::RED },
-            super::GradientStop { position: 0.25, color: Color::GREEN },
-            super::GradientStop { position: 0.5, color: Color::BLUE },
-            super::GradientStop { position: 0.75, color: Color::WHITE },
-            super::GradientStop { position: 1.0, color: Color::RED },
-        ]).unwrap();
+            super::GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+            super::GradientStop {
+                position: 0.25,
+                color: Color::GREEN,
+            },
+            super::GradientStop {
+                position: 0.5,
+                color: Color::BLUE,
+            },
+            super::GradientStop {
+                position: 0.75,
+                color: Color::WHITE,
+            },
+            super::GradientStop {
+                position: 1.0,
+                color: Color::RED,
+            },
+        ])
+        .unwrap();
         let mut image = target(5, 5);
         super::fill_rect_conic_gradient(
             &mut image,
