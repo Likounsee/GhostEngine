@@ -89,7 +89,9 @@ impl core::fmt::Display for HostError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::InvalidDimensions => formatter.write_str("window dimensions must be non-zero"),
-            Self::SizeOverflow => formatter.write_str("window dimensions overflow addressable memory"),
+            Self::SizeOverflow => {
+                formatter.write_str("window dimensions overflow addressable memory")
+            }
             Self::UnsupportedCapability => formatter.write_str("host capability is not supported"),
         }
     }
