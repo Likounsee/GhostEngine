@@ -656,7 +656,7 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
         ),
         |(min_x, min_y, max_x, max_y), edge| {
             let end_x = edge.min_x
-                + edge.inverse_slope * f64::from(edge.max_y - edge.min_y);
+                + edge.inverse_slope * (f64::from(edge.max_y) - f64::from(edge.min_y));
             (
                 min_x.min(edge.min_x.min(end_x)),
                 min_y.min(edge.min_y),
