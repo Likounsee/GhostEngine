@@ -345,7 +345,7 @@ impl From<arboard::Error> for NativeClipboardError {
 #[cfg(test)]
 mod tests {
     use super::{apply_key_code, apply_logical_key, clamp_coordinate, NativeInputAdapter};
-    use crate::{window::InputState, TextInputEvent};
+    use crate::{input::InputState, TextInputEvent};
     use winit::keyboard::{KeyCode, NamedKey};
 
     #[test]
