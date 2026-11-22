@@ -453,6 +453,18 @@ fn process_rows_with_y_mut<F>(
     });
 }
 
+#[inline]
+fn automatic_worker_count() -> usize {
+    #[cfg(feature = "parallel-rendering")]
+    {
+        std::thread::available_parallelism().map(usize::from).unwrap_or(1)
+    }
+    #[cfg(not(feature = "parallel-rendering"))]
+    {
+        1
+    }
+}
+
 fn parallel_thread_count_for_rect(target: &Framebuffer, rect: Rect) -> usize {
     let area = clipped_rect_bounds(target, rect)
         .map(|(left, top, right, bottom)| (right - left) as u64 * (bottom - top) as u64)
@@ -460,9 +472,7 @@ fn parallel_thread_count_for_rect(target: &Framebuffer, rect: Rect) -> usize {
     if area < 16_384 {
         return 1;
     }
-    std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1)
+    automatic_worker_count()
 }
 
 /// Fills a clipped rectangle using the requested number of safe workers.
@@ -1759,9 +1769,7 @@ pub fn fill_rounded_rect_aa_parallel(
     let thread_count = if area < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     fill_rounded_rect_aa_parallel_with_threads(target, rect, radius, color, thread_count);
 }
@@ -2322,9 +2330,7 @@ pub fn fill_polygon_parallel(target: &mut Framebuffer, vertices: &[Point], color
     let thread_count = if vertices.len() < 3 || area < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     fill_polygon_parallel_with_threads(target, vertices, color, thread_count);
 }
@@ -2734,9 +2740,7 @@ pub fn fill_polygon_aa_parallel(target: &mut Framebuffer, vertices: &[Point], co
     let thread_count = if vertices.len() < 3 || area < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     fill_polygon_aa_parallel_with_threads(target, vertices, color, thread_count);
 }
@@ -3371,9 +3375,7 @@ pub fn fill_ellipse_aa_parallel(
     let workers = if area < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     fill_ellipse_aa_parallel_with_threads(target, center, radius_x, radius_y, color, workers);
 }
@@ -3653,9 +3655,7 @@ pub fn draw_ellipse_aa_parallel(
     let workers = if area < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     draw_ellipse_aa_parallel_with_threads(target, center, radius_x, radius_y, color, workers);
 }
@@ -4370,9 +4370,7 @@ pub fn draw_arc_aa_parallel(
     let workers = if diameter.saturating_mul(diameter) < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     draw_arc_aa_parallel_with_threads(
         target,
@@ -4612,9 +4610,7 @@ pub fn fill_arc_aa_parallel(
     let workers = if diameter.saturating_mul(diameter) < 16_384 {
         1
     } else {
-        std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+        automatic_worker_count()
     };
     fill_arc_aa_parallel_with_threads(
         target,
