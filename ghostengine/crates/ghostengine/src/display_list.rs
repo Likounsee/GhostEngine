@@ -417,6 +417,85 @@ impl DisplayList {
         Ok(())
     }
 
+    /// Records a filled ellipse. The curve is flattened to a 0.25-pixel tolerance.
+    ///
+    /// Ellipses use the same transform stack, clipping, and fill-rule behavior as paths.
+    pub fn fill_ellipse(
+        &mut self,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        if radius_x == 0 || radius_y == 0 {
+            return Ok(());
+        }
+        self.fill_path(ellipse_path(center, radius_x, radius_y), Transform2D::IDENTITY, color, 0.25)
+    }
+
+    /// Records a 4x4 supersampled antialiased ellipse fill.
+    pub fn fill_ellipse_aa(
+        &mut self,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        if radius_x == 0 || radius_y == 0 {
+            return Ok(());
+        }
+        self.fill_path_aa(
+            ellipse_path(center, radius_x, radius_y),
+            Transform2D::IDENTITY,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records a filled rounded rectangle with a radius clamped to its dimensions.
+    pub fn fill_rounded_rect(
+        &mut self,
+        rect: Rect,
+        radius: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        if rect.width == 0 || rect.height == 0 {
+            return Ok(());
+        }
+        if radius == 0 {
+            self.fill_rect(rect, color);
+            return Ok(());
+        }
+        self.fill_path(
+            rounded_rect_path(rect, radius),
+            Transform2D::IDENTITY,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records a 4x4 supersampled antialiased rounded-rectangle fill.
+    pub fn fill_rounded_rect_aa(
+        &mut self,
+        rect: Rect,
+        radius: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        if rect.width == 0 || rect.height == 0 {
+            return Ok(());
+        }
+        if radius == 0 {
+            self.fill_rect(rect, color);
+            return Ok(());
+        }
+        self.fill_path_aa(
+            rounded_rect_path(rect, radius),
+            Transform2D::IDENTITY,
+            color,
+            0.25,
+        )
+    }
+
     /// Records a stroked vector path. Stroke width is measured in framebuffer
     /// pixels after the combined local and active transforms are applied.
     pub fn stroke_path(
@@ -1039,6 +1118,78 @@ fn clip_line(start: Point, end: Point, clip: Rect) -> Option<(Point, Point)> {
     Some((point(enter), point(leave)))
 }
 
+const CURVE_KAPPA: f32 = 0.552_284_8;
+
+fn ellipse_path(center: Point, radius_x: u32, radius_y: u32) -> Path {
+    let cx = center.x as f32;
+    let cy = center.y as f32;
+    let rx = radius_x as f32;
+    let ry = radius_y as f32;
+    let kx = rx * CURVE_KAPPA;
+    let ky = ry * CURVE_KAPPA;
+    let mut path = Path::new();
+    path.move_to(crate::Vector::new(cx + rx, cy))
+        .cubic_to(
+            crate::Vector::new(cx + rx, cy + ky),
+            crate::Vector::new(cx + kx, cy + ry),
+            crate::Vector::new(cx, cy + ry),
+        )
+        .cubic_to(
+            crate::Vector::new(cx - kx, cy + ry),
+            crate::Vector::new(cx - rx, cy + ky),
+            crate::Vector::new(cx - rx, cy),
+        )
+        .cubic_to(
+            crate::Vector::new(cx - rx, cy - ky),
+            crate::Vector::new(cx - kx, cy - ry),
+            crate::Vector::new(cx, cy - ry),
+        )
+        .cubic_to(
+            crate::Vector::new(cx + kx, cy - ry),
+            crate::Vector::new(cx + rx, cy - ky),
+            crate::Vector::new(cx + rx, cy),
+        )
+        .close();
+    path
+}
+
+fn rounded_rect_path(rect: Rect, radius: u32) -> Path {
+    let left = rect.x as f32;
+    let top = rect.y as f32;
+    let right = (u64::from(rect.x) + u64::from(rect.width)) as f32;
+    let bottom = (u64::from(rect.y) + u64::from(rect.height)) as f32;
+    let radius = radius.min(rect.width.min(rect.height) / 2) as f32;
+    let k = radius * CURVE_KAPPA;
+    let mut path = Path::new();
+    path.move_to(crate::Vector::new(left + radius, top))
+        .line_to(crate::Vector::new(right - radius, top))
+        .cubic_to(
+            crate::Vector::new(right - radius + k, top),
+            crate::Vector::new(right, top + radius - k),
+            crate::Vector::new(right, top + radius),
+        )
+        .line_to(crate::Vector::new(right, bottom - radius))
+        .cubic_to(
+            crate::Vector::new(right, bottom - radius + k),
+            crate::Vector::new(right - radius + k, bottom),
+            crate::Vector::new(right - radius, bottom),
+        )
+        .line_to(crate::Vector::new(left + radius, bottom))
+        .cubic_to(
+            crate::Vector::new(left + radius - k, bottom),
+            crate::Vector::new(left, bottom - radius + k),
+            crate::Vector::new(left, bottom - radius),
+        )
+        .line_to(crate::Vector::new(left, top + radius))
+        .cubic_to(
+            crate::Vector::new(left, top + radius - k),
+            crate::Vector::new(left + radius - k, top),
+            crate::Vector::new(left + radius, top),
+        )
+        .close();
+    path
+}
+
 #[cfg(test)]
 mod tests {
     use super::DisplayList;
@@ -1286,6 +1437,34 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(row.iter().any(|pixel| *pixel != Color::BLACK));
         assert!(row.iter().any(|pixel| *pixel != Color::BLACK && *pixel != Color::WHITE));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn display_list_fills_ellipse_with_active_transform() {
+        let mut list = DisplayList::new();
+        list.push_transform(Transform2D::translation(2.0, 1.0));
+        list.fill_ellipse(Point::new(4, 4), 2, 2, Color::RED).unwrap();
+        list.pop_transform();
+
+        let mut target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(6, 5), Some(Color::RED));
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn display_list_fills_rounded_rect_and_antialiased_edges() {
+        let mut list = DisplayList::new();
+        list.fill_rounded_rect_aa(Rect::new(1, 1, 8, 6), 2, Color::WHITE)
+            .unwrap();
+
+        let mut target = Framebuffer::new(10, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(target.get_pixel(4, 3), Some(Color::WHITE));
+        assert!(target.pixels().iter().any(|pixel| {
+            *pixel != Color::BLACK && *pixel != Color::WHITE
+        }));
         assert_eq!(stats.commands_executed, 1);
     }
 
