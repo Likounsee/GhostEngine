@@ -25,6 +25,7 @@ pub mod rasterizer;
 pub mod shaping;
 mod simd;
 pub mod stroke;
+pub mod surface;
 pub mod text;
 pub mod texture;
 pub mod texture_atlas;
@@ -122,6 +123,7 @@ pub use shaping::{
     resolve_bidi_runs, BidiRun, OpenTypeShaper, ShapedGlyph, ShapedText, ShapingError,
     TextDirection,
 };
+pub use surface::{AlphaMode, ColorSpace, PixelFormat, SurfaceDescriptor, SurfaceError};
 pub use stroke::{
     stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_aa_parallel_with_threads,
     stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle,
