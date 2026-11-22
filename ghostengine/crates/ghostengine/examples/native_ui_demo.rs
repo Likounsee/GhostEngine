@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             if let Some(action) = events.clipboard_action {
                 match clipboard.resolve(&action) {
                     Ok(Some(text)) => {
-                        let paste = ghostengine::window::InputState {
+                        let paste = ghostengine::InputState {
                             paste_pressed: true,
                             clipboard_text: Some(text),
                             ..Default::default()
