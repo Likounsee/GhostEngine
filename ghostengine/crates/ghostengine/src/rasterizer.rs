@@ -1405,26 +1405,28 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
     let dy = end.y - start.y;
     let length_squared = dx * dx + dy * dy;
     let mut visible = false;
+    let local_x_step = inverse.transform_vector(crate::Vector::new(1.0, 0.0));
     for y in top..bottom {
         let Some(row) = target.row_mut(y) else {
             continue;
         };
+        let mut local =
+            inverse.transform_point(crate::Vector::new(left as f32 + 0.5, y as f32 + 0.5));
         let mut x = left;
         while x + 4 <= right {
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
             for lane in 0_usize..4 {
-                let local = inverse.transform_point(crate::Vector::new(
-                    (x as usize + lane) as f32 + 0.5,
-                    y as f32 + 0.5,
-                ));
-                inside[lane] = rect_contains_point(rect, local);
+                let sample = local;
+                local.x += local_x_step.x;
+                local.y += local_x_step.y;
+                inside[lane] = rect_contains_point(rect, sample);
                 if inside[lane] {
                     visible = true;
                     let position = if length_squared <= f32::EPSILON {
                         0.0
                     } else {
-                        (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
+                        (((sample.x - start.x) * dx + (sample.y - start.y) * dy) / length_squared)
                             .clamp(0.0, 1.0)
                     };
                     sources[lane] = gradient.sample_raster(position);
@@ -1463,15 +1465,17 @@ pub fn fill_transformed_rect_linear_gradient_clipped(
         }
 
         for x in x..right {
-            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
-            if !rect_contains_point(rect, local) {
+            let sample = local;
+            local.x += local_x_step.x;
+            local.y += local_x_step.y;
+            if !rect_contains_point(rect, sample) {
                 continue;
             }
             visible = true;
             let position = if length_squared <= f32::EPSILON {
                 0.0
             } else {
-                (((local.x - start.x) * dx + (local.y - start.y) * dy) / length_squared)
+                (((sample.x - start.x) * dx + (sample.y - start.y) * dy) / length_squared)
                     .clamp(0.0, 1.0)
             };
             let color = gradient.sample_raster(position);
@@ -1527,23 +1531,26 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
     };
     let mut visible = false;
     let inverse_radius = radius.recip();
+    let local_x_step = inverse.transform_vector(crate::Vector::new(1.0, 0.0));
     for y in top..bottom {
         let Some(row) = target.row_mut(y) else {
             continue;
         };
+        let mut local =
+            inverse.transform_point(crate::Vector::new(left as f32 + 0.5, y as f32 + 0.5));
         let mut x = left;
         while x + 4 <= right {
             let mut sources = [Color::TRANSPARENT; 4];
             let mut inside = [false; 4];
             for lane in 0_usize..4 {
-                let local = inverse.transform_point(crate::Vector::new(
-                    (x as usize + lane) as f32 + 0.5,
-                    y as f32 + 0.5,
-                ));
-                inside[lane] = rect_contains_point(rect, local);
+                let sample = local;
+                local.x += local_x_step.x;
+                local.y += local_x_step.y;
+                inside[lane] = rect_contains_point(rect, sample);
                 if inside[lane] {
                     visible = true;
-                    let position = (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
+                    let position =
+                        (sample.x - center.x).hypot(sample.y - center.y) * inverse_radius;
                     sources[lane] = gradient.sample_raster(position);
                 }
             }
@@ -1580,12 +1587,14 @@ pub fn fill_transformed_rect_radial_gradient_clipped(
         }
 
         for x in x..right {
-            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
-            if !rect_contains_point(rect, local) {
+            let sample = local;
+            local.x += local_x_step.x;
+            local.y += local_x_step.y;
+            if !rect_contains_point(rect, sample) {
                 continue;
             }
             visible = true;
-            let position = (local.x - center.x).hypot(local.y - center.y) * inverse_radius;
+            let position = (sample.x - center.x).hypot(sample.y - center.y) * inverse_radius;
             let color = gradient.sample_raster(position);
             let pixel = &mut row[x as usize];
             *pixel = if color.a == u8::MAX {
