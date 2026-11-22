@@ -352,6 +352,119 @@ pub fn draw_line_aa(target: &mut Framebuffer, start: Point, end: Point, color: C
     }
 }
 
+/// Draws an antialiased line while clipping its coverage to a framebuffer region.
+///
+/// Keeping the original line equation preserves Wu coverage at clip boundaries;
+/// clipping rounded endpoints first can turn smooth edges into hard pixels.
+pub fn draw_line_aa_clipped(
+    target: &mut Framebuffer,
+    start: Point,
+    end: Point,
+    clip: Rect,
+    color: Color,
+) -> bool {
+    let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
+        return false;
+    };
+    if color.a == 0 {
+        return true;
+    }
+
+    let (mut x0, mut y0, mut x1, mut y1) = (
+        i64::from(start.x),
+        i64::from(start.y),
+        i64::from(end.x),
+        i64::from(end.y),
+    );
+    let steep = (y1 - y0).abs() > (x1 - x0).abs();
+    if steep {
+        core::mem::swap(&mut x0, &mut y0);
+        core::mem::swap(&mut x1, &mut y1);
+    }
+    if x0 > x1 {
+        core::mem::swap(&mut x0, &mut x1);
+        core::mem::swap(&mut y0, &mut y1);
+    }
+
+    if x0 == x1 {
+        let (px, py) = if steep { (y0, x0) } else { (x0, y0) };
+        if px < i64::from(clip.x)
+            || py < i64::from(clip.y)
+            || px >= i64::from(clip.x) + i64::from(clip.width)
+            || py >= i64::from(clip.y) + i64::from(clip.height)
+        {
+            return false;
+        }
+        let index = py as usize * target.width() as usize + px as usize;
+        if let Some(pixel) = target.pixels_mut().get_mut(index) {
+            *pixel = if color.a == u8::MAX || pixel.a == 0 {
+                color
+            } else {
+                color.blend_over(*pixel)
+            };
+        }
+        return true;
+    }
+
+    let (major_min, major_max, minor_min, minor_max) = if steep {
+        (
+            i64::from(clip.y),
+            i64::from(clip.y) + i64::from(clip.height) - 1,
+            i64::from(clip.x),
+            i64::from(clip.x) + i64::from(clip.width) - 1,
+        )
+    } else {
+        (
+            i64::from(clip.x),
+            i64::from(clip.x) + i64::from(clip.width) - 1,
+            i64::from(clip.y),
+            i64::from(clip.y) + i64::from(clip.height) - 1,
+        )
+    };
+    let first_x = x0.max(major_min);
+    let last_x = x1.min(major_max);
+    if first_x > last_x {
+        return false;
+    }
+
+    let target_width = target.width() as usize;
+    let target_height = target.height() as i64;
+    let pixels = target.pixels_mut();
+    let gradient = (y1 - y0) as f64 / (x1 - x0) as f64;
+    let mut y = y0 as f64 + gradient * (first_x - x0) as f64;
+    let mut plot = |major: i64, minor: i64, coverage: f64| {
+        if minor < minor_min || minor > minor_max {
+            return;
+        }
+        let (px, py) = if steep { (minor, major) } else { (major, minor) };
+        if px < 0 || py < 0 || px >= target_width as i64 || py >= target_height {
+            return;
+        }
+        let alpha = (f64::from(color.a) * coverage.clamp(0.0, 1.0)).round() as u8;
+        if alpha == 0 {
+            return;
+        }
+        let index = py as usize * target_width + px as usize;
+        if let Some(pixel) = pixels.get_mut(index) {
+            let source = Color::rgba(color.r, color.g, color.b, alpha);
+            *pixel = if alpha == u8::MAX {
+                source
+            } else {
+                source.blend_over(*pixel)
+            };
+        }
+    };
+
+    for x in first_x..=last_x {
+        let lower = y.floor();
+        let upper_coverage = y - lower;
+        plot(x, lower as i64, 1.0 - upper_coverage);
+        plot(x, lower as i64 + 1, upper_coverage);
+        y += gradient;
+    }
+    true
+}
+
 /// Fills a batch of same-color rectangles under one shared clip.
 ///
 /// Use this for repeated UI or sprite primitives that share a color and clip.

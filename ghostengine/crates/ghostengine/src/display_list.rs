@@ -10,7 +10,8 @@ use crate::path::{
     PathError,
 };
 use crate::rasterizer::{
-    draw_line, draw_line_aa, fill_rects_clipped, fill_transformed_rect_linear_gradient_clipped,
+    draw_line, draw_line_aa_clipped, fill_rects_clipped,
+    fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
@@ -1082,12 +1083,10 @@ impl DisplayList {
                     antialias,
                     clip,
                 } => {
-                    if let Some((start, end)) = clip_line(*start, *end, *clip) {
-                        if *antialias {
-                            draw_line_aa(target, start, end, *color);
-                        } else {
-                            draw_line(target, start, end, *color);
-                        }
+                    if *antialias {
+                        draw_line_aa_clipped(target, *start, *end, *clip, *color)
+                    } else if let Some((start, end)) = clip_line(*start, *end, *clip) {
+                        draw_line(target, start, end, *color);
                         true
                     } else {
                         false
@@ -2173,7 +2172,10 @@ mod tests {
         assert_eq!(stats.commands_executed, 2);
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
         assert!(target.pixels().contains(&Color::WHITE));
-        assert!(target.pixels().contains(&Color::RED));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > pixel.g && pixel.r > pixel.b));
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != Color::WHITE && *pixel != Color::RED
         }));
@@ -2192,7 +2194,10 @@ mod tests {
         assert_eq!(stats.commands_submitted, 2);
         assert_eq!(stats.commands_executed, 2);
         assert!(target.pixels().contains(&Color::WHITE));
-        assert!(target.pixels().contains(&Color::RED));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.r > pixel.g && pixel.r > pixel.b));
         assert_eq!(target.get_pixel(6, 6), Some(Color::BLACK));
     }
 

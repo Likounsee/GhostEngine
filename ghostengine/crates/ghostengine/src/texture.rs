@@ -727,15 +727,15 @@ pub fn draw_texture_region_clipped_with_scratch(
                             .region_horizontal_cache
                             .reserve(required - scratch.region_horizontal_cache.len());
                     }
-                    let first_sx = (source.x as f32
+                    let first_sx = source.x as f32
                         + ((clip.x - destination.x) as f32 + 0.5) * source.width as f32
                             / destination.width as f32
-                        - 0.5)
-                        .clamp(source.x as f32, source_right as f32);
+                        - 0.5;
                     for source_y in source.y..=source_bottom {
                         let row_offset = source_y as usize * texture_width;
-                        let mut sx = first_sx;
+                        let mut raw_sx = first_sx;
                         for _ in 0..clip.width {
+                            let sx = raw_sx.clamp(source.x as f32, source_right as f32);
                             let x0 = sx.floor() as usize;
                             let x1 = (x0 + 1).min(source_right as usize);
                             let tx = sx - x0 as f32;
@@ -750,7 +750,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 f32::from(left.b) * left_alpha + f32::from(right.b) * right_alpha,
                                 left_alpha + right_alpha,
                             ]);
-                            sx = (sx + horizontal_step).min(source_right as f32);
+                            raw_sx += horizontal_step;
                         }
                     }
                     scratch.cached_region_bilinear_key = Some(cache_key);
@@ -761,8 +761,7 @@ pub fn draw_texture_region_clipped_with_scratch(
             }
             let first_relative_x =
                 ((clip.x - destination.x) as f32 + 0.5) / destination.width as f32;
-            let first_sx = (source.x as f32 + first_relative_x * source.width as f32 - 0.5)
-                .clamp(source.x as f32, source_right as f32);
+            let first_sx = source.x as f32 + first_relative_x * source.width as f32 - 0.5;
 
             for y in clip.y..clip.y + clip.height {
                 let relative_y = ((y - destination.y) as f32 + 0.5) / destination.height as f32;
@@ -772,8 +771,6 @@ pub fn draw_texture_region_clipped_with_scratch(
                 let y1 = (y0 + 1).min(source_bottom as usize);
                 let ty = sy - y0 as f32;
                 let target_row = y as usize * target_width;
-                let mut sx = first_sx;
-
                 if use_region_cache {
                     let top_start = (y0 - source.y as usize) * clip.width as usize;
                     let bottom_start = (y1 - source.y as usize) * clip.width as usize;
@@ -785,11 +782,12 @@ pub fn draw_texture_region_clipped_with_scratch(
                     for (column, (top, bottom)) in
                         top_samples.iter().zip(bottom_samples).enumerate()
                     {
-                        let x0 = fallback_sx.floor() as usize;
+                        let sx = fallback_sx.clamp(source.x as f32, source_right as f32);
+                        let x0 = sx.floor() as usize;
                         let sample = BilinearHorizontalSample {
                             x0,
                             x1: (x0 + 1).min(source_right as usize),
-                            tx: fallback_sx - x0 as f32,
+                            tx: sx - x0 as f32,
                         };
                         let pixel = &mut target_pixels[target_row + clip.x as usize + column];
                         if pixel.a == 255 {
@@ -813,7 +811,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 *pixel = sampled.blend_over(*pixel);
                             }
                         }
-                        fallback_sx = (fallback_sx + horizontal_step).min(source_right as f32);
+                        fallback_sx += horizontal_step;
                     }
                 } else if source_region_is_opaque {
                     // Resolve the two source rows once per destination row.
@@ -824,7 +822,9 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let top_row = &source_pixels[top_offset..top_offset + texture_width];
                     let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
 
+                    let mut raw_sx = first_sx;
                     for x in clip.x..clip.x + clip.width {
+                        let sx = raw_sx.clamp(source.x as f32, source_right as f32);
                         let x0 = sx.floor() as usize;
                         let sampled = sample_bilinear_opaque_rows(
                             top_row,
@@ -837,7 +837,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                             ty,
                         );
                         target_pixels[target_row + x as usize] = sampled;
-                        sx = (sx + horizontal_step).min(source_right as f32);
+                        raw_sx += horizontal_step;
                     }
                 } else {
                     let top_offset = y0 * texture_width;
@@ -845,7 +845,9 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let top_row = &source_pixels[top_offset..top_offset + texture_width];
                     let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
 
+                    let mut raw_sx = first_sx;
                     for x in clip.x..clip.x + clip.width {
+                        let sx = raw_sx.clamp(source.x as f32, source_right as f32);
                         let x0 = sx.floor() as usize;
                         let sample = BilinearHorizontalSample {
                             x0,
@@ -879,7 +881,7 @@ pub fn draw_texture_region_clipped_with_scratch(
                                 *pixel = sampled.blend_over(*pixel);
                             }
                         }
-                        sx = (sx + horizontal_step).min(source_right as f32);
+                        raw_sx += horizontal_step;
                     }
                 }
             }

@@ -2694,9 +2694,20 @@ mod tests {
         damage.add(Rect::new(12, 12, 2, 2));
         damage.add(Rect::new(0, 9, 1, 1));
 
-        assert_eq!(damage.rectangles().len(), 2);
-        assert!(damage.rectangles().contains(&Rect::new(1, 1, 6, 6)));
-        assert!(damage.rectangles().contains(&Rect::new(0, 9, 1, 1)));
+        for y in 0..10 {
+            for x in 0..10 {
+                let expected = ((1..5).contains(&x) && (1..5).contains(&y))
+                    || ((3..7).contains(&x) && (3..7).contains(&y))
+                    || (x == 0 && y == 9);
+                let coverage = damage.rectangles().iter().filter(|rect| {
+                    x >= rect.x
+                        && y >= rect.y
+                        && x < rect.x + rect.width
+                        && y < rect.y + rect.height
+                }).count();
+                assert_eq!(coverage, usize::from(expected), "coverage at ({x}, {y})");
+            }
+        }
 
         damage.clear();
         assert!(damage.is_empty());
