@@ -14,8 +14,8 @@ pub mod framebuffer;
 pub mod geometry;
 #[cfg(feature = "image-decoding")]
 pub mod image;
-pub mod interaction;
 pub mod input;
+pub mod interaction;
 pub mod layout;
 pub mod mask;
 pub mod mipmap;
