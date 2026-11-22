@@ -41,7 +41,7 @@ jobs:
         working-directory: ghostengine
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Test scalar single-threaded fallback
+      - name: Test scalar fallback without automatic parallel selection
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features
 

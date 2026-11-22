@@ -12,8 +12,8 @@ presentation, native input and image decoding are opt-in capabilities.
 | `native-input` | Winit event translation, keyboard/text/IME input and system clipboard | minifb or window creation |
 | `native-window` | Winit window/event-loop integration and softbuffer presentation; implies `native-input` | minifb or GPU rendering |
 | `image-decoding` | BMP, JPEG, PNG and PNM decoding into CPU textures | Any window system |
-| `simd` | Safe `wide`-based pixel blending (enabled by default) | The scalar fallback |
-| `parallel-rendering` | Automatic worker selection for large raster/composition work (enabled by default) | Explicit worker-count APIs |
+| `simd` | Safe `wide`-based pixel blending (enabled by default) | Runtime ISA dispatch or GPU rendering |
+| `parallel-rendering` | Automatic worker selection for large raster/composition work (enabled by default) | A persistent background worker pool |
 
 The shared `InputState` and `ComponentTree::handle_window_input` API live
 in the platform-independent `input` module. This allows either window adapter
@@ -36,10 +36,10 @@ cargo run -p ghostengine --features native-window --example native_ui_demo
 ```
 
 Both `simd` and `parallel-rendering` are enabled by default. Use
-`--no-default-features` to validate or ship the scalar, single-threaded CPU
-fallback. The explicit `*_parallel_with_threads` APIs remain callable when
-automatic parallel selection is disabled; pass one worker to force serial
-execution.
+`--no-default-features` to validate the scalar kernels and disable automatic
+worker selection. Explicit `*_parallel_with_threads` APIs remain available for
+applications that deliberately request a worker count; pass one worker to force
+serial execution.
 
 ```sh
 # Scalar + single-threaded fallback
