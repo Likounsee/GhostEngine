@@ -994,6 +994,22 @@ mod tests {
     }
 
     #[test]
+    fn clipped_fill_handles_contours_spanning_extreme_finite_x_coordinates() {
+        let extent = f32::MAX;
+        let mut path = Path::new();
+        path.move_to(Vector::new(-extent, 0.0))
+            .line_to(Vector::new(extent, 0.0))
+            .line_to(Vector::new(extent, 2.0))
+            .line_to(Vector::new(-extent, 2.0))
+            .close();
+
+        let mut target = Framebuffer::new(4, 2, Color::BLACK).unwrap();
+        fill_path_even_odd(&mut target, &path, Color::WHITE, 0.1).unwrap();
+
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
     fn active_edge_fill_matches_full_scan_for_complex_clipped_contours() {
         fn reference_full_scan(target: &mut Framebuffer, path: &Path, color: Color, clip: Rect) {
             let flattened = path.flatten(0.2).unwrap();
