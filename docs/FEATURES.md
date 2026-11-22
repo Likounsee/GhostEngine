@@ -103,6 +103,15 @@ outside the supplied clip or framebuffer bounds. The ordered display-list API
 also records and replays linear, radial and conic gradients while preserving
 the active affine transform and nested clip state.
 
+## Nine-slice texture rendering
+
+The CPU texture API supports clipped nine-slice scaling for resizable panels and
+UI frames. The four border margins are preserved where possible and proportionally
+compressed when the destination is smaller than the combined borders.
+`draw_texture_nine_slice_clipped_with_scratch` reuses the bilinear sampling
+workspace across all nine patches and across frames; applications rendering
+repeated UI panels should retain one `TextureDrawScratch` per render context.
+
 ## CPU surface export
 
 The core framebuffer remains an owned, tightly packed RGBA buffer. The
