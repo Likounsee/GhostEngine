@@ -4,7 +4,11 @@
 //! framebuffer. Each command captures the active clip rectangle, so later
 //! clip-stack changes cannot affect commands that were already recorded.
 
-use crate::path::{fill_transformed_path_even_odd_clipped, Path, PathError};
+use crate::path::{
+    fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
+    fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped, Path,
+    PathError,
+};
 use crate::rasterizer::{
     draw_line, fill_rects_clipped, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
@@ -37,6 +41,14 @@ impl PartialEq for SharedFont {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathFillRule {
+    EvenOdd,
+    NonZero,
+    EvenOddAntialiased,
+    NonZeroAntialiased,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Command {
     Clear(Color),
@@ -62,6 +74,7 @@ enum Command {
         transform: Transform2D,
         color: Color,
         tolerance: f32,
+        fill_rule: PathFillRule,
         clip: Rect,
     },
     StrokePath {
@@ -329,6 +342,65 @@ impl DisplayList {
         color: Color,
         tolerance: f32,
     ) -> Result<(), PathError> {
+        self.record_fill_path(path, transform, color, tolerance, PathFillRule::EvenOdd)
+    }
+
+    /// Records a filled path using the non-zero winding rule.
+    ///
+    /// Unlike even-odd filling, nested contours with the same winding direction
+    /// remain filled. Geometry validation and active transforms match fill_path.
+    pub fn fill_path_non_zero(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), PathError> {
+        self.record_fill_path(path, transform, color, tolerance, PathFillRule::NonZero)
+    }
+
+    /// Records a 4x4 supersampled antialiased path fill using even-odd coverage.
+    pub fn fill_path_aa(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), PathError> {
+        self.record_fill_path(
+            path,
+            transform,
+            color,
+            tolerance,
+            PathFillRule::EvenOddAntialiased,
+        )
+    }
+
+    /// Records a 4x4 supersampled antialiased path fill using non-zero winding.
+    pub fn fill_path_non_zero_aa(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+    ) -> Result<(), PathError> {
+        self.record_fill_path(
+            path,
+            transform,
+            color,
+            tolerance,
+            PathFillRule::NonZeroAntialiased,
+        )
+    }
+
+    fn record_fill_path(
+        &mut self,
+        path: Path,
+        transform: Transform2D,
+        color: Color,
+        tolerance: f32,
+        fill_rule: PathFillRule,
+    ) -> Result<(), PathError> {
         let transform = transform.then(self.active_transform());
         path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
@@ -337,6 +409,7 @@ impl DisplayList {
                 transform,
                 color,
                 tolerance,
+                fill_rule,
                 clip,
             });
         }
@@ -708,11 +781,27 @@ impl DisplayList {
                     transform,
                     color,
                     tolerance,
+                    fill_rule,
                     clip,
                 } => {
-                    let result = fill_transformed_path_even_odd_clipped(
-                        target, path, *transform, *color, *tolerance, *clip,
-                    );
+                    let result = match fill_rule {
+                        PathFillRule::EvenOdd => fill_transformed_path_even_odd_clipped(
+                            target, path, *transform, *color, *tolerance, *clip,
+                        ),
+                        PathFillRule::NonZero => fill_transformed_path_non_zero_clipped(
+                            target, path, *transform, *color, *tolerance, *clip,
+                        ),
+                        PathFillRule::EvenOddAntialiased => {
+                            fill_transformed_path_even_odd_aa_clipped(
+                                target, path, *transform, *color, *tolerance, *clip,
+                            )
+                        }
+                        PathFillRule::NonZeroAntialiased => {
+                            fill_transformed_path_non_zero_aa_clipped(
+                                target, path, *transform, *color, *tolerance, *clip,
+                            )
+                        }
+                    };
                     result.is_ok()
                 }
                 Command::StrokePath {
@@ -1104,6 +1193,72 @@ mod tests {
         assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
         assert_eq!(target.get_pixel(6, 3), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn display_list_supports_non_zero_path_fill_rule() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.0, 1.0))
+            .line_to(crate::Vector::new(7.0, 1.0))
+            .line_to(crate::Vector::new(7.0, 7.0))
+            .line_to(crate::Vector::new(1.0, 7.0))
+            .close()
+            .move_to(crate::Vector::new(3.0, 3.0))
+            .line_to(crate::Vector::new(5.0, 3.0))
+            .line_to(crate::Vector::new(5.0, 5.0))
+            .line_to(crate::Vector::new(3.0, 5.0))
+            .close();
+
+        let mut even_odd = DisplayList::new();
+        even_odd
+            .fill_path(path.clone(), crate::Transform2D::IDENTITY, Color::RED, 0.25)
+            .unwrap();
+        let mut non_zero = DisplayList::new();
+        non_zero
+            .fill_path_non_zero(path, crate::Transform2D::IDENTITY, Color::RED, 0.25)
+            .unwrap();
+
+        let mut even_target = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        let mut non_zero_target = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        even_odd.replay(&mut even_target);
+        non_zero.replay(&mut non_zero_target);
+
+        assert_eq!(even_target.get_pixel(4, 4), Some(Color::BLACK));
+        assert_eq!(non_zero_target.get_pixel(4, 4), Some(Color::RED));
+        assert_eq!(non_zero_target.get_pixel(2, 2), Some(Color::RED));
+    }
+
+    #[test]
+    fn display_list_supports_antialiased_path_fills() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.5, 1.5))
+            .line_to(crate::Vector::new(6.5, 1.5))
+            .line_to(crate::Vector::new(6.5, 6.5))
+            .line_to(crate::Vector::new(1.5, 6.5))
+            .close();
+
+        let mut list = DisplayList::new();
+        list.fill_path_aa(
+            path.clone(),
+            crate::Transform2D::IDENTITY,
+            Color::WHITE,
+            0.25,
+        )
+        .unwrap();
+        list.fill_path_non_zero_aa(
+            path,
+            crate::Transform2D::translation(1.0, 0.0),
+            Color::WHITE,
+            0.25,
+        )
+        .unwrap();
+
+        let mut target = Framebuffer::new(10, 9, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        let edge_alpha = target.get_pixel(1, 3).unwrap().a;
+        assert!(edge_alpha > 0 && edge_alpha < 255);
+        assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
+        assert_eq!(stats.commands_executed, 2);
     }
 
     #[test]
