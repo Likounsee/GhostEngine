@@ -5207,7 +5207,7 @@ mod tests {
         fill_ellipse, fill_ellipse_aa, fill_polygon, fill_polygon_aa, fill_rect, fill_rounded_rect,
         fill_triangle,
     };
-    use crate::{Color, Framebuffer, Point, Rect};
+    use crate::{Color, Framebuffer, Point, Rect, Vector};
 
     fn target(width: u32, height: u32) -> Framebuffer {
         Framebuffer::new(width, height, Color::BLACK).unwrap()
