@@ -209,8 +209,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_resize_without_changing_drawable() {
-        let mut host =
-            HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
         assert_eq!(
             host.resize(0, 32),
             Err(HeadlessHostError::Configuration(
