@@ -2038,6 +2038,25 @@ mod tests {
     }
 
     #[test]
+    fn antialiased_line_respects_active_transform_and_clip() {
+        let mut list = DisplayList::new();
+        assert!(list.push_transform(crate::Transform2D::translation(1.0, 1.0)));
+        list.push_clip(Rect::new(2, 2, 4, 4));
+        list.line_aa(Point::new(0, 0), Point::new(6, 4), Color::WHITE);
+
+        let mut target = Framebuffer::new(9, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
+        assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
+        assert!(target.pixels().iter().any(|pixel| {
+            pixel.a > 0 && pixel.a < 255
+        }));
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
     fn clear_resets_clip_independently_and_list_can_be_reused() {
         let mut list = DisplayList::new();
         list.push_clip(Rect::new(1, 1, 2, 2));
