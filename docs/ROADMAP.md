@@ -60,6 +60,39 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 - A sample UI can combine text, images and multiple layers.
 - All external dependencies have reviewed licenses.
 
+## 4. First usable 2D release: common host API and platform adapters
+
+This milestone is part of the 2D release and does not depend on software 3D.
+
+**Deliverables**
+- One documented, platform-independent application-facing host API.
+- A headless host/surface implementation for deterministic tests and custom
+  framebuffer consumers.
+- A shared event model for pointer, keyboard, text/IME, resize, scale-factor,
+  focus and close events.
+- A presentation contract using explicit pixel format, alpha mode, color space,
+  dimensions and row stride.
+- Separate Windows, Linux and macOS adapter implementations behind the same
+  contract; no OS-specific types in application-facing rendering APIs.
+- Capability queries and typed unsupported-feature behavior.
+- Integration examples that use the same application code on all three OSes.
+
+**Acceptance criteria**
+- The same minimal application source builds against the common API on Windows,
+  Linux and macOS.
+- Each adapter presents CPU-rendered frames and correctly handles resize,
+  close, focus, pointer, keyboard and text input where supported.
+- Headless tests do not require a window system or display server.
+- OS-specific code is isolated and the core renderer builds without platform
+  features.
+- CI compiles and tests all supported target adapters; real-window smoke tests
+  are tracked separately where CI has no display.
+
+**Migration rule:** retain the existing `window` and `native-window` adapters
+until the common API covers their required behavior and the examples have been
+ported. Do not remove a working integration merely to make the architecture
+look cleaner.
+
 ## 4. Software 3D foundation
 
 **Deliverables**
@@ -140,9 +173,11 @@ Integrate incrementally, with a small demonstrator for each consumer:
 2. Core + software 2D MVP.
 3. Foundational 2D.
 4. Text/images/compositor.
-5. Interactive application frontend and host presentation adapters.
-6. Software 3D.
-7. Optional GPU backend research.
-8. Hardening and consumer integrations.
+5. **First usable 2D release:** common host API, headless backend and Windows,
+   Linux and macOS adapters.
+6. 2D production hardening, cross-platform examples and application integrations.
+7. Software 3D (separate milestone, after the 2D release).
+8. Optional GPU backend research (deferred).
+9. Further consumer integrations and platform expansion.
 
 Do not start GPU acceleration before the software renderer and public resource model are usable. Do not mark a milestone complete based on scaffolding alone.
