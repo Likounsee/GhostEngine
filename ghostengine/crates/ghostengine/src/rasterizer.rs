@@ -1639,18 +1639,25 @@ pub fn fill_transformed_rect_conic_gradient_clipped(
     };
 
     const TAU: f32 = core::f32::consts::TAU;
+    // The inverse transform is affine: moving one framebuffer pixel to the
+    // right always adds the same local-space vector. Compute it once and walk
+    // each scanline instead of multiplying the inverse matrix for every pixel.
+    let local_x_step = inverse.transform_vector(crate::Vector::new(1.0, 0.0));
     let mut visible = false;
     for y in top..bottom {
         let Some(row) = target.row_mut(y) else {
             continue;
         };
+        let mut local = inverse.transform_point(crate::Vector::new(left as f32 + 0.5, y as f32 + 0.5));
         for x in left..right {
-            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
-            if !rect_contains_point(rect, local) {
+            let sample = local;
+            local.x += local_x_step.x;
+            local.y += local_x_step.y;
+            if !rect_contains_point(rect, sample) {
                 continue;
             }
             visible = true;
-            let angle = (local.y - center.y).atan2(local.x - center.x);
+            let angle = (sample.y - center.y).atan2(sample.x - center.x);
             let position = (angle - start_angle).rem_euclid(TAU) / TAU;
             let color = gradient.sample_raster(position);
             let pixel = &mut row[x as usize];
@@ -9480,6 +9487,29 @@ mod transformed_conic_gradient_tests {
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
         assert_eq!(target.get_pixel(5, 5), Some(Color::BLACK));
         assert!(target.pixels().iter().any(|pixel| *pixel != Color::BLACK));
+    }
+
+    #[test]
+    fn identity_transformed_conic_gradient_matches_untransformed_output() {
+        use super::fill_rect_conic_gradient;
+
+        let rect = Rect::new(2, 3, 7, 5);
+        let center = Vector::new(5.5, 5.5);
+        let mut expected = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+
+        fill_rect_conic_gradient(&mut expected, rect, center, 0.35, &gradient());
+        assert!(fill_transformed_rect_conic_gradient_clipped(
+            &mut actual,
+            rect,
+            Transform2D::IDENTITY,
+            center,
+            0.35,
+            &gradient(),
+            Rect::new(0, 0, 14, 12),
+        ));
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
