@@ -694,19 +694,25 @@ pub fn draw_texture_region_clipped(
                 let mut sx = first_sx;
 
                 if source_region_is_opaque {
+                    // Resolve the two source rows once per destination row.
+                    // The previous per-pixel helper repeated both row-offset
+                    // multiplications for every sample in the horizontal run.
+                    let top_offset = y0 * texture_width;
+                    let bottom_offset = y1 * texture_width;
+                    let top_row = &source_pixels[top_offset..top_offset + texture_width];
+                    let bottom_row = &source_pixels[bottom_offset..bottom_offset + texture_width];
+
                     for x in clip.x..clip.x + clip.width {
                         let x0 = sx.floor() as usize;
-                        let sampled = sample_bilinear_opaque_prepared(
-                            source_pixels,
-                            texture_width,
-                            BilinearCoordinates {
+                        let sampled = sample_bilinear_opaque_rows(
+                            top_row,
+                            bottom_row,
+                            BilinearHorizontalSample {
                                 x0,
                                 x1: (x0 + 1).min(source_right as usize),
-                                y0,
-                                y1,
                                 tx: sx - x0 as f32,
-                                ty,
                             },
+                            ty,
                         );
                         target_pixels[target_row + x as usize] = sampled;
                         sx = (sx + horizontal_step).min(source_right as f32);
