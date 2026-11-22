@@ -51,7 +51,8 @@ pub fn apply_alpha_mask_clipped(
         let overlap_end = overlap_end as usize;
         let mask_x = (mask_x_at_clip_start + overlap_start as i64) as usize;
         let mask_row_start = mask_y as usize * mask.width() as usize + mask_x;
-        let mask_row = &mask.pixels()[mask_row_start..mask_row_start + (overlap_end - overlap_start)];
+        let mask_row =
+            &mask.pixels()[mask_row_start..mask_row_start + (overlap_end - overlap_start)];
         for (pixel, mask_pixel) in target_row[overlap_start..overlap_end]
             .iter_mut()
             .zip(mask_row.iter())
@@ -125,7 +126,12 @@ mod tests {
         let mut target = Framebuffer::new(2, 1, Color::rgba(1, 2, 3, 255)).unwrap();
         let mask = Framebuffer::new(1, 1, Color::WHITE).unwrap();
 
-        apply_alpha_mask_clipped(&mut target, &mask, Point::new(10, 10), Rect::new(0, 0, 2, 1));
+        apply_alpha_mask_clipped(
+            &mut target,
+            &mask,
+            Point::new(10, 10),
+            Rect::new(0, 0, 2, 1),
+        );
 
         assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(1, 2, 3, 0)));
         assert_eq!(target.get_pixel(1, 0), Some(Color::rgba(1, 2, 3, 0)));
