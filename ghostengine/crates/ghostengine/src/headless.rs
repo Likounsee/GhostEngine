@@ -15,6 +15,7 @@ pub enum HeadlessHostError {
     Configuration(HostError),
     Framebuffer(FramebufferError),
     DimensionMismatch,
+    Closed,
 }
 
 impl fmt::Display for HeadlessHostError {
@@ -25,6 +26,7 @@ impl fmt::Display for HeadlessHostError {
             Self::DimensionMismatch => {
                 formatter.write_str("framebuffer dimensions do not match the headless drawable")
             }
+            Self::Closed => formatter.write_str("headless host is closed"),
         }
     }
 }
@@ -71,6 +73,9 @@ impl HeadlessHost {
 
     /// Changes the drawable size and queues the matching resize event.
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), HeadlessHostError> {
+        if !self.open {
+            return Err(HeadlessHostError::Closed);
+        }
         let mut next = self.config.clone();
         next.width = width;
         next.height = height;
@@ -133,10 +138,15 @@ impl HostBackend for HeadlessHost {
     }
 
     fn request_redraw(&mut self) {
-        self.queue_event(HostEvent::RedrawRequested);
+        if self.open {
+            self.queue_event(HostEvent::RedrawRequested);
+        }
     }
 
     fn present(&mut self, framebuffer: &Framebuffer) -> Result<(), Self::BackendError> {
+        if !self.open {
+            return Err(HeadlessHostError::Closed);
+        }
         if (framebuffer.width(), framebuffer.height()) != self.drawable_size() {
             return Err(HeadlessHostError::DimensionMismatch);
         }
@@ -248,6 +258,15 @@ mod tests {
         let mut events = Vec::new();
         host.poll_events(&mut events);
         assert_eq!(events, [HostEvent::CloseRequested]);
+    }
+
+    #[test]
+    fn closed_host_rejects_resize_and_presentation() {
+        let mut host = HeadlessHost::default();
+        host.close();
+        assert_eq!(host.resize(2, 2), Err(HeadlessHostError::Closed));
+        let frame = Framebuffer::new(1, 1, Color::BLACK).unwrap();
+        assert_eq!(host.present(&frame), Err(HeadlessHostError::Closed));
     }
 
     #[test]
