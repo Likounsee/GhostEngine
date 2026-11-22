@@ -778,13 +778,7 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
             while index < intersections.len() {
                 let x = intersections[index].0;
                 if winding != 0 && previous_x < x {
-                    accumulate_horizontal_coverage(
-                        &mut coverage,
-                        min_x,
-                        max_x,
-                        previous_x,
-                        x,
-                    );
+                    accumulate_horizontal_coverage(&mut coverage, min_x, max_x, previous_x, x);
                 }
                 while index < intersections.len() && intersections[index].0 == x {
                     winding += intersections[index].1;
