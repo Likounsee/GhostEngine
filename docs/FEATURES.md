@@ -76,6 +76,23 @@ and presentation models.
 - New features are added only when their code path is genuinely optional and
   the corresponding build/test matrix can validate it.
 
+## Cross-platform host API direction
+
+The intended application-facing API is shared across Windows, Linux and macOS.
+Platform-specific implementations are selected behind that API; applications
+must not need three separate window, input or presentation code paths.
+
+The current `window` (minifb) and `native-window` (winit + softbuffer)
+features are transitional adapters, not the final public platform architecture.
+The CPU rendering core, `InputState`, `SurfaceDescriptor` and framebuffer
+export are already platform-independent building blocks. The common host
+lifecycle, normalized event stream, scale/resize handling, redraw scheduling
+and capability reporting remain to be designed and implemented.
+
+The shared contract is being defined as part of 2D v1. Concrete platform
+implementations will be validated incrementally on Windows, Linux and macOS.
+Do not add empty OS-specific feature flags or duplicate the 2D renderer.
+
 ## Planned feature groups
 
 These are design targets, **not implemented Cargo features yet**:
