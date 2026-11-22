@@ -118,6 +118,13 @@ impl CachedLayer {
             let target_row = &mut target.pixels_mut()[target_start..target_start + copy_width];
 
             if opacity == 255 {
+                if source_row.iter().all(|source| source.a == 255) {
+                    target_row.copy_from_slice(source_row);
+                    continue;
+                }
+                if source_row.iter().all(|source| source.a == 0) {
+                    continue;
+                }
                 for (background, source) in target_row.iter_mut().zip(source_row.iter().copied()) {
                     if source.a == 255 {
                         *background = source;
