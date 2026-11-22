@@ -1,49 +1,48 @@
-//! Architecture-independent SIMD entry points for CPU raster kernels.
+//! SIMD pixel kernels with a scalar fallback.
 //!
-//! Keep vector types and backend-specific operations inside this module. The
-//! rasterizer calls small pixel-oriented functions, allowing the implementation
-//! to move from `wide` to Rust Portable SIMD (or another backend) without
-//! spreading SIMD types through the renderer's public or internal APIs.
+//! The renderer calls the same narrow functions regardless of build features.
+//! The default build enables the safe `wide` backend; a no-default-features
+//! build keeps the CPU renderer functional with scalar blending.
 
 use crate::Color;
+
+#[cfg(feature = "simd")]
 use wide::u32x4;
 
+#[cfg(feature = "simd")]
 #[inline]
-pub(crate) fn blend_opaque_quad(
-    pixels: &mut [Color; 4],
-    source: Color,
-    source_alpha: u32,
-    inverse_source_alpha: u32,
-) {
-    // Each SIMD lane represents one pixel channel value across four pixels.
-    // The rounded divide by 255 is expressed with shifts and additions:
-    // floor((n + 127) / 255) == (m + 1 + (m >> 8)) >> 8, m = n + 127.
+pub(crate) fn blend_opaque_quad(pixels: &mut [Color; 4], source: Color, source_alpha: u32, inverse_source_alpha: u32) {
     let blend_channel = |source_channel: u32, destinations: [u32; 4]| {
         let numerator = u32x4::splat(source_channel * source_alpha)
             + u32x4::new(destinations) * u32x4::splat(inverse_source_alpha)
             + u32x4::splat(127);
         ((numerator + u32x4::splat(1) + (numerator >> 8_u32)) >> 8_u32).to_array()
     };
-
-    let red = blend_channel(
-        u32::from(source.r),
-        (*pixels).map(|pixel| u32::from(pixel.r)),
-    );
-    let green = blend_channel(
-        u32::from(source.g),
-        (*pixels).map(|pixel| u32::from(pixel.g)),
-    );
-    let blue = blend_channel(
-        u32::from(source.b),
-        (*pixels).map(|pixel| u32::from(pixel.b)),
-    );
-
+    let red = blend_channel(u32::from(source.r), (*pixels).map(|pixel| u32::from(pixel.r)));
+    let green = blend_channel(u32::from(source.g), (*pixels).map(|pixel| u32::from(pixel.g)));
+    let blue = blend_channel(u32::from(source.b), (*pixels).map(|pixel| u32::from(pixel.b)));
     for index in 0..4 {
         pixels[index] = Color::rgb(red[index] as u8, green[index] as u8, blue[index] as u8);
     }
 }
 
+#[cfg(not(feature = "simd"))]
+#[inline]
+pub(crate) fn blend_opaque_quad(pixels: &mut [Color; 4], source: Color, source_alpha: u32, inverse_source_alpha: u32) {
+    let blend_channel = |source: u8, destination: u8| -> u8 {
+        ((u32::from(source) * source_alpha + u32::from(destination) * inverse_source_alpha + 127) / 255) as u8
+    };
+    for pixel in pixels {
+        *pixel = Color::rgb(
+            blend_channel(source.r, pixel.r),
+            blend_channel(source.g, pixel.g),
+            blend_channel(source.b, pixel.b),
+        );
+    }
+}
+
 /// Composites four varying source pixels over four opaque destinations.
+#[cfg(feature = "simd")]
 #[inline]
 pub(crate) fn blend_variable_opaque_quad(destinations: &mut [Color; 4], sources: [Color; 4]) {
     let source_alpha = sources.map(|color| u32::from(color.a));
@@ -54,20 +53,28 @@ pub(crate) fn blend_variable_opaque_quad(destinations: &mut [Color; 4], sources:
             + u32x4::splat(127);
         ((numerator + u32x4::splat(1) + (numerator >> 8_u32)) >> 8_u32).to_array()
     };
-    let red = blend_channel(
-        sources.map(|color| u32::from(color.r)),
-        (*destinations).map(|color| u32::from(color.r)),
-    );
-    let green = blend_channel(
-        sources.map(|color| u32::from(color.g)),
-        (*destinations).map(|color| u32::from(color.g)),
-    );
-    let blue = blend_channel(
-        sources.map(|color| u32::from(color.b)),
-        (*destinations).map(|color| u32::from(color.b)),
-    );
+    let red = blend_channel(sources.map(|color| u32::from(color.r)), (*destinations).map(|color| u32::from(color.r)));
+    let green = blend_channel(sources.map(|color| u32::from(color.g)), (*destinations).map(|color| u32::from(color.g)));
+    let blue = blend_channel(sources.map(|color| u32::from(color.b)), (*destinations).map(|color| u32::from(color.b)));
     for index in 0..4 {
         destinations[index] = Color::rgb(red[index] as u8, green[index] as u8, blue[index] as u8);
+    }
+}
+
+#[cfg(not(feature = "simd"))]
+#[inline]
+pub(crate) fn blend_variable_opaque_quad(destinations: &mut [Color; 4], sources: [Color; 4]) {
+    for (destination, source) in destinations.iter_mut().zip(sources) {
+        let alpha = u32::from(source.a);
+        let inverse_alpha = 255 - alpha;
+        let blend_channel = |source: u8, destination: u8| -> u8 {
+            ((u32::from(source) * alpha + u32::from(destination) * inverse_alpha + 127) / 255) as u8
+        };
+        *destination = Color::rgb(
+            blend_channel(source.r, destination.r),
+            blend_channel(source.g, destination.g),
+            blend_channel(source.b, destination.b),
+        );
     }
 }
 
