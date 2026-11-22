@@ -1242,6 +1242,120 @@ fn fill_rect_radial_gradient_with_threads(
 /// Fills an affine-transformed rectangle with a linear gradient.
 /// Gradient coordinates are expressed in the rectangle's local coordinate space.
 /// Pixel centers are mapped through the inverse transform for stable sampling.
+/// Fills a clipped rectangle with a conic gradient rotating clockwise from `start_angle`.
+///
+/// Angles are expressed in radians in framebuffer coordinates (positive Y points
+/// down). The angle is normalized to one full turn; the gradient's first and last
+/// stops meet at the angular seam. Non-finite centers or angles draw nothing.
+pub fn fill_rect_conic_gradient(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    start_angle: f32,
+    gradient: &Gradient,
+) {
+    fill_rect_conic_gradient_with_threads(target, rect, center, start_angle, gradient, 1);
+}
+
+/// Fills a conic gradient using automatically selected row workers for large regions.
+pub fn fill_rect_conic_gradient_parallel(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    start_angle: f32,
+    gradient: &Gradient,
+) {
+    let thread_count = parallel_thread_count_for_rect(target, rect);
+    fill_rect_conic_gradient_with_threads(target, rect, center, start_angle, gradient, thread_count);
+}
+
+/// Fills a conic gradient using the requested number of safe row workers.
+pub fn fill_rect_conic_gradient_parallel_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    start_angle: f32,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
+    fill_rect_conic_gradient_with_threads(target, rect, center, start_angle, gradient, thread_count);
+}
+
+fn fill_rect_conic_gradient_with_threads(
+    target: &mut Framebuffer,
+    rect: Rect,
+    center: crate::Vector,
+    start_angle: f32,
+    gradient: &Gradient,
+    thread_count: usize,
+) {
+    if !center.x.is_finite()
+        || !center.y.is_finite()
+        || !start_angle.is_finite()
+    {
+        return;
+    }
+    let left = rect.x.min(target.width()) as usize;
+    let top = rect.y.min(target.height()) as usize;
+    let right = (u64::from(rect.x) + u64::from(rect.width))
+        .min(u64::from(target.width())) as usize;
+    let bottom = (u64::from(rect.y) + u64::from(rect.height))
+        .min(u64::from(target.height())) as usize;
+    if left >= right || top >= bottom {
+        return;
+    }
+
+    const TAU: f32 = core::f32::consts::TAU;
+    let width = target.width() as usize;
+    let rows = &mut target.pixels_mut()[top * width..bottom * width];
+    process_rows_with_y_mut(rows, width, top, thread_count, |row, y| {
+        let dy = y as f32 + 0.5 - center.y;
+        let pixels = &mut row[left..right];
+        let vectorized_len = pixels.len() / 4 * 4;
+        let (quads, remainder) = pixels.split_at_mut(vectorized_len);
+        let mut x = left as f32 + 0.5;
+
+        for quad in quads.chunks_exact_mut(4) {
+            let mut sources = [Color::TRANSPARENT; 4];
+            for source in &mut sources {
+                let dx = x - center.x;
+                let angle = (dy.atan2(dx) - start_angle).rem_euclid(TAU) / TAU;
+                *source = gradient.sample_raster(angle);
+                x += 1.0;
+            }
+            if quad.iter().all(|pixel| pixel.a == u8::MAX) {
+                let mut destinations = [quad[0], quad[1], quad[2], quad[3]];
+                blend_variable_opaque_quad(&mut destinations, sources);
+                quad.copy_from_slice(&destinations);
+            } else {
+                for (pixel, color) in quad.iter_mut().zip(sources) {
+                    *pixel = if color.a == u8::MAX {
+                        color
+                    } else if color.a == 0 {
+                        *pixel
+                    } else {
+                        color.blend_over(*pixel)
+                    };
+                }
+            }
+        }
+
+        for pixel in remainder {
+            let dx = x - center.x;
+            let angle = (dy.atan2(dx) - start_angle).rem_euclid(TAU) / TAU;
+            let color = gradient.sample_raster(angle);
+            *pixel = if color.a == u8::MAX {
+                color
+            } else if color.a == 0 {
+                *pixel
+            } else {
+                color.blend_over(*pixel)
+            };
+            x += 1.0;
+        }
+    });
+}
+
 pub fn fill_transformed_rect_linear_gradient_clipped(
     target: &mut Framebuffer,
     rect: Rect,
@@ -5686,6 +5800,52 @@ mod tests {
         assert_eq!(image.get_pixel(2, 2), Some(Color::rgb(255, 0, 0)));
         assert_eq!(image.get_pixel(1, 1), Some(Color::rgb(75, 0, 180)));
         assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn conic_gradient_samples_clockwise_and_clips_to_rectangle() {
+        let gradient = super::Gradient::new(vec![
+            super::GradientStop { position: 0.0, color: Color::RED },
+            super::GradientStop { position: 0.25, color: Color::GREEN },
+            super::GradientStop { position: 0.5, color: Color::BLUE },
+            super::GradientStop { position: 0.75, color: Color::WHITE },
+            super::GradientStop { position: 1.0, color: Color::RED },
+        ]).unwrap();
+        let mut image = target(5, 5);
+        super::fill_rect_conic_gradient(
+            &mut image,
+            Rect::new(1, 1, 3, 3),
+            Vector::new(2.5, 2.5),
+            0.0,
+            &gradient,
+        );
+
+        assert_eq!(image.get_pixel(3, 2), Some(Color::RED));
+        assert_eq!(image.get_pixel(2, 3), Some(Color::GREEN));
+        assert_eq!(image.get_pixel(1, 2), Some(Color::BLUE));
+        assert_eq!(image.get_pixel(2, 1), Some(Color::WHITE));
+        assert_eq!(image.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn parallel_conic_gradient_matches_serial_exactly() {
+        let gradient = test_gradient();
+        let mut serial = patterned_frame();
+        let mut parallel = serial.clone();
+        let rect = Rect::new(5, 4, 166, 111);
+        let center = Vector::new(83.5, 56.25);
+        let start_angle = 0.375;
+
+        super::fill_rect_conic_gradient(&mut serial, rect, center, start_angle, &gradient);
+        super::fill_rect_conic_gradient_parallel_with_threads(
+            &mut parallel,
+            rect,
+            center,
+            start_angle,
+            &gradient,
+            4,
+        );
+        assert_eq!(parallel, serial);
     }
 
     #[test]
