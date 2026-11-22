@@ -165,7 +165,7 @@ pub fn draw_drop_shadow(
     options: DropShadowOptions,
     scratch: &mut EffectScratch,
 ) -> Result<(), FramebufferError> {
-    let DropShadowOptions { offset_x, offset_y, blur_radius, color } = options;
+    let DropShadowOptions {\n        offset_x,\n        offset_y,\n        blur_radius,\n        color,\n    } = options;
     if color.a != 0 {
         let padding = blur_radius
             .checked_mul(2)
