@@ -23,9 +23,18 @@ pub(crate) fn blend_opaque_quad(
             + u32x4::splat(127);
         ((numerator + u32x4::splat(1) + (numerator >> 8_u32)) >> 8_u32).to_array()
     };
-    let red = blend_channel(u32::from(source.r), (*pixels).map(|pixel| u32::from(pixel.r)));
-    let green = blend_channel(u32::from(source.g), (*pixels).map(|pixel| u32::from(pixel.g)));
-    let blue = blend_channel(u32::from(source.b), (*pixels).map(|pixel| u32::from(pixel.b)));
+    let red = blend_channel(
+        u32::from(source.r),
+        (*pixels).map(|pixel| u32::from(pixel.r)),
+    );
+    let green = blend_channel(
+        u32::from(source.g),
+        (*pixels).map(|pixel| u32::from(pixel.g)),
+    );
+    let blue = blend_channel(
+        u32::from(source.b),
+        (*pixels).map(|pixel| u32::from(pixel.b)),
+    );
     for index in 0..4 {
         pixels[index] = Color::rgb(red[index] as u8, green[index] as u8, blue[index] as u8);
     }
@@ -40,9 +49,7 @@ pub(crate) fn blend_opaque_quad(
     inverse_source_alpha: u32,
 ) {
     let blend_channel = |source: u8, destination: u8| -> u8 {
-        ((u32::from(source) * source_alpha
-            + u32::from(destination) * inverse_source_alpha
-            + 127)
+        ((u32::from(source) * source_alpha + u32::from(destination) * inverse_source_alpha + 127)
             / 255) as u8
     };
     for pixel in pixels {
@@ -90,10 +97,7 @@ pub(crate) fn blend_variable_opaque_quad(destinations: &mut [Color; 4], sources:
         let alpha = u32::from(source.a);
         let inverse_alpha = 255 - alpha;
         let blend_channel = |source: u8, destination: u8| -> u8 {
-            ((u32::from(source) * alpha
-                + u32::from(destination) * inverse_alpha
-                + 127)
-                / 255) as u8
+            ((u32::from(source) * alpha + u32::from(destination) * inverse_alpha + 127) / 255) as u8
         };
         *destination = Color::rgb(
             blend_channel(source.r, destination.r),

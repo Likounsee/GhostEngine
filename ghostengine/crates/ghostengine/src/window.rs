@@ -245,7 +245,6 @@ impl WindowSurface {
     }
 }
 
-
 fn button_transition(previous_down: bool, current_down: bool) -> (bool, bool) {
     (
         current_down && !previous_down,
@@ -492,10 +491,8 @@ fn key_to_character(key: Key, shift: bool) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        key_to_character, pack_rgb, InputState, WindowError,
-    };
-    use crate::{ClipboardAction, ComponentTree, Rect, TextInputEvent, Color};
+    use super::{key_to_character, pack_rgb, InputState, WindowError};
+    use crate::{ClipboardAction, Color, ComponentTree, Rect, TextInputEvent};
     use minifb::Key;
 
     #[test]
@@ -531,7 +528,6 @@ mod tests {
         assert_eq!(super::button_transition(true, true), (false, false));
         assert_eq!(super::button_transition(true, false), (false, true));
     }
-
 
     #[test]
     fn input_state_defaults_mouse_edges_to_false() {
