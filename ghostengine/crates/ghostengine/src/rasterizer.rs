@@ -5026,13 +5026,7 @@ mod tests {
                     "worker count: {workers}, center: {center:?}, radii: {radius_x}/{radius_y}"
                 );
                 let mut expected_outline = Framebuffer::new(67, 43, background).unwrap();
-                super::draw_ellipse_aa(
-                    &mut expected_outline,
-                    center,
-                    radius_x,
-                    radius_y,
-                    color,
-                );
+                super::draw_ellipse_aa(&mut expected_outline, center, radius_x, radius_y, color);
                 let mut fallible = Framebuffer::new(67, 43, background).unwrap();
                 super::try_draw_ellipse_aa_parallel_with_threads(
                     &mut fallible,
