@@ -731,13 +731,7 @@ pub fn draw_texture_region_clipped(
                         // This avoids converting to straight-alpha bytes and blending
                         // those bytes again for every atlas pixel.
                         if pixel.a == 255 {
-                            blend_bilinear_rows_over_opaque(
-                                top_row,
-                                bottom_row,
-                                sample,
-                                ty,
-                                pixel,
-                            );
+                            blend_bilinear_rows_over_opaque(top_row, bottom_row, sample, ty, pixel);
                         } else {
                             let sampled = sample_bilinear_prepared(
                                 source_pixels,
@@ -3345,5 +3339,4 @@ mod render_options_tests {
 
         assert_eq!(atlas_target.pixels(), texture_target.pixels());
     }
-
 }
