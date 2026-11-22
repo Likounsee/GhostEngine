@@ -96,9 +96,12 @@ framebuffer presentation without exposing native handles.
 The deterministic `HeadlessHost` backend is implemented in `headless.rs`. It
 supports ordered event delivery, resize notifications, lifecycle closure,
 framebuffer presentation and explicit rejection of operations after closure.
-Its tests cover these behaviors without a display server. The native Windows,
-Linux and macOS adapters are still in progress; the existing Winit/softbuffer
-integration remains transitional until it is connected to this contract.
+Its tests cover these behaviors without a display server. The existing Winit/softbuffer integration now exposes
+`NativeWindowSurface::run_with_host_events`, which translates native resize,
+scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
+values. The native UI demo consumes those events rather than Winit types. This
+is the first native integration path, not yet the final `HostBackend` lifecycle
+implementation or proof of real-window behavior on all three operating systems.
 
 ## Planned feature groups
 
