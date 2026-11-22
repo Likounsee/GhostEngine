@@ -501,6 +501,88 @@ impl DisplayList {
         )
     }
 
+    /// Records an ellipse outline using the active transform and clip stack.
+    pub fn stroke_ellipse(
+        &mut self,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        if radius_x == 0 || radius_y == 0 {
+            return Ok(());
+        }
+        self.stroke_path(
+            ellipse_path(center, radius_x, radius_y),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records an antialiased ellipse outline.
+    pub fn stroke_ellipse_aa(
+        &mut self,
+        center: Point,
+        radius_x: u32,
+        radius_y: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        if radius_x == 0 || radius_y == 0 {
+            return Ok(());
+        }
+        self.stroke_path_aa(
+            ellipse_path(center, radius_x, radius_y),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records a rounded-rectangle outline with its radius clamped to its dimensions.
+    pub fn stroke_rounded_rect(
+        &mut self,
+        rect: Rect,
+        radius: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        if rect.width == 0 || rect.height == 0 {
+            return Ok(());
+        }
+        self.stroke_path(
+            rounded_rect_path(rect, radius),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
+    /// Records an antialiased rounded-rectangle outline.
+    pub fn stroke_rounded_rect_aa(
+        &mut self,
+        rect: Rect,
+        radius: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        if rect.width == 0 || rect.height == 0 {
+            return Ok(());
+        }
+        self.stroke_path_aa(
+            rounded_rect_path(rect, radius),
+            Transform2D::IDENTITY,
+            style,
+            color,
+            0.25,
+        )
+    }
+
     /// Records a stroked vector path. Stroke width is measured in framebuffer
     /// pixels after the combined local and active transforms are applied.
     pub fn stroke_path(
@@ -1458,6 +1540,23 @@ mod tests {
         let stats = list.replay(&mut target);
         assert_eq!(target.get_pixel(6, 5), Some(Color::RED));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn display_list_supports_antialiased_ellipse_and_rounded_rect_strokes() {
+        let mut list = DisplayList::new();
+        let style = StrokeStyle::new(1.5);
+        list.stroke_ellipse_aa(Point::new(5, 4), 3, 2, style, Color::WHITE)
+            .unwrap();
+        list.stroke_rounded_rect_aa(Rect::new(1, 1, 8, 6), 2, style, Color::RED)
+            .unwrap();
+
+        let mut target = Framebuffer::new(12, 9, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert!(target.pixels().iter().any(|pixel| {
+            *pixel != Color::BLACK && *pixel != Color::WHITE && *pixel != Color::RED
+        }));
+        assert_eq!(stats.commands_executed, 2);
     }
 
     #[test]
