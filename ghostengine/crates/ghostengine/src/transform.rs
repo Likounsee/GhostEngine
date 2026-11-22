@@ -105,20 +105,38 @@ impl Transform2D {
     /// Returns None for singular or non-finite matrices.
     #[must_use]
     pub fn inverse(self) -> Option<Self> {
-        let det = self.determinant();
-        if !det.is_finite()
-            || det == 0.0
-            || ![self.m11, self.m12, self.m21, self.m22, self.tx, self.ty]
-                .iter()
-                .all(|v| v.is_finite())
-        {
+        if !self.is_finite() {
             return None;
         }
-        let inv = 1.0 / det;
-        let a = self.m22 * inv;
-        let b = -self.m12 * inv;
-        let c = -self.m21 * inv;
-        let d = self.m11 * inv;
+
+        // Normalize the linear part before computing its determinant. The
+        // direct determinant can overflow for large, valid scales or
+        // underflow to zero for small, invertible scales.
+        let scale = self
+            .m11
+            .abs()
+            .max(self.m12.abs())
+            .max(self.m21.abs())
+            .max(self.m22.abs());
+        if scale == 0.0 {
+            return None;
+        }
+
+        let m11 = self.m11 / scale;
+        let m12 = self.m12 / scale;
+        let m21 = self.m21 / scale;
+        let m22 = self.m22 / scale;
+        let normalized_det = m11 * m22 - m12 * m21;
+        if !normalized_det.is_finite() || normalized_det == 0.0 {
+            return None;
+        }
+
+        let inverse_scale = 1.0 / scale;
+        let inverse_factor = inverse_scale / normalized_det;
+        let a = m22 * inverse_factor;
+        let b = -m12 * inverse_factor;
+        let c = -m21 * inverse_factor;
+        let d = m11 * inverse_factor;
         let inverse = Self::new(
             a,
             b,
@@ -211,6 +229,24 @@ mod tests {
     fn inverse_accepts_small_but_well_conditioned_scales() {
         let transform = Transform2D::scale(0.0001, 0.0001);
         let inverse = transform.inverse().expect("non-zero scale is invertible");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
+    }
+
+    #[test]
+    fn inverse_handles_large_well_conditioned_scales_without_determinant_overflow() {
+        let transform = Transform2D::scale(1.0e20, 1.0e20);
+        let inverse = transform.inverse().expect("inverse is representable");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
+    }
+
+    #[test]
+    fn inverse_handles_tiny_well_conditioned_scales_without_determinant_underflow() {
+        let transform = Transform2D::scale(1.0e-30, 1.0e-30);
+        let inverse = transform.inverse().expect("inverse is representable");
         let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
         close(restored.x, 3.0);
         close(restored.y, -4.0);
