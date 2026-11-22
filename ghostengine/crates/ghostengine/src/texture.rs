@@ -3137,3 +3137,92 @@ mod tests {
         assert_eq!(scratch.horizontal_cache.as_ptr(), cache_ptr);
     }
 }
+
+
+#[cfg(test)]
+mod render_options_tests {
+    use crate::{
+        draw_texture_clipped, draw_texture_clipped_with_options, Color, Framebuffer, Rect,
+        RenderOptions, Texture, TextureFilter,
+    };
+
+    #[test]
+    fn configured_texture_draw_matches_serial_output() {
+        let texture = Texture::new(
+            16,
+            16,
+            (0..256)
+                .map(|index| {
+                    Color::rgba(
+                        index as u8,
+                        (index * 3) as u8,
+                        (index * 7) as u8,
+                        if index % 3 == 0 { 128 } else { 255 },
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let clip = Rect::new(32, 16, 160, 96);
+        let destination = Rect::new(0, 0, 192, 128);
+        let mut expected = Framebuffer::new(192, 128, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+
+        draw_texture_clipped(
+            &mut expected,
+            &texture,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+        );
+        draw_texture_clipped_with_options(
+            &mut actual,
+            &texture,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            RenderOptions::serial(),
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn configured_texture_draw_keeps_parallel_output_deterministic() {
+        let texture = Texture::new(
+            128,
+            128,
+            (0..128 * 128)
+                .map(|index| {
+                    let value = index as u8;
+                    Color::rgba(value, value.wrapping_mul(3), value.wrapping_mul(7), 255)
+                })
+                .collect(),
+        )
+        .unwrap();
+        let destination = Rect::new(0, 0, 512, 256);
+        let clip = Rect::new(0, 0, 512, 256);
+        let mut expected = Framebuffer::new(512, 256, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+
+        draw_texture_clipped(
+            &mut expected,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+        );
+        draw_texture_clipped_with_options(
+            &mut actual,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+            RenderOptions::new()
+                .with_max_threads(2)
+                .with_parallel_threshold(0),
+        );
+
+        assert_eq!(actual, expected);
+    }
+}
