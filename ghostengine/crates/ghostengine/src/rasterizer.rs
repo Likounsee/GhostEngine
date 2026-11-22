@@ -9522,6 +9522,42 @@ mod transformed_conic_gradient_tests {
     }
 
     #[test]
+    fn identity_transformed_linear_and_radial_gradients_match_untransformed_output() {
+        use super::{fill_rect_linear_gradient, fill_rect_radial_gradient};
+        let rect = Rect::new(2, 3, 7, 5);
+        let mut expected_linear = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        let mut actual_linear = expected_linear.clone();
+        let start = Vector::new(2.0, 3.0);
+        let end = Vector::new(9.0, 8.0);
+        fill_rect_linear_gradient(&mut expected_linear, rect, start, end, &gradient());
+        assert!(super::fill_transformed_rect_linear_gradient_clipped(
+            &mut actual_linear,
+            rect,
+            Transform2D::IDENTITY,
+            start,
+            end,
+            &gradient(),
+            Rect::new(0, 0, 14, 12),
+        ));
+        assert_eq!(actual_linear, expected_linear);
+
+        let mut expected_radial = Framebuffer::new(14, 12, Color::BLACK).unwrap();
+        let mut actual_radial = expected_radial.clone();
+        let center = Vector::new(5.5, 5.5);
+        fill_rect_radial_gradient(&mut expected_radial, rect, center, 4.0, &gradient());
+        assert!(super::fill_transformed_rect_radial_gradient_clipped(
+            &mut actual_radial,
+            rect,
+            Transform2D::IDENTITY,
+            center,
+            4.0,
+            &gradient(),
+            Rect::new(0, 0, 14, 12),
+        ));
+        assert_eq!(actual_radial, expected_radial);
+    }
+
+    #[test]
     fn transformed_conic_gradient_supports_translation_and_rejects_invalid_transform() {
         let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
         let translated = Transform2D::translation(3.0, 1.0);
