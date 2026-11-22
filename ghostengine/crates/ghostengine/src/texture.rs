@@ -3283,6 +3283,73 @@ mod tests {
     }
 
     #[test]
+    fn atlas_bilinear_scratch_reuses_horizontal_samples_and_invalidates_geometry() {
+        let texture = Texture::new(
+            4,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 180),
+                Color::rgba(20, 220, 80, 220),
+                Color::rgba(30, 60, 240, 120),
+                Color::rgba(240, 180, 20, 200),
+                Color::rgba(20, 40, 200, 160),
+                Color::rgba(220, 80, 30, 210),
+                Color::rgba(40, 200, 120, 130),
+                Color::rgba(180, 40, 220, 190),
+            ],
+        )
+        .unwrap();
+        let source = Rect::new(1, 0, 2, 2);
+        let destination = Rect::new(0, 0, 8, 8);
+        let clip = Rect::new(0, 0, 8, 8);
+        let mut scratch = TextureDrawScratch::default();
+        let mut first = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+
+        draw_texture_region_clipped_with_scratch(
+            &mut first,
+            &texture,
+            source,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        let first_key = scratch.cached_region_bilinear_key;
+        let first_ptr = scratch.region_horizontal_cache.as_ptr();
+        let first_pixels = first.pixels().to_vec();
+
+        assert!(first_key.is_some());
+        assert_eq!(scratch.region_horizontal_cache.len(), 16);
+
+        let mut second = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        draw_texture_region_clipped_with_scratch(
+            &mut second,
+            &texture,
+            source,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        assert_eq!(second.pixels(), first_pixels);
+        assert_eq!(scratch.cached_region_bilinear_key, first_key);
+        assert_eq!(scratch.region_horizontal_cache.as_ptr(), first_ptr);
+
+        let resized_destination = Rect::new(0, 0, 7, 8);
+        let mut resized = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        draw_texture_region_clipped_with_scratch(
+            &mut resized,
+            &texture,
+            source,
+            resized_destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        );
+        assert_ne!(scratch.cached_region_bilinear_key, first_key);
+    }
+
+    #[test]
     fn reusable_texture_scratch_retains_allocations_between_draws() {
         let texture = Texture::new(
             2,
