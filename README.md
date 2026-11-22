@@ -186,8 +186,8 @@ The `first_image` example creates a 320×180 PPM image headlessly. The `browser_
 
 ## License
 
-Copyright (c) 2026 Lee Kun-hee.
+Copyright (c) 2026 Likounsee.
 
 GhostEngine is licensed under either the [MIT License](LICENSE-MIT) or the [Apache License, Version 2.0](LICENSE-APACHE), at your option. You may use, modify and redistribute GhostEngine, including in commercial projects, subject to the terms of the selected license.
 
-The licenses require preservation of applicable copyright, license and attribution notices. They do not grant permission to use the GhostEngine name or logo as an endorsement of a third-party product. Using GhostEngine does not imply that Lee Kun-hee or the GhostEngine project endorses, sponsors or is affiliated with a project that incorporates it.
+The licenses require preservation of applicable copyright, license and attribution notices. They do not grant permission to use the GhostEngine name or logo as an endorsement of a third-party product. Using GhostEngine does not imply that Likounsee or the GhostEngine project endorses, sponsors or is affiliated with a project that incorporates it.
