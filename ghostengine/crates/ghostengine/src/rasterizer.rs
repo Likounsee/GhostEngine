@@ -1645,10 +1645,8 @@ pub fn fill_transformed_rect_conic_gradient_clipped(
             continue;
         };
         for x in left..right {
-            let local = inverse.transform_point(crate::Vector::new(
-                x as f32 + 0.5,
-                y as f32 + 0.5,
-            ));
+            let local =
+                inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
                 continue;
             }
@@ -9429,11 +9427,26 @@ mod transformed_conic_gradient_tests {
 
     fn gradient() -> Gradient {
         Gradient::new(vec![
-            GradientStop { position: 0.0, color: Color::RED },
-            GradientStop { position: 0.25, color: Color::GREEN },
-            GradientStop { position: 0.5, color: Color::BLUE },
-            GradientStop { position: 0.75, color: Color::WHITE },
-            GradientStop { position: 1.0, color: Color::RED },
+            GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+            GradientStop {
+                position: 0.25,
+                color: Color::GREEN,
+            },
+            GradientStop {
+                position: 0.5,
+                color: Color::BLUE,
+            },
+            GradientStop {
+                position: 0.75,
+                color: Color::WHITE,
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::RED,
+            },
         ])
         .unwrap()
     }
@@ -9460,7 +9473,7 @@ mod transformed_conic_gradient_tests {
     #[test]
     fn transformed_conic_gradient_supports_translation_and_rejects_invalid_transform() {
         let mut target = Framebuffer::new(12, 10, Color::BLACK).unwrap();
-        let translated = Transform2D::translation(Vector::new(3.0, 1.0));
+        let translated = Transform2D::translation(3.0, 1.0);
         assert!(fill_transformed_rect_conic_gradient_clipped(
             &mut target,
             Rect::new(1, 1, 4, 4),
