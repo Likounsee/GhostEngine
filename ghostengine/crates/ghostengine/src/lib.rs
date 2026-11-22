@@ -22,6 +22,7 @@ pub mod mipmap;
 pub mod path;
 pub mod path_cache;
 pub mod rasterizer;
+pub mod render_options;
 pub mod shaping;
 mod simd;
 pub mod stroke;
@@ -88,8 +89,9 @@ pub use path::{
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
 pub use path_cache::{PathGeometryCache, PathGeometryCacheError};
+pub use render_options::RenderOptions;
 pub use rasterizer::{
-    blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
+    blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_with_options, blend_rect_parallel_with_threads,
     draw_arc_aa, draw_arc_aa_parallel, draw_arc_aa_parallel_with_threads, draw_arc_aa_with_scratch,
     draw_circle_aa, draw_circle_aa_parallel, draw_circle_aa_parallel_with_threads,
     draw_circle_aa_with_scratch, draw_ellipse_aa, draw_ellipse_aa_parallel,
