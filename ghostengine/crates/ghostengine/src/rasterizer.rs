@@ -1645,8 +1645,7 @@ pub fn fill_transformed_rect_conic_gradient_clipped(
             continue;
         };
         for x in left..right {
-            let local =
-                inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
+            let local = inverse.transform_point(crate::Vector::new(x as f32 + 0.5, y as f32 + 0.5));
             if !rect_contains_point(rect, local) {
                 continue;
             }
