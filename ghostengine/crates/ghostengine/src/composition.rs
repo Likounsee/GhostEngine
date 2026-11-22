@@ -2699,12 +2699,16 @@ mod tests {
                 let expected = ((1..5).contains(&x) && (1..5).contains(&y))
                     || ((3..7).contains(&x) && (3..7).contains(&y))
                     || (x == 0 && y == 9);
-                let coverage = damage.rectangles().iter().filter(|rect| {
-                    x >= rect.x
-                        && y >= rect.y
-                        && x < rect.x + rect.width
-                        && y < rect.y + rect.height
-                }).count();
+                let coverage = damage
+                    .rectangles()
+                    .iter()
+                    .filter(|rect| {
+                        x >= rect.x
+                            && y >= rect.y
+                            && x < rect.x + rect.width
+                            && y < rect.y + rect.height
+                    })
+                    .count();
                 assert_eq!(coverage, usize::from(expected), "coverage at ({x}, {y})");
             }
         }
