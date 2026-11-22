@@ -105,10 +105,14 @@ adapters incrementally. Do not create three empty crates or duplicate the
 renderer now. Keep the current window adapters as transitional integration
 paths until the common host API can replace them without breaking examples.
 
-The existing `SurfaceDescriptor` and `Framebuffer::write_to_surface` form
-part of the presentation boundary, but they are not by themselves a complete
-window API: lifecycle, event normalization, redraw scheduling, resize/scale
-handling and backend capabilities still need a shared contract.
+The first platform-neutral contract now exists in `host.rs` and is
+re-exported from the crate root. It defines window configuration validation,
+normalized lifecycle/resize/focus/redraw/input events, capability reporting,
+physical drawable sizing, scale-factor reporting and framebuffer presentation.
+`SurfaceDescriptor` and `Framebuffer::write_to_surface` remain the explicit
+pixel-memory boundary. The contract is not yet a completed host implementation:
+headless behavior and the three real platform adapters still need to be built
+and validated.
 
 ## 4. Core API rules
 
