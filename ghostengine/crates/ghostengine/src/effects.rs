@@ -128,7 +128,6 @@ pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut 
     }
 }
 
-
 /// Draws a source image over a tinted, blurred copy of its alpha mask.
 ///
 /// The shadow is placed behind the source at (x + offset_x, y + offset_y).
@@ -160,11 +159,9 @@ pub fn draw_drop_shadow(
 
         let mut shadow = match scratch.shadow.take() {
             Some(mut cached) => {
-                if let Err(error) = cached.resize_and_clear(
-                    shadow_width,
-                    shadow_height,
-                    Color::TRANSPARENT,
-                ) {
+                if let Err(error) =
+                    cached.resize_and_clear(shadow_width, shadow_height, Color::TRANSPARENT)
+                {
                     scratch.shadow = Some(cached);
                     return Err(error);
                 }
@@ -315,7 +312,10 @@ mod tests {
             &mut scratch,
         )
         .unwrap();
-        assert_eq!(scratch.shadow.as_ref().unwrap().pixels().as_ptr(), allocation);
+        assert_eq!(
+            scratch.shadow.as_ref().unwrap().pixels().as_ptr(),
+            allocation
+        );
         assert_eq!(target.get_pixel(3, 1), Some(Color::RED));
     }
 
