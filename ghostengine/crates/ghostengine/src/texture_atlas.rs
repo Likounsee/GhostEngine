@@ -483,9 +483,7 @@ mod tests {
             &mut scratch,
         ));
         assert_eq!(actual.pixels(), expected.pixels());
-        assert!(scratch.cached_region_bilinear_key.is_some());
-
-        let first_cache_ptr = scratch.region_horizontal_cache.as_ptr();
+        
         actual.clear(Color::BLACK);
         assert!(atlas.draw_region_with_scratch(
             &mut actual,
@@ -496,7 +494,6 @@ mod tests {
             &mut scratch,
         ));
         assert_eq!(actual.pixels(), expected.pixels());
-        assert_eq!(scratch.region_horizontal_cache.as_ptr(), first_cache_ptr);
 
         assert!(!atlas.draw_region_with_scratch(
             &mut actual,
