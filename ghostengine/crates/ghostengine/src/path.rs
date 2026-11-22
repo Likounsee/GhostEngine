@@ -84,7 +84,14 @@ fn accumulate_horizontal_coverage(
         .max(i64::from(span_start))
         .min(i64::from(span_end)) as u32;
 
-    let mut accumulate_partial = |start: u32, end: u32| {
+    fn accumulate_partial(
+        coverage: &mut [u8],
+        min_x: u32,
+        start: u32,
+        end: u32,
+        previous_x: f32,
+        x: f32,
+    ) {
         for pixel_x in start..end {
             let sample_count = OFFSETS
                 .iter()
@@ -95,16 +102,16 @@ fn accumulate_horizontal_coverage(
                 .count() as u8;
             coverage[(pixel_x - min_x) as usize] += sample_count;
         }
-    };
+    }
 
     if full_start <= full_end {
-        accumulate_partial(span_start, full_start);
+        accumulate_partial(coverage, min_x, span_start, full_start, previous_x, x);
         for pixel_x in full_start..full_end {
             coverage[(pixel_x - min_x) as usize] += 4;
         }
-        accumulate_partial(full_end, span_end);
+        accumulate_partial(coverage, min_x, full_end, span_end, previous_x, x);
     } else {
-        accumulate_partial(span_start, span_end);
+        accumulate_partial(coverage, min_x, span_start, span_end, previous_x, x);
     }
 }
 
