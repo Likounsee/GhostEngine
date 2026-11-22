@@ -10,7 +10,7 @@ use crate::path::{
     PathError,
 };
 use crate::rasterizer::{
-    draw_line, fill_rects_clipped, fill_transformed_rect_linear_gradient_clipped,
+    draw_line, draw_line_aa, fill_rects_clipped, fill_transformed_rect_linear_gradient_clipped,
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
@@ -67,6 +67,7 @@ enum Command {
         start: Point,
         end: Point,
         color: Color,
+        antialias: bool,
         clip: Rect,
     },
     FillPath {
@@ -329,6 +330,25 @@ impl DisplayList {
                 start: Point::new(start.x.round() as i32, start.y.round() as i32),
                 end: Point::new(end.x.round() as i32, end.y.round() as i32),
                 color,
+                antialias: false,
+                clip,
+            });
+        }
+    }
+
+    /// Records a one-pixel antialiased line using the active affine transform.
+    /// Endpoints are transformed at record time, matching the regular line API.
+    pub fn line_aa(&mut self, start: Point, end: Point, color: Color) {
+        if let Some(clip) = self.active_clip() {
+            let transform = self.active_transform();
+            let start =
+                transform.transform_point(crate::Vector::new(start.x as f32, start.y as f32));
+            let end = transform.transform_point(crate::Vector::new(end.x as f32, end.y as f32));
+            self.commands.push(Command::Line {
+                start: Point::new(start.x.round() as i32, start.y.round() as i32),
+                end: Point::new(end.x.round() as i32, end.y.round() as i32),
+                color,
+                antialias: true,
                 clip,
             });
         }
@@ -959,10 +979,15 @@ impl DisplayList {
                     start,
                     end,
                     color,
+                    antialias,
                     clip,
                 } => {
                     if let Some((start, end)) = clip_line(*start, *end, *clip) {
-                        draw_line(target, start, end, *color);
+                        if *antialias {
+                            draw_line_aa(target, start, end, *color);
+                        } else {
+                            draw_line(target, start, end, *color);
+                        }
                         true
                     } else {
                         false
