@@ -446,6 +446,70 @@ mod tests {
     }
 
     #[test]
+    fn atlas_object_reuses_scratch_without_changing_rendered_pixels() {
+        let sprite = Texture::new(
+            2,
+            2,
+            vec![
+                Color::rgba(240, 30, 20, 180),
+                Color::rgba(20, 220, 80, 220),
+                Color::rgba(30, 60, 240, 120),
+                Color::rgba(240, 180, 20, 200),
+            ],
+        )
+        .unwrap();
+        let mut builder = TextureAtlasBuilder::new(8, 8, 1);
+        builder.add(7, &sprite).unwrap();
+        let atlas = builder.build_atlas().unwrap();
+        let destination = Rect::new(0, 0, 8, 8);
+        let clip = Rect::new(0, 0, 8, 8);
+        let mut expected = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let mut scratch = TextureDrawScratch::default();
+
+        assert!(atlas.draw_region(
+            &mut expected,
+            7,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+        ));
+        assert!(atlas.draw_region_with_scratch(
+            &mut actual,
+            7,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        ));
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert!(scratch.cached_region_bilinear_key.is_some());
+
+        let first_cache_ptr = scratch.region_horizontal_cache.as_ptr();
+        actual.clear(Color::BLACK);
+        assert!(atlas.draw_region_with_scratch(
+            &mut actual,
+            7,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        ));
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(scratch.region_horizontal_cache.as_ptr(), first_cache_ptr);
+
+        assert!(!atlas.draw_region_with_scratch(
+            &mut actual,
+            999,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        ));
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
     fn atlas_object_resolves_and_draws_regions_by_stable_id() {
         let red = Texture::new(2, 2, vec![Color::RED; 4]).unwrap();
         let blue = Texture::new(2, 2, vec![Color::BLUE; 4]).unwrap();
