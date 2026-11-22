@@ -31,6 +31,9 @@ cargo test -p ghostengine --features image-decoding
 # minifb window adapter
 cargo run -p ghostengine --features window --example browser_frontend
 
+# Winit input adapter only, without minifb or window creation
+cargo test -p ghostengine --no-default-features --features native-input
+
 # Winit input + native window presentation, without minifb
 cargo run -p ghostengine --features native-window --example native_ui_demo
 ```
