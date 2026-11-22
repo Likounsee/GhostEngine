@@ -7,7 +7,7 @@ use crate::{
     Framebuffer, FramebufferError, HostBackend, HostCapabilities, HostError, HostEvent,
     HostPlatform, HostWindowConfig,
 };
-use std::{collections::VecDeque, error::Error, fmt, mem};
+use std::{collections::VecDeque, error::Error, fmt};
 
 /// Errors returned by the headless host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
