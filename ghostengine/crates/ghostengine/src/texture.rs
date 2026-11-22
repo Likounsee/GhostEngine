@@ -704,7 +704,8 @@ pub fn draw_texture_region_clipped_with_scratch(
 
             let horizontal_step = source.width as f32 / destination.width as f32;
             let cache_len = (source.height as usize).checked_mul(clip.width as usize);
-            let cache_bytes = cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+            let cache_bytes =
+                cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
             let use_region_cache = clip.height >= source.height.saturating_mul(2)
                 && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
             if use_region_cache {
@@ -722,13 +723,13 @@ pub fn draw_texture_region_clipped_with_scratch(
                 if !cache_is_valid {
                     scratch.region_horizontal_cache.clear();
                     if scratch.region_horizontal_cache.capacity() < required {
-                        scratch.region_horizontal_cache.reserve(
-                            required - scratch.region_horizontal_cache.len(),
-                        );
+                        scratch
+                            .region_horizontal_cache
+                            .reserve(required - scratch.region_horizontal_cache.len());
                     }
                     let first_sx = (source.x as f32
-                        + ((clip.x - destination.x) as f32 + 0.5)
-                            * source.width as f32 / destination.width as f32
+                        + ((clip.x - destination.x) as f32 + 0.5) * source.width as f32
+                            / destination.width as f32
                         - 0.5)
                         .clamp(source.x as f32, source_right as f32);
                     for source_y in source.y..=source_bottom {
@@ -781,7 +782,9 @@ pub fn draw_texture_region_clipped_with_scratch(
                     let bottom_samples = &scratch.region_horizontal_cache
                         [bottom_start..bottom_start + clip.width as usize];
                     let mut fallback_sx = first_sx;
-                    for (column, (top, bottom)) in top_samples.iter().zip(bottom_samples).enumerate() {
+                    for (column, (top, bottom)) in
+                        top_samples.iter().zip(bottom_samples).enumerate()
+                    {
                         let x0 = fallback_sx.floor() as usize;
                         let sample = BilinearHorizontalSample {
                             x0,
