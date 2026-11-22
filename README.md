@@ -152,7 +152,7 @@ The final crate boundaries will be chosen as implementation solidifies. The init
 10. **Future hardware research:** investigate whether a GhostEngine-owned GPU/driver architecture is viable without relying on existing graphics APIs.
 11. **Future ArchiaOS port:** only when ArchiaOS is ready to integrate an independent graphics engine.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and acceptance criteria, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical design.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and acceptance criteria, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical design. See [docs/FEATURES.md](docs/FEATURES.md) for optional Cargo features and build selections.
 
 ## Quality requirements
 
@@ -182,7 +182,7 @@ cargo run -p ghostengine --features native-window --example native_ui_demo
 cargo run -p ghostengine --release --example cpu_raster_bench -- 5
 ```
 
-The `first_image` example creates a 320×180 PPM image headlessly. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The current CI checks formatting and Clippy, then runs the unit tests.
+The `first_image` example creates a 320×180 PPM image headlessly. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only by the `window` feature for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The separate `native-input` and `native-window` features use Winit and softbuffer without pulling in minifb. The current CI checks formatting and Clippy, then runs the unit tests.
 
 ## License
 
