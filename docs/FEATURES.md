@@ -85,13 +85,19 @@ must not need three separate window, input or presentation code paths.
 The current `window` (minifb) and `native-window` (winit + softbuffer)
 features are transitional adapters, not the final public platform architecture.
 The CPU rendering core, `InputState`, `SurfaceDescriptor` and framebuffer
-export are already platform-independent building blocks. The common host
-lifecycle, normalized event stream, scale/resize handling, redraw scheduling
-and capability reporting remain to be designed and implemented.
+export are platform-independent building blocks.
 
-The shared contract is being defined as part of 2D v1. Concrete platform
-implementations will be validated incrementally on Windows, Linux and macOS.
-Do not add empty OS-specific feature flags or duplicate the 2D renderer.
+The first platform-neutral contract is now implemented in `host.rs` and
+re-exported from the crate root: `HostWindowConfig`, `HostEvent`,
+`HostCapabilities`, `HostBackend`, `HostPlatform` and `HostError`.
+It defines normalized lifecycle/resize/focus/redraw/input events, physical
+drawable sizing, scale-factor reporting, capability discovery and framebuffer
+presentation without exposing native handles.
+
+This is the contract foundation, not a claim that the three concrete adapters
+are finished. The next implementation work is a headless backend and then
+verified Windows, Linux and macOS adapters. Do not duplicate the renderer or
+add empty OS-specific feature flags.
 
 ## Planned feature groups
 
