@@ -535,6 +535,26 @@ impl DisplayList {
         )
     }
 
+    /// Records a filled circle using the active transform and clip stack.
+    pub fn fill_circle(
+        &mut self,
+        center: Point,
+        radius: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        self.fill_ellipse(center, radius, radius, color)
+    }
+
+    /// Records a 4x4 supersampled antialiased circle fill.
+    pub fn fill_circle_aa(
+        &mut self,
+        center: Point,
+        radius: u32,
+        color: Color,
+    ) -> Result<(), PathError> {
+        self.fill_ellipse_aa(center, radius, radius, color)
+    }
+
     /// Records a filled rounded rectangle with a radius clamped to its dimensions.
     pub fn fill_rounded_rect(
         &mut self,
@@ -619,6 +639,28 @@ impl DisplayList {
             color,
             0.25,
         )
+    }
+
+    /// Records a circle outline using the active transform and clip stack.
+    pub fn stroke_circle(
+        &mut self,
+        center: Point,
+        radius: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        self.stroke_ellipse(center, radius, radius, style, color)
+    }
+
+    /// Records an antialiased circle outline.
+    pub fn stroke_circle_aa(
+        &mut self,
+        center: Point,
+        radius: u32,
+        style: StrokeStyle,
+        color: Color,
+    ) -> Result<(), StrokeError> {
+        self.stroke_ellipse_aa(center, radius, radius, style, color)
     }
 
     /// Records a rounded-rectangle outline with its radius clamped to its dimensions.
@@ -2135,6 +2177,28 @@ mod tests {
         assert!(target.pixels().iter().any(|pixel| {
             *pixel != Color::BLACK && *pixel != Color::WHITE && *pixel != Color::RED
         }));
+    }
+
+    #[test]
+    fn display_list_circle_primitives_support_fill_stroke_and_zero_radius() {
+        let mut list = DisplayList::new();
+        list.fill_circle(Point::new(3, 3), 2, Color::WHITE).unwrap();
+        list.stroke_circle_aa(
+            Point::new(3, 3),
+            2,
+            StrokeStyle::new(1.0),
+            Color::RED,
+        )
+        .unwrap();
+        list.fill_circle_aa(Point::new(6, 6), 0, Color::BLUE)
+            .unwrap();
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 2);
+        assert_eq!(stats.commands_executed, 2);
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::RED));
+        assert_eq!(target.get_pixel(6, 6), Some(Color::BLACK));
     }
 
     #[test]
