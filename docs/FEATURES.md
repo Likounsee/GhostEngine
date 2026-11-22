@@ -99,7 +99,9 @@ and an explicit clip rectangle through
 
 Serial and row-parallel conic gradient fills are covered by equivalence tests.
 The transformed path rejects singular/non-finite transforms and avoids writes
-outside the supplied clip or framebuffer bounds.
+outside the supplied clip or framebuffer bounds. The ordered display-list API
+also records and replays linear, radial and conic gradients while preserving
+the active affine transform and nested clip state.
 
 ## CPU surface export
 
