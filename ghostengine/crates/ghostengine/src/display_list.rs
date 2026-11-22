@@ -2050,9 +2050,10 @@ mod tests {
         assert_eq!(stats.commands_submitted, 1);
         assert_eq!(stats.commands_executed, 1);
         assert_eq!(target.get_pixel(1, 1), Some(Color::BLACK));
-        assert!(target.pixels().iter().any(|pixel| {
-            *pixel != Color::BLACK && *pixel != Color::WHITE
-        }));
+        assert!(target
+            .pixels()
+            .iter()
+            .any(|pixel| { *pixel != Color::BLACK && *pixel != Color::WHITE }));
         assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
     }
 
