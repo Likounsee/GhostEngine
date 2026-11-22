@@ -55,8 +55,9 @@ cargo test -p ghostengine --no-default-features --features simd
 cargo test -p ghostengine --no-default-features --features parallel-rendering
 ```
 
-The GhostEngine CI matrix checks the scalar fallback, SIMD-only mode, parallel-only mode,
-native input without minifb, and the complete all-features build on Windows, Linux and macOS.
+The GhostEngine CI matrix runs formatting and Clippy, then checks the scalar fallback,
+SIMD-only mode, parallel-only mode, native input without minifb, and the complete
+all-features build on Windows, Linux and macOS.
 
 Features are additive Cargo capabilities. Avoid enabling both window adapters
 unless an application deliberately needs both: they have separate event-loop
