@@ -72,6 +72,10 @@ pub use effects::{
 pub use focus::FocusManager;
 pub use framebuffer::{Framebuffer, FramebufferError};
 pub use geometry::{Point, Rect, Vector};
+pub use host::{
+    current_host_platform, HostBackend, HostCapabilities, HostError, HostEvent, HostPlatform,
+    HostWindowConfig,
+};
 #[cfg(feature = "image-decoding")]
 pub use image::{
     decode_texture, decode_texture_into_cache, decode_texture_with_options,
