@@ -11,8 +11,8 @@ use crate::path::{
 };
 use crate::rasterizer::{
     draw_line, draw_line_aa_clipped, fill_rects_clipped,
-    fill_transformed_rect_linear_gradient_clipped,
-    fill_transformed_rect_radial_gradient_clipped, Gradient,
+    fill_transformed_rect_linear_gradient_clipped, fill_transformed_rect_radial_gradient_clipped,
+    Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{stroke_path_aa_clipped, stroke_path_clipped, StrokeError, StrokeStyle};
