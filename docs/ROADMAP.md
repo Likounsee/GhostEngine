@@ -35,7 +35,7 @@ This roadmap is ordered by dependencies. A milestone is complete only when its a
 **Deliverables**
 - Circles and rounded rectangles.
 - Paths, fill rules and strokes.
-- Multi-stop linear/radial gradients with alpha compositing.
+- Multi-stop linear, radial and conic gradients with alpha compositing and transformed clipping.
 - Image sampling and filtering.
 - Affine transforms, nested clips and off-screen surfaces.
 - Defined antialiasing behavior, including coverage-based line rendering.
