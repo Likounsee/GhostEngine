@@ -649,28 +649,30 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
 
     let (path_min_x, path_min_y, path_max_x, path_max_y) = edges.iter().fold(
         (
+            f64::INFINITY,
             f32::INFINITY,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
+            f64::NEG_INFINITY,
             f32::NEG_INFINITY,
         ),
         |(min_x, min_y, max_x, max_y), edge| {
+            let end_x = edge.min_x
+                + edge.inverse_slope * f64::from(edge.max_y - edge.min_y);
             (
-                min_x.min(
-                    edge.min_x
-                        .min(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y)),
-                ),
+                min_x.min(edge.min_x.min(end_x)),
                 min_y.min(edge.min_y),
-                max_x.max(
-                    edge.min_x
-                        .max(edge.min_x + edge.inverse_slope * (edge.max_y - edge.min_y)),
-                ),
+                max_x.max(edge.min_x.max(end_x)),
                 max_y.max(edge.max_y),
             )
         },
     );
-    let min_x = path_min_x.floor().max(clip.x as f32).min(clip_right as f32) as u32;
-    let max_x = path_max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
+    let min_x = path_min_x
+        .floor()
+        .max(f64::from(clip.x))
+        .min(f64::from(clip_right)) as u32;
+    let max_x = path_max_x
+        .ceil()
+        .max(f64::from(clip.x))
+        .min(f64::from(clip_right)) as u32;
     let min_y = path_min_y
         .floor()
         .max(clip.y as f32)
