@@ -620,34 +620,74 @@ pub fn draw_texture_region_clipped(
     let source_pixels = texture.pixels();
     let target_pixels = target.pixels_mut();
 
-    // Each row shares its vertical sampling coordinates. Keeping the filter
-    // branch outside the pixel loop avoids repeated divisions and branches.
     match filter {
         TextureFilter::Nearest => {
+            // Use an integer error accumulator for horizontal nearest-neighbor
+            // coordinates. It is equivalent to floor(offset * source / dest),
+            // but removes a floating-point division from every destination pixel.
+            let destination_width = u64::from(destination.width);
+            let source_width = u64::from(source.width);
+            let first_offset = u64::from(clip.x - destination.x);
+            let first_scaled = first_offset * source_width;
+            let mut source_offset = first_scaled / destination_width;
+            let mut error = first_scaled % destination_width;
+            let step_whole = source_width / destination_width;
+            let step_remainder = source_width % destination_width;
+
             for y in clip.y..clip.y + clip.height {
                 let relative_y = (y - destination.y) as f32 / destination.height as f32;
                 let sy = (source.y + (relative_y * source.height as f32).floor() as u32)
                     .min(source_bottom) as usize;
                 let target_row = y as usize * target_width;
                 let source_row = sy * texture_width;
+                let mut sx_offset = source_offset;
+                let mut x_error = error;
+
                 for x in clip.x..clip.x + clip.width {
-                    let relative_x = (x - destination.x) as f32 / destination.width as f32;
-                    let sx = (source.x + (relative_x * source.width as f32).floor() as u32)
-                        .min(source_right) as usize;
+                    let sx = (u64::from(source.x) + sx_offset)
+                        .min(u64::from(source_right)) as usize;
                     let sampled = source_pixels[source_row + sx];
-                    if sampled.a == 0 {
-                        continue;
+                    if sampled.a == 255 {
+                        target_pixels[target_row + x as usize] = sampled;
+                    } else if sampled.a != 0 {
+                        let pixel = &mut target_pixels[target_row + x as usize];
+                        *pixel = sampled.blend_over(*pixel);
                     }
-                    let pixel = &mut target_pixels[target_row + x as usize];
-                    *pixel = if sampled.a == 255 {
-                        sampled
-                    } else {
-                        sampled.blend_over(*pixel)
-                    };
+
+                    sx_offset += step_whole;
+                    x_error += step_remainder;
+                    if x_error >= destination_width {
+                        sx_offset += 1;
+                        x_error -= destination_width;
+                    }
                 }
+
+                // Keep the row-independent starting coordinate explicit. This
+                // also avoids coupling horizontal rounding to the row loop.
+                let _ = (&mut source_offset, &mut error);
             }
         }
         TextureFilter::Bilinear => {
+            let clip_area = u64::from(clip.width) * u64::from(clip.height);
+            let source_area = u64::from(source.width) * u64::from(source.height);
+            // Atlas sprites are often opaque even when the atlas allocation has
+            // transparent unused space. Detect that once, then use the cheaper
+            // opaque interpolation path instead of alpha-premultiplied sampling
+            // and source-over branching for every output pixel.
+            let source_region_is_opaque = source_area <= clip_area
+                && (source.y..source.y + source.height).all(|row| {
+                    let start = row as usize * texture_width + source.x as usize;
+                    source_pixels[start..start + source.width as usize]
+                        .iter()
+                        .all(|pixel| pixel.a == 255)
+                });
+
+            let horizontal_step = source.width as f32 / destination.width as f32;
+            let first_relative_x =
+                (clip.x - destination.x) as f32 / destination.width as f32;
+            let first_sx = (source.x as f32 + first_relative_x * source.width as f32 - 0.5)
+                .clamp(source.x as f32, source_right as f32);
+
             for y in clip.y..clip.y + clip.height {
                 let relative_y = (y - destination.y) as f32 / destination.height as f32;
                 let sy = (source.y as f32 + relative_y * source.height as f32 - 0.5)
@@ -656,38 +696,54 @@ pub fn draw_texture_region_clipped(
                 let y1 = (y0 + 1).min(source_bottom as usize);
                 let ty = sy - y0 as f32;
                 let target_row = y as usize * target_width;
-                for x in clip.x..clip.x + clip.width {
-                    let relative_x = (x - destination.x) as f32 / destination.width as f32;
-                    let sx = (source.x as f32 + relative_x * source.width as f32 - 0.5)
-                        .clamp(source.x as f32, source_right as f32);
-                    let x0 = sx.floor() as usize;
-                    let sampled = sample_bilinear_prepared(
-                        source_pixels,
-                        texture_width,
-                        BilinearCoordinates {
-                            x0,
-                            x1: (x0 + 1).min(source_right as usize),
-                            y0,
-                            y1,
-                            tx: sx - x0 as f32,
-                            ty,
-                        },
-                    );
-                    if sampled.a == 0 {
-                        continue;
+                let mut sx = first_sx;
+
+                if source_region_is_opaque {
+                    for x in clip.x..clip.x + clip.width {
+                        let x0 = sx.floor() as usize;
+                        let sampled = sample_bilinear_opaque_prepared(
+                            source_pixels,
+                            texture_width,
+                            BilinearCoordinates {
+                                x0,
+                                x1: (x0 + 1).min(source_right as usize),
+                                y0,
+                                y1,
+                                tx: sx - x0 as f32,
+                                ty,
+                            },
+                        );
+                        target_pixels[target_row + x as usize] = sampled;
+                        sx = (sx + horizontal_step).min(source_right as f32);
                     }
-                    let pixel = &mut target_pixels[target_row + x as usize];
-                    *pixel = if sampled.a == 255 {
-                        sampled
-                    } else {
-                        sampled.blend_over(*pixel)
-                    };
+                } else {
+                    for x in clip.x..clip.x + clip.width {
+                        let x0 = sx.floor() as usize;
+                        let sampled = sample_bilinear_prepared(
+                            source_pixels,
+                            texture_width,
+                            BilinearCoordinates {
+                                x0,
+                                x1: (x0 + 1).min(source_right as usize),
+                                y0,
+                                y1,
+                                tx: sx - x0 as f32,
+                                ty,
+                            },
+                        );
+                        if sampled.a == 255 {
+                            target_pixels[target_row + x as usize] = sampled;
+                        } else if sampled.a != 0 {
+                            let pixel = &mut target_pixels[target_row + x as usize];
+                            *pixel = sampled.blend_over(*pixel);
+                        }
+                        sx = (sx + horizontal_step).min(source_right as f32);
+                    }
                 }
             }
         }
     }
 }
-
 /// Fixed-size border widths for nine-slice image scaling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NineSliceMargins {
