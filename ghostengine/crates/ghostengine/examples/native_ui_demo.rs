@@ -3,8 +3,8 @@
 //! Run with: cargo run -p ghostengine --example native_ui_demo --features native-window
 
 use ghostengine::{
-    ComponentId, ComponentTree, FontFace, Insets, LayoutDirection, LayoutItem, NativeWindowSurface,
-    Rect, StackLayout, UiComponent, UiTheme,
+    ComponentId, ComponentTree, FontFace, HostEvent, InputState, Insets, LayoutDirection,
+    LayoutItem, NativeWindowSurface, Rect, StackLayout, UiComponent, UiTheme,
 };
 use std::{error::Error, fs, path::PathBuf};
 
@@ -54,11 +54,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut tree = ComponentTree::new(vec![panel]);
     let theme = UiTheme::default();
 
-    NativeWindowSurface::run(
+    NativeWindowSurface::run_with_host_events(
         "GhostEngine — Native component demo",
         WIDTH,
         HEIGHT,
-        move |framebuffer, input, clipboard| {
+        move |framebuffer, host_events, clipboard| {
+            let mut input = InputState::default();
+            for event in host_events {
+                match event {
+                    HostEvent::CloseRequested => return false,
+                    HostEvent::Input(next_input) => input = next_input,
+                    HostEvent::Resized { .. }
+                    | HostEvent::ScaleFactorChanged { .. }
+                    | HostEvent::FocusChanged { .. }
+                    | HostEvent::RedrawRequested => {}
+                }
+            }
             if input.escape_down {
                 return false;
             }
