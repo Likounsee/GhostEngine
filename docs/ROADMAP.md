@@ -93,7 +93,7 @@ until the common API covers their required behavior and the examples have been
 ported. Do not remove a working integration merely to make the architecture
 look cleaner.
 
-## 4. Software 3D foundation
+## 5. Software 3D foundation
 
 **Deliverables**
 - Mesh and vertex/index data structures.
@@ -107,7 +107,7 @@ look cleaner.
 - Deterministic test scenes cover a rotating or static 3D object.
 - CPU-only CI executes the 3D tests.
 
-## 5. Interactive application frontend and host surfaces
+## 6. Interactive application frontend and host surfaces
 
 **Deliverables**
 - Stable render-target/presentation interfaces.
@@ -124,11 +124,11 @@ look cleaner.
 - Buffer bounds and pixel format conversion are tested.
 - UEFI/real-hardware validation is tracked separately from host-side unit tests.
 
-## 6. Hardware acceleration research (deferred)
+## 4. Hardware acceleration (next major phase after 2D v1)
 
-This is not part of the initial implementation plan. The CPU renderer remains the complete reference implementation and must not depend on an external graphics API.
+This phase starts only after GhostEngine 2D v1 is complete. It adds a hardware-accelerated rendering path while keeping the CPU renderer as a supported fallback and correctness reference. GPU work is a separate major phase; it is not a 2D v2 milestone.
 
-**Possible future deliverables**
+**Deliverables**
 - A feasibility study for a GhostEngine-owned hardware path.
 - A platform and driver compatibility analysis.
 - A separate architecture proposal, reviewed before any implementation.
@@ -180,4 +180,4 @@ Integrate incrementally, with a small demonstrator for each consumer:
 8. Optional GPU backend research (deferred).
 9. Further consumer integrations and platform expansion.
 
-Do not start GPU acceleration before the software renderer and public resource model are usable. Do not mark a milestone complete based on scaffolding alone.
+There is no planned 2D v2: finish and harden the complete 2D v1, then move directly to GPU acceleration, and only after that begin 3D. Do not mark a milestone complete based on scaffolding alone.
