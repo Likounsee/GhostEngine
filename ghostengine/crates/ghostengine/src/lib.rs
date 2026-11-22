@@ -150,7 +150,8 @@ pub use texture::{
     NineSliceMargins, Texture, TextureDrawError, TextureDrawScratch, TextureError, TextureFilter,
 };
 pub use texture_atlas::{
-    draw_atlas_region_clipped, AtlasRegion, TextureAtlas, TextureAtlasBuilder, TextureAtlasError,
+    draw_atlas_region_clipped, draw_atlas_region_clipped_with_scratch, AtlasRegion, TextureAtlas,
+    TextureAtlasBuilder, TextureAtlasError,
 };
 pub use texture_cache::{TextureCache, TextureCacheError, TextureCacheStats, TextureHandle};
 pub use transform::Transform2D;
