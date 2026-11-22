@@ -436,7 +436,11 @@ pub fn draw_line_aa_clipped(
         if minor < minor_min || minor > minor_max {
             return;
         }
-        let (px, py) = if steep { (minor, major) } else { (major, minor) };
+        let (px, py) = if steep {
+            (minor, major)
+        } else {
+            (major, minor)
+        };
         if px < 0 || py < 0 || px >= target_width as i64 || py >= target_height {
             return;
         }
