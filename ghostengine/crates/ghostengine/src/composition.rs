@@ -299,12 +299,19 @@ impl LayerGroupDamageTracker {
     /// Use `Some(bounds)` when it is visible. The first appearance damages
     /// only the new bounds; removal damages only the old bounds.
     pub fn update(&mut self, id: LayerGroupId, current: Option<Rect>, damage: &mut DamageRegion) {
-        let previous = self.bounds.remove(&id);
+        let previous = self.bounds.get(&id).copied();
         if previous != current {
             damage.add_transition(previous, current);
         }
-        if let Some(current) = current {
-            self.bounds.insert(id, current);
+        match current {
+            Some(bounds) => {
+                // Update the existing tree node in place. Removing first would
+                // free the node and force a fresh allocation on every frame.
+                self.bounds.insert(id, bounds);
+            }
+            None => {
+                self.bounds.remove(&id);
+            }
         }
     }
 
