@@ -70,3 +70,21 @@ jobs:
       - name: Run tests with all optional features
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --all-features
+
+      - name: Format Amethys Launcher integration
+        run: cargo fmt --manifest-path "Amethys-Launcher test/Cargo.toml" --all -- --check
+
+      - name: Test Amethys Launcher integration
+        run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features
+
+      - name: Render scripted Amethys Launcher session (headless)
+        run: cargo run --manifest-path "Amethys-Launcher test/Cargo.toml" --release -- --snapshot "target/amethyst-launcher-snapshots"
+
+      - name: Verify Amethys Launcher screenshots
+        shell: bash
+        run: |
+          count="$(find target/amethyst-launcher-snapshots -maxdepth 1 -type f -name '*.png' | wc -l | tr -d ' ')"
+          if [ "$count" -ne 18 ]; then
+            echo "Expected 18 scripted PNG frames, found $count"
+            exit 1
+          fi
