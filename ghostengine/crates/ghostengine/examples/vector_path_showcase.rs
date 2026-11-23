@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .map_err(|error| format!("clipped path fill failed: {error:?}"))?;
 
-    let mut ppm = format!("P6\n720 420\n255\n").into_bytes();
+    let mut ppm = b"P6\n720 420\n255\n".to_vec();
     for pixel in framebuffer.pixels() {
         ppm.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
     }
