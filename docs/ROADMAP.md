@@ -118,7 +118,9 @@ This checklist tracks implementation separately from release validation. A check
 - [x] Add deterministic property/fuzz-style regression tests for malformed geometry, clipping, dimensions, strides, display-list commands, texture-cache lifecycles and truncated image inputs; keep the regular CI suite bounded.
 - [x] Exercise fallible capacity reservation for display lists and verify allocation/capacity errors leave existing state unchanged.
 - [x] Verify framebuffer/texture checked dimensions, surface-buffer overflow, image decoder dimension/allocation limits and texture-cache budget failures.
-- [ ] Validate the public examples as end-to-end application workflows: vector drawing, images, text, UI interaction, input and presentation.
+- [x] Validate an end-to-end headless public-API application workflow: retained UI layout, pointer activation, keyboard activation, text rendering, host presentation and surface export (`public_application_workflow_routes_ui_input_renders_text_and_presents_frame`).
+- [ ] Validate the complete public examples as interactive end-to-end workflows on desktop: vector drawing, real image assets, text, UI interaction, input, resize/DPI and presentation.
+- [x] Document the distinction between automated application-like prototype coverage and real production application validation in [APPLICATION_INTEGRATION.md](APPLICATION_INTEGRATION.md).
 - [ ] Publish an explicit list of platform limitations and unsupported capabilities based on actual platform runs.
 
 #### P1 — performance and long-running stability
