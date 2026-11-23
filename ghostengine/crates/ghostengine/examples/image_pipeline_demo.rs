@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Rect::new(360, 360, 80, 90),
     );
 
-    let mut ppm = format!("P6\\n{} {}\\n255\\n", frame.width(), frame.height()).into_bytes();
+    let mut ppm = format!("P6\n{} {}\n255\n", frame.width(), frame.height()).into_bytes();
     for pixel in frame.pixels() {
         ppm.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
     }
