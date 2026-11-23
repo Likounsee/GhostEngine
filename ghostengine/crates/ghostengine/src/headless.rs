@@ -77,7 +77,9 @@ impl HeadlessHost {
 
     /// Queues an event to be returned by the next event poll.
     pub fn queue_event(&mut self, event: HostEvent) {
-        self.events.push_back(event);
+        if self.open {
+            self.events.push_back(event);
+        }
     }
 
     /// Changes the drawable size and queues the matching resize event.
@@ -133,9 +135,9 @@ impl HostBackend for HeadlessHost {
 
     fn close(&mut self) {
         if self.open {
+            self.events.push_back(HostEvent::CloseRequested);
             self.open = false;
             self.presented_frame = None;
-            self.queue_event(HostEvent::CloseRequested);
         }
     }
 
@@ -423,6 +425,7 @@ mod tests {
         host.close();
         host.close();
         host.request_redraw();
+        host.queue_event(HostEvent::RedrawRequested);
 
         let mut events = Vec::new();
         host.poll_events(&mut events);
