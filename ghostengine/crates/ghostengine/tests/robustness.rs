@@ -381,3 +381,29 @@ fn arbitrary_truncated_image_inputs_fail_cleanly_without_panicking() {
         );
     }
 }
+
+
+#[test]
+fn display_list_fallible_capacity_apis_report_overflow_without_mutating_state() {
+    use ghostengine::{DisplayList, DisplayListError};
+
+    assert_eq!(
+        DisplayList::try_with_capacity(usize::MAX).unwrap_err(),
+        DisplayListError::AllocationFailed
+    );
+
+    let mut list = DisplayList::new();
+    list.clear();
+    let original_capacity = list.command_capacity();
+    assert_eq!(
+        list.try_reserve_commands(usize::MAX),
+        Err(DisplayListError::AllocationFailed)
+    );
+    assert_eq!(list.len(), 0);
+    assert_eq!(list.command_capacity(), original_capacity);
+
+    let mut reserved = DisplayList::try_with_capacity(32).unwrap();
+    assert!(reserved.command_capacity() >= 32);
+    reserved.try_reserve_commands(64).unwrap();
+    assert!(reserved.command_capacity() >= 96);
+}
