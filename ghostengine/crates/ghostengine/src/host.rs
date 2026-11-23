@@ -132,7 +132,11 @@ impl core::fmt::Display for HostError {
 
 impl std::error::Error for HostError {}
 
-/// Common interface implemented by platform-specific desktop host backends.
+/// Common synchronous polling interface for poll-driven host backends.
+///
+/// The deterministic headless backend implements this contract. Callback-driven
+/// event loops such as Winit use the separate `HostRunControl` runner contract
+/// rather than pretending they can be synchronously polled.
 ///
 /// Implementations own native windows and presentation resources. They must
 /// preserve event order, report physical drawable dimensions, and reject or
