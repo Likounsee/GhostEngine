@@ -3147,6 +3147,62 @@ mod tests {
     }
 
     #[test]
+    fn licensed_noto_hebrew_rasterization_is_deterministic_across_cache_clears() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Noto Sans Hebrew should load");
+        let shaped = font
+            .shape_text_with_direction("שלום", 28.0, crate::TextDirection::RightToLeft)
+            .expect("Hebrew run should shape");
+        let clip = crate::Rect::new(24, 4, 88, 56);
+        let baseline = crate::Point::new(48, 44);
+
+        let mut cold_target =
+            crate::Framebuffer::new(144, 64, crate::Color::BLACK).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut cold_target,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            crate::Color::WHITE,
+            clip,
+        );
+
+        font.clear_glyph_cache();
+
+        let mut warm_target =
+            crate::Framebuffer::new(144, 64, crate::Color::BLACK).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut warm_target,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            crate::Color::WHITE,
+            clip,
+        );
+
+        assert_eq!(
+            cold_target.pixels(),
+            warm_target.pixels(),
+            "glyph cache state must not change rendered text pixels"
+        );
+        assert!(
+            cold_target
+                .pixels()
+                .iter()
+                .any(|pixel| *pixel != crate::Color::BLACK),
+            "the licensed fixture must produce visible glyph coverage"
+        );
+        assert!(cold_target.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % cold_target.width() as usize;
+            let y = index / cold_target.width() as usize;
+            (24..112).contains(&x) && (4..60).contains(&y)
+                || *pixel == crate::Color::BLACK
+        }));
+    }
+
+    #[test]
     fn fallback_keeps_combining_sequences_on_one_font_face() {
         use std::sync::Arc;
 
