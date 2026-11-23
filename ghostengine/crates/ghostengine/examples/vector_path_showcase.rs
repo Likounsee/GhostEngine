@@ -31,7 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             position: 1.0,
             color: Color::rgb(10, 45, 58),
         },
-    ])?;
+    ])
+    .map_err(|error| format!("invalid showcase gradient: {error:?}"))?;
     fill_rect_linear_gradient(
         &mut framebuffer,
         Rect::new(0, 0, 720, 420),
@@ -59,7 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &ribbon,
         Color::rgba(112, 91, 225, 220),
         0.35,
-    )?;
+    )
+    .map_err(|error| format!("ribbon fill failed: {error:?}"))?;
     stroke_path_aa(
         &mut framebuffer,
         &ribbon,
@@ -69,7 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_join(StrokeJoin::Round),
         Color::rgb(225, 218, 255),
         0.35,
-    )?;
+    )
+    .map_err(|error| format!("ribbon stroke failed: {error:?}"))?;
 
     let mut star = Path::new();
     for index in 0..10 {
@@ -91,7 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         transform,
         Color::rgb(245, 177, 76),
         0.3,
-    )?;
+    )
+    .map_err(|error| format!("transformed star fill failed: {error:?}"))?;
     stroke_path_aa(
         &mut framebuffer,
         &star,
@@ -99,7 +103,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         StrokeStyle::new(4.0).with_join(StrokeJoin::Bevel),
         Color::rgb(255, 235, 190),
         0.3,
-    )?;
+    )
+    .map_err(|error| format!("transformed star stroke failed: {error:?}"))?;
 
     // Two contours demonstrate even-odd filling: the inner contour stays hollow.
     let mut ring = Path::new();
@@ -132,7 +137,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &ring,
         Color::rgb(75, 205, 174),
         0.25,
-    )?;
+    )
+    .map_err(|error| format!("even-odd ring fill failed: {error:?}"))?;
 
     let mut clipped = Path::new();
     clipped
@@ -147,7 +153,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Color::rgba(60, 155, 210, 230),
         0.25,
         Rect::new(575, 300, 95, 60),
-    )?;
+    )
+    .map_err(|error| format!("clipped path fill failed: {error:?}"))?;
 
     let mut ppm = format!("P6\n720 420\n255\n").into_bytes();
     for pixel in framebuffer.pixels() {
