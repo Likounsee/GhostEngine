@@ -409,6 +409,19 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_common_host_configuration_before_starting_event_loop() {
+        let config = crate::HostWindowConfig::new("invalid", 0, 480);
+        let result = super::NativeWindowSurface::run_with_config(config, |_, _, _| true);
+
+        assert!(matches!(
+            result,
+            Err(super::NativeWindowError::Host(
+                crate::HostError::InvalidDimensions
+            ))
+        ));
+    }
+
+    #[test]
     fn minimized_window_size_is_not_presentable() {
         assert!(!super::drawable_size_is_nonzero(0, 0));
         assert!(!super::drawable_size_is_nonzero(640, 0));
