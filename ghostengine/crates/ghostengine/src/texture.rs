@@ -23,8 +23,12 @@ impl core::fmt::Display for TextureError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::ZeroDimension => formatter.write_str("texture dimensions must be non-zero"),
-            Self::SizeOverflow => formatter.write_str("texture dimensions overflow addressable memory"),
-            Self::PixelCountMismatch => formatter.write_str("texture pixel count does not match its dimensions"),
+            Self::SizeOverflow => {
+                formatter.write_str("texture dimensions overflow addressable memory")
+            }
+            Self::PixelCountMismatch => {
+                formatter.write_str("texture pixel count does not match its dimensions")
+            }
             Self::AllocationFailed => formatter.write_str("texture pixel allocation failed"),
         }
     }
