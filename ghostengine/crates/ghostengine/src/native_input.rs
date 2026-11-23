@@ -252,7 +252,7 @@ fn apply_logical_key(key: &Key, control: bool, input: &mut InputState) {
             // position. This keeps Ctrl/Command shortcuts correct on AZERTY
             // and other non-US keyboard layouts.
             let mut characters = value.chars();
-            let character = characters.next().map(char::to_ascii_lowercase);
+            let character = characters.next().map(|character| character.to_ascii_lowercase());
             if characters.next().is_none() {
                 match character {
                     Some('a') => input.select_all_pressed = true,
