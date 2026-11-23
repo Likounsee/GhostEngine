@@ -341,7 +341,7 @@ fn pack_softbuffer_pixel(color: Color) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::pack_softbuffer_pixel;
-    use crate::Color;
+    use crate::{Color, Framebuffer};
 
     #[test]
     fn resize_preserves_top_left_pixels_and_clears_new_area() {
