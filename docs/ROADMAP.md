@@ -108,7 +108,13 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Obtain a fully green run of the latest commit across Windows, Linux and macOS, including all feature combinations and the new host-pipeline integration tests.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
-- [ ] Add deterministic golden/pixel-reference tests for representative paths, gradients, transformed textures, layer composition and text rendering.
+- [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
+  - [x] Axis-aligned vector path fill with an exact per-pixel reference.
+  - [x] Linear gradient stop positions with exact expected pixels.
+  - [x] Nearest-neighbor texture scaling and clipping with exact expected pixels.
+  - [ ] Transformed/bilinear texture sampling with exact expected pixels.
+  - [ ] Layer composition, opacity and blend modes with exact expected pixels.
+  - [ ] Text rendering with a licensed deterministic font fixture and stable pixel expectations.
 - [ ] Add property-based or fuzz-style tests for malformed geometry, clipping, dimensions, strides, display-list commands and image inputs; keep the regular CI suite deterministic and bounded.
 - [ ] Validate the public examples as end-to-end application workflows: vector drawing, images, text, UI interaction, input and presentation.
 - [ ] Publish an explicit list of platform limitations and unsupported capabilities based on actual platform runs.
