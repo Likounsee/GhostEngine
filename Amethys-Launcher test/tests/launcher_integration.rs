@@ -64,7 +64,7 @@ fn bundled_cover_library_decodes_and_builds_mipmaps() {
 fn launcher_renders_a_real_frame_without_opening_a_window() {
     use amethyst_preview::{
         app::{App, WIN_H, WIN_W},
-        gfx::{BG, Fonts},
+        gfx::{Fonts, BG},
     };
     use ghostengine::{Framebuffer, InputState};
 
@@ -96,7 +96,7 @@ fn launcher_renders_a_real_frame_without_opening_a_window() {
 fn launcher_click_routes_to_the_library_page() {
     use amethyst_preview::{
         app::{App, WIN_H, WIN_W},
-        gfx::{BG, Fonts, Page},
+        gfx::{Fonts, Page, BG},
     };
     use ghostengine::{Framebuffer, InputState, Point};
 
