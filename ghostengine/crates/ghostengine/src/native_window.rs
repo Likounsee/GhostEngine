@@ -699,9 +699,13 @@ mod tests {
     }
 
     #[test]
-    fn converts_rgba_to_softbuffer_rgb_without_alpha() {
+    fn composites_translucent_rgba_over_black_for_softbuffer_rgb() {
         assert_eq!(
             pack_softbuffer_pixel(Color::rgba(0x12, 0x34, 0x56, 0x78)),
+            0x0008_1828
+        );
+        assert_eq!(
+            pack_softbuffer_pixel(Color::rgba(0x12, 0x34, 0x56, 0xff)),
             0x0012_3456
         );
     }
