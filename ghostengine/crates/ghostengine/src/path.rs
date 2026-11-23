@@ -1272,6 +1272,34 @@ mod tests {
     }
 
     #[test]
+    fn axis_aligned_rectangle_matches_exact_pixel_reference() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.0, 1.0))
+            .line_to(Vector::new(5.0, 1.0))
+            .line_to(Vector::new(5.0, 5.0))
+            .line_to(Vector::new(1.0, 5.0))
+            .close();
+
+        let mut framebuffer = Framebuffer::new(7, 7, Color::BLACK).unwrap();
+        fill_path_even_odd(&mut framebuffer, &path, Color::RED, 0.25).unwrap();
+
+        for y in 0..7 {
+            for x in 0..7 {
+                let expected = if (1..5).contains(&x) && (1..5).contains(&y) {
+                    Color::RED
+                } else {
+                    Color::BLACK
+                };
+                assert_eq!(
+                    framebuffer.get_pixel(x, y),
+                    Some(expected),
+                    "unexpected pixel at ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn clipped_path_fill_respects_viewport_and_framebuffer() {
         let mut path = Path::new();
         path.move_to(Vector::new(1.0, 1.0))
