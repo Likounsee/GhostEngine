@@ -47,7 +47,7 @@ Create crates only when their API is justified. The following is the intended ev
 - **2d:** paths, tessellation or scan conversion, strokes, fills, gradients, image drawing and 2D state.
 - **3d:** mesh data, camera, transforms, clipping, triangle setup, depth, interpolation, materials and lighting.
 - **compositor:** ordered surfaces/layers, damage regions, transforms, opacity and composition.
-- **text:** TTF/OTF loading through the optional fontdue parser, glyph coverage rasterization, baseline-based text drawing and basic measurement. Complex shaping, fallback and persistent glyph caching remain future work.
+- **text:** TTF/OTF loading, bounded glyph caches, OpenType GSUB/GPOS shaping, bidi run ordering, font fallback and baseline-based rasterization. Display-list text is shaped during recording; low-level framebuffer APIs retain a simple glyph-by-glyph path.
 - **image:** image format adapters, decoded pixel storage and texture descriptors. Decoders should be replaceable.
 - **platform:** host surfaces and presentation adapters. Keep platform-specific code isolated.
 - No graphics-API backend crate is part of the current design. Any future hardware-acceleration work requires a separate architecture decision and must not introduce Vulkan, DirectX, OpenGL or WebGPU as a rendering dependency.
@@ -169,7 +169,7 @@ A programmable shader language is a later design decision. Begin with a small, e
 - Describe external memory with pointer/length/stride/format contracts and strict lifetime requirements.
 - Use explicit create/update/destroy operations or RAII-owned handles.
 - Avoid hidden global resource state.
-- Add budgets and eviction policies only when texture/font caches exist.
+- Keep explicit memory budgets and eviction policies for texture, path and glyph caches; avoid unbounded growth in long-running applications.
 - Treat device loss and backend reset as GPU-backend concerns; core resources should be recreatable where feasible.
 
 ## 7. Windows, Linux and macOS; ArchiaOS later
@@ -215,7 +215,7 @@ Before adding a dependency, record its purpose, license, transitive-license cons
 Resolve these through small prototypes and documented decisions rather than speculative abstraction:
 - exact public API shape and stability policy;
 - math crate versus internal math types;
-- advanced font shaping, fallback and glyph-cache policy;
+- remaining advanced text-layout gaps, full Unicode line breaking and broader font fallback policy;
 - image decoder selection;
 - threading and job scheduling model;
 - color management and HDR scope;
