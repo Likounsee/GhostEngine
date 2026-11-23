@@ -41,8 +41,10 @@ impl CoverStore {
             return store;
         };
         let start = Instant::now();
-        for entry in entries.flatten() {
-            let path = entry.path();
+        let mut paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
+        paths.sort();
+
+        for path in paths {
             let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
             if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp") {
                 continue;
@@ -52,12 +54,16 @@ impl CoverStore {
                 .map_err(|e| e.to_string())
                 .and_then(|bytes| decode_texture(&bytes).map_err(|e| format!("{e:?}")));
             match decoded.and_then(|t| MipmapChain::new(&t).map(|m| (t, m)).map_err(|e| format!("{e:?}"))) {
-                Ok((texture, mips)) => {
-                    let _ = store.cache.insert(texture);
-                    store.mips.insert(name, mips);
-                    store.files += 1;
-                }
-                Err(e) => store.failed.push(format!("{name}: {e}")),
+                Ok((texture, mips)) => match store.cache.insert(texture) {
+                    Ok(_) => {
+                        store.mips.insert(name, mips);
+                        store.files += 1;
+                    }
+                    Err(error) => store
+                        .failed
+                        .push(format!("{name}: texture cache insertion failed: {error:?}")),
+                },
+                Err(error) => store.failed.push(format!("{name}: {error}")),
             }
         }
         store.decode_ms = start.elapsed().as_secs_f64() * 1000.0;
