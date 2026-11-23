@@ -42,6 +42,9 @@ cargo test -p ghostengine --features image-decoding
 # Display-free application using HostBackend
 cargo run -p ghostengine --example headless_host_demo
 
+# Headless vector paths, Bézier curves, transforms, strokes and clipping
+cargo run -p ghostengine --release --example vector_path_showcase -- output.ppm
+
 # minifb window adapter
 cargo run -p ghostengine --features window --example browser_frontend
 
