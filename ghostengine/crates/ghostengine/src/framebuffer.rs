@@ -510,6 +510,53 @@ mod tests {
     }
 
     #[test]
+    fn resize_preserving_matches_reference_for_all_small_dimension_pairs() {
+        for old_height in 1..=8 {
+            for old_width in 1..=8 {
+                let mut original =
+                    Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
+                for y in 0..old_height {
+                    for x in 0..old_width {
+                        let color = Color::rgba(
+                            (x * 29 + y * 7) as u8,
+                            (y * 31 + x * 3) as u8,
+                            (x * 11 + y * 13) as u8,
+                            255,
+                        );
+                        assert!(original.set_pixel(x, y, color));
+                    }
+                }
+
+                for new_height in 1..=8 {
+                    for new_width in 1..=8 {
+                        let mut resized = original.try_clone().unwrap();
+                        resized
+                            .resize_preserving(new_width, new_height, Color::GREEN)
+                            .unwrap();
+
+                        assert_eq!(resized.width(), new_width);
+                        assert_eq!(resized.height(), new_height);
+                        for y in 0..new_height {
+                            for x in 0..new_width {
+                                let expected = if x < old_width && y < old_height {
+                                    original.get_pixel(x, y).unwrap()
+                                } else {
+                                    Color::GREEN
+                                };
+                                assert_eq!(
+                                    resized.get_pixel(x, y),
+                                    Some(expected),
+                                    "resize {old_width}x{old_height} -> {new_width}x{new_height} at ({x}, {y})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn resize_preserving_handles_narrowing_and_height_changes() {
         let mut framebuffer = Framebuffer::new(3, 3, Color::BLACK).unwrap();
         framebuffer.pixels_mut().copy_from_slice(&[
