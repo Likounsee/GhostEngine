@@ -220,4 +220,67 @@ mod tests {
         assert_eq!(cache.framebuffer().width(), 4);
         assert_eq!(cache.framebuffer().height(), 3);
     }
+
+    #[test]
+    fn repeated_damage_render_and_resize_cycles_keep_cache_state_consistent() {
+        let mut cache = CachedLayer::new(4, 4, Color::BLACK).unwrap();
+
+        for iteration in 0..128_u32 {
+            let x = iteration % 4;
+            let y = (iteration / 4) % 4;
+            let color = Color::rgba(
+                iteration as u8,
+                iteration.wrapping_mul(3) as u8,
+                iteration.wrapping_mul(7) as u8,
+                255,
+            );
+
+            cache.mark_dirty(Rect::new(x as i32, y as i32, 1, 1));
+            assert!(cache.render_if_dirty(|target, damage| {
+                for rect in damage.rectangles() {
+                    target.fill_rect(*rect, color);
+                }
+            }));
+            assert!(cache.damage().is_empty());
+            assert_eq!(cache.framebuffer().get_pixel(x, y), Some(color));
+
+            if iteration % 16 == 15 {
+                let width = 2 + (iteration / 16) % 5;
+                let height = 2 + (iteration / 16) % 3;
+                cache.resize(width, height, Color::BLUE).unwrap();
+                assert_eq!(cache.framebuffer().width(), width);
+                assert_eq!(cache.framebuffer().height(), height);
+                assert_eq!(cache.damage().area(), u64::from(width) * u64::from(height));
+                assert!(cache.render_if_dirty(|_, _| {}));
+                assert!(cache.damage().is_empty());
+            }
+        }
+
+        assert_eq!(cache.rendered_frames(), 136);
+    }
+
+    #[test]
+    fn compositing_extreme_offscreen_positions_is_a_noop() {
+        let cache = CachedLayer::new(2, 2, Color::RED).unwrap();
+        let mut target = Framebuffer::new(3, 3, Color::BLUE).unwrap();
+        let original = target.pixels().to_vec();
+
+        cache.composite_onto(
+            &mut target,
+            i32::MIN,
+            i32::MIN,
+            255,
+            Rect::new(0, 0, 3, 3),
+        );
+        cache.composite_onto(
+            &mut target,
+            i32::MAX,
+            i32::MAX,
+            255,
+            Rect::new(0, 0, 3, 3),
+        );
+
+        assert_eq!(target.pixels(), original);
+    }
+
 }
