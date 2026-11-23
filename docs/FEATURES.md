@@ -108,17 +108,17 @@ Its tests cover these behaviors without a display server. The existing Winit/sof
 scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
 values. The native UI demo consumes those events rather than Winit types. The
 native adapter also exposes runtime `HostCapabilities` reporting, including
-whether the system clipboard was actually initialized. This
-is the first native integration path, not yet the final `HostBackend` lifecycle
-implementation or proof of real-window behavior on all three operating systems.
+whether the system clipboard was actually initialized. Its control-based runner
+supports `Wait`, `Redraw` and `Exit` outcomes, so applications can animate without
+importing Winit types or emulating synchronous polling. The native adapter is
+still not an implementation of the poll-based `HostBackend` trait, and real
+window behavior must still be validated on all three operating systems.
 The native adapter deliberately remains callback-driven: Winit owns event dispatch
 and redraw scheduling, while `HostBackend::poll_events` is a synchronous polling
 contract. These lifecycle models must not be joined by blocking, synthetic
-polling, or an adapter that hides event-loop ownership. The remaining host work
-is an application-facing lifecycle design that can drive the native event loop
-directly, report native capabilities (including clipboard availability), and
-preserve the normalized event and presentation semantics already provided by
-headless.
+polling, or an adapter that hides event-loop ownership. The remaining host work is real-window validation on Windows, Linux and macOS,
+plus a deliberate decision about whether a future common API should expose a
+callback-driven runner alongside the synchronous headless polling contract.
 
 ## Planned feature groups
 

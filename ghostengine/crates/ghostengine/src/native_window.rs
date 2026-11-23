@@ -71,7 +71,8 @@ impl From<FramebufferError> for NativeWindowError {
 ///
 /// The callback is invoked for each redraw with the accumulated native input
 /// frame and a system clipboard handle. It should render into the supplied
-/// framebuffer and return `false` to close the window. Clipboard requests
+/// framebuffer and return `false` to close the window. The control-based runner
+/// also supports explicit wait/continuous-redraw scheduling. Clipboard requests
 /// produced by ComponentTree can be resolved with `clipboard.resolve(&action)`.
 pub struct NativeWindowSurface;
 
@@ -162,6 +163,20 @@ impl NativeWindowSurface {
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
     {
         Self::run_with_config(HostWindowConfig::new(title, width, height), draw)
+    }
+
+    /// Runs a native window with normalized events and explicit frame scheduling.
+    pub fn run_with_host_events_control<F>(
+        title: &str,
+        width: u32,
+        height: u32,
+        draw: F,
+    ) -> Result<(), NativeWindowError>
+    where
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl
+            + 'static,
+    {
+        Self::run_with_config_control(HostWindowConfig::new(title, width, height), draw)
     }
 
     /// Runs a native window using the platform-independent host configuration.
