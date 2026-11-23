@@ -592,7 +592,7 @@ mod tests {
                 0.0,
                 f64::INFINITY
             ))),
-            i32::MIN
+            0
         );
     }
 
