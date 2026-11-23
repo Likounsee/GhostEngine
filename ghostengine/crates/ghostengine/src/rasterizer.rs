@@ -9590,11 +9590,26 @@ mod transformed_conic_gradient_tests {
         use super::fill_rect_linear_gradient;
 
         let stops = Gradient::new(vec![
-            GradientStop { position: 0.0, color: Color::RED },
-            GradientStop { position: 0.25, color: Color::GREEN },
-            GradientStop { position: 0.5, color: Color::BLUE },
-            GradientStop { position: 0.75, color: Color::WHITE },
-            GradientStop { position: 1.0, color: Color::RED },
+            GradientStop {
+                position: 0.0,
+                color: Color::RED,
+            },
+            GradientStop {
+                position: 0.25,
+                color: Color::GREEN,
+            },
+            GradientStop {
+                position: 0.5,
+                color: Color::BLUE,
+            },
+            GradientStop {
+                position: 0.75,
+                color: Color::WHITE,
+            },
+            GradientStop {
+                position: 1.0,
+                color: Color::RED,
+            },
         ])
         .unwrap();
         let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
@@ -9612,5 +9627,4 @@ mod transformed_conic_gradient_tests {
             &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
         );
     }
-
 }
