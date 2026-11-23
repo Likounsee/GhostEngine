@@ -156,6 +156,23 @@ enum Command {
     },
 }
 
+/// Errors returned by fallible display-list capacity operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayListError {
+    /// The requested command capacity cannot be represented or allocated.
+    AllocationFailed,
+}
+
+impl std::fmt::Display for DisplayListError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AllocationFailed => formatter.write_str("could not reserve display-list command storage"),
+        }
+    }
+}
+
+impl std::error::Error for DisplayListError {}
+
 /// Summary of commands executed by one display-list replay.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RenderStats {
@@ -211,6 +228,20 @@ impl DisplayList {
     }
 
     /// Creates an empty display list with room for at least the requested
+    /// number of drawing commands, reporting capacity/allocation failures.
+    pub fn try_with_capacity(command_capacity: usize) -> Result<Self, DisplayListError> {
+        let mut commands = Vec::new();
+        commands
+            .try_reserve_exact(command_capacity)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        Ok(Self {
+            commands,
+            clips: Vec::new(),
+            transforms: Vec::new(),
+        })
+    }
+
+    /// Creates an empty display list with room for at least the requested
     /// number of drawing commands.
     #[must_use]
     pub fn with_capacity(command_capacity: usize) -> Self {
@@ -219,6 +250,15 @@ impl DisplayList {
             clips: Vec::new(),
             transforms: Vec::new(),
         }
+    }
+
+    /// Fallibly reserves room for additional drawing commands.
+    ///
+    /// On failure, the existing command list remains unchanged.
+    pub fn try_reserve_commands(&mut self, additional: usize) -> Result<(), DisplayListError> {
+        self.commands
+            .try_reserve(additional)
+            .map_err(|_| DisplayListError::AllocationFailed)
     }
 
     /// Reserves room for at least the requested number of additional drawing
