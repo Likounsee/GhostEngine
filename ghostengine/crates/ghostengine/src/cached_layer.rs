@@ -265,20 +265,8 @@ mod tests {
         let mut target = Framebuffer::new(3, 3, Color::BLUE).unwrap();
         let original = target.pixels().to_vec();
 
-        cache.composite_onto(
-            &mut target,
-            i32::MIN,
-            i32::MIN,
-            255,
-            Rect::new(0, 0, 3, 3),
-        );
-        cache.composite_onto(
-            &mut target,
-            i32::MAX,
-            i32::MAX,
-            255,
-            Rect::new(0, 0, 3, 3),
-        );
+        cache.composite_onto(&mut target, i32::MIN, i32::MIN, 255, Rect::new(0, 0, 3, 3));
+        cache.composite_onto(&mut target, i32::MAX, i32::MAX, 255, Rect::new(0, 0, 3, 3));
 
         assert_eq!(target.pixels(), original);
     }
