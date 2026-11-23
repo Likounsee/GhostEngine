@@ -4,8 +4,8 @@
 //! cargo run -p ghostengine --features image-decoding --example image_pipeline_demo -- image.png [output.ppm]
 
 use ghostengine::{
-    decode_texture, draw_mipmapped_texture_clipped, draw_texture, Color, Framebuffer,
-    MipmapChain, Rect, TextureFilter,
+    decode_texture, draw_mipmapped_texture_clipped, draw_texture, Color, Framebuffer, MipmapChain,
+    Rect, TextureFilter,
 };
 use std::{env, error::Error, fs, path::PathBuf};
 
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Rect::new(360, 360, 80, 90),
     );
 
-    let mut ppm = format!("P6\n{} {}\n255\n", frame.width(), frame.height()).into_bytes();
+    let mut ppm = format!("P6\\n{} {}\\n255\\n", frame.width(), frame.height()).into_bytes();
     for pixel in frame.pixels() {
         ppm.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
     }
