@@ -346,12 +346,9 @@ mod tests {
     #[test]
     fn resize_preserves_top_left_pixels_and_clears_new_area() {
         let mut source = Framebuffer::new(2, 2, Color::BLACK).unwrap();
-        source.pixels_mut().copy_from_slice(&[
-            Color::RED,
-            Color::GREEN,
-            Color::BLUE,
-            Color::WHITE,
-        ]);
+        source
+            .pixels_mut()
+            .copy_from_slice(&[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
 
         let enlarged = super::resize_framebuffer_contents(&source, 3, 3).unwrap();
         assert_eq!(enlarged.width(), 3);
