@@ -85,6 +85,9 @@ impl HeadlessHost {
         if !self.open {
             return Err(HeadlessHostError::Closed);
         }
+        if (width, height) == self.drawable_size() {
+            return Ok(());
+        }
         let is_minimized = width == 0 || height == 0;
         if !self.config.resizable
             && !is_minimized
@@ -237,6 +240,25 @@ mod tests {
             [HostEvent::Resized {
                 width: 128,
                 height: 96
+            }]
+        );
+    }
+
+    #[test]
+    fn resizing_to_the_current_drawable_does_not_emit_duplicate_events() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+
+        host.resize(64, 32).unwrap();
+        host.resize(0, 0).unwrap();
+        host.resize(0, 0).unwrap();
+
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert_eq!(
+            events,
+            [HostEvent::Resized {
+                width: 0,
+                height: 0,
             }]
         );
     }
