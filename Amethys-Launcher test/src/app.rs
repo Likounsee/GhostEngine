@@ -9,8 +9,8 @@ use crate::gfx::{self, Action, Fonts, Hit, Page, Painter, State, BG, W};
 use crate::pages::{self, Active, PageFn, MW, MX, SIDE_W};
 use std::{collections::VecDeque, time::Instant};
 use ghostengine::{
-    InputState, draw_rounded_rect_aa, fill_rounded_rect_aa, ClipboardAction, Color, ComponentId, ComponentTree,
-    Framebuffer, Insets, LayoutDirection, LayoutItem, Rect, ScrollViewport, StackLayout,
+    draw_rounded_rect_aa, fill_rounded_rect_aa, ClipboardAction, Color, ComponentId, ComponentTree,
+    Framebuffer, InputState, Insets, LayoutDirection, LayoutItem, Rect, ScrollViewport, StackLayout,
     UiComponent, UiInteraction, UiTheme,
 };
 
