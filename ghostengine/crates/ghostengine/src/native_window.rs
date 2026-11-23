@@ -4,7 +4,8 @@
 //! framebuffer and softbuffer copies those pixels to the native window.
 
 use crate::{
-    input::InputState, Color, Framebuffer, FramebufferError, HostCapabilities, HostError,
+    current_host_platform, input::InputState, Color, Framebuffer, FramebufferError,
+    HostCapabilities, HostError, HostPlatform,
     HostEvent, HostWindowConfig, NativeClipboard, NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
@@ -75,6 +76,12 @@ impl From<FramebufferError> for NativeWindowError {
 pub struct NativeWindowSurface;
 
 impl NativeWindowSurface {
+    /// Returns the desktop platform selected for this native window adapter.
+    #[must_use]
+    pub const fn platform() -> HostPlatform {
+        current_host_platform()
+    }
+
     /// Reports the native services available to an application using this adapter.
     ///
     /// Winit provides windowing, display scaling, keyboard/text input and IME
