@@ -187,15 +187,16 @@ That phase requires a feasibility study, a GhostEngine-owned backend/resource ar
 3D development begins only after the hardware-accelerated foundation is working and validated. It reuses that backend and resource architecture rather than introducing an unrelated renderer.
 
 
-The common `HostBackend` lifecycle is currently implemented by the deterministic
-headless backend. The native Winit adapter currently exposes a callback-driven
-event-loop entry point with normalized events; it is not yet an implementation
-of the poll-based `HostBackend` trait. Keep this distinction explicit until a
-native lifecycle design can preserve Winit's event-loop ownership and threading
-requirements without a fake polling abstraction. The intended resolution is an application-facing
-runner/session API that owns the native event loop and invokes application
-callbacks for normalized events and frame presentation. It must not pretend
-that Winit can be synchronously polled from an arbitrary caller thread.
+The common synchronous `HostBackend` contract is currently implemented by
+the deterministic headless backend. The native Winit adapter provides an
+application-facing callback runner through `NativeWindowSurface::run_with_config`
+and `run_with_config_control`. It delivers normalized lifecycle/input events,
+owns event-loop dispatch, presents the CPU framebuffer and supports wait,
+continuous-redraw and exit outcomes. It deliberately does not implement the
+poll-based `HostBackend` trait: Winit owns a callback-driven event loop, and the
+engine must not pretend it can synchronously poll that loop from an arbitrary
+caller thread. Keep both lifecycle models explicit rather than hiding the
+difference behind a blocking or synthetic polling abstraction.
 
 ## 9. Testing strategy
 
