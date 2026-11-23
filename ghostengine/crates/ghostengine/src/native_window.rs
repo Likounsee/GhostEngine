@@ -161,20 +161,7 @@ where
             return Ok(());
         }
 
-        let mut resized = Framebuffer::new(size.width, size.height, Color::BLACK)?;
-        let copy_width = self.framebuffer.width().min(size.width) as usize;
-        let copy_height = self.framebuffer.height().min(size.height) as usize;
-        let source_width = self.framebuffer.width() as usize;
-        let destination_width = size.width as usize;
-        for y in 0..copy_height {
-            let source_start = y * source_width;
-            let destination_start = y * destination_width;
-            resized.pixels_mut()[destination_start..destination_start + copy_width]
-                .copy_from_slice(
-                    &self.framebuffer.pixels()[source_start..source_start + copy_width],
-                );
-        }
-        self.framebuffer = resized;
+        self.framebuffer = resize_framebuffer_contents(&self.framebuffer, size.width, size.height)?;
         Ok(())
     }
 
@@ -325,6 +312,27 @@ where
     }
 }
 
+/// Resizes a framebuffer while preserving its top-left overlap.
+fn resize_framebuffer_contents(
+    source: &Framebuffer,
+    width: u32,
+    height: u32,
+) -> Result<Framebuffer, FramebufferError> {
+    let mut resized = Framebuffer::new(width, height, Color::BLACK)?;
+    let copy_width = source.width().min(width) as usize;
+    let copy_height = source.height().min(height) as usize;
+    let source_width = source.width() as usize;
+    let destination_width = width as usize;
+
+    for y in 0..copy_height {
+        let source_start = y * source_width;
+        let destination_start = y * destination_width;
+        resized.pixels_mut()[destination_start..destination_start + copy_width]
+            .copy_from_slice(&source.pixels()[source_start..source_start + copy_width]);
+    }
+    Ok(resized)
+}
+
 /// Converts a straight-alpha GhostEngine color to softbuffer's 0x00RRGGBB layout.
 fn pack_softbuffer_pixel(color: Color) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
@@ -334,6 +342,38 @@ fn pack_softbuffer_pixel(color: Color) -> u32 {
 mod tests {
     use super::pack_softbuffer_pixel;
     use crate::Color;
+
+    #[test]
+    fn resize_preserves_top_left_pixels_and_clears_new_area() {
+        let mut source = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        source.pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::WHITE,
+        ]);
+
+        let enlarged = super::resize_framebuffer_contents(&source, 3, 3).unwrap();
+        assert_eq!(enlarged.width(), 3);
+        assert_eq!(enlarged.height(), 3);
+        assert_eq!(
+            enlarged.pixels(),
+            &[
+                Color::RED,
+                Color::GREEN,
+                Color::BLACK,
+                Color::BLUE,
+                Color::WHITE,
+                Color::BLACK,
+                Color::BLACK,
+                Color::BLACK,
+                Color::BLACK,
+            ]
+        );
+
+        let cropped = super::resize_framebuffer_contents(&source, 1, 1).unwrap();
+        assert_eq!(cropped.pixels(), &[Color::RED]);
+    }
 
     #[test]
     fn converts_rgba_to_softbuffer_rgb_without_alpha() {
