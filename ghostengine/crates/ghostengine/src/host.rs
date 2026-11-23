@@ -135,6 +135,9 @@ pub trait HostBackend: Sized {
     fn capabilities(&self) -> HostCapabilities;
 
     /// Returns the current drawable size in physical pixels.
+    ///
+    /// A zero width or height means the drawable is temporarily unavailable,
+    /// for example while a desktop window is minimized.
     fn drawable_size(&self) -> (u32, u32);
 
     /// Returns the current logical-to-physical scale factor.

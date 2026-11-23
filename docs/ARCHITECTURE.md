@@ -113,7 +113,9 @@ the crate root. It defines validated window configuration, backend creation and
 closure, normalized lifecycle/resize/focus/redraw/input events, capability
 reporting, physical drawable sizing, scale-factor reporting and framebuffer
 presentation. `HeadlessHost` is the first implementation and provides
-repeatable, display-free lifecycle, event, resize and presentation behavior.
+repeatable, display-free lifecycle, event, resize and presentation behavior,
+including zero-sized minimized drawables and an explicit presentation error
+until the drawable is restored.
 `SurfaceDescriptor` and `Framebuffer::write_to_surface` remain the explicit
 pixel-memory boundary. The native Winit adapter remains callback-driven rather than implementing the
 poll-based trait. It normalizes lifecycle/input events, synchronizes physical
