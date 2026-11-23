@@ -623,6 +623,64 @@ mod tests {
     }
 
     #[test]
+    fn native_ime_lifecycle_is_forwarded_in_order_and_resets_transient_events() {
+        use winit::event::{Ime, WindowEvent};
+
+        let mut adapter = NativeInputAdapter::new();
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Enabled));
+        assert!(adapter.ime_enabled);
+
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit(
+            "に".to_owned(),
+            None,
+        )));
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Commit(
+            "日本".to_owned(),
+        )));
+        let frame = adapter.take_frame();
+        assert_eq!(
+            frame.text_events,
+            vec![
+                TextInputEvent::CompositionUpdate("に".to_owned()),
+                TextInputEvent::CompositionCommit("日本".to_owned()),
+            ]
+        );
+
+        // Taking a frame consumes composition updates but does not disable IME.
+        assert!(adapter.ime_enabled);
+        assert!(adapter.take_frame().text_events.is_empty());
+
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Disabled));
+        assert!(!adapter.ime_enabled);
+        assert_eq!(
+            adapter.take_frame().text_events,
+            vec![TextInputEvent::CompositionCancel]
+        );
+    }
+
+    #[test]
+    fn focus_loss_cancels_active_ime_composition_exactly_once() {
+        use winit::event::{Ime, WindowEvent};
+
+        let mut adapter = NativeInputAdapter::new();
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Enabled));
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit(
+            "かな".to_owned(),
+            None,
+        )));
+        adapter.process_window_event(&WindowEvent::Focused(false));
+
+        let frame = adapter.take_frame();
+        assert_eq!(
+            frame.text_events,
+            vec![TextInputEvent::CompositionCancel]
+        );
+        assert!(!adapter.ime_enabled);
+        assert!(adapter.take_frame().text_events.is_empty());
+    }
+
+
+    #[test]
     fn losing_focus_discards_stale_input_edges_and_resets_click_history() {
         use winit::event::WindowEvent;
 
