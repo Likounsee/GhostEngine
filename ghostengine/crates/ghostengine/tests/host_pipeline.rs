@@ -147,7 +147,6 @@ fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
     }
 }
 
-
 #[test]
 fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame() {
     use ghostengine::{
@@ -159,10 +158,8 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
     const TITLE: ComponentId = ComponentId(101);
     const ACTION: ComponentId = ComponentId(102);
 
-    let font = FontFace::from_bytes(include_bytes!(
-        "fixtures/NotoSansHebrew[wdth,wght].ttf"
-    ))
-    .expect("the licensed deterministic font fixture should load");
+    let font = FontFace::from_bytes(include_bytes!("fixtures/NotoSansHebrew[wdth,wght].ttf"))
+        .expect("the licensed deterministic font fixture should load");
 
     let root = UiComponent::panel(
         ROOT,
@@ -174,8 +171,7 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
     .with_children(vec![
         UiComponent::label(TITLE, "GhostEngine application workflow")
             .with_layout_item(LayoutItem::fixed(32)),
-        UiComponent::button(ACTION, "Open library")
-            .with_layout_item(LayoutItem::fixed(44)),
+        UiComponent::button(ACTION, "Open library").with_layout_item(LayoutItem::fixed(44)),
     ]);
     let mut tree = ComponentTree::new(vec![root]);
     let bounds = Rect::new(0, 0, 320, 120);
@@ -198,12 +194,15 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
     let mut frame = Framebuffer::new(320, 120, Color::rgb(238, 242, 248)).unwrap();
     tree.render(&mut frame, bounds, &font, 16.0, &UiTheme::default());
     assert!(
-        frame.pixels().iter().any(|pixel| *pixel != Color::rgb(238, 242, 248)),
+        frame
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel != Color::rgb(238, 242, 248)),
         "the retained UI should paint visible pixels"
     );
 
-    let mut host = HeadlessHost::new(HostWindowConfig::new("application workflow", 320, 120))
-        .unwrap();
+    let mut host =
+        HeadlessHost::new(HostWindowConfig::new("application workflow", 320, 120)).unwrap();
     host.request_redraw();
     host.present(&frame).unwrap();
     let presented = host
@@ -221,10 +220,13 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
     };
     let mut bytes = vec![0; descriptor.required_buffer_len().unwrap()];
     presented.write_to_surface(&mut bytes, descriptor).unwrap();
-    assert!(bytes.chunks_exact(4).any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0));
+    assert!(bytes
+        .chunks_exact(4)
+        .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0));
 
     assert_eq!(
-        tree.handle_key(bounds, ComponentKey::Enter, false).activated,
+        tree.handle_key(bounds, ComponentKey::Enter, false)
+            .activated,
         Some(ACTION),
         "keyboard activation should target the focused application control"
     );
