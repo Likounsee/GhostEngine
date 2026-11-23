@@ -382,7 +382,6 @@ fn arbitrary_truncated_image_inputs_fail_cleanly_without_panicking() {
     }
 }
 
-
 #[test]
 fn display_list_fallible_capacity_apis_report_overflow_without_mutating_state() {
     use ghostengine::{DisplayList, DisplayListError};
