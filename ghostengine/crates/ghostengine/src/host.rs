@@ -88,6 +88,7 @@ pub enum HostRunControl {
     /// Schedule another frame immediately after the current frame is presented.
     Redraw,
     /// Schedule another frame after the requested frame interval.
+    /// A zero duration requests the next event-loop turn.
     RedrawAfter(Duration),
 }
 

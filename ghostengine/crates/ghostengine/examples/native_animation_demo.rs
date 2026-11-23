@@ -3,9 +3,7 @@
 //! Run with: cargo run -p ghostengine --example native_animation_demo --features native-window
 
 use ghostengine::rasterizer::{draw_circle, fill_rect};
-use ghostengine::{
-    Color, HostEvent, HostRunControl, NativeWindowSurface, Point, Rect,
-};
+use ghostengine::{Color, HostEvent, HostRunControl, NativeWindowSurface, Point, Rect};
 use std::{error::Error, time::Duration};
 
 const WIDTH: u32 = 800;

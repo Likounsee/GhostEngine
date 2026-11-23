@@ -76,8 +76,7 @@ pub use geometry::{Point, Rect, Vector};
 pub use headless::{HeadlessHost, HeadlessHostError};
 pub use host::{
     current_host_platform, HostBackend, HostCapabilities, HostError, HostEvent, HostPlatform,
-    HostRunControl,
-    HostWindowConfig,
+    HostRunControl, HostWindowConfig,
 };
 #[cfg(feature = "image-decoding")]
 pub use image::{
