@@ -393,6 +393,20 @@ mod tests {
     }
 
     #[test]
+    fn close_is_idempotent_and_closed_hosts_do_not_schedule_redraws() {
+        let mut host = HeadlessHost::default();
+
+        host.close();
+        host.close();
+        host.request_redraw();
+
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert_eq!(events, [HostEvent::CloseRequested]);
+        assert!(!host.is_open());
+    }
+
+    #[test]
     fn rejects_frame_with_wrong_dimensions() {
         let mut host = HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
         let frame = Framebuffer::new(1, 1, Color::BLACK).unwrap();
