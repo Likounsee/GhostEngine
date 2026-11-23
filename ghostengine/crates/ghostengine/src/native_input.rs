@@ -121,22 +121,26 @@ impl NativeInputAdapter {
                 }
             },
             WindowEvent::Focused(false) => {
+                let left_mouse_was_down = self.left_mouse_down;
+                self.left_mouse_down = false;
+                self.right_mouse_down = false;
                 self.shift_down = false;
                 self.control_down = false;
                 self.super_down = false;
                 self.alt_down = false;
                 self.escape_down = false;
                 self.ime_enabled = false;
-                if self.right_mouse_down {
-                    self.right_mouse_down = false;
-                }
-                if self.left_mouse_down {
-                    self.left_mouse_down = false;
-                    self.frame.left_mouse_released = true;
-                }
-                self.frame
-                    .text_events
-                    .push(TextInputEvent::CompositionCancel);
+                self.left_click_tracker = ClickTracker::default();
+
+                // Discard key, pointer and text edges accumulated before focus
+                // was lost. They must not be replayed when the window regains
+                // focus. Preserve the release edge if focus loss released a
+                // held left mouse button.
+                self.frame = InputState {
+                    left_mouse_released: left_mouse_was_down,
+                    text_events: vec![TextInputEvent::CompositionCancel],
+                    ..InputState::default()
+                };
             }
             _ => {}
         }
@@ -457,6 +461,34 @@ mod tests {
             frame.text_events,
             vec![TextInputEvent::CompositionUpdate("に".to_owned())]
         );
+    }
+
+    #[test]
+    fn losing_focus_discards_stale_input_edges_and_resets_click_history() {
+        use winit::event::WindowEvent;
+
+        let mut adapter = NativeInputAdapter::new();
+        adapter.left_mouse_down = true;
+        adapter.right_mouse_down = true;
+        adapter.frame.enter_pressed = true;
+        adapter.frame.left_mouse_pressed = true;
+        adapter.frame.right_mouse_pressed = true;
+        adapter.frame.shortcut_keys.push('a');
+        adapter.frame.text_events.push(TextInputEvent::Insert("x".into()));
+        adapter.left_click_tracker.click_count = 2;
+
+        adapter.process_window_event(&WindowEvent::Focused(false));
+        let frame = adapter.take_frame();
+
+        assert!(!frame.enter_pressed);
+        assert!(!frame.left_mouse_pressed);
+        assert!(!frame.right_mouse_pressed);
+        assert!(frame.left_mouse_released);
+        assert!(frame.shortcut_keys.is_empty());
+        assert_eq!(frame.text_events, vec![TextInputEvent::CompositionCancel]);
+        assert!(!frame.left_mouse_down);
+        assert!(!frame.right_mouse_down);
+        assert_eq!(adapter.left_click_tracker.click_count, 0);
     }
 
     #[test]
