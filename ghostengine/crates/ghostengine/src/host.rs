@@ -79,6 +79,8 @@ pub struct HostCapabilities {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
     CloseRequested,
+    /// Physical drawable dimensions; a zero dimension may indicate minimization.
+    /// Backends may retain the last non-zero framebuffer while reporting this state.
     Resized { width: u32, height: u32 },
     ScaleFactorChanged { scale_factor: f64 },
     FocusChanged { focused: bool },

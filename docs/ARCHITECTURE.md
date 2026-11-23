@@ -115,8 +115,12 @@ reporting, physical drawable sizing, scale-factor reporting and framebuffer
 presentation. `HeadlessHost` is the first implementation and provides
 repeatable, display-free lifecycle, event, resize and presentation behavior.
 `SurfaceDescriptor` and `Framebuffer::write_to_surface` remain the explicit
-pixel-memory boundary. The native Windows, Linux and macOS adapters still need
-to implement this contract and pass platform CI.
+pixel-memory boundary. The native Winit adapter remains callback-driven rather than implementing the
+poll-based trait. It normalizes lifecycle/input events, synchronizes physical
+framebuffer dimensions on resize and DPI transitions, and tracks minimized
+zero-sized drawables separately from retained framebuffer storage so restoring
+a window always emits a fresh resize event. Native Windows, Linux and macOS
+behavior still requires platform CI and interactive testing.
 
 ## 4. Core API rules
 
