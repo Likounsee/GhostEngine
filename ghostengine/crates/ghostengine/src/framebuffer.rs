@@ -488,15 +488,17 @@ mod tests {
         );
 
         framebuffer.resize_preserving(1, 3, Color::BLUE).unwrap();
-        assert_eq!(framebuffer.pixels(), &[Color::RED, Color::WHITE, Color::BLUE]);
+        assert_eq!(
+            framebuffer.pixels(),
+            &[Color::RED, Color::WHITE, Color::BLUE]
+        );
     }
 
     #[test]
     fn resize_preserving_matches_top_left_reference_for_small_dimensions() {
         for old_width in 1..=6 {
             for old_height in 1..=6 {
-                let mut original =
-                    Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
+                let mut original = Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
                 for y in 0..old_height {
                     for x in 0..old_width {
                         let value = (y * old_width + x) as u8;
@@ -516,8 +518,7 @@ mod tests {
                             .resize_preserving(new_width, new_height, Color::MAGENTA)
                             .unwrap();
 
-                        let mut expected =
-                            vec![Color::MAGENTA; (new_width * new_height) as usize];
+                        let mut expected = vec![Color::MAGENTA; (new_width * new_height) as usize];
                         for y in 0..old_height.min(new_height) {
                             for x in 0..old_width.min(new_width) {
                                 expected[(y * new_width + x) as usize] =
