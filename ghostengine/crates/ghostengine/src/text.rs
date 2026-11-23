@@ -3194,12 +3194,15 @@ mod tests {
                 .any(|pixel| *pixel != crate::Color::BLACK),
             "the licensed fixture must produce visible glyph coverage"
         );
-        assert!(cold_target.pixels().iter().enumerate().all(|(index, pixel)| {
-            let x = index % cold_target.width() as usize;
-            let y = index / cold_target.width() as usize;
-            (24..112).contains(&x) && (4..60).contains(&y)
-                || *pixel == crate::Color::BLACK
-        }));
+        assert!(cold_target
+            .pixels()
+            .iter()
+            .enumerate()
+            .all(|(index, pixel)| {
+                let x = index % cold_target.width() as usize;
+                let y = index / cold_target.width() as usize;
+                (24..112).contains(&x) && (4..60).contains(&y) || *pixel == crate::Color::BLACK
+            }));
     }
 
     #[test]
@@ -3216,9 +3219,7 @@ mod tests {
         let baseline = crate::Point::new(42, 46);
 
         let mut clipped = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
-        super::draw_text_shaped_clipped(
-            &mut clipped, &font, &shaped, baseline, 28.0, color, clip,
-        );
+        super::draw_text_shaped_clipped(&mut clipped, &font, &shaped, baseline, 28.0, color, clip);
 
         let mut unclipped =
             crate::Framebuffer::new(128, 64, background).expect("reference framebuffer");
@@ -3246,8 +3247,8 @@ mod tests {
             }));
 
         let mut transformed = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
-        let transform = crate::Transform2D::translation(7.0, -3.0)
-            .then(crate::Transform2D::rotation(0.11));
+        let transform =
+            crate::Transform2D::translation(7.0, -3.0).then(crate::Transform2D::rotation(0.11));
         super::draw_text_shaped_transformed_clipped(
             &mut transformed,
             &font,
@@ -3312,15 +3313,7 @@ mod tests {
 
         let mut direct = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
         let mut identity = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
-        super::draw_text_shaped_clipped(
-            &mut direct,
-            &font,
-            &shaped,
-            baseline,
-            26.0,
-            color,
-            clip,
-        );
+        super::draw_text_shaped_clipped(&mut direct, &font, &shaped, baseline, 26.0, color, clip);
         super::draw_text_shaped_transformed_clipped(
             &mut identity,
             &font,
