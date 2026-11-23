@@ -227,6 +227,30 @@ mod tests {
     use crate::{Color, Framebuffer};
 
     #[test]
+    fn linear_srgb_export_uses_monotonic_lookup_with_exact_endpoints() {
+        let table = super::srgb_to_linear_lut();
+        assert_eq!(table[0], 0);
+        assert_eq!(table[255], 255);
+        assert!(table.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert_eq!(table[128], 55);
+    }
+
+    #[test]
+    fn linear_srgb_export_preserves_alpha_and_converts_rgb_channels() {
+        let frame = Framebuffer::new(1, 1, Color::rgba(128, 64, 255, 77)).unwrap();
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgba8,
+            AlphaMode::Straight,
+            ColorSpace::LinearSrgb,
+        );
+        let mut bytes = [0; 4];
+        frame.write_to_surface(&mut bytes, descriptor).unwrap();
+        assert_eq!(bytes, [55, 13, 255, 77]);
+    }
+
+    #[test]
     fn exports_bgra_with_padded_rows_without_touching_padding() {
         let mut frame = Framebuffer::new(1, 2, Color::TRANSPARENT).unwrap();
         frame.set_pixel(0, 0, Color::rgba(10, 20, 30, 40));
