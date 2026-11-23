@@ -28,6 +28,17 @@ impl Color {
         Self { r, g, b, a }
     }
 
+    /// Converts straight-alpha RGBA to packed `0x00RRGGBB`, compositing over black.
+    ///
+    /// Native desktop presentation surfaces used by GhostEngine expose RGB
+    /// pixels without an alpha channel. This conversion therefore preserves
+    /// translucent colors by compositing them over an opaque black backdrop.
+    #[must_use]
+    pub fn to_rgb24(self) -> u32 {
+        let opaque = self.blend_over(Self::BLACK);
+        (u32::from(opaque.r) << 16) | (u32::from(opaque.g) << 8) | u32::from(opaque.b)
+    }
+
     /// Composites this foreground color over a background using source-over alpha.
     #[must_use]
     pub fn blend_over(self, background: Self) -> Self {

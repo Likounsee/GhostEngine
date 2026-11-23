@@ -15,6 +15,10 @@ presentation, native input and image decoding are opt-in capabilities.
 | `simd` | Safe `wide`-based pixel blending (enabled by default) | Runtime ISA dispatch or GPU rendering |
 | `parallel-rendering` | Automatic worker selection for large raster/composition work (enabled by default) | A persistent background worker pool |
 
+The framebuffer stores tightly packed straight-alpha RGBA pixels. Native RGB-only
+presentation adapters convert each pixel by compositing it over opaque black before
+packing `0x00RRGGBB`; transparent pixels therefore do not leak their hidden RGB channels.
+
 The high-level `DisplayList::draw_text` and `draw_text_box` methods prepare OpenType shaping,
 paragraph-level bidirectional ordering and positioned glyph runs while recording. Replaying a
 display list therefore does not reshape text every frame. Applications that need a multi-face

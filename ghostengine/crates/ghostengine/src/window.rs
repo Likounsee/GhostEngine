@@ -263,7 +263,7 @@ fn copy_framebuffer_overlap(source: &Framebuffer, destination: &mut Framebuffer)
 }
 
 fn pack_rgb(color: Color) -> u32 {
-    (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
+    color.to_rgb24()
 }
 
 fn key_to_character(key: Key, shift: bool) -> Option<char> {

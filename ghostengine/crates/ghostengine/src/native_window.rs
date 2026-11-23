@@ -561,7 +561,7 @@ fn drawable_size_changed(previous: (u32, u32), next: (u32, u32)) -> bool {
     previous != next
 }
 
-/// Converts a straight-alpha GhostEngine color to softbuffer's 0x00RRGGBB layout.
+/// Checks that softbuffer exposes one RGB pixel for every framebuffer pixel.
 fn validate_presentation_buffer_len(
     expected: usize,
     actual: usize,
@@ -574,7 +574,7 @@ fn validate_presentation_buffer_len(
 }
 
 fn pack_softbuffer_pixel(color: Color) -> u32 {
-    (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
+    color.to_rgb24()
 }
 
 #[cfg(test)]
