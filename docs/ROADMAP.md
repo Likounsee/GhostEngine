@@ -112,7 +112,7 @@ This checklist tracks implementation separately from release validation. A check
   - [x] Axis-aligned vector path fill with an exact per-pixel reference.
   - [x] Linear gradient stop positions with exact expected pixels.
   - [x] Nearest-neighbor texture scaling and clipping with exact expected pixels.
-  - [ ] Transformed/bilinear texture sampling with exact expected pixels.
+  - [x] Transformed/bilinear texture sampling with exact expected pixels (`transformed_opaque_bilinear_texture_replaces_destination`).
   - [x] Layer composition, opacity and blend modes with exact expected pixels.
   - [ ] Text rendering with a licensed deterministic font fixture and stable pixel expectations.
 - [ ] Add property-based or fuzz-style tests for malformed geometry, clipping, dimensions, strides, display-list commands and image inputs; keep the regular CI suite deterministic and bounded.
