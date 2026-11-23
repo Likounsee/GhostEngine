@@ -103,6 +103,7 @@ fn display_list_adversarial_clips_and_rectangles_never_write_outside_clip() {
     let mut rng = Generator::new(0x4449_5350_4c41_5953);
     let mut frame = Framebuffer::new(31, 23, Color::BLACK).unwrap();
     let mut list = DisplayList::new();
+    let mut pixels_allowed_by_a_clip = vec![false; 31 * 23];
 
     for _ in 0..512 {
         let x = rng.range(48) as i32 - 8;
@@ -118,6 +119,13 @@ fn display_list_adversarial_clips_and_rectangles_never_write_outside_clip() {
             _ => rng.range(24),
         };
         let clip = Rect::new(rng.range(40), rng.range(32), rng.range(36), rng.range(28));
+        if let Some(visible) = clip.intersection(Rect::new(0, 0, 31, 23)) {
+            for y in visible.y..visible.y + visible.height {
+                for x in visible.x..visible.x + visible.width {
+                    pixels_allowed_by_a_clip[(y * 31 + x) as usize] = true;
+                }
+            }
+        }
         list.push_clip(clip);
         list.fill_rect(
             Rect::new(x.max(0) as u32, y.max(0) as u32, width, height),
@@ -135,6 +143,16 @@ fn display_list_adversarial_clips_and_rectangles_never_write_outside_clip() {
     // Every command had its own clip. Replay must remain memory-safe even when
     // the requested geometry and clip extend beyond the target dimensions.
     assert_eq!(frame.pixels().len(), 31 * 23);
+    for (index, (pixel, allowed)) in frame
+        .pixels()
+        .iter()
+        .zip(pixels_allowed_by_a_clip)
+        .enumerate()
+    {
+        if !allowed {
+            assert_eq!(*pixel, Color::BLACK, "pixel {index} escaped every clip");
+        }
+    }
 }
 
 #[test]
