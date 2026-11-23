@@ -78,6 +78,10 @@ struct StrokeOptions {
 pub enum StrokeError {
     InvalidWidth,
     InvalidTransform,
+    /// A scoped worker could not reserve its handle storage.
+    AllocationFailed,
+    /// A scoped rasterization worker panicked while processing its row band.
+    WorkerPanicked,
     Path(PathError),
 }
 
@@ -197,7 +201,10 @@ pub fn stroke_path_aa_parallel_with_threads(
     let clip = Rect::new(0, 0, width, height);
 
     std::thread::scope(|scope| {
-        let mut handles = Vec::with_capacity(worker_count);
+        let mut handles = Vec::new();
+        handles
+            .try_reserve_exact(worker_count)
+            .map_err(|_| StrokeError::AllocationFailed)?;
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
             let row_end = (row_start + pixels.len() / width_usize).min(height_usize);
@@ -220,8 +227,20 @@ pub fn stroke_path_aa_parallel_with_threads(
                 )
             }));
         }
+        let mut worker_error = None;
         for handle in handles {
-            handle.join().expect("stroke worker panicked")?;
+            match handle.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    worker_error.get_or_insert(error);
+                }
+                Err(_) => {
+                    worker_error.get_or_insert(StrokeError::WorkerPanicked);
+                }
+            }
+        }
+        if let Some(error) = worker_error {
+            return Err(error);
         }
         Ok(())
     })
