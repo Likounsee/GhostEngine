@@ -4,8 +4,8 @@
 //! framebuffer and softbuffer copies those pixels to the native window.
 
 use crate::{
-    input::InputState, Color, Framebuffer, FramebufferError, HostError, HostEvent,
-    HostWindowConfig, NativeClipboard, NativeInputAdapter,
+    input::InputState, Color, Framebuffer, FramebufferError, HostCapabilities, HostError,
+    HostEvent, HostWindowConfig, NativeClipboard, NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
 use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
@@ -75,6 +75,27 @@ impl From<FramebufferError> for NativeWindowError {
 pub struct NativeWindowSurface;
 
 impl NativeWindowSurface {
+    /// Reports the native services available to an application using this adapter.
+    ///
+    /// Winit provides windowing, display scaling, keyboard/text input and IME
+    /// integration on the supported desktop targets. Clipboard availability is
+    /// runtime-dependent and is read from the initialized clipboard adapter.
+    /// Resizing reflects the configuration used to create the window.
+    #[must_use]
+    pub fn capabilities(
+        clipboard: &NativeClipboard,
+        resizable: bool,
+    ) -> HostCapabilities {
+        HostCapabilities {
+            windowing: true,
+            high_dpi: true,
+            clipboard: clipboard.is_available(),
+            text_input: true,
+            ime: true,
+            resize: resizable,
+        }
+    }
+
     /// Creates and runs a native window until it is closed.
     ///
     /// This is an event-loop entry point and should normally be called from
