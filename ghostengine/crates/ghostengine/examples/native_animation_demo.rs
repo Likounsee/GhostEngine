@@ -28,14 +28,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             framebuffer.clear(Color::rgb(16, 20, 30));
             let travel = framebuffer.width().saturating_sub(96).max(1);
             let x = frame.wrapping_mul(4) % travel;
+            let center_y = framebuffer.height() / 2;
             fill_rect(
                 framebuffer,
-                Rect::new(x, HEIGHT / 2 - 24, 64, 48),
+                Rect::new(x, center_y.saturating_sub(24), 64, 48),
                 Color::rgb(70, 170, 245),
             );
             draw_circle(
                 framebuffer,
-                Point::new((WIDTH / 2) as i32, (HEIGHT / 2) as i32),
+                Point::new(
+                    (framebuffer.width() / 2) as i32,
+                    (framebuffer.height() / 2) as i32,
+                ),
                 18,
                 Color::rgb(245, 185, 75),
             );
