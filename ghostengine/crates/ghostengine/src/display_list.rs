@@ -831,17 +831,51 @@ impl DisplayList {
         }
         if let Some(clip) = self.active_clip() {
             let transform = self.active_transform();
-            if transform.is_finite() && transform.inverse().is_some() {
-                self.commands.push(Command::DrawText {
-                    font: SharedFont(font),
-                    text,
-                    baseline,
-                    transform,
-                    pixel_size,
-                    color,
-                    options,
-                    clip,
-                });
+            if !transform.is_finite() || transform.inverse().is_none() {
+                return;
+            }
+
+            // The normal display-list text API shapes and bidi-orders text while
+            // recording. Replay therefore only rasterizes prepared glyph IDs and
+            // never performs OpenType shaping in the frame loop.
+            let family = FontFamily::new(Arc::clone(&font));
+            match prepare_bidi_shaped_text_box(&family, &text, baseline, pixel_size, options) {
+                Ok(prepared) if !prepared.lines.is_empty() => {
+                    for line in prepared.lines {
+                        for run in line.runs {
+                            if run.shaped.glyphs.is_empty() {
+                                continue;
+                            }
+                            let run_transform =
+                                Transform2D::translation(run.offset_x, 0.0).then(transform);
+                            self.commands.push(Command::DrawShapedText {
+                                font: SharedFont(run.font),
+                                shaped: run.shaped,
+                                baseline: line.baseline,
+                                transform: run_transform,
+                                pixel_size,
+                                color,
+                                clip,
+                            });
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    // Keep malformed/unsupported shaping from dropping visible
+                    // text: retain the established scalar-glyph renderer as a
+                    // compatibility fallback for this command.
+                    self.commands.push(Command::DrawText {
+                        font: SharedFont(font),
+                        text,
+                        baseline,
+                        transform,
+                        pixel_size,
+                        color,
+                        options,
+                        clip,
+                    });
+                }
             }
         }
     }
