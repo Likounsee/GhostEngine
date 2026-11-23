@@ -116,6 +116,9 @@ fn find_system_font() -> Option<PathBuf> {
     [
         PathBuf::from("C:/Windows/Fonts/segoeui.ttf"),
         PathBuf::from("C:/Windows/Fonts/arial.ttf"),
+        PathBuf::from("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        PathBuf::from("/System/Library/Fonts/Supplemental/Helvetica.ttf"),
+        PathBuf::from("/System/Library/Fonts/SFNS.ttf"),
         PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         PathBuf::from("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
     ]
