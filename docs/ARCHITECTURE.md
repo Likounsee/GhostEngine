@@ -177,6 +177,14 @@ That phase requires a feasibility study, a GhostEngine-owned backend/resource ar
 
 3D development begins only after the hardware-accelerated foundation is working and validated. It reuses that backend and resource architecture rather than introducing an unrelated renderer.
 
+
+The common `HostBackend` lifecycle is currently implemented by the deterministic
+headless backend. The native Winit adapter currently exposes a callback-driven
+event-loop entry point with normalized events; it is not yet an implementation
+of the poll-based `HostBackend` trait. Keep this distinction explicit until a
+native lifecycle design can preserve Winit's event-loop ownership and threading
+requirements without a fake polling abstraction.
+
 ## 9. Testing strategy
 
 - Unit tests for math, clipping, format conversion, blending and resource validation.

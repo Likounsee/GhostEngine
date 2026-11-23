@@ -97,7 +97,7 @@ pub use path::{
     fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped,
     FlattenedPath, FlattenedSubpath, Path, PathError,
 };
-pub use path_cache::{PathGeometryCache, PathGeometryCacheError};
+pub use path_cache::{PathGeometryCache, PathGeometryCacheError, PathGeometryCacheStats};
 pub use rasterizer::{
     blend_rect, blend_rect_clipped, blend_rect_parallel, blend_rect_parallel_with_threads,
     blend_rect_with_options, draw_arc_aa, draw_arc_aa_parallel, draw_arc_aa_parallel_with_threads,

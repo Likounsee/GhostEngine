@@ -17,6 +17,16 @@ pub enum PathGeometryCacheError {
     AllocationFailed,
 }
 
+
+/// Snapshot of path-geometry cache usage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PathGeometryCacheStats {
+    pub entries: usize,
+    pub capacity: usize,
+    pub hits: u64,
+    pub misses: u64,
+}
+
 /// Reuses flattened path geometry across frames.
 ///
 /// The caller supplies a stable key and must invalidate it when the source path
@@ -54,6 +64,44 @@ impl PathGeometryCache {
     #[must_use]
     pub fn new(capacity: usize) -> Self {
         Self::try_new(capacity).expect("failed to allocate path geometry cache")
+    }
+
+    /// Changes the maximum number of cached geometries.
+    ///
+    /// Growing the cache reserves storage before changing its configured
+    /// capacity. Shrinking evicts least-recently-used entries immediately.
+    /// A zero capacity is normalized to one, matching construction.
+    pub fn set_capacity(&mut self, capacity: usize) -> Result<(), PathGeometryCacheError> {
+        let capacity = capacity.max(1);
+        if capacity > self.capacity {
+            self.entries
+                .try_reserve_exact(capacity.saturating_sub(self.entries.len()))
+                .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
+        }
+        if capacity < self.entries.len() {
+            self.entries.sort_unstable_by_key(|entry| entry.last_used);
+            let remove_count = self.entries.len() - capacity;
+            self.entries.drain(..remove_count);
+        }
+        self.capacity = capacity;
+        Ok(())
+    }
+
+    /// Returns a consistent snapshot of cache occupancy and lookup counters.
+    #[must_use]
+    pub fn stats(&self) -> PathGeometryCacheStats {
+        PathGeometryCacheStats {
+            entries: self.entries.len(),
+            capacity: self.capacity,
+            hits: self.hits,
+            misses: self.misses,
+        }
+    }
+
+    /// Resets lookup counters without discarding cached geometry.
+    pub fn reset_stats(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
     }
 
     fn advance_clock(&mut self) {
@@ -187,6 +235,57 @@ mod tests {
         assert_eq!(cache.len(), 2);
         cache.invalidate(7);
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn resizing_cache_evicts_oldest_entries_and_preserves_recent_geometry() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(3);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        cache.get_or_flatten(3, &path, 0.25).unwrap();
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+
+        cache.set_capacity(2).unwrap();
+
+        assert_eq!(cache.stats().entries, 2);
+        assert_eq!(cache.stats().capacity, 2);
+        assert!(cache.entries.iter().any(|entry| entry.key == 1));
+        assert!(!cache.entries.iter().any(|entry| entry.key == 2));
+        assert!(cache.entries.iter().any(|entry| entry.key == 3));
+    }
+
+    #[test]
+    fn growing_cache_retains_entries_and_zero_capacity_normalizes_to_one() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(1);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.set_capacity(4).unwrap();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        assert_eq!(cache.stats().capacity, 4);
+        assert_eq!(cache.len(), 2);
+
+        cache.set_capacity(0).unwrap();
+        assert_eq!(cache.stats().capacity, 1);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn resetting_stats_does_not_discard_cached_geometry() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(2);
+        cache.get_or_flatten(7, &path, 0.25).unwrap();
+        cache.get_or_flatten(7, &path, 0.25).unwrap();
+        cache.reset_stats();
+
+        assert_eq!(cache.stats(), PathGeometryCacheStats {
+            entries: 1,
+            capacity: 2,
+            hits: 0,
+            misses: 0,
+        });
+        cache.get_or_flatten(7, &path, 0.25).unwrap();
+        assert_eq!(cache.hit_count(), 1);
     }
 
     #[test]
