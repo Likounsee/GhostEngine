@@ -193,6 +193,21 @@ where
         Ok(())
     }
 
+    /// Synchronizes the CPU framebuffer with the actual physical drawable size.
+    /// Returns whether the drawable dimensions changed.
+    fn sync_drawable_size(&mut self, size: PhysicalSize<u32>) -> Result<bool, FramebufferError> {
+        let changed =
+            self.framebuffer.width() != size.width || self.framebuffer.height() != size.height;
+        self.resize_framebuffer(size)?;
+        if changed {
+            self.pending_events.push(HostEvent::Resized {
+                width: size.width,
+                height: size.height,
+            });
+        }
+        Ok(changed)
+    }
+
     fn present(&mut self) -> Result<(), NativeWindowError> {
         // A minimized window can have a zero-sized drawable. Keep the last
         // framebuffer, but do not ask softbuffer to present into an unavailable
@@ -309,15 +324,11 @@ where
                 }
             }
             WindowEvent::Resized(size) => {
-                if let Err(error) = self.resize_framebuffer(size) {
+                if let Err(error) = self.sync_drawable_size(size) {
                     self.failure = Some(NativeWindowError::Framebuffer(error));
                     event_loop.exit();
                     return;
                 }
-                self.pending_events.push(HostEvent::Resized {
-                    width: size.width,
-                    height: size.height,
-                });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -339,7 +350,15 @@ where
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.pending_events
                     .push(HostEvent::ScaleFactorChanged { scale_factor });
-                if let Some(window) = &self.window {
+                // DPI transitions can change the physical drawable even when
+                // the platform does not deliver a distinct Resized event.
+                if let Some(window) = self.window.as_ref() {
+                    let actual_size = window.inner_size();
+                    if let Err(error) = self.sync_drawable_size(actual_size) {
+                        self.failure = Some(NativeWindowError::Framebuffer(error));
+                        event_loop.exit();
+                        return;
+                    }
                     window.request_redraw();
                 }
             }
