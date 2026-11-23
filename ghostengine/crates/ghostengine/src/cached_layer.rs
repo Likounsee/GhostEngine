@@ -235,7 +235,7 @@ mod tests {
                 255,
             );
 
-            cache.mark_dirty(Rect::new(x as i32, y as i32, 1, 1));
+            cache.mark_dirty(Rect::new(x, y, 1, 1));
             assert!(cache.render_if_dirty(|target, damage| {
                 for rect in damage.rectangles() {
                     target.fill_rect(*rect, color);
