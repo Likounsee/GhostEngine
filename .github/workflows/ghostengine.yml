@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# Keep only the newest run for this workflow and branch.
-# A new push cancels an in-progress run and replaces an older queued run.
+# Preserve each pushed revision's validation instead of cancelling a run
+# while a newer commit is being prepared or pushed.
 concurrency:
   group: ghostengine-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   rust:
@@ -56,6 +56,10 @@ jobs:
       - name: Test native input without minifb
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features --features native-input
+
+      - name: Test native window backend without default features
+        working-directory: ghostengine
+        run: cargo test --workspace --all-targets --no-default-features --features native-window
 
       - name: Run tests with all optional features
         working-directory: ghostengine
