@@ -52,16 +52,17 @@ What this does **not** prove:
 - native windows, DPI scaling, IME, clipboard and interactive input have been manually validated
   on physical Windows, Linux and macOS desktop sessions.
 
-## Remaining application validation
+## Scope boundary and remaining desktop validation
 
-- [ ] Integrate the current GhostEngine public API into the actual Amethys Launcher repository
-      when that repository/source is available for this work; adapt real screens and real assets,
-      not the fixture prototype.
-- [ ] Run the native examples interactively on Windows, Linux and macOS and record OS, backend,
-      scale factor, resize/minimize/restore, focus, pointer, keyboard, text/IME and clipboard results.
-- [ ] Exercise the same public API from at least one additional real consumer (Archia Browser,
-      ArchiaOS or PeaceEmu) when its current source and integration point are available.
-- [ ] Record and fix defects discovered by those real application runs.
+Consumer application migration is intentionally **not part of GhostEngine 2D V1**. In particular,
+Metis Launcher integration is a separate follow-up owned by the consumer project; this engine task
+only delivers and validates the reusable 2D rendering, UI, input and host APIs. The Amethys fixture
+prototype above remains a test fixture, not a production integration target.
+
+The remaining release-validation task is to run the native examples interactively on real desktop
+sessions and record OS, backend, scale factor, resize/minimize/restore, focus, pointer, keyboard,
+text/IME and clipboard results. CI currently compiles and tests the native adapters on Windows,
+Linux and macOS, but does not prove physical desktop behavior.
 
 ## CI evidence
 
@@ -70,5 +71,4 @@ feature configurations, native-input and native-window feature configurations, a
 the vector showcase, the Amethys prototype integration tests, its scripted headless session and
 the 18-image output check on Windows, Linux and macOS.
 
-A green CI run confirms those automated checks only. It does not close the manual desktop or
-production-application items above.
+A green CI run confirms those automated checks only. It does not prove interactive native-window behavior on physical desktops. Production consumer integration, including Metis Launcher, is deliberately deferred and is not required to finish GhostEngine 2D V1.
