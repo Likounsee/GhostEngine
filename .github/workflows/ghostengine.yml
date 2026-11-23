@@ -9,12 +9,11 @@ on:
 permissions:
   contents: read
 
-# Preserve each pushed revision's validation instead of cancelling a run
-# while a newer commit is being prepared or pushed.
+# Keep one active validation and only the newest pending revision per branch.
+# A burst of direct commits must not leave dozens of obsolete full test matrices
+# queued behind the latest source state.
 concurrency:
-  # Give every commit its own group so queued validations are not superseded
-  # by a later push to the same branch.
-  group: ghostengine-ci-${{ github.sha }}
+  group: ghostengine-ci-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
