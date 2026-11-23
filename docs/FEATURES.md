@@ -48,7 +48,8 @@ cargo run -p ghostengine --features native-window --example native_animation_dem
 
 The native animation example uses `HostRunControl::RedrawAfter(Duration)` to request paced
 frames without a busy loop or direct Winit dependency. Use `Wait` for event-driven/static
-interfaces and `Exit` to finish the native event loop.
+interfaces, `Redraw` for intentionally continuous rendering, and `Exit` to finish the native
+event loop. A zero `RedrawAfter` duration is unthrottled; use a non-zero interval for pacing.
 
 Paced and continuous redraw requests are suspended while the native drawable is minimized;
 restoring/resizing the window requests a fresh frame and resumes the application's chosen

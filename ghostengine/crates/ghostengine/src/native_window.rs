@@ -156,6 +156,12 @@ impl NativeWindowSurface {
     }
 
     /// Runs a native window with normalized events and explicit frame scheduling.
+    ///
+    /// Return [`HostRunControl::Wait`] for event-driven interfaces,
+    /// [`HostRunControl::Redraw`] for immediate continuous rendering,
+    /// [`HostRunControl::RedrawAfter`] for paced animation, or
+    /// [`HostRunControl::Exit`] to close the native event loop.
+    /// The callback receives common host events and never needs Winit types.
     pub fn run_with_host_events_control<F>(
         title: &str,
         width: u32,
