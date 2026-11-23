@@ -72,6 +72,21 @@ pub struct HostCapabilities {
     pub resize: bool,
 }
 
+/// Controls an event-driven host runner after an application frame.
+///
+/// This is shared by callback-driven native hosts. It complements the
+/// synchronous polling contract in `HostBackend` without pretending that
+/// callback-owned event loops can be synchronously polled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostRunControl {
+    /// Close the host and finish the event loop.
+    Exit,
+    /// Wait until the operating system or user input requests another frame.
+    Wait,
+    /// Schedule another frame immediately after the current frame is presented.
+    Redraw,
+}
+
 /// Normalized events delivered by a host backend.
 ///
 /// Pointer and keyboard details are accumulated in `InputState`; lifecycle

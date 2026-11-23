@@ -5,7 +5,7 @@
 
 use crate::{
     current_host_platform, input::InputState, Color, Framebuffer, FramebufferError,
-    HostCapabilities, HostError, HostEvent, HostPlatform, HostWindowConfig, NativeClipboard,
+    HostCapabilities, HostError, HostEvent, HostPlatform, HostRunControl, HostWindowConfig, NativeClipboard,
     NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
@@ -75,17 +75,6 @@ impl From<FramebufferError> for NativeWindowError {
 /// also supports explicit wait/continuous-redraw scheduling. Clipboard requests
 /// produced by ComponentTree can be resolved with `clipboard.resolve(&action)`.
 pub struct NativeWindowSurface;
-
-/// Controls native event-loop scheduling after a frame has been presented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativeWindowControl {
-    /// Close the native window and finish the event loop.
-    Exit,
-    /// Wait for the operating system or user input to request another frame.
-    Wait,
-    /// Schedule another frame immediately after the current frame is presented.
-    Redraw,
-}
 
 impl NativeWindowSurface {
     /// Returns the desktop platform selected for this native window adapter.
@@ -173,7 +162,7 @@ impl NativeWindowSurface {
         draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl
             + 'static,
     {
         Self::run_with_config_control(HostWindowConfig::new(title, width, height), draw)
@@ -193,9 +182,9 @@ impl NativeWindowSurface {
     {
         Self::run_with_config_control(config, move |framebuffer, events, clipboard| {
             if draw(framebuffer, events, clipboard) {
-                NativeWindowControl::Wait
+                HostRunControl::Wait
             } else {
-                NativeWindowControl::Exit
+                HostRunControl::Exit
             }
         })
     }
@@ -212,7 +201,7 @@ impl NativeWindowSurface {
         draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl
             + 'static,
     {
         config.validate().map_err(NativeWindowError::Host)?;
@@ -275,7 +264,7 @@ struct NativeApp<F> {
 
 impl<F> NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl,
 {
     fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) -> Result<(), FramebufferError> {
         if size.width == 0 || size.height == 0 {
@@ -350,7 +339,7 @@ where
 
 impl<F> ApplicationHandler for NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -439,7 +428,7 @@ where
                 self.pending_events.push(HostEvent::Input(input));
                 let events = std::mem::take(&mut self.pending_events);
                 let control = (self.draw)(&mut self.framebuffer, events, &mut self.clipboard);
-                if control == NativeWindowControl::Exit {
+                if control == HostRunControl::Exit {
                     event_loop.exit();
                     return;
                 }
@@ -448,7 +437,7 @@ where
                     event_loop.exit();
                     return;
                 }
-                if control == NativeWindowControl::Redraw {
+                if control == HostRunControl::Redraw {
                     if let Some(window) = &self.window {
                         window.request_redraw();
                     }

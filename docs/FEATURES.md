@@ -109,7 +109,7 @@ scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
 values. The native UI demo consumes those events rather than Winit types. The
 native adapter also exposes runtime `HostCapabilities` reporting, including
 whether the system clipboard was actually initialized. Its control-based runner
-supports `Wait`, `Redraw` and `Exit` outcomes, so applications can animate without
+supports `HostRunControl::Wait`, `HostRunControl::Redraw` and `HostRunControl::Exit` outcomes, so applications can animate without
 importing Winit types or emulating synchronous polling. The native adapter is
 still not an implementation of the poll-based `HostBackend` trait, and real
 window behavior must still be validated on all three operating systems.

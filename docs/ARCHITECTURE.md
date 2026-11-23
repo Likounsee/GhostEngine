@@ -191,8 +191,8 @@ The common synchronous `HostBackend` contract is currently implemented by
 the deterministic headless backend. The native Winit adapter provides an
 application-facing callback runner through `NativeWindowSurface::run_with_config`
 and `run_with_config_control`. It delivers normalized lifecycle/input events,
-owns event-loop dispatch, presents the CPU framebuffer and supports wait,
-continuous-redraw and exit outcomes. It deliberately does not implement the
+owns event-loop dispatch, presents the CPU framebuffer and supports `HostRunControl::Wait`, `HostRunControl::Redraw` and
+`HostRunControl::Exit` outcomes. It deliberately does not implement the
 poll-based `HostBackend` trait: Winit owns a callback-driven event loop, and the
 engine must not pretend it can synchronously poll that loop from an arbitrary
 caller thread. Keep both lifecycle models explicit rather than hiding the

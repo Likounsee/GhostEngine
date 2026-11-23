@@ -49,7 +49,7 @@ pub mod native_window;
 pub use native_input::{NativeClipboard, NativeClipboardError, NativeInputAdapter};
 
 #[cfg(feature = "native-window")]
-pub use native_window::{NativeWindowControl, NativeWindowError, NativeWindowSurface};
+pub use native_window::{NativeWindowError, NativeWindowSurface};
 
 pub use cached_layer::CachedLayer;
 pub use color::Color;
@@ -76,6 +76,7 @@ pub use geometry::{Point, Rect, Vector};
 pub use headless::{HeadlessHost, HeadlessHostError};
 pub use host::{
     current_host_platform, HostBackend, HostCapabilities, HostError, HostEvent, HostPlatform,
+    HostRunControl,
     HostWindowConfig,
 };
 #[cfg(feature = "image-decoding")]
