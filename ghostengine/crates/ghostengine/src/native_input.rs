@@ -488,7 +488,12 @@ mod tests {
         assert_eq!(frame.text_events, vec![TextInputEvent::CompositionCancel]);
         assert!(!frame.left_mouse_down);
         assert!(!frame.right_mouse_down);
-        assert_eq!(adapter.left_click_tracker.click_count, 0);
+        assert_eq!(
+            adapter
+                .left_click_tracker
+                .record(Some(crate::Point::new(4, 4))),
+            1
+        );
     }
 
     #[test]
