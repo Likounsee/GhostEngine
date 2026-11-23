@@ -372,7 +372,9 @@ mod tests {
         host.present(&frame).unwrap();
         let allocation = host.presented_frame.as_ref().unwrap().pixels().as_ptr();
 
-        frame.pixels_mut().copy_from_slice(&[Color::RED, Color::BLUE]);
+        frame
+            .pixels_mut()
+            .copy_from_slice(&[Color::RED, Color::BLUE]);
         host.present(&frame).unwrap();
 
         let presented = host.presented_frame.as_ref().unwrap();
