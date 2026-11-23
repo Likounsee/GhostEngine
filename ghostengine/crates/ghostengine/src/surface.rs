@@ -83,8 +83,11 @@ impl SurfaceDescriptor {
         if self.row_stride < self.minimum_row_bytes()? {
             return Err(SurfaceError::StrideTooSmall);
         }
+        // The final row only needs its actual pixel bytes; padding is
+        // required between rows, but not after the last row.
         self.row_stride
-            .checked_mul(self.height as usize)
+            .checked_mul(self.height as usize - 1)
+            .and_then(|preceding_rows| preceding_rows.checked_add(self.minimum_row_bytes().ok()?))
             .ok_or(SurfaceError::SizeOverflow)
     }
 }
@@ -262,6 +265,29 @@ mod tests {
         assert_eq!(&bytes[4..8], &[0xCC; 4]);
         assert_eq!(&bytes[8..12], &[70, 60, 50, 80]);
         assert_eq!(&bytes[12..16], &[0xCC; 4]);
+    }
+
+    #[test]
+    fn padded_surface_does_not_require_unused_padding_after_last_row() {
+        let mut frame = Framebuffer::new(1, 2, Color::TRANSPARENT).unwrap();
+        frame.set_pixel(0, 0, Color::rgba(10, 20, 30, 40));
+        frame.set_pixel(0, 1, Color::rgba(50, 60, 70, 80));
+        let descriptor = SurfaceDescriptor {
+            width: 1,
+            height: 2,
+            row_stride: 8,
+            pixel_format: PixelFormat::Bgra8,
+            alpha_mode: AlphaMode::Straight,
+            color_space: ColorSpace::Srgb,
+        };
+        let mut bytes = [0xCC; 12];
+
+        assert_eq!(descriptor.required_buffer_len(), Ok(12));
+        frame.write_to_surface(&mut bytes, descriptor).unwrap();
+
+        assert_eq!(&bytes[..4], &[30, 20, 10, 40]);
+        assert_eq!(&bytes[4..8], &[0xCC; 4]);
+        assert_eq!(&bytes[8..12], &[70, 60, 50, 80]);
     }
 
     #[test]
