@@ -179,7 +179,8 @@ where
             return Ok(());
         }
 
-        self.framebuffer = resize_framebuffer_contents(&self.framebuffer, size.width, size.height)?;
+        self.framebuffer
+            .resize_preserving(size.width, size.height, Color::BLACK)?;
         Ok(())
     }
 
@@ -348,27 +349,6 @@ where
     }
 }
 
-/// Resizes a framebuffer while preserving its top-left overlap.
-fn resize_framebuffer_contents(
-    source: &Framebuffer,
-    width: u32,
-    height: u32,
-) -> Result<Framebuffer, FramebufferError> {
-    let mut resized = Framebuffer::new(width, height, Color::BLACK)?;
-    let copy_width = source.width().min(width) as usize;
-    let copy_height = source.height().min(height) as usize;
-    let source_width = source.width() as usize;
-    let destination_width = width as usize;
-
-    for y in 0..copy_height {
-        let source_start = y * source_width;
-        let destination_start = y * destination_width;
-        resized.pixels_mut()[destination_start..destination_start + copy_width]
-            .copy_from_slice(&source.pixels()[source_start..source_start + copy_width]);
-    }
-    Ok(resized)
-}
-
 /// Returns whether a physical drawable has an area available for presentation.
 fn drawable_size_is_nonzero(width: u32, height: u32) -> bool {
     width != 0 && height != 0
@@ -391,11 +371,12 @@ mod tests {
             .pixels_mut()
             .copy_from_slice(&[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
 
-        let enlarged = super::resize_framebuffer_contents(&source, 3, 3).unwrap();
-        assert_eq!(enlarged.width(), 3);
-        assert_eq!(enlarged.height(), 3);
+        let mut resized = source.try_clone().unwrap();
+        resized.resize_preserving(3, 3, Color::BLACK).unwrap();
+        assert_eq!(resized.width(), 3);
+        assert_eq!(resized.height(), 3);
         assert_eq!(
-            enlarged.pixels(),
+            resized.pixels(),
             &[
                 Color::RED,
                 Color::GREEN,
@@ -409,8 +390,8 @@ mod tests {
             ]
         );
 
-        let cropped = super::resize_framebuffer_contents(&source, 1, 1).unwrap();
-        assert_eq!(cropped.pixels(), &[Color::RED]);
+        resized.resize_preserving(1, 1, Color::BLACK).unwrap();
+        assert_eq!(resized.pixels(), &[Color::RED]);
     }
 
     #[test]

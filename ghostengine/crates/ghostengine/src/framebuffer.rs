@@ -186,6 +186,62 @@ impl Framebuffer {
         Ok(())
     }
 
+    /// Resizes while preserving the top-left overlap and reusing pixel storage.
+    ///
+    /// Rows are moved in the safe direction for the width change, so resizing
+    /// does not require a temporary framebuffer allocation. Newly exposed
+    /// pixels are initialized to `clear_color`. Allocation failure leaves the
+    /// original framebuffer unchanged.
+    pub fn resize_preserving(
+        &mut self,
+        width: u32,
+        height: u32,
+        clear_color: Color,
+    ) -> Result<(), FramebufferError> {
+        if width == 0 || height == 0 {
+            return Err(FramebufferError::ZeroDimension);
+        }
+
+        let new_count = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        if new_count > self.pixels.len() {
+            self.pixels
+                .try_reserve_exact(new_count - self.pixels.len())
+                .map_err(|_| FramebufferError::AllocationFailed)?;
+        }
+
+        let old_width = self.width as usize;
+        let old_height = self.height as usize;
+        let new_width = width as usize;
+        let copy_width = old_width.min(new_width);
+        let copy_height = old_height.min(height as usize);
+
+        if new_width > old_width {
+            // Destinations move toward the end of the vector; copy bottom-up
+            // so no destination can overwrite a source row not yet copied.
+            for y in (0..copy_height).rev() {
+                let source = y * old_width;
+                let destination = y * new_width;
+                self.pixels.copy_within(source..source + copy_width, destination);
+                self.pixels[destination + copy_width..destination + new_width]
+                    .fill(clear_color);
+            }
+        } else {
+            // Destinations move toward the beginning; copy top-down.
+            for y in 0..copy_height {
+                let source = y * old_width;
+                let destination = y * new_width;
+                self.pixels.copy_within(source..source + copy_width, destination);
+            }
+        }
+
+        self.pixels.resize(new_count, clear_color);
+        self.width = width;
+        self.height = height;
+        Ok(())
+    }
+
     /// Writes a pixel. Returns false when the coordinates are outside the target.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: Color) -> bool {
         let Some(index) = self.pixel_index(x, y) else {
@@ -374,6 +430,61 @@ mod tests {
             .pixels()
             .iter()
             .all(|pixel| *pixel == Color::GREEN));
+    }
+
+    #[test]
+    fn resize_preserving_keeps_overlap_and_clears_new_pixels() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+        framebuffer.pixels_mut().copy_from_slice(&[
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::WHITE,
+        ]);
+        let allocation = framebuffer.pixels().as_ptr();
+
+        framebuffer.resize_preserving(3, 3, Color::BLACK).unwrap();
+        assert_eq!(framebuffer.width(), 3);
+        assert_eq!(framebuffer.height(), 3);
+        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
+        assert_eq!(
+            framebuffer.pixels(),
+            &[
+                Color::RED, Color::GREEN, Color::BLACK,
+                Color::BLUE, Color::WHITE, Color::BLACK,
+                Color::BLACK, Color::BLACK, Color::BLACK,
+            ]
+        );
+    }
+
+    #[test]
+    fn resize_preserving_handles_narrowing_and_height_changes() {
+        let mut framebuffer = Framebuffer::new(3, 3, Color::BLACK).unwrap();
+        framebuffer.pixels_mut().copy_from_slice(&[
+            Color::RED, Color::GREEN, Color::BLUE,
+            Color::WHITE, Color::rgba(1, 2, 3, 4), Color::rgba(5, 6, 7, 8),
+            Color::YELLOW, Color::CYAN, Color::MAGENTA,
+        ]);
+
+        framebuffer.resize_preserving(2, 2, Color::BLACK).unwrap();
+        assert_eq!(
+            framebuffer.pixels(),
+            &[Color::RED, Color::GREEN, Color::WHITE, Color::rgba(1, 2, 3, 4)]
+        );
+
+        framebuffer.resize_preserving(1, 3, Color::BLUE).unwrap();
+        assert_eq!(framebuffer.pixels(), &[Color::RED, Color::WHITE, Color::BLUE]);
+    }
+
+    #[test]
+    fn resize_preserving_rejects_invalid_size_without_mutation() {
+        let mut framebuffer = Framebuffer::new(2, 2, Color::RED).unwrap();
+        let original = framebuffer.clone();
+        assert_eq!(
+            framebuffer.resize_preserving(0, 4, Color::BLUE),
+            Err(FramebufferError::ZeroDimension)
+        );
+        assert_eq!(framebuffer, original);
     }
 
     #[test]
