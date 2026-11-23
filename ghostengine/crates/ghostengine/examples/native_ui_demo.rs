@@ -4,7 +4,7 @@
 
 use ghostengine::{
     ComponentId, ComponentTree, FontFace, HostEvent, InputState, Insets, LayoutDirection,
-    LayoutItem, NativeWindowSurface, Rect, StackLayout, UiComponent, UiTheme,
+    LayoutItem, NativeWindowSurface, HostRunControl, Rect, StackLayout, UiComponent, UiTheme,
 };
 use std::{error::Error, fs, path::PathBuf};
 
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let theme = UiTheme::default();
     let mut clipboard_capabilities_reported = false;
 
-    NativeWindowSurface::run_with_host_events(
+    NativeWindowSurface::run_with_host_events_control(
         "GhostEngine — Native component demo",
         WIDTH,
         HEIGHT,
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut input = InputState::default();
             for event in host_events {
                 match event {
-                    HostEvent::CloseRequested => return false,
+                    HostEvent::CloseRequested => return HostRunControl::Exit,
                     HostEvent::Input(next_input) => input = next_input,
                     HostEvent::Resized { .. }
                     | HostEvent::ScaleFactorChanged { .. }
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             if input.escape_down {
-                return false;
+                return HostRunControl::Exit;
             }
 
             let bounds = Rect::new(0, 0, framebuffer.width(), framebuffer.height());
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             framebuffer.clear(ghostengine::Color::rgb(239, 242, 248));
             tree.render(framebuffer, bounds, &font, 19.0, &theme);
-            true
+            HostRunControl::Wait
         },
     )?;
     Ok(())
