@@ -27,6 +27,7 @@ Other examples cover:
 - `native_animation_demo`: paced native redraw without a busy loop.
 - `browser_frontend`: an interactive frontend-shaped example using the transitional minifb adapter.
 - `vector_path_showcase`: headless paths, curves, transforms, fill rules, strokes and clipping.
+- `image_pipeline_demo`: headless BMP/JPEG/PNG/PNM decoding, nearest/bilinear sampling, mipmap generation and clipped mipmapped drawing.
 - `first_image`: basic raster primitives and image export.
 
 ## Amethys Launcher prototype — scope and limits
