@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# A burst of direct commits must not leave dozens of obsolete full test matrices
-# queued behind the latest source state; cancel obsolete matrices when a newer commit arrives.
+# Keep validation for each pushed commit. A newer documentation or source commit
+# must not cancel a matrix that is already queued or running.
 concurrency:
-  group: ghostengine-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ghostengine-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   rust:
@@ -46,6 +46,10 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps
+
+      - name: Validate distributable crate contents
+        working-directory: ghostengine
+        run: cargo package -p ghostengine --locked --no-verify
 
       - name: Test scalar fallback without automatic parallel selection
         working-directory: ghostengine
