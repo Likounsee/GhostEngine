@@ -9584,4 +9584,33 @@ mod transformed_conic_gradient_tests {
             Rect::new(0, 0, 12, 10),
         ));
     }
+
+    #[test]
+    fn linear_gradient_matches_exact_reference_pixels_at_stop_positions() {
+        use super::fill_rect_linear_gradient;
+
+        let stops = Gradient::new(vec![
+            GradientStop { position: 0.0, color: Color::RED },
+            GradientStop { position: 0.25, color: Color::GREEN },
+            GradientStop { position: 0.5, color: Color::BLUE },
+            GradientStop { position: 0.75, color: Color::WHITE },
+            GradientStop { position: 1.0, color: Color::RED },
+        ])
+        .unwrap();
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+
+        fill_rect_linear_gradient(
+            &mut target,
+            Rect::new(0, 0, 4, 1),
+            Vector::new(0.5, 0.5),
+            Vector::new(4.5, 0.5),
+            &stops,
+        );
+
+        assert_eq!(
+            target.pixels(),
+            &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
+        );
+    }
+
 }
