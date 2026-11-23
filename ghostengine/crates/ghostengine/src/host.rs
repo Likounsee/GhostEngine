@@ -33,8 +33,14 @@ impl HostWindowConfig {
         if self.width == 0 || self.height == 0 {
             return Err(HostError::InvalidDimensions);
         }
-        (self.width as usize)
+        let pixel_count = (self.width as usize)
             .checked_mul(self.height as usize)
+            .ok_or(HostError::SizeOverflow)?;
+        // Validate the actual CPU framebuffer byte footprint, not only its
+        // pixel count. This catches dimensions that fit usize as pixels but
+        // cannot be represented as an allocation of RGBA Color values.
+        pixel_count
+            .checked_mul(core::mem::size_of::<crate::Color>())
             .ok_or(HostError::SizeOverflow)?;
         Ok(())
     }
@@ -176,6 +182,12 @@ mod tests {
     fn window_config_rejects_zero_dimensions() {
         let config = HostWindowConfig::new("GhostEngine", 0, 720);
         assert_eq!(config.validate(), Err(HostError::InvalidDimensions));
+    }
+
+    #[test]
+    fn window_config_rejects_pixel_count_that_overflows_addressable_bytes() {
+        let config = HostWindowConfig::new("oversized", u32::MAX, u32::MAX);
+        assert_eq!(config.validate(), Err(HostError::SizeOverflow));
     }
 
     #[test]
