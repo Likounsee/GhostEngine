@@ -46,4 +46,8 @@ required-features = ["native-window"]
 name = "headless_host_demo"
 
 [[example]]
+name = "image_pipeline_demo"
+required-features = ["image-decoding"]
+
+[[example]]
 name = "cpu_raster_bench"
