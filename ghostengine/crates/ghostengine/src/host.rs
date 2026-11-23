@@ -6,6 +6,7 @@
 //! The CPU renderer remains independent of every host backend.
 
 use crate::{Framebuffer, InputState};
+use std::time::Duration;
 
 /// Requested properties for a desktop host window.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,9 +83,12 @@ pub enum HostRunControl {
     /// Close the host and finish the event loop.
     Exit,
     /// Wait until the operating system or user input requests another frame.
+    /// Use RedrawAfter to request a paced animation frame.
     Wait,
     /// Schedule another frame immediately after the current frame is presented.
     Redraw,
+    /// Schedule another frame after the requested frame interval.
+    RedrawAfter(Duration),
 }
 
 /// Normalized events delivered by a host backend.

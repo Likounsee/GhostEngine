@@ -5,16 +5,16 @@
 
 use crate::{
     current_host_platform, input::InputState, Color, Framebuffer, FramebufferError,
-    HostCapabilities, HostError, HostEvent, HostPlatform, HostRunControl, HostWindowConfig, NativeClipboard,
-    NativeInputAdapter,
+    HostCapabilities, HostError, HostEvent, HostPlatform, HostRunControl, HostWindowConfig,
+    NativeClipboard, NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
-use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
+use std::{error::Error, fmt, num::NonZeroU32, sync::Arc, time::Instant};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
     event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop, OwnedDisplayHandle},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, OwnedDisplayHandle},
     window::{Window, WindowAttributes, WindowId},
 };
 
@@ -231,6 +231,7 @@ impl NativeWindowSurface {
             drawable_size: (width, height),
             window: None,
             pending_events: Vec::new(),
+            redraw_deadline: None,
             failure: None,
             draw,
         };
@@ -258,6 +259,7 @@ struct NativeApp<F> {
     drawable_size: (u32, u32),
     window: Option<Arc<Window>>,
     pending_events: Vec<HostEvent>,
+    redraw_deadline: Option<Instant>,
     failure: Option<NativeWindowError>,
     draw: F,
 }
@@ -391,6 +393,21 @@ where
         }
     }
 
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(deadline) = self.redraw_deadline else {
+            return;
+        };
+        if Instant::now() < deadline {
+            return;
+        }
+
+        self.redraw_deadline = None;
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -437,10 +454,26 @@ where
                     event_loop.exit();
                     return;
                 }
-                if control == HostRunControl::Redraw {
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
+                match control {
+                    HostRunControl::Redraw => {
+                        self.redraw_deadline = None;
+                        event_loop.set_control_flow(ControlFlow::Wait);
+                        if let Some(window) = &self.window {
+                            window.request_redraw();
+                        }
                     }
+                    HostRunControl::RedrawAfter(delay) => {
+                        let deadline = Instant::now()
+                            .checked_add(delay)
+                            .unwrap_or_else(Instant::now);
+                        self.redraw_deadline = Some(deadline);
+                        event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                    }
+                    HostRunControl::Wait => {
+                        self.redraw_deadline = None;
+                        event_loop.set_control_flow(ControlFlow::Wait);
+                    }
+                    HostRunControl::Exit => unreachable!("exit returns before presentation"),
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
