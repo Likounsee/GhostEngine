@@ -746,6 +746,77 @@ mod tests {
     }
 
     #[test]
+    fn native_pointer_events_update_position_and_button_edges() {
+        use winit::{
+            dpi::PhysicalPosition,
+            event::{ElementState, MouseButton, WindowEvent},
+            event::DeviceId,
+        };
+
+        let mut adapter = NativeInputAdapter::new();
+        let device_id = DeviceId::dummy();
+        adapter.process_window_event(&WindowEvent::CursorMoved {
+            device_id,
+            position: PhysicalPosition::new(123.0, 45.0),
+        });
+        adapter.process_window_event(&WindowEvent::MouseInput {
+            device_id,
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+        });
+        adapter.process_window_event(&WindowEvent::MouseInput {
+            device_id,
+            state: ElementState::Pressed,
+            button: MouseButton::Right,
+        });
+
+        let pressed = adapter.take_frame();
+        assert_eq!(pressed.mouse_position, Some(crate::Point::new(123, 45)));
+        assert!(pressed.left_mouse_down);
+        assert!(pressed.left_mouse_pressed);
+        assert!(pressed.right_mouse_down);
+        assert!(pressed.right_mouse_pressed);
+
+        adapter.process_window_event(&WindowEvent::MouseInput {
+            device_id,
+            state: ElementState::Released,
+            button: MouseButton::Left,
+        });
+        adapter.process_window_event(&WindowEvent::CursorLeft { device_id });
+        let released = adapter.take_frame();
+        assert_eq!(released.mouse_position, None);
+        assert!(!released.left_mouse_down);
+        assert!(released.left_mouse_released);
+        assert!(released.right_mouse_down);
+        assert!(!released.left_mouse_pressed);
+        assert!(!released.right_mouse_pressed);
+    }
+
+    #[test]
+    fn native_wheel_events_accumulate_until_the_next_input_frame() {
+        use winit::{
+            dpi::PhysicalPosition,
+            event::{DeviceId, MouseScrollDelta, WindowEvent},
+        };
+
+        let mut adapter = NativeInputAdapter::new();
+        let device_id = DeviceId::dummy();
+        adapter.process_window_event(&WindowEvent::MouseWheel {
+            device_id,
+            delta: MouseScrollDelta::LineDelta(0.0, 1.0),
+            phase: winit::event::TouchPhase::Moved,
+        });
+        adapter.process_window_event(&WindowEvent::MouseWheel {
+            device_id,
+            delta: MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 12.0)),
+            phase: winit::event::TouchPhase::Moved,
+        });
+
+        assert_eq!(adapter.take_frame().scroll_delta_y, -60);
+        assert_eq!(adapter.take_frame().scroll_delta_y, 0);
+    }
+
+    #[test]
     fn wheel_line_and_pixel_deltas_use_consistent_scroll_direction() {
         use super::scroll_delta_to_pixels;
         use winit::dpi::PhysicalPosition;
