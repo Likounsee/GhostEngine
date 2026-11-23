@@ -4,8 +4,8 @@
 //! framebuffer and softbuffer copies those pixels to the native window.
 
 use crate::{
-    input::InputState, Color, Framebuffer, FramebufferError, HostEvent, NativeClipboard,
-    NativeInputAdapter,
+    input::InputState, Color, Framebuffer, FramebufferError, HostError, HostEvent,
+    HostWindowConfig, NativeClipboard, NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
 use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
@@ -21,6 +21,7 @@ use winit::{
 #[derive(Debug)]
 pub enum NativeWindowError {
     InvalidDimensions,
+    Host(HostError),
     Framebuffer(FramebufferError),
     EventLoop(String),
     Backend(String),
@@ -31,6 +32,7 @@ impl fmt::Display for NativeWindowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidDimensions => f.write_str("native window dimensions must be non-zero"),
+            Self::Host(error) => write!(f, "invalid native host configuration: {error}"),
             Self::Framebuffer(error) => write!(f, "framebuffer error: {error}"),
             Self::EventLoop(error) => write!(f, "event loop error: {error}"),
             Self::Backend(error) => write!(f, "native presentation error: {error}"),
@@ -100,10 +102,25 @@ impl NativeWindowSurface {
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
     {
-        if width == 0 || height == 0 {
-            return Err(NativeWindowError::InvalidDimensions);
-        }
+        Self::run_with_config(HostWindowConfig::new(title, width, height), draw)
+    }
 
+    /// Runs a native window using the platform-independent host configuration.
+    ///
+    /// This is the native event-loop entry point for applications that need to
+    /// control the initial size and whether the user can resize the window.
+    /// The configuration is validated before any native resources are created.
+    pub fn run_with_config<F>(
+        config: HostWindowConfig,
+        draw: F,
+    ) -> Result<(), NativeWindowError>
+    where
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
+    {
+        config.validate().map_err(NativeWindowError::Host)?;
+        let title = config.title;
+        let width = config.width;
+        let height = config.height;
         let event_loop =
             EventLoop::new().map_err(|error| NativeWindowError::EventLoop(error.to_string()))?;
         let context = Context::new(event_loop.owned_display_handle())
@@ -116,6 +133,7 @@ impl NativeWindowSurface {
             context,
             title: title.to_owned(),
             initial_size: PhysicalSize::new(width, height),
+            resizable: config.resizable,
             framebuffer,
             input: NativeInputAdapter::new(),
             clipboard,
@@ -140,6 +158,7 @@ struct NativeApp<F> {
     context: Context<OwnedDisplayHandle>,
     title: String,
     initial_size: PhysicalSize<u32>,
+    resizable: bool,
     framebuffer: Framebuffer,
     input: NativeInputAdapter,
     clipboard: NativeClipboard,
@@ -218,7 +237,8 @@ where
         }
         let attributes = WindowAttributes::default()
             .with_title(self.title.clone())
-            .with_inner_size(self.initial_size);
+            .with_inner_size(self.initial_size)
+            .with_resizable(self.resizable);
         let window = match event_loop.create_window(attributes) {
             Ok(window) => window,
             Err(error) => {
