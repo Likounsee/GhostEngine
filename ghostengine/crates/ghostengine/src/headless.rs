@@ -82,13 +82,14 @@ impl HeadlessHost {
         if !self.open {
             return Err(HeadlessHostError::Closed);
         }
-        if !self.config.resizable {
+        let is_minimized = width == 0 || height == 0;
+        if !self.config.resizable && !is_minimized && (width, height) != self.drawable_size() {
             return Err(HeadlessHostError::ResizeDisabled);
         }
         // A zero-sized drawable represents a minimized window. Initial
         // configuration still requires non-zero dimensions, but runtime
         // resize events must be able to model the native window lifecycle.
-        if width != 0 && height != 0 {
+        if !is_minimized {
             let mut candidate = self.config.clone();
             candidate.width = width;
             candidate.height = height;
@@ -302,6 +303,19 @@ mod tests {
         let mut events = Vec::new();
         host.poll_events(&mut events);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn fixed_size_host_can_minimize_and_restore_without_enabling_user_resize() {
+        let mut config = HostWindowConfig::new("fixed", 64, 32);
+        config.resizable = false;
+        let mut host = HeadlessHost::new(config).unwrap();
+
+        host.resize(0, 0).unwrap();
+        assert_eq!(host.drawable_size(), (0, 0));
+        host.resize(64, 32).unwrap();
+        assert_eq!(host.drawable_size(), (64, 32));
+        assert!(!host.capabilities().resize);
     }
 
     #[test]
