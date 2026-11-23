@@ -560,3 +560,107 @@ mod box_blur_reference_tests {
         }
     }
 }
+
+
+#[cfg(test)]
+mod gaussian_reference_tests {
+    use super::{apply_gaussian_blur, EffectScratch};
+    use crate::{Color, Framebuffer};
+
+    fn reference_axis(
+        source: &[Color],
+        width: usize,
+        height: usize,
+        radius: usize,
+        sigma: f64,
+        horizontal: bool,
+    ) -> Vec<Color> {
+        let mut output = vec![Color::TRANSPARENT; source.len()];
+        let weights: Vec<f64> = (0..=radius)
+            .map(|distance| {
+                let distance = distance as f64;
+                (-(distance * distance) / (2.0 * sigma * sigma)).exp()
+            })
+            .collect();
+
+        for y in 0..height {
+            for x in 0..width {
+                let start = if horizontal { x } else { y }.saturating_sub(radius);
+                let limit = if horizontal { width } else { height };
+                let end = (if horizontal { x } else { y } + radius + 1).min(limit);
+                let mut sums = [0.0_f64; 4];
+                let mut total = 0.0_f64;
+                for sample in start..end {
+                    let distance = (if horizontal { x } else { y }).abs_diff(sample);
+                    let weight = weights[distance];
+                    let pixel = if horizontal {
+                        source[y * width + sample]
+                    } else {
+                        source[sample * width + x]
+                    };
+                    let alpha = f64::from(pixel.a) / 255.0;
+                    sums[0] += f64::from(pixel.r) * alpha * weight;
+                    sums[1] += f64::from(pixel.g) * alpha * weight;
+                    sums[2] += f64::from(pixel.b) * alpha * weight;
+                    sums[3] += alpha * weight;
+                    total += weight;
+                }
+                let pixel = if sums[3] <= 0.0 || total <= 0.0 {
+                    Color::TRANSPARENT
+                } else {
+                    let channel = |value: f64| {
+                        (value / sums[3]).round().clamp(0.0, 255.0) as u8
+                    };
+                    let alpha = (sums[3] / total * 255.0).round().clamp(0.0, 255.0) as u8;
+                    Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
+                };
+                output[y * width + x] = pixel;
+            }
+        }
+        output
+    }
+
+    #[test]
+    fn gaussian_blur_matches_independent_reference_for_small_surfaces() {
+        for width in 1..=6 {
+            for height in 1..=5 {
+                let mut frame =
+                    Framebuffer::new(width as u32, height as u32, Color::TRANSPARENT).unwrap();
+                for (index, pixel) in frame.pixels_mut().iter_mut().enumerate() {
+                    let value = (index * 29 + width * 13 + height * 17) as u8;
+                    *pixel = Color::rgba(
+                        value,
+                        value.wrapping_mul(5),
+                        value.wrapping_add(73),
+                        value.wrapping_mul(11),
+                    );
+                }
+                for requested_radius in [1_u32, 2, 5, 8] {
+                    let radius = (requested_radius as usize).min(width.max(height) - 1);
+                    let sigma = (radius as f64 * 0.5).max(0.5);
+                    let horizontal =
+                        reference_axis(frame.pixels(), width, height, radius.min(width - 1), sigma, true);
+                    let expected = reference_axis(
+                        &horizontal,
+                        width,
+                        height,
+                        radius.min(height - 1),
+                        sigma,
+                        false,
+                    );
+                    let mut actual = frame.clone();
+                    apply_gaussian_blur(
+                        &mut actual,
+                        requested_radius,
+                        &mut EffectScratch::default(),
+                    );
+                    assert_eq!(
+                        actual.pixels(),
+                        expected,
+                        "size={width}x{height}, radius={requested_radius}"
+                    );
+                }
+            }
+        }
+    }
+}
