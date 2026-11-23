@@ -329,11 +329,16 @@ where
                     window.request_redraw();
                 }
             }
+            // Every event that changes accumulated input must schedule a
+            // redraw; otherwise wheel and modifier-only updates can remain
+            // queued indefinitely when the window is otherwise idle.
             WindowEvent::KeyboardInput { .. }
+            | WindowEvent::ModifiersChanged(_)
             | WindowEvent::Ime(_)
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
-            | WindowEvent::MouseInput { .. } => {
+            | WindowEvent::MouseInput { .. }
+            | WindowEvent::MouseWheel { .. } => {
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
