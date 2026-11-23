@@ -1989,6 +1989,9 @@ pub fn draw_text_shaped_transformed_clipped(
     {
         return TextMetrics::default();
     }
+    if transform == crate::Transform2D::IDENTITY {
+        return draw_text_shaped_clipped(target, font, shaped, baseline, pixel_size, color, clip);
+    }
     let Some(inverse) = transform.inverse() else {
         return TextMetrics::default();
     };
@@ -2420,6 +2423,9 @@ pub fn draw_text_transformed_clipped(
     if !pixel_size.is_finite() || pixel_size <= 0.0 || text.is_empty() || !transform.is_finite() {
         return TextMetrics::default();
     }
+    if transform == crate::Transform2D::IDENTITY {
+        return draw_text_clipped(target, font, text, baseline, pixel_size, color, clip);
+    }
     let Some(inverse) = transform.inverse() else {
         return TextMetrics::default();
     };
@@ -2671,6 +2677,9 @@ pub fn draw_text_box_transformed_clipped(
             .is_some_and(|width| !width.is_finite() || width <= 0.0)
     {
         return TextMetrics::default();
+    }
+    if transform == crate::Transform2D::IDENTITY {
+        return draw_text_box_clipped(target, font, text, baseline, pixel_size, color, clip, options);
     }
     let lines = layout_lines(font, text, pixel_size, options.max_width);
     let line_height = font.line_height(pixel_size) * options.line_spacing;
