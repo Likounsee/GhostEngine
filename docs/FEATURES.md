@@ -103,6 +103,14 @@ scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
 values. The native UI demo consumes those events rather than Winit types. This
 is the first native integration path, not yet the final `HostBackend` lifecycle
 implementation or proof of real-window behavior on all three operating systems.
+The native adapter deliberately remains callback-driven: Winit owns event dispatch
+and redraw scheduling, while `HostBackend::poll_events` is a synchronous polling
+contract. These lifecycle models must not be joined by blocking, synthetic
+polling, or an adapter that hides event-loop ownership. The remaining host work
+is an application-facing lifecycle design that can drive the native event loop
+directly, report native capabilities (including clipboard availability), and
+preserve the normalized event and presentation semantics already provided by
+headless.
 
 ## Planned feature groups
 

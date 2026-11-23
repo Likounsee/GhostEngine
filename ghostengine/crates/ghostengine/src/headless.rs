@@ -37,7 +37,18 @@ impl fmt::Display for HeadlessHostError {
     }
 }
 
-impl Error for HeadlessHostError {}
+impl Error for HeadlessHostError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Configuration(error) => Some(error),
+            Self::Framebuffer(error) => Some(error),
+            Self::DimensionMismatch
+            | Self::DrawableUnavailable
+            | Self::ResizeDisabled
+            | Self::Closed => None,
+        }
+    }
+}
 
 impl From<HostError> for HeadlessHostError {
     fn from(value: HostError) -> Self {

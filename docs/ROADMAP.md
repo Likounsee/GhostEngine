@@ -27,6 +27,7 @@ Finish one complete, reliable and reusable 2D engine. There is **no separate 2D 
 - Explicit presentation contract: dimensions, row stride, pixel format, alpha mode and color space.
 - Windows, Linux and macOS adapters behind the same API; no OS-specific types in application rendering APIs.
 - Typed capability queries and explicit unsupported-feature errors.
+- A native lifecycle integration that respects Winit's callback-driven event-loop ownership; do not emulate synchronous polling over an event loop that does not provide it.
 - Keep existing adapters until the common API replaces them without breaking integrations.
 
 ### Reliability, performance and release hardening
