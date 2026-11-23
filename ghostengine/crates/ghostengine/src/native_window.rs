@@ -468,20 +468,14 @@ where
                     HostRunControl::Redraw => {
                         self.redraw_deadline = None;
                         event_loop.set_control_flow(ControlFlow::Wait);
-                        if drawable_size_is_nonzero(
-                            self.drawable_size.0,
-                            self.drawable_size.1,
-                        ) {
+                        if drawable_size_is_nonzero(self.drawable_size.0, self.drawable_size.1) {
                             if let Some(window) = &self.window {
                                 window.request_redraw();
                             }
                         }
                     }
                     HostRunControl::RedrawAfter(delay) => {
-                        if !drawable_size_is_nonzero(
-                            self.drawable_size.0,
-                            self.drawable_size.1,
-                        ) {
+                        if !drawable_size_is_nonzero(self.drawable_size.0, self.drawable_size.1) {
                             // Do not burn CPU rendering invisible animation frames
                             // while minimized. A restore/resize event requests the
                             // next frame and lets the application resume its cadence.

@@ -643,9 +643,7 @@ mod tests {
         assert!(adapter.ime_enabled);
 
         adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit("に".to_owned(), None)));
-        adapter.process_window_event(&WindowEvent::Ime(Ime::Commit(
-            "日本".to_owned(),
-        )));
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Commit("日本".to_owned())));
         let frame = adapter.take_frame();
         assert_eq!(
             frame.text_events,
@@ -761,8 +759,8 @@ mod tests {
     fn native_pointer_events_update_position_and_button_edges() {
         use winit::{
             dpi::PhysicalPosition,
-            event::{ElementState, MouseButton, WindowEvent},
             event::DeviceId,
+            event::{ElementState, MouseButton, WindowEvent},
         };
 
         let mut adapter = NativeInputAdapter::new();

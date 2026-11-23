@@ -196,9 +196,7 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
     if x == x0 as f32 && y == y0 as f32 {
-        return texture
-            .get_pixel(x0, y0)
-            .unwrap_or(Color::TRANSPARENT);
+        return texture.get_pixel(x0, y0).unwrap_or(Color::TRANSPARENT);
     }
     if texture.is_fully_opaque() {
         return crate::texture::sample_pixels_bilinear_opaque(
