@@ -252,7 +252,9 @@ fn apply_logical_key(key: &Key, control: bool, input: &mut InputState) {
             // position. This keeps Ctrl/Command shortcuts correct on AZERTY
             // and other non-US keyboard layouts.
             let mut characters = value.chars();
-            let character = characters.next().map(|character| character.to_ascii_lowercase());
+            let character = characters
+                .next()
+                .map(|character| character.to_ascii_lowercase());
             if characters.next().is_none() {
                 match character {
                     Some('a') => input.select_all_pressed = true,
@@ -425,8 +427,16 @@ mod tests {
         let mut input = InputState::default();
         apply_key_code(KeyCode::ArrowLeft, true, true, &mut input);
         apply_key_code(KeyCode::Backspace, true, true, &mut input);
-        apply_logical_key(&winit::keyboard::Key::Character("a".into()), true, &mut input);
-        apply_logical_key(&winit::keyboard::Key::Character("c".into()), true, &mut input);
+        apply_logical_key(
+            &winit::keyboard::Key::Character("a".into()),
+            true,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("c".into()),
+            true,
+            &mut input,
+        );
 
         assert!(input.left_pressed);
         assert!(input.backspace_pressed);
@@ -499,10 +509,26 @@ mod tests {
     fn command_shortcuts_follow_logical_keys_instead_of_us_physical_positions() {
         let mut input = InputState::default();
 
-        apply_logical_key(&winit::keyboard::Key::Character("A".into()), true, &mut input);
-        apply_logical_key(&winit::keyboard::Key::Character("c".into()), true, &mut input);
-        apply_logical_key(&winit::keyboard::Key::Character("x".into()), true, &mut input);
-        apply_logical_key(&winit::keyboard::Key::Character("v".into()), true, &mut input);
+        apply_logical_key(
+            &winit::keyboard::Key::Character("A".into()),
+            true,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("c".into()),
+            true,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("x".into()),
+            true,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("v".into()),
+            true,
+            &mut input,
+        );
 
         assert!(input.select_all_pressed);
         assert!(input.copy_pressed);
@@ -513,7 +539,11 @@ mod tests {
     #[test]
     fn logical_shortcuts_are_ignored_without_control_or_command_modifier() {
         let mut input = InputState::default();
-        apply_logical_key(&winit::keyboard::Key::Character("a".into()), false, &mut input);
+        apply_logical_key(
+            &winit::keyboard::Key::Character("a".into()),
+            false,
+            &mut input,
+        );
 
         assert!(!input.select_all_pressed);
         assert!(!input.copy_pressed);
