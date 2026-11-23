@@ -71,6 +71,10 @@ jobs:
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --all-features
 
+      - name: Run headless vector path showcase
+        working-directory: ghostengine
+        run: cargo run -p ghostengine --release --example vector_path_showcase -- target/ghostengine-vector-showcase.ppm
+
       - name: Format Amethys Launcher integration
         run: cargo fmt --manifest-path "Amethys-Launcher test/Cargo.toml" --all -- --check
 
