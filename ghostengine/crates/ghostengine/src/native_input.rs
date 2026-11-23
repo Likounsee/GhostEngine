@@ -167,6 +167,11 @@ impl NativeInputAdapter {
 
     fn process_keyboard_event(&mut self, event: &winit::event::KeyEvent) {
         let pressed = event.state == ElementState::Pressed;
+        // Preserve Escape state even when the platform cannot identify its
+        // physical key but still supplies the semantic logical key.
+        if matches!(&event.logical_key, Key::Named(NamedKey::Escape)) {
+            self.escape_down = pressed;
+        }
         if let PhysicalKey::Code(code) = event.physical_key {
             if code == KeyCode::Escape {
                 self.escape_down = pressed;
