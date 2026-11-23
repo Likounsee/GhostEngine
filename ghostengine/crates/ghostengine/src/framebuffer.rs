@@ -481,6 +481,51 @@ mod tests {
     }
 
     #[test]
+    fn resize_preserving_matches_top_left_reference_for_small_dimensions() {
+        for old_width in 1..=6 {
+            for old_height in 1..=6 {
+                let mut original =
+                    Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
+                for y in 0..old_height {
+                    for x in 0..old_width {
+                        let value = (y * old_width + x) as u8;
+                        assert!(original.set_pixel(
+                            x,
+                            y,
+                            Color::rgba(value, value.wrapping_add(1), value.wrapping_add(2), 255),
+                        ));
+                    }
+                }
+                let old_pixels = original.pixels().to_vec();
+
+                for new_width in 1..=6 {
+                    for new_height in 1..=6 {
+                        let mut resized = original.try_clone().unwrap();
+                        resized
+                            .resize_preserving(new_width, new_height, Color::MAGENTA)
+                            .unwrap();
+
+                        let mut expected =
+                            vec![Color::MAGENTA; (new_width * new_height) as usize];
+                        for y in 0..old_height.min(new_height) {
+                            for x in 0..old_width.min(new_width) {
+                                expected[(y * new_width + x) as usize] =
+                                    old_pixels[(y * old_width + x) as usize];
+                            }
+                        }
+
+                        assert_eq!(
+                            resized.pixels(),
+                            expected,
+                            "resize {old_width}x{old_height} -> {new_width}x{new_height}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn resize_preserving_rejects_invalid_size_without_mutation() {
         let mut framebuffer = Framebuffer::new(2, 2, Color::RED).unwrap();
         let original = framebuffer.clone();
