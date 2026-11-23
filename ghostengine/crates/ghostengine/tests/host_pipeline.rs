@@ -146,3 +146,86 @@ fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
         }
     }
 }
+
+
+#[test]
+fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame() {
+    use ghostengine::{
+        ComponentId, ComponentKey, ComponentTree, FontFace, Insets, LayoutDirection, LayoutItem,
+        StackLayout, UiComponent, UiTheme,
+    };
+
+    const ROOT: ComponentId = ComponentId(100);
+    const TITLE: ComponentId = ComponentId(101);
+    const ACTION: ComponentId = ComponentId(102);
+
+    let font = FontFace::from_bytes(include_bytes!(
+        "fixtures/NotoSansHebrew[wdth,wght].ttf"
+    ))
+    .expect("the licensed deterministic font fixture should load");
+
+    let root = UiComponent::panel(
+        ROOT,
+        StackLayout::new(LayoutDirection::Vertical)
+            .with_padding(Insets::all(12))
+            .with_gap(8),
+    )
+    .with_layout_item(LayoutItem::flexible())
+    .with_children(vec![
+        UiComponent::label(TITLE, "GhostEngine application workflow")
+            .with_layout_item(LayoutItem::fixed(32)),
+        UiComponent::button(ACTION, "Open library")
+            .with_layout_item(LayoutItem::fixed(44)),
+    ]);
+    let mut tree = ComponentTree::new(vec![root]);
+    let bounds = Rect::new(0, 0, 320, 120);
+    let placed = tree.layout(bounds).to_vec();
+    let action_bounds = placed
+        .iter()
+        .find(|item| item.id == ACTION)
+        .expect("the action button should be laid out")
+        .bounds;
+    let pointer = Point::new(
+        (action_bounds.x + action_bounds.width / 2) as i32,
+        (action_bounds.y + action_bounds.height / 2) as i32,
+    );
+
+    let press = tree.update_pointer(bounds, Some(pointer), true, false);
+    assert_eq!(press.focus_changed, Some(ACTION));
+    let release = tree.update_pointer(bounds, Some(pointer), false, true);
+    assert_eq!(release.activated, Some(ACTION));
+
+    let mut frame = Framebuffer::new(320, 120, Color::rgb(238, 242, 248)).unwrap();
+    tree.render(&mut frame, bounds, &font, 16.0, &UiTheme::default());
+    assert!(
+        frame.pixels().iter().any(|pixel| *pixel != Color::rgb(238, 242, 248)),
+        "the retained UI should paint visible pixels"
+    );
+
+    let mut host = HeadlessHost::new(HostWindowConfig::new("application workflow", 320, 120))
+        .unwrap();
+    host.request_redraw();
+    host.present(&frame).unwrap();
+    let presented = host
+        .take_presented_frame()
+        .expect("the host should retain the presented application frame");
+    assert_eq!(presented.pixels(), frame.pixels());
+
+    let descriptor = SurfaceDescriptor {
+        width: 320,
+        height: 120,
+        row_stride: 320 * 4,
+        pixel_format: PixelFormat::Rgba8,
+        alpha_mode: AlphaMode::Straight,
+        color_space: ColorSpace::Srgb,
+    };
+    let mut bytes = vec![0; descriptor.required_buffer_len().unwrap()];
+    presented.write_to_surface(&mut bytes, descriptor).unwrap();
+    assert!(bytes.chunks_exact(4).any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0));
+
+    assert_eq!(
+        tree.handle_key(bounds, ComponentKey::Enter, false).activated,
+        Some(ACTION),
+        "keyboard activation should target the focused application control"
+    );
+}
