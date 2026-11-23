@@ -290,11 +290,16 @@ fn add_pixel(sums: &mut [u64; 4], color: Color, direction: i8) {
 }
 
 fn color_from_sums(sums: [u64; 4], count: u64) -> Color {
-    if sums[3] == 0 {
+    let Some(alpha_sum) = std::num::NonZeroU64::new(sums[3]) else {
         return Color::TRANSPARENT;
-    }
-    let channel = |premultiplied: u64| ((premultiplied + sums[3] / 2) / sums[3]).min(255) as u8;
-    let alpha = ((sums[3] + count / 2) / count).min(255) as u8;
+    };
+    let Some(sample_count) = std::num::NonZeroU64::new(count) else {
+        return Color::TRANSPARENT;
+    };
+    let channel = |premultiplied: u64| {
+        ((premultiplied + alpha_sum.get() / 2) / alpha_sum.get()).min(255) as u8
+    };
+    let alpha = ((alpha_sum.get() + sample_count.get() / 2) / sample_count.get()).min(255) as u8;
     Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
 }
 
