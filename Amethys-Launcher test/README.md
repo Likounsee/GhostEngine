@@ -1,35 +1,53 @@
-# Amethys-Launcher test
+# Amethys Launcher — GhostEngine integration test
 
-Test interactif d'Amethyst Launcher rendu **entièrement par GhostEngine** (moteur CPU, aucune autre bibliothèque de rendu).
-Ce n'est pas un visualiseur d'images : c'est une vraie fenêtre avec de vraies images décodées par le moteur.
+Ce dossier contient un **prototype d'interface inspiré d'Amethys Launcher**, développé pour exercer GhostEngine dans un logiciel réel plutôt que dans une simple scène de démonstration.
 
-## Lancer
+Le prototype est rendu par le rasterizer CPU de GhostEngine. Il utilise l'API publique du moteur pour le texte, les formes, les images, les textures, les mipmaps, le framebuffer, le défilement, les interactions et la saisie.
 
-    cargo run --release          (ou double-cliquer run.cmd sous Windows)
+> Ce projet est un banc d'intégration visuel : ses prix, recommandations, bibliothèques et données de jeux sont fictifs. Il ne constitue pas le code de production du launcher Amethys.
 
-Le dossier doit se trouver à côté du dossier `ghostengine/` du dépôt (dépendance `../ghostengine/crates/ghostengine`).
-Si le moteur ne compile pas chez toi, appliquer `engine-build-fixes.patch` (corrections minimales, non appliquées au dépôt).
+## Lancer la fenêtre interactive
 
-## Ce que tu peux faire
+Depuis la racine du dépôt :
 
-- Molette : défilement (`ScrollViewport`), barre fine qui n'apparaît que sur le contenu.
-- Survol / clic (`UiInteraction`) : menu de gauche, cartes de jeu, « Voir la fiche », filtres de la boutique et de la bibliothèque, fil d'Ariane.
-- Barre de recherche : vrai champ texte du moteur (`UiComponent::text_input` : clavier, IME, presse-papiers).
-- Pastille « GhostEngine » en bas à droite : clic = panneau de **mesures réelles** (cadence, temps de rendu, framebuffer, images décodées, cache de textures, threads) et bouton **Lancer le benchmark** (mesure le rendu de page et des frames complètes sur ta machine). Rien n'est simulé.
+```sh
+cargo run --manifest-path "Amethys-Launcher test/Cargo.toml" --release
+```
+
+Sous Windows, `run.cmd` fournit également un raccourci.
+
+## Exécution headless
+
+La session scriptée utilise exactement le même `App::frame` que la fenêtre native. Elle ne crée aucune fenêtre et ne nécessite pas de serveur d'affichage :
+
+```sh
+cargo run --manifest-path "Amethys-Launcher test/Cargo.toml" --release -- --snapshot target/amethyst-launcher-snapshots
+```
+
+Elle enregistre 18 images PNG qui couvrent notamment la boutique, le survol, le défilement, la navigation vers la bibliothèque, les filtres, la fiche produit, la recherche et le panneau de mesures/benchmark.
+
+## Interactions de la fenêtre
+
+- Molette : défilement avec `ScrollViewport`.
+- Survol et clic : navigation, cartes, filtres et fil d'Ariane via `UiInteraction`.
+- Recherche : composant texte GhostEngine avec clavier, IME et presse-papiers.
+- Pastille GhostEngine : panneau de mesures et benchmark local.
 - Échap : quitter.
 
-## Images
+## Ressources
 
-`assets/covers/<titre-en-minuscules-avec-tirets>.png|jpg|bmp` est décodé par `decode_texture` (PNG, JPEG, BMP), rangé dans le `TextureCache`, puis échantillonné avec les mipmaps du moteur.
-Les 12 fichiers fournis sont des **jaquettes de remplacement** générées avec le moteur (`cargo run --release --bin gen-covers`). Pour utiliser une vraie jaquette, dépose un fichier du même nom dans `assets/covers/` (ex. `cyberpunk-2077.png`).
+- `assets/covers/` : 12 jaquettes de remplacement générées pour le prototype. Elles sont décodées par `decode_texture`, mises en cache et utilisées avec les mipmaps.
+- `assets/fonts/` : polices Inter fournies avec leur licence OFL.
+- `src/data.rs` : données de démonstration fictives.
 
-## Polices
+Pour remplacer une jaquette, déposer un fichier PNG, JPEG ou BMP portant le slug du jeu dans `assets/covers/`.
 
-Inter (licence OFL, `assets/fonts/`). Space Grotesk n'est pas incluse : ajouter ses OTF/TTF et adapter `Fonts::load` si tu la veux.
+## Validation automatisée
 
-## Sans écran
+La CI Windows, Linux et macOS :
+1. vérifie le formatage Rust de ce projet ;
+2. exécute ses tests d'intégration (décodage des 12 jaquettes, mipmaps, cache et rendu d'une vraie frame) ;
+3. lance la session headless complète ;
+4. vérifie que les 18 captures PNG ont été produites.
 
-    cargo run --release -- --snapshot dossier-de-sortie
-
-Rejoue une session scriptée (défilement, clics, filtres, panneau de mesures, benchmark) et enregistre des captures : utile pour vérifier sans fenêtre.
-Les données (prix, pourcentages, temps de jeu, dossiers) sont des exemples.
+Ces tests valident l'intégration logicielle et le rendu headless. Ils ne remplacent pas encore une vérification interactive de la fenêtre native sur chaque système.
