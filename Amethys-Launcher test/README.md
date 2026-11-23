@@ -1,6 +1,6 @@
 # Amethys Launcher — GhostEngine integration test
 
-Ce dossier contient un **prototype d'interface inspiré d'Amethys Launcher**, développé pour exercer GhostEngine dans un logiciel réel plutôt que dans une simple scène de démonstration.
+Ce dossier contient un **prototype de test autonome inspiré d'Amethys Launcher**. Il sert de banc d'intégration applicatif pour exercer GhostEngine sur une interface plus représentative qu'une scène de démonstration.
 
 Le prototype est rendu par le rasterizer CPU de GhostEngine. Il utilise l'API publique du moteur pour le texte, les formes, les images, les textures, les mipmaps, le framebuffer, le défilement, les interactions et la saisie.
 
@@ -50,4 +50,4 @@ La CI Windows, Linux et macOS :
 3. lance la session headless complète ;
 4. vérifie que les 18 captures PNG ont été produites.
 
-Ces tests valident l'intégration logicielle et le rendu headless. Ils ne remplacent pas encore une vérification interactive de la fenêtre native sur chaque système.
+Ces tests valident le prototype, les API publiques utilisées et le rendu headless. Ils ne valident **ni le véritable code de production d'Amethys Launcher, ni son intégration réelle**, et ne remplacent pas une vérification interactive de la fenêtre native sur chaque système.
