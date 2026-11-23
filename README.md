@@ -8,7 +8,7 @@
 
 Its goal is to implement its own rendering technology: geometry processing, rasterization, compositing, resource management and rendering algorithms. GhostEngine is not a wrapper around an existing graphics engine or graphics API.
 
-The first targets are **Windows and Linux**. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
+The native adapters target **Windows, Linux and macOS**, while the first interactive integrations are developed and validated incrementally across those platforms. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
 > **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, damage-region layer composition, transformed layer filtering and source-over, multiply, screen and add blending, display lists, retained UI components, TrueType/OpenType glyph rasterization, text layout and shaping. The optional `image-decoding` feature decodes BMP, JPEG, PNG and PNM files into CPU textures. Optional window adapters present completed CPU framebuffers and forward input. The software 3D pipeline is not implemented yet. The 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
 
@@ -19,7 +19,7 @@ Build a graphics engine that is:
 - **Fully self-developed:** rendering algorithms and execution pipeline belong to GhostEngine.
 - **Lightweight:** small core, modular features, controlled memory use and minimal mandatory dependencies.
 - **Fast:** multithreaded CPU rendering, SIMD optimizations, efficient data layouts and minimal memory traffic.
-- **Portable:** Windows and Linux first, with platform-specific presentation isolated behind small adapters.
+- **Portable:** Windows, Linux and macOS, with platform-specific presentation isolated behind small adapters.
 - **Reusable:** one engine for PeaceEmu, Archia Browser, the Office suite, ArchiaOS in the future, and third-party applications.
 - **Testable:** deterministic software rendering and automated image-based tests without requiring a GPU.
 
