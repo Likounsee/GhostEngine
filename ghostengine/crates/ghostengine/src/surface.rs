@@ -211,15 +211,6 @@ fn multiply_alpha(channel: u8, alpha: u8) -> u8 {
     ((u16::from(channel) * u16::from(alpha) + 127) / 255) as u8
 }
 
-fn srgb_to_linear(channel: u8) -> u8 {
-    let value = f64::from(channel) / 255.0;
-    let linear = if value <= 0.04045 {
-        value / 12.92
-    } else {
-        ((value + 0.055) / 1.055).powf(2.4)
-    };
-    linear.mul_add(255.0, 0.5).floor() as u8
-}
 
 #[cfg(test)]
 mod tests {
