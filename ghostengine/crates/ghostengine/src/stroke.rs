@@ -82,6 +82,8 @@ pub enum StrokeError {
     AllocationFailed,
     /// A scoped rasterization worker panicked while processing its row band.
     WorkerPanicked,
+    /// The operating system refused to start a scoped rasterization worker.
+    WorkerSpawnFailed,
     Path(PathError),
 }
 
@@ -205,10 +207,11 @@ pub fn stroke_path_aa_parallel_with_threads(
         handles
             .try_reserve_exact(worker_count)
             .map_err(|_| StrokeError::AllocationFailed)?;
+        let mut spawn_failed = false;
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
             let row_end = (row_start + pixels.len() / width_usize).min(height_usize);
-            handles.push(scope.spawn(move || {
+            let worker = move || {
                 stroke_path_impl_rows(
                     pixels,
                     width,
@@ -225,7 +228,14 @@ pub fn stroke_path_aa_parallel_with_threads(
                         antialias: true,
                     },
                 )
-            }));
+            };
+            match std::thread::Builder::new().spawn_scoped(scope, worker) {
+                Ok(handle) => handles.push(handle),
+                Err(_) => {
+                    spawn_failed = true;
+                    break;
+                }
+            }
         }
         let mut worker_error = None;
         for handle in handles {
@@ -241,6 +251,9 @@ pub fn stroke_path_aa_parallel_with_threads(
         }
         if let Some(error) = worker_error {
             return Err(error);
+        }
+        if spawn_failed {
+            return Err(StrokeError::WorkerSpawnFailed);
         }
         Ok(())
     })
