@@ -113,7 +113,7 @@ This checklist tracks implementation separately from release validation. A check
   - [x] Linear gradient stop positions with exact expected pixels.
   - [x] Nearest-neighbor texture scaling and clipping with exact expected pixels.
   - [ ] Transformed/bilinear texture sampling with exact expected pixels.
-  - [ ] Layer composition, opacity and blend modes with exact expected pixels.
+  - [x] Layer composition, opacity and blend modes with exact expected pixels.
   - [ ] Text rendering with a licensed deterministic font fixture and stable pixel expectations.
 - [ ] Add property-based or fuzz-style tests for malformed geometry, clipping, dimensions, strides, display-list commands and image inputs; keep the regular CI suite deterministic and bounded.
 - [ ] Validate the public examples as end-to-end application workflows: vector drawing, images, text, UI interaction, input and presentation.
