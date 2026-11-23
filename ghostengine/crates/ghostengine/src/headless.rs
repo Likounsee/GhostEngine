@@ -57,6 +57,7 @@ pub struct HeadlessHost {
     config: HostWindowConfig,
     events: VecDeque<HostEvent>,
     presented_frame: Option<Framebuffer>,
+    last_nonzero_drawable_size: (u32, u32),
     open: bool,
 }
 
@@ -68,6 +69,7 @@ impl HeadlessHost {
             config,
             events: VecDeque::new(),
             presented_frame: None,
+            last_nonzero_drawable_size: (config.width, config.height),
             open: true,
         })
     }
@@ -83,7 +85,10 @@ impl HeadlessHost {
             return Err(HeadlessHostError::Closed);
         }
         let is_minimized = width == 0 || height == 0;
-        if !self.config.resizable && !is_minimized && (width, height) != self.drawable_size() {
+        if !self.config.resizable
+            && !is_minimized
+            && (width, height) != self.last_nonzero_drawable_size
+        {
             return Err(HeadlessHostError::ResizeDisabled);
         }
         // A zero-sized drawable represents a minimized window. Initial
@@ -97,6 +102,9 @@ impl HeadlessHost {
         }
         self.config.width = width;
         self.config.height = height;
+        if !is_minimized {
+            self.last_nonzero_drawable_size = (width, height);
+        }
         self.queue_event(HostEvent::Resized { width, height });
         Ok(())
     }
@@ -314,6 +322,8 @@ mod tests {
         host.resize(0, 0).unwrap();
         assert_eq!(host.drawable_size(), (0, 0));
         host.resize(64, 32).unwrap();
+        assert_eq!(host.drawable_size(), (64, 32));
+        assert_eq!(host.resize(128, 96), Err(HeadlessHostError::ResizeDisabled));
         assert_eq!(host.drawable_size(), (64, 32));
         assert!(!host.capabilities().resize);
     }
