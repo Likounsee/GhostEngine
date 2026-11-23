@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .with_layout_item(LayoutItem::fixed(48)),
         UiComponent::label(
             STATUS,
-            "Click the input, type, then try Ctrl+A / Ctrl+C / Ctrl+V.",
+            "Click the input, type, try Ctrl+A / Ctrl+C / Ctrl+V, or reconnect the clipboard.",
         )
         .with_layout_item(LayoutItem::flexible()),
     ]);

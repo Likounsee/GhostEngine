@@ -170,6 +170,7 @@ cargo test -p ghostengine --features image-decoding
 cargo run -p ghostengine --example first_image -- first-image.ppm
 cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
+# The demo includes a system-clipboard reconnect action
 cargo run -p ghostengine --features native-window --example native_animation_demo
 cargo run -p ghostengine --release --example cpu_raster_bench -- 5
 ```

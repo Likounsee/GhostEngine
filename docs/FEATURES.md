@@ -118,7 +118,9 @@ Its tests cover these behaviors without a display server. The existing Winit/sof
 scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
 values. The native UI demo consumes those events rather than Winit types. The
 native adapter also exposes runtime `HostCapabilities` reporting, including
-whether the system clipboard was actually initialized. Its control-based runner
+whether the system clipboard was actually initialized. `NativeClipboard::reconnect`
+allows an application to retry clipboard initialization if the desktop service becomes
+available later; the native UI example exposes this recovery action. Its control-based runner
 supports `HostRunControl::Wait`, `HostRunControl::Redraw`, paced `HostRunControl::RedrawAfter(Duration)` and `HostRunControl::Exit` outcomes, so applications can animate without
 importing Winit types or emulating synchronous polling. The native adapter is
 still not an implementation of the poll-based `HostBackend` trait, and real
