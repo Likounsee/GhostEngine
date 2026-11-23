@@ -76,7 +76,7 @@ jobs:
         run: cargo run -p ghostengine --release --example vector_path_showcase -- target/ghostengine-vector-showcase.ppm
 
       - name: Run headless image decoding and mipmap showcase
-        run: cargo run --manifest-path ghostengine/Cargo.toml --release --features image-decoding --example image_pipeline_demo -- "Amethys-Launcher test/assets/covers/hades.png" target/ghostengine-image-pipeline.ppm
+        run: cargo run --manifest-path ghostengine/Cargo.toml --release --features image-decoding --example image_pipeline_demo -- "Amethys-Launcher test/assets/covers/hades.png" ghostengine/target/ghostengine-image-pipeline.ppm
 
       - name: Format Amethys Launcher integration tests
         run: rustfmt --edition 2021 --check "Amethys-Launcher test/tests/launcher_integration.rs"
