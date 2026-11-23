@@ -3203,11 +3203,16 @@ mod tests {
     }
 
     fn framebuffer_rgba_hash(framebuffer: &crate::Framebuffer) -> u64 {
-        framebuffer.pixels().iter().fold(0xcbf29ce484222325, |hash, pixel| {
-            [pixel.r, pixel.g, pixel.b, pixel.a]
-                .into_iter()
-                .fold(hash, |hash, channel| (hash ^ u64::from(channel)).wrapping_mul(0x100000001b3))
-        })
+        framebuffer
+            .pixels()
+            .iter()
+            .fold(0xcbf29ce484222325, |hash, pixel| {
+                [pixel.r, pixel.g, pixel.b, pixel.a]
+                    .into_iter()
+                    .fold(hash, |hash, channel| {
+                        (hash ^ u64::from(channel)).wrapping_mul(0x100000001b3)
+                    })
+            })
     }
 
     #[test]
@@ -3225,13 +3230,7 @@ mod tests {
 
         let mut clipped = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
         super::draw_text_shaped_clipped(
-            &mut clipped,
-            &font,
-            &shaped,
-            baseline,
-            28.0,
-            color,
-            clip,
+            &mut clipped, &font, &shaped, baseline, 28.0, color, clip,
         );
 
         assert!(clipped.pixels().iter().any(|pixel| *pixel != background));
@@ -3288,7 +3287,13 @@ mod tests {
         let mut direct = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
         let mut identity = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
         super::draw_text_shaped_clipped(
-            &mut direct, &font, &shaped, baseline, 26.0, color, clip,
+            &mut direct,
+            &font,
+            &shaped,
+            baseline,
+            26.0,
+            color,
+            clip,
         );
         super::draw_text_shaped_transformed_clipped(
             &mut identity,
