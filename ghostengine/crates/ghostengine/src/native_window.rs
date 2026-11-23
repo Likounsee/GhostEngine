@@ -112,7 +112,7 @@ impl NativeWindowSurface {
         mut draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool + 'static,
+        F: FnMut(&mut Framebuffer, InputState, &mut NativeClipboard) -> bool,
     {
         Self::run_with_host_events(
             title,
@@ -149,7 +149,7 @@ impl NativeWindowSurface {
         draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
     {
         Self::run_with_config(HostWindowConfig::new(title, width, height), draw)
     }
@@ -163,7 +163,7 @@ impl NativeWindowSurface {
     ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl
-            + 'static,
+            ,
     {
         Self::run_with_config_control(HostWindowConfig::new(title, width, height), draw)
     }
@@ -178,7 +178,7 @@ impl NativeWindowSurface {
         mut draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
     {
         Self::run_with_config_control(config, move |framebuffer, events, clipboard| {
             if draw(framebuffer, events, clipboard) {
@@ -202,7 +202,7 @@ impl NativeWindowSurface {
     ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl
-            + 'static,
+            ,
     {
         config.validate().map_err(NativeWindowError::Host)?;
         let title = config.title;
