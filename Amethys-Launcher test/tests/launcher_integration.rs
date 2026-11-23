@@ -87,3 +87,49 @@ fn launcher_renders_a_real_frame_without_opening_a_window() {
         "the launcher should draw visible UI into the framebuffer"
     );
 }
+
+#[cfg(feature = "window")]
+#[test]
+fn launcher_click_routes_to_the_library_page() {
+    use amethyst_preview::{
+        app::{App, WIN_H, WIN_W},
+        gfx::{Fonts, Page, BG},
+    };
+    use ghostengine::{window::InputState, Framebuffer, Point};
+
+    let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+    let fonts = Box::leak(Box::new(
+        Fonts::load(
+            assets
+                .join("fonts")
+                .to_str()
+                .expect("font path should be UTF-8"),
+        )
+        .expect("bundled Inter fonts should load"),
+    ));
+    let covers = Box::leak(Box::new(CoverStore::load(&assets.join("covers"))));
+    let mut app = App::new(fonts, covers);
+    let mut framebuffer =
+        Framebuffer::new(WIN_W, WIN_H, BG).expect("launcher framebuffer should allocate");
+
+    let press = InputState {
+        mouse_position: Some(Point::new(100, 140)),
+        left_mouse_down: true,
+        left_mouse_pressed: true,
+        ..Default::default()
+    };
+    app.frame(&mut framebuffer, &press);
+
+    let release = InputState {
+        mouse_position: Some(Point::new(100, 140)),
+        left_mouse_released: true,
+        ..Default::default()
+    };
+    app.frame(&mut framebuffer, &release);
+
+    assert_eq!(
+        app.page,
+        Page::Library,
+        "clicking the sidebar library item should navigate to the library"
+    );
+}
