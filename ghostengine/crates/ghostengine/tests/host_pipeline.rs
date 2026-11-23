@@ -70,3 +70,79 @@ fn headless_resize_minimize_restore_and_event_delivery_are_consistent() {
     host.present(&Framebuffer::new(4, 3, Color::BLACK).unwrap())
         .unwrap();
 }
+
+#[test]
+fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
+    let frame = Framebuffer::new(2, 2, Color::TRANSPARENT).unwrap();
+    let mut frame = frame;
+    frame.pixels_mut().copy_from_slice(&[
+        Color::rgba(200, 100, 50, 128),
+        Color::rgba(10, 20, 30, 255),
+        Color::rgba(90, 60, 30, 0),
+        Color::rgba(1, 2, 3, 64),
+    ]);
+
+    for pixel_format in [
+        PixelFormat::Rgb8,
+        PixelFormat::Bgr8,
+        PixelFormat::Rgba8,
+        PixelFormat::Bgra8,
+    ] {
+        let bytes_per_pixel = pixel_format.bytes_per_pixel();
+        let minimum_row_bytes = 2 * bytes_per_pixel;
+        let row_stride = minimum_row_bytes + 3;
+
+        for alpha_mode in [AlphaMode::Straight, AlphaMode::Premultiplied, AlphaMode::Opaque] {
+            let descriptor = SurfaceDescriptor {
+                width: 2,
+                height: 2,
+                row_stride,
+                pixel_format,
+                alpha_mode,
+                color_space: ColorSpace::Srgb,
+            };
+            let required_len = descriptor.required_buffer_len().unwrap();
+            assert_eq!(required_len, row_stride + minimum_row_bytes);
+
+            let mut destination = vec![0xA5; required_len];
+            frame
+                .write_to_surface(&mut destination, descriptor)
+                .unwrap();
+
+            let mut expected = vec![0xA5; required_len];
+            let pixels = frame.pixels();
+            for y in 0..2 {
+                for x in 0..2 {
+                    let pixel = pixels[y * 2 + x];
+                    let has_alpha = matches!(pixel_format, PixelFormat::Rgba8 | PixelFormat::Bgra8);
+                    let alpha = if has_alpha && alpha_mode != AlphaMode::Opaque {
+                        pixel.a
+                    } else {
+                        255
+                    };
+                    let mut rgb = [pixel.r, pixel.g, pixel.b];
+                    if has_alpha && alpha_mode == AlphaMode::Premultiplied {
+                        for channel in &mut rgb {
+                            *channel = ((u16::from(*channel) * u16::from(alpha) + 127) / 255) as u8;
+                        }
+                    }
+                    let ordered = match pixel_format {
+                        PixelFormat::Rgb8 | PixelFormat::Rgba8 => rgb,
+                        PixelFormat::Bgr8 | PixelFormat::Bgra8 => [rgb[2], rgb[1], rgb[0]],
+                    };
+                    let offset = y * row_stride + x * bytes_per_pixel;
+                    expected[offset..offset + 3].copy_from_slice(&ordered);
+                    if has_alpha {
+                        expected[offset + 3] = alpha;
+                    }
+                }
+            }
+
+            assert_eq!(
+                destination, expected,
+                "format {pixel_format:?}, alpha mode {alpha_mode:?}"
+            );
+        }
+    }
+}
+
