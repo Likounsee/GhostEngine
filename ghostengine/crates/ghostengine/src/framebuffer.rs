@@ -218,6 +218,7 @@ impl Framebuffer {
         let old_width = self.width as usize;
         let old_height = self.height as usize;
         let new_width = width as usize;
+        let new_height = height as usize;
         let copy_width = old_width.min(new_width);
         let copy_height = old_height.min(height as usize);
 
