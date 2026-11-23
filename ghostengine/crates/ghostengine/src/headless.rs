@@ -15,6 +15,7 @@ pub enum HeadlessHostError {
     Configuration(HostError),
     Framebuffer(FramebufferError),
     DimensionMismatch,
+    ResizeDisabled,
     Closed,
 }
 
@@ -26,6 +27,7 @@ impl fmt::Display for HeadlessHostError {
             Self::DimensionMismatch => {
                 formatter.write_str("framebuffer dimensions do not match the headless drawable")
             }
+            Self::ResizeDisabled => formatter.write_str("headless drawable is not resizable"),
             Self::Closed => formatter.write_str("headless host is closed"),
         }
     }
@@ -76,6 +78,9 @@ impl HeadlessHost {
         if !self.open {
             return Err(HeadlessHostError::Closed);
         }
+        if !self.config.resizable {
+            return Err(HeadlessHostError::ResizeDisabled);
+        }
         let mut next = self.config.clone();
         next.width = width;
         next.height = height;
@@ -121,7 +126,7 @@ impl HostBackend for HeadlessHost {
             clipboard: false,
             text_input: false,
             ime: false,
-            resize: true,
+            resize: self.config.resizable,
         }
     }
 
@@ -217,6 +222,20 @@ mod tests {
             ))
         );
         assert_eq!(host.drawable_size(), (64, 32));
+    }
+
+    #[test]
+    fn fixed_size_host_rejects_resize_and_reports_capability() {
+        let mut config = HostWindowConfig::new("fixed", 64, 32);
+        config.resizable = false;
+        let mut host = HeadlessHost::new(config).unwrap();
+
+        assert!(!host.capabilities().resize);
+        assert_eq!(host.resize(128, 96), Err(HeadlessHostError::ResizeDisabled));
+        assert_eq!(host.drawable_size(), (64, 32));
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert!(events.is_empty());
     }
 
     #[test]
