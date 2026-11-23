@@ -477,7 +477,13 @@ mod box_blur_reference_tests {
     use super::{apply_box_blur, EffectScratch};
     use crate::{Color, Framebuffer};
 
-    fn reference_axis(source: &[Color], width: usize, height: usize, radius: usize, horizontal: bool) -> Vec<Color> {
+    fn reference_axis(
+        source: &[Color],
+        width: usize,
+        height: usize,
+        radius: usize,
+        horizontal: bool,
+    ) -> Vec<Color> {
         let mut output = vec![Color::TRANSPARENT; source.len()];
         for y in 0..height {
             for x in 0..width {
@@ -485,9 +491,17 @@ mod box_blur_reference_tests {
                 let count = radius * 2 + 1;
                 for offset in 0..count {
                     let (sample_x, sample_y) = if horizontal {
-                        ((x as isize + offset as isize - radius as isize).clamp(0, width as isize - 1) as usize, y)
+                        (
+                            (x as isize + offset as isize - radius as isize)
+                                .clamp(0, width as isize - 1) as usize,
+                            y,
+                        )
                     } else {
-                        (x, (y as isize + offset as isize - radius as isize).clamp(0, height as isize - 1) as usize)
+                        (
+                            x,
+                            (y as isize + offset as isize - radius as isize)
+                                .clamp(0, height as isize - 1) as usize,
+                        )
                     };
                     let pixel = source[sample_y * width + sample_x];
                     let alpha = u64::from(pixel.a);
@@ -498,7 +512,11 @@ mod box_blur_reference_tests {
                 }
                 let alpha = ((sums[3] + count as u64 / 2) / count as u64).min(255) as u8;
                 let channel = |value: u64| {
-                    if sums[3] == 0 { 0 } else { ((value + sums[3] / 2) / sums[3]).min(255) as u8 }
+                    if sums[3] == 0 {
+                        0
+                    } else {
+                        ((value + sums[3] / 2) / sums[3]).min(255) as u8
+                    }
                 };
                 output[y * width + x] = if sums[3] == 0 {
                     Color::TRANSPARENT
@@ -514,10 +532,16 @@ mod box_blur_reference_tests {
     fn sliding_box_blur_matches_clamped_reference_for_small_surfaces_and_large_radii() {
         for width in 1..=7 {
             for height in 1..=6 {
-                let mut frame = Framebuffer::new(width as u32, height as u32, Color::TRANSPARENT).unwrap();
+                let mut frame =
+                    Framebuffer::new(width as u32, height as u32, Color::TRANSPARENT).unwrap();
                 for (index, pixel) in frame.pixels_mut().iter_mut().enumerate() {
                     let value = (index * 47 + width * 19 + height * 31) as u8;
-                    *pixel = Color::rgba(value, value.wrapping_mul(3), value.wrapping_add(91), value.wrapping_mul(7));
+                    *pixel = Color::rgba(
+                        value,
+                        value.wrapping_mul(3),
+                        value.wrapping_add(91),
+                        value.wrapping_mul(7),
+                    );
                 }
                 for radius in [1_u32, 2, 4, 9] {
                     let radius_x = (radius as usize).min(width - 1);
@@ -526,7 +550,11 @@ mod box_blur_reference_tests {
                     let expected = reference_axis(&horizontal, width, height, radius_y, false);
                     let mut actual = frame.clone();
                     apply_box_blur(&mut actual, radius, &mut EffectScratch::default());
-                    assert_eq!(actual.pixels(), expected, "size={width}x{height}, radius={radius}");
+                    assert_eq!(
+                        actual.pixels(),
+                        expected,
+                        "size={width}x{height}, radius={radius}"
+                    );
                 }
             }
         }
