@@ -82,7 +82,9 @@ impl ClickTracker {
             now.duration_since(last_time) <= Duration::from_millis(500) && {
                 let dx = i64::from(position.x) - i64::from(last_position.x);
                 let dy = i64::from(position.y) - i64::from(last_position.y);
-                dx * dx + dy * dy <= 25
+                // Reject distant points before squaring: the difference between
+                // opposite i32 extremes does not fit when squared in i64.
+                dx.abs() <= 5 && dy.abs() <= 5 && dx * dx + dy * dy <= 25
             }
         });
         self.click_count = if is_double_click {
@@ -287,6 +289,35 @@ fn merge_component_events(target: &mut ComponentEvents, next: ComponentEvents) {
 
 #[cfg(all(test, feature = "native-input"))]
 mod tests {
+    #[test]
+    fn click_tracker_handles_extreme_coordinates_without_overflow() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(i32::MIN, i32::MIN)),
+                start
+            ),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(i32::MAX, i32::MAX)),
+                start + Duration::from_millis(100)
+            ),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(i32::MAX - 1, i32::MAX - 1)),
+                start + Duration::from_millis(200)
+            ),
+            2
+        );
+    }
+
     #[test]
     fn click_tracker_requires_time_and_spatial_proximity() {
         use std::time::{Duration, Instant};
