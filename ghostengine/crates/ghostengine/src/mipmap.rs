@@ -20,7 +20,9 @@ impl MipmapChain {
             .last()
             .is_some_and(|level| level.width() > 1 || level.height() > 1)
         {
-            let previous = levels.last().expect("base mip level always exists");
+            let Some(previous) = levels.last() else {
+                return Err(TextureError::ZeroDimension);
+            };
             let width = previous.width().div_ceil(2);
             let height = previous.height().div_ceil(2);
             let pixel_count = (width as usize)
@@ -41,7 +43,10 @@ impl MipmapChain {
                     let mut sample_count = 0;
                     for sample_y in y0..=y1 {
                         for sample_x in x0..=x1 {
-                            samples[sample_count] = previous.get_pixel(sample_x, sample_y).unwrap();
+                            let Some(sample) = previous.get_pixel(sample_x, sample_y) else {
+                                return Err(TextureError::PixelCountMismatch);
+                            };
+                            samples[sample_count] = sample;
                             sample_count += 1;
                         }
                     }
@@ -112,7 +117,9 @@ pub fn draw_mipmapped_texture_clipped(
         return;
     };
 
-    let base = &mipmaps.levels[0];
+    let Some(base) = mipmaps.levels.first() else {
+        return;
+    };
 
     // Exact 2:1 downscales land on texel centers of mip level 1. Avoid
     // per-pixel LOD calculation and bilinear sampling for this common case.
@@ -181,12 +188,17 @@ pub fn draw_mipmapped_texture_clipped(
 }
 
 fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
+    if texture.width() == 0 || texture.height() == 0 || !x.is_finite() || !y.is_finite() {
+        return Color::TRANSPARENT;
+    }
     let x = x.clamp(0.0, texture.width() as f32 - 1.0);
     let y = y.clamp(0.0, texture.height() as f32 - 1.0);
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
     if x == x0 as f32 && y == y0 as f32 {
-        return texture.get_pixel(x0, y0).unwrap();
+        return texture
+            .get_pixel(x0, y0)
+            .unwrap_or(Color::TRANSPARENT);
     }
     if texture.is_fully_opaque() {
         return crate::texture::sample_pixels_bilinear_opaque(
@@ -201,16 +213,16 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let y1 = (y0 + 1).min(texture.height() - 1);
     let tx = x - x0 as f32;
     let ty = y - y0 as f32;
-    let top = interpolate_premultiplied(
-        texture.get_pixel(x0, y0).unwrap(),
-        texture.get_pixel(x1, y0).unwrap(),
-        tx,
-    );
-    let bottom = interpolate_premultiplied(
-        texture.get_pixel(x0, y1).unwrap(),
-        texture.get_pixel(x1, y1).unwrap(),
-        tx,
-    );
+    let (Some(top_left), Some(top_right), Some(bottom_left), Some(bottom_right)) = (
+        texture.get_pixel(x0, y0),
+        texture.get_pixel(x1, y0),
+        texture.get_pixel(x0, y1),
+        texture.get_pixel(x1, y1),
+    ) else {
+        return Color::TRANSPARENT;
+    };
+    let top = interpolate_premultiplied(top_left, top_right, tx);
+    let bottom = interpolate_premultiplied(bottom_left, bottom_right, tx);
     interpolate_premultiplied(top, bottom, ty)
 }
 
