@@ -73,8 +73,7 @@ fn headless_resize_minimize_restore_and_event_delivery_are_consistent() {
 
 #[test]
 fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
-    let frame = Framebuffer::new(2, 2, Color::TRANSPARENT).unwrap();
-    let mut frame = frame;
+    let mut frame = Framebuffer::new(2, 2, Color::TRANSPARENT).unwrap();
     frame.pixels_mut().copy_from_slice(&[
         Color::rgba(200, 100, 50, 128),
         Color::rgba(10, 20, 30, 255),
