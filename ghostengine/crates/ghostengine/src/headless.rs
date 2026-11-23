@@ -81,11 +81,17 @@ impl HeadlessHost {
         if !self.config.resizable {
             return Err(HeadlessHostError::ResizeDisabled);
         }
-        let mut next = self.config.clone();
-        next.width = width;
-        next.height = height;
-        next.validate()?;
-        self.config = next;
+        // A zero-sized drawable represents a minimized window. Initial
+        // configuration still requires non-zero dimensions, but runtime
+        // resize events must be able to model the native window lifecycle.
+        if width != 0 && height != 0 {
+            let mut candidate = self.config.clone();
+            candidate.width = width;
+            candidate.height = height;
+            candidate.validate()?;
+        }
+        self.config.width = width;
+        self.config.height = height;
         self.queue_event(HostEvent::Resized { width, height });
         Ok(())
     }
@@ -226,6 +232,42 @@ mod tests {
                 HostError::InvalidDimensions
             ))
         );
+        assert_eq!(host.drawable_size(), (64, 32));
+    }
+
+    #[test]
+    fn resize_models_minimize_and_restore_with_zero_sized_drawables() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+
+        host.resize(0, 0).unwrap();
+        assert_eq!(host.drawable_size(), (0, 0));
+
+        host.resize(64, 32).unwrap();
+        assert_eq!(host.drawable_size(), (64, 32));
+
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert_eq!(
+            events,
+            [
+                HostEvent::Resized {
+                    width: 0,
+                    height: 0,
+                },
+                HostEvent::Resized {
+                    width: 64,
+                    height: 32,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn resize_accepts_zero_in_one_drawable_dimension() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+        host.resize(0, 32).unwrap();
+        assert_eq!(host.drawable_size(), (0, 32));
+        host.resize(64, 32).unwrap();
         assert_eq!(host.drawable_size(), (64, 32));
     }
 
