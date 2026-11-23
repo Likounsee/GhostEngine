@@ -471,7 +471,7 @@ mod tests {
         let allocation = framebuffer.pixels().as_ptr();
 
         framebuffer.resize_preserving(2, 2, Color::BLUE).unwrap();
-        framebuffer.resize_preserving(4, 4, Color.GREEN).unwrap();
+        framebuffer.resize_preserving(4, 4, Color::GREEN).unwrap();
 
         assert_eq!(framebuffer.width(), 4);
         assert_eq!(framebuffer.height(), 4);
