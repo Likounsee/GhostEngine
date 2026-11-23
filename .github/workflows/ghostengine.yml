@@ -43,6 +43,12 @@ jobs:
         working-directory: ghostengine
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Build public API documentation
+        working-directory: ghostengine
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps
+
       - name: Test scalar fallback without automatic parallel selection
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features
@@ -58,10 +64,6 @@ jobs:
       - name: Test native input without minifb
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features --features native-input
-
-      - name: Test native window backend without default features
-        working-directory: ghostengine
-        run: cargo test --workspace --all-targets --no-default-features --features native-window
 
       - name: Test native window backend without default features
         working-directory: ghostengine
