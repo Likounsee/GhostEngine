@@ -37,7 +37,7 @@ We will implement our own:
 - Render command representation and execution.
 - Optimization and scheduling systems.
 
-The operating system still has to display the final image. On Windows and Linux, a thin platform adapter will use the native system facilities needed to create or present a window/surface and transfer the finished image. Those facilities are presentation plumbing, not rendering engines: the image itself is produced by GhostEngine.
+The operating system still has to display the final image. On Windows, Linux and macOS, a thin platform adapter uses the native system facilities needed to create or present a window/surface and transfer the finished image. Those facilities are presentation plumbing, not rendering engines: the image itself is produced by GhostEngine.
 
 GPU acceleration is **not required** for the initial engine. Any future GPU work must follow a separately designed GhostEngine-owned architecture; it must not make an external graphics API a mandatory dependency. Hardware access and driver compatibility are difficult platform-specific problems and will be approached only after the software renderer is mature.
 
@@ -111,6 +111,7 @@ GhostEngine platform adapter
   |
   +-- Windows presentation
   +-- Linux presentation
+  +-- macOS presentation
   |
   v
 Native window / display facilities
@@ -132,28 +133,27 @@ The final crate boundaries will be chosen as implementation solidifies. The init
 | `compositor` | Layers, surfaces, blending and composition |
 | `text` | Text layout, glyph cache and font integration |
 | `image` | Image resources and decoding/encoding adapters |
-| `platform` | Minimal Windows and Linux presentation adapters |
+| `platform` | Minimal Windows, Linux and macOS presentation adapters |
 | `gpu` | Reserved for a possible future, independently designed hardware path |
 
 ## Development priorities
 
-1. **Project foundation:** Rus## Development priorities
-
-1. **Finish GhostEngine 2D V1:** complete rendering, paths, strokes, gradients, images, text, UI, composition, input, presentation and platform integration.
-2. **Harden 2D V1:** fix correctness and safety issues, validate Windows/Linux/macOS host paths, expand deterministic/property/fuzz tests, document the public API and record reproducible CPU performance baselines.
+1. **Finish GhostEngine 2D V1:** complete and harden rendering, paths, strokes, gradients, images, text, UI, composition, input, presentation and platform integration.
+2. **Validate 2D V1:** confirm Windows/Linux/macOS host behavior, cross-platform CI, examples, API documentation and reproducible CPU performance baselines.
 3. **Hardware acceleration:** after 2D V1 acceptance criteria pass, design and implement a GhostEngine-owned GPU path, keeping CPU rendering as a supported fallback and correctness reference.
 4. **3D rendering:** only after the GPU foundation works on real devices; reuse its resource and command architecture.
 5. **Application integration:** Archia Browser, PeaceEmu, Office suite and ArchiaOS as their platform foundations become ready.
 
 There is **no 2D V2 milestone** and no separate software-3D phase before GPU acceleration. See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical boundaries.
 
-hout a GPU.
-- Core rendering tests must run in CI without a display server.
-- Small deterministic scenes should have pixel-output tests.
-- Multithreaded and single-threaded output should be consistent.
+## Quality requirements
+
+- Core rendering must work in CI without a display server or GPU.
+- Deterministic rendering and pixel-output coverage must remain available.
+- Multithreaded and single-threaded output must remain consistent.
 - Portable fallback implementations must exist for optional SIMD paths.
 - Benchmarks must measure rendering time and memory use on documented hardware.
-- Performance changes must be validated against representative workloads.
+- Performance changes must be evaluated against representative workloads.
 - Platform-specific code must not leak into the rendering core.
 - Dependencies and their licenses must be reviewed before adoption.
 
