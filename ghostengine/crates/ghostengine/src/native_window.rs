@@ -352,7 +352,7 @@ where
                     .push(HostEvent::ScaleFactorChanged { scale_factor });
                 // DPI transitions can change the physical drawable even when
                 // the platform does not deliver a distinct Resized event.
-                if let Some(window) = self.window.as_ref() {
+                if let Some(window) = self.window.clone() {
                     let actual_size = window.inner_size();
                     if let Err(error) = self.sync_drawable_size(actual_size) {
                         self.failure = Some(NativeWindowError::Framebuffer(error));
