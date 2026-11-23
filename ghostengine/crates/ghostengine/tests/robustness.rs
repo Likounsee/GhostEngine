@@ -276,7 +276,6 @@ fn texture_cache_randomized_lifecycle_keeps_accounting_and_budget_consistent() {
     }
 }
 
-
 #[test]
 fn surface_stride_and_buffer_boundaries_are_validated_without_partial_writes() {
     let mut rng = Generator::new(0x5355_5246_4143_4553);
