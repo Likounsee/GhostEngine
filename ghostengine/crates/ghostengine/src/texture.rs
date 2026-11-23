@@ -3634,4 +3634,39 @@ mod render_options_tests {
 
         assert_eq!(atlas_target.pixels(), texture_target.pixels());
     }
+
+    #[test]
+    fn nearest_texture_clipping_preserves_exact_source_pixels_and_untouched_target() {
+        let texture = Texture::new(
+            2,
+            2,
+            vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
+        )
+        .unwrap();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        draw_texture_clipped(
+            &mut target,
+            &texture,
+            Rect::new(0, 0, 4, 4),
+            TextureFilter::Nearest,
+            Rect::new(1, 1, 2, 2),
+        );
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(2, 1), Some(Color::GREEN));
+        assert_eq!(target.get_pixel(1, 2), Some(Color::BLUE));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::WHITE));
+
+        for y in 0..4 {
+            for x in 0..4 {
+                if !(1..3).contains(&x) || !(1..3).contains(&y) {
+                    assert_eq!(target.get_pixel(x, y), Some(Color::BLACK));
+                }
+            }
+        }
+    }
+
 }
