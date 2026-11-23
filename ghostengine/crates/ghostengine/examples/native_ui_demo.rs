@@ -53,12 +53,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     ]);
     let mut tree = ComponentTree::new(vec![panel]);
     let theme = UiTheme::default();
+    let mut clipboard_capabilities_reported = false;
 
     NativeWindowSurface::run_with_host_events(
         "GhostEngine — Native component demo",
         WIDTH,
         HEIGHT,
         move |framebuffer, host_events, clipboard| {
+            if !clipboard_capabilities_reported {
+                let capabilities = NativeWindowSurface::capabilities(clipboard, true);
+                if !capabilities.clipboard {
+                    if let Some(status) = tree.find_mut(STATUS) {
+                        status.set_text("System clipboard is unavailable in this desktop session.");
+                    }
+                }
+                clipboard_capabilities_reported = true;
+            }
             let mut input = InputState::default();
             for event in host_events {
                 match event {
