@@ -145,7 +145,7 @@ The final crate boundaries will be chosen as implementation solidifies. The init
 4. **3D rendering:** only after the GPU foundation works on real devices; reuse its resource and command architecture.
 5. **Application integration:** Archia Browser, PeaceEmu, Office suite and ArchiaOS as their platform foundations become ready.
 
-There is **no 2D V2 milestone** and no separate software-3D phase before GPU acceleration. See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical boundaries.
+There is **no 2D V2 milestone** and no separate software-3D phase before GPU acceleration. See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical boundaries, and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) plus [docs/PLATFORM_VALIDATION.md](docs/PLATFORM_VALIDATION.md) for the 2D V1 release gate and real desktop validation record.
 
 ## Quality requirements
 
