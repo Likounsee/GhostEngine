@@ -214,7 +214,6 @@ fn multiply_alpha(channel: u8, alpha: u8) -> u8 {
     ((u16::from(channel) * u16::from(alpha) + 127) / 255) as u8
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{AlphaMode, ColorSpace, PixelFormat, SurfaceDescriptor, SurfaceError};
