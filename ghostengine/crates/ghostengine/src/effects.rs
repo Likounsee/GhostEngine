@@ -585,9 +585,10 @@ mod gaussian_reference_tests {
 
         for y in 0..height {
             for x in 0..width {
-                let start = if horizontal { x } else { y }.saturating_sub(radius);
+                let coordinate = if horizontal { x } else { y };
+                let start = coordinate.saturating_sub(radius);
                 let limit = if horizontal { width } else { height };
-                let end = (if horizontal { x } else { y } + radius + 1).min(limit);
+                let end = (coordinate + radius + 1).min(limit);
                 let mut sums = [0.0_f64; 4];
                 let mut total = 0.0_f64;
                 for sample in start..end {
