@@ -35,6 +35,9 @@ cargo test -p ghostengine
 # Image decoding, still headless
 cargo test -p ghostengine --features image-decoding
 
+# Display-free application using HostBackend
+cargo run -p ghostengine --example headless_host_demo
+
 # minifb window adapter
 cargo run -p ghostengine --features window --example browser_frontend
 

@@ -4,7 +4,7 @@
 
 # GhostEngine
 
-**GhostEngine is an independent, lightweight 2D and 3D graphics engine written in Rust.**
+**GhostEngine is an independent, lightweight 2D graphics engine written in Rust, with 3D planned after the GPU phase.**
 
 Its goal is to implement its own rendering technology: geometry processing, rasterization, compositing, resource management and rendering algorithms. GhostEngine is not a wrapper around an existing graphics engine or graphics API.
 
@@ -101,7 +101,8 @@ Applications
   v
 GhostEngine public API
   |
-  +-- 2D and 3D rendering
+  +-- 2D rendering (current)
+  +-- 3D rendering (future phase)
   +-- Render commands and resource management
   +-- CPU software rasterizer
   +-- Compositor
@@ -168,6 +169,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 cargo test -p ghostengine --features image-decoding
 cargo run -p ghostengine --example first_image -- first-image.ppm
+cargo run -p ghostengine --example headless_host_demo
 cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
 # The demo includes a system-clipboard reconnect action
@@ -175,7 +177,7 @@ cargo run -p ghostengine --features native-window --example native_animation_dem
 cargo run -p ghostengine --release --example cpu_raster_bench -- 5
 ```
 
-The `first_image` example creates a 320×180 PPM image headlessly. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only by the `window` feature for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The separate `native-input` and `native-window` features use Winit and softbuffer without pulling in minifb. The current CI checks formatting and Clippy, then runs the unit tests.
+The `first_image` example creates a 320×180 PPM image headlessly. The `headless_host_demo` example renders and presents a CPU framebuffer through `HeadlessHost` without opening a display or requiring a GPU. The `browser_frontend` example (enable `window`) opens a native desktop window, draws a browser-like interface with GhostEngine's CPU renderer, and accepts mouse/keyboard input. The optional `minifb` dependency is used only by the `window` feature for window creation, input and presenting GhostEngine's completed pixel buffer; it does not render the scene. The separate `native-input` and `native-window` features use Winit and softbuffer without pulling in minifb. The current CI checks formatting and Clippy, then runs the unit tests.
 
 ## License
 
