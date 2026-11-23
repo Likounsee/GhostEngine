@@ -227,16 +227,17 @@ impl Framebuffer {
             for y in (0..copy_height).rev() {
                 let source = y * old_width;
                 let destination = y * new_width;
-                self.pixels.copy_within(source..source + copy_width, destination);
-                self.pixels[destination + copy_width..destination + new_width]
-                    .fill(clear_color);
+                self.pixels
+                    .copy_within(source..source + copy_width, destination);
+                self.pixels[destination + copy_width..destination + new_width].fill(clear_color);
             }
         } else {
             // Destinations move toward the beginning; copy top-down.
             for y in 0..copy_height {
                 let source = y * old_width;
                 let destination = y * new_width;
-                self.pixels.copy_within(source..source + copy_width, destination);
+                self.pixels
+                    .copy_within(source..source + copy_width, destination);
             }
         }
 
@@ -451,9 +452,15 @@ mod tests {
         assert_eq!(
             framebuffer.pixels(),
             &[
-                Color::RED, Color::GREEN, Color::BLACK,
-                Color::BLUE, Color::WHITE, Color::BLACK,
-                Color::BLACK, Color::BLACK, Color::BLACK,
+                Color::RED,
+                Color::GREEN,
+                Color::BLACK,
+                Color::BLUE,
+                Color::WHITE,
+                Color::BLACK,
+                Color::BLACK,
+                Color::BLACK,
+                Color::BLACK,
             ]
         );
     }
@@ -476,15 +483,26 @@ mod tests {
     fn resize_preserving_handles_narrowing_and_height_changes() {
         let mut framebuffer = Framebuffer::new(3, 3, Color::BLACK).unwrap();
         framebuffer.pixels_mut().copy_from_slice(&[
-            Color::RED, Color::GREEN, Color::BLUE,
-            Color::WHITE, Color::rgba(1, 2, 3, 4), Color::rgba(5, 6, 7, 8),
-            Color::YELLOW, Color::CYAN, Color::MAGENTA,
+            Color::RED,
+            Color::GREEN,
+            Color::BLUE,
+            Color::WHITE,
+            Color::rgba(1, 2, 3, 4),
+            Color::rgba(5, 6, 7, 8),
+            Color::YELLOW,
+            Color::CYAN,
+            Color::MAGENTA,
         ]);
 
         framebuffer.resize_preserving(2, 2, Color::BLACK).unwrap();
         assert_eq!(
             framebuffer.pixels(),
-            &[Color::RED, Color::GREEN, Color::WHITE, Color::rgba(1, 2, 3, 4)]
+            &[
+                Color::RED,
+                Color::GREEN,
+                Color::WHITE,
+                Color::rgba(1, 2, 3, 4)
+            ]
         );
 
         framebuffer.resize_preserving(1, 3, Color::BLUE).unwrap();
