@@ -66,7 +66,7 @@ fn launcher_renders_a_real_frame_without_opening_a_window() {
         app::{App, WIN_H, WIN_W},
         gfx::{Fonts, BG},
     };
-    use ghostengine::{window::InputState, Framebuffer};
+    use ghostengine::{Framebuffer, InputState};
 
     let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
     let fonts_dir = assets.join("fonts");
@@ -98,7 +98,7 @@ fn launcher_click_routes_to_the_library_page() {
         app::{App, WIN_H, WIN_W},
         gfx::{Fonts, Page, BG},
     };
-    use ghostengine::{window::InputState, Framebuffer, Point};
+    use ghostengine::{Framebuffer, InputState, Point};
 
     let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
     let fonts = Box::leak(Box::new(
