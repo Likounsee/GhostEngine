@@ -122,6 +122,7 @@ impl NativeInputAdapter {
             },
             WindowEvent::Focused(false) => {
                 let left_mouse_was_down = self.left_mouse_down;
+                self.mouse_position = None;
                 self.left_mouse_down = false;
                 self.right_mouse_down = false;
                 self.shift_down = false;
@@ -468,6 +469,7 @@ mod tests {
         use winit::event::WindowEvent;
 
         let mut adapter = NativeInputAdapter::new();
+        adapter.mouse_position = Some(crate::Point::new(40, 60));
         adapter.left_mouse_down = true;
         adapter.right_mouse_down = true;
         adapter.frame.enter_pressed = true;
@@ -496,6 +498,7 @@ mod tests {
         assert_eq!(frame.text_events, vec![TextInputEvent::CompositionCancel]);
         assert!(!frame.left_mouse_down);
         assert!(!frame.right_mouse_down);
+        assert_eq!(frame.mouse_position, None);
         assert_eq!(
             adapter
                 .left_click_tracker
