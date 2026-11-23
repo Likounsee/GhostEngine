@@ -808,7 +808,7 @@ impl DisplayList {
     }
 
     /// Records a wrapped and aligned text block. OpenType shaping, bidirectional ordering,
-    /// fallback segmentation and line placement are prepared while recording. Replay only
+    /// directional-run segmentation and line placement are prepared while recording. Replay only
     /// rasterizes the positioned glyph runs using the captured affine transform.
     pub fn draw_text_box(
         &mut self,
