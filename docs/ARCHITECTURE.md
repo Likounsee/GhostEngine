@@ -172,9 +172,9 @@ A programmable shader language is a later design decision. Begin with a small, e
 - Add budgets and eviction policies only when texture/font caches exist.
 - Treat device loss and backend reset as GPU-backend concerns; core resources should be recreatable where feasible.
 
-## 7. Windows and Linux first; ArchiaOS later
+## 7. Windows, Linux and macOS; ArchiaOS later
 
-The first platform adapters target Windows and Linux. Keep operating-system APIs isolated from the rendering core and avoid pulling windowing dependencies into headless builds.
+The desktop platform adapters target Windows, Linux and macOS. Keep operating-system APIs isolated from the rendering core and avoid pulling windowing dependencies into headless builds.
 
 ArchiaOS integration is deferred until that operating system is ready. A future port may reuse the CPU renderer through a host-supplied framebuffer or surface descriptor. A no_std-compatible subset and bare-metal-specific integration are future investigations, not current implementation requirements.
 
