@@ -81,7 +81,10 @@ fn launcher_renders_a_real_frame_without_opening_a_window() {
 
     let output = app.frame(&mut framebuffer, &InputState::default());
 
-    assert!(output.keep_running, "the launcher should remain active after its first frame");
+    assert!(
+        output.keep_running,
+        "the launcher should remain active after its first frame"
+    );
     assert!(
         framebuffer.pixels().iter().any(|pixel| *pixel != BG),
         "the launcher should draw visible UI into the framebuffer"
