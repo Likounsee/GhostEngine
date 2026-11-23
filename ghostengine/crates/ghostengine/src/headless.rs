@@ -15,6 +15,7 @@ pub enum HeadlessHostError {
     Configuration(HostError),
     Framebuffer(FramebufferError),
     DimensionMismatch,
+    DrawableUnavailable,
     ResizeDisabled,
     Closed,
 }
@@ -26,6 +27,9 @@ impl fmt::Display for HeadlessHostError {
             Self::Framebuffer(error) => write!(formatter, "headless framebuffer copy: {error}"),
             Self::DimensionMismatch => {
                 formatter.write_str("framebuffer dimensions do not match the headless drawable")
+            }
+            Self::DrawableUnavailable => {
+                formatter.write_str("headless drawable is minimized and cannot present a frame")
             }
             Self::ResizeDisabled => formatter.write_str("headless drawable is not resizable"),
             Self::Closed => formatter.write_str("headless host is closed"),
@@ -159,7 +163,11 @@ impl HostBackend for HeadlessHost {
         if !self.open {
             return Err(HeadlessHostError::Closed);
         }
-        if (framebuffer.width(), framebuffer.height()) != self.drawable_size() {
+        let (width, height) = self.drawable_size();
+        if width == 0 || height == 0 {
+            return Err(HeadlessHostError::DrawableUnavailable);
+        }
+        if (framebuffer.width(), framebuffer.height()) != (width, height) {
             return Err(HeadlessHostError::DimensionMismatch);
         }
         if let Some(presented) = self.presented_frame.as_mut() {
@@ -267,6 +275,19 @@ mod tests {
         assert_eq!(host.drawable_size(), (0, 32));
         host.resize(64, 32).unwrap();
         assert_eq!(host.drawable_size(), (64, 32));
+    }
+
+    #[test]
+    fn minimized_drawable_rejects_presentation_with_a_specific_error() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 2, 2)).unwrap();
+        let frame = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+
+        host.resize(0, 0).unwrap();
+
+        assert_eq!(
+            host.present(&frame),
+            Err(HeadlessHostError::DrawableUnavailable)
+        );
     }
 
     #[test]
