@@ -6,8 +6,8 @@
 use ghostengine::rasterizer::fill_rect_linear_gradient;
 use ghostengine::{
     fill_path_even_odd_aa, fill_path_non_zero_aa, fill_path_non_zero_aa_clipped,
-    fill_transformed_path_non_zero_aa, stroke_path_aa, Color, Framebuffer, Gradient,
-    GradientStop, Path, Rect, StrokeCap, StrokeJoin, StrokeStyle, Transform2D, Vector,
+    fill_transformed_path_non_zero_aa, stroke_path_aa, Color, Framebuffer, Gradient, GradientStop,
+    Path, Rect, StrokeCap, StrokeJoin, StrokeStyle, Transform2D, Vector,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -76,8 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut star = Path::new();
     for index in 0..10 {
-        let angle = -std::f32::consts::FRAC_PI_2
-            + index as f32 * std::f32::consts::PI / 5.0;
+        let angle = -std::f32::consts::FRAC_PI_2 + index as f32 * std::f32::consts::PI / 5.0;
         let radius = if index % 2 == 0 { 82.0 } else { 36.0 };
         let point = Vector::new(angle.cos() * radius, angle.sin() * radius);
         if index == 0 {
@@ -132,13 +131,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Vector::new(448.0, 300.0),
         )
         .close();
-    fill_path_even_odd_aa(
-        &mut framebuffer,
-        &ring,
-        Color::rgb(75, 205, 174),
-        0.25,
-    )
-    .map_err(|error| format!("even-odd ring fill failed: {error:?}"))?;
+    fill_path_even_odd_aa(&mut framebuffer, &ring, Color::rgb(75, 205, 174), 0.25)
+        .map_err(|error| format!("even-odd ring fill failed: {error:?}"))?;
 
     let mut clipped = Path::new();
     clipped
