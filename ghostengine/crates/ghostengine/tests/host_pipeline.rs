@@ -1,6 +1,6 @@
 use ghostengine::{
     AlphaMode, Color, ColorSpace, Framebuffer, HeadlessHost, HeadlessHostError, HostBackend,
-    HostEvent, HostWindowConfig, PixelFormat, SurfaceDescriptor,
+    HostEvent, HostWindowConfig, PixelFormat, Point, Rect, SurfaceDescriptor,
 };
 
 #[test]
