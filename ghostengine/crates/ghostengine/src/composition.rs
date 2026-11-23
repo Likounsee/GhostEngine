@@ -2818,6 +2818,49 @@ mod tests {
     }
 
     #[test]
+    fn layer_composition_opacity_and_blend_modes_match_exact_pixel_reference() {
+        let mut layers = Vec::new();
+
+        let mut source_over = Layer::new(1, 1, Color::RED).unwrap();
+        source_over.set_position(0, 0);
+        layers.push(source_over);
+
+        let mut multiply = Layer::new(1, 1, Color::RED).unwrap();
+        multiply.set_position(1, 0);
+        multiply.set_blend_mode(BlendMode::Multiply);
+        layers.push(multiply);
+
+        let mut screen = Layer::new(1, 1, Color::RED).unwrap();
+        screen.set_position(2, 0);
+        screen.set_blend_mode(BlendMode::Screen);
+        layers.push(screen);
+
+        let mut add = Layer::new(1, 1, Color::RED).unwrap();
+        add.set_position(3, 0);
+        add.set_blend_mode(BlendMode::Add);
+        layers.push(add);
+
+        let mut translucent = Layer::new(1, 1, Color::RED).unwrap();
+        translucent.set_position(4, 0);
+        translucent.set_opacity(128);
+        layers.push(translucent);
+
+        let mut target = Framebuffer::new(5, 1, Color::BLUE).unwrap();
+        compose_layers(&mut target, &layers);
+
+        assert_eq!(
+            target.pixels(),
+            &[
+                Color::RED,
+                Color::BLACK,
+                Color::rgb(255, 0, 255),
+                Color::rgb(255, 0, 255),
+                Color::rgb(128, 0, 127),
+            ],
+        );
+    }
+
+    #[test]
     fn layer_opacity_blends_with_destination() {
         let mut layer = Layer::new(1, 1, Color::RED).unwrap();
         layer.set_opacity(128);
