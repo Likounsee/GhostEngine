@@ -200,7 +200,7 @@ where
     /// Returns whether the drawable dimensions changed.
     fn sync_drawable_size(&mut self, size: PhysicalSize<u32>) -> Result<bool, FramebufferError> {
         let next_size = (size.width, size.height);
-        let changed = self.drawable_size != next_size;
+        let changed = drawable_size_changed(self.drawable_size, next_size);
         self.resize_framebuffer(size)?;
         if changed {
             self.drawable_size = next_size;
@@ -406,6 +406,11 @@ fn drawable_size_is_nonzero(width: u32, height: u32) -> bool {
     width != 0 && height != 0
 }
 
+/// Returns whether the window system reported a drawable-size transition.
+fn drawable_size_changed(previous: (u32, u32), next: (u32, u32)) -> bool {
+    previous != next
+}
+
 /// Converts a straight-alpha GhostEngine color to softbuffer's 0x00RRGGBB layout.
 fn pack_softbuffer_pixel(color: Color) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
@@ -480,20 +485,21 @@ mod tests {
 
     #[test]
     fn drawable_size_tracks_minimize_and_restore_even_when_framebuffer_size_is_unchanged() {
-        let mut reported_size = (640, 480);
         let framebuffer_size = (640, 480);
+        let mut reported_size = framebuffer_size;
 
         let minimized = (0, 0);
-        assert_ne!(reported_size, minimized);
+        assert!(super::drawable_size_changed(reported_size, minimized));
         reported_size = minimized;
 
         let restored = (640, 480);
-        assert_ne!(reported_size, restored);
+        assert!(super::drawable_size_changed(reported_size, restored));
         reported_size = restored;
 
-        // The drawable transition is observable even though the retained
-        // framebuffer never changed dimensions while the window was minimized.
+        // The transition is observable even though the retained framebuffer
+        // never changed dimensions while the window was minimized.
         assert_eq!(reported_size, framebuffer_size);
+        assert!(!super::drawable_size_changed(reported_size, framebuffer_size));
     }
 
     #[test]
