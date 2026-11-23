@@ -153,10 +153,7 @@ impl<F> NativeApp<F>
 where
     F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
 {
-    fn resize_framebuffer(
-        &mut self,
-        size: PhysicalSize<u32>,
-    ) -> Result<(), FramebufferError> {
+    fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) -> Result<(), FramebufferError> {
         if size.width == 0 || size.height == 0 {
             return Ok(());
         }
