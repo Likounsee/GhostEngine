@@ -17,7 +17,6 @@ pub enum PathGeometryCacheError {
     AllocationFailed,
 }
 
-
 /// Snapshot of path-geometry cache usage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PathGeometryCacheStats {
@@ -278,12 +277,15 @@ mod tests {
         cache.get_or_flatten(7, &path, 0.25).unwrap();
         cache.reset_stats();
 
-        assert_eq!(cache.stats(), PathGeometryCacheStats {
-            entries: 1,
-            capacity: 2,
-            hits: 0,
-            misses: 0,
-        });
+        assert_eq!(
+            cache.stats(),
+            PathGeometryCacheStats {
+                entries: 1,
+                capacity: 2,
+                hits: 0,
+                misses: 0,
+            }
+        );
         cache.get_or_flatten(7, &path, 0.25).unwrap();
         assert_eq!(cache.hit_count(), 1);
     }
