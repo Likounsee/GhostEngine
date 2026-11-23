@@ -36,12 +36,7 @@ fn rectangle_intersections_obey_half_open_bounds_for_adversarial_coordinates() {
         Rect::new(0, 0, 0, u32::MAX),
     ];
     for _ in 0..512 {
-        rectangles.push(Rect::new(
-            rng.next(),
-            rng.next(),
-            rng.next(),
-            rng.next(),
-        ));
+        rectangles.push(Rect::new(rng.next(), rng.next(), rng.next(), rng.next()));
     }
 
     for (index, left) in rectangles.iter().copied().enumerate() {
@@ -122,12 +117,7 @@ fn display_list_adversarial_clips_and_rectangles_never_write_outside_clip() {
             1 => u32::MAX,
             _ => rng.range(24),
         };
-        let clip = Rect::new(
-            rng.range(40),
-            rng.range(32),
-            rng.range(36),
-            rng.range(28),
-        );
+        let clip = Rect::new(rng.range(40), rng.range(32), rng.range(36), rng.range(28));
         list.push_clip(clip);
         list.fill_rect(
             Rect::new(x.max(0) as u32, y.max(0) as u32, width, height),
@@ -149,11 +139,7 @@ fn display_list_adversarial_clips_and_rectangles_never_write_outside_clip() {
 
 #[test]
 fn transforms_and_path_flattening_reject_non_finite_inputs_without_panicking() {
-    let invalid = [
-        f32::NAN,
-        f32::INFINITY,
-        f32::NEG_INFINITY,
-    ];
+    let invalid = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY];
     for value in invalid {
         let transform = Transform2D::new(value, 0.0, 0.0, 1.0, 0.0, 0.0);
         assert!(!transform.is_finite());
@@ -174,7 +160,10 @@ fn transforms_and_path_flattening_reject_non_finite_inputs_without_panicking() {
         ));
         for _ in 0..3 {
             path.cubic_to(
-                Vector::new(rng.range(20_000) as f32 - 10_000.0, rng.range(20_000) as f32 - 10_000.0),
+                Vector::new(
+                    rng.range(20_000) as f32 - 10_000.0,
+                    rng.range(20_000) as f32 - 10_000.0,
+                ),
                 Vector::new(rng.range(20_000) as f32 - 10_000.0, rng.range(20_000) as f32 - 10_000.0),
                 Vector::new(rng.range(20_000) as f32 - 10_000.0, rng.range(20_000) as f32 - 10_000.0),
             );
@@ -196,14 +185,15 @@ fn transforms_and_path_flattening_reject_non_finite_inputs_without_panicking() {
     let mut list = DisplayList::new();
     assert!(!list.push_transform(Transform2D::scale(f32::INFINITY, 1.0)));
     assert!(!list.pop_transform());
-    assert!(list.fill_triangle(
-        Point::new(i32::MIN, i32::MAX),
-        Point::new(i32::MAX, i32::MIN),
-        Point::new(0, 0),
-        Color::WHITE,
-    ).is_ok());
+    assert!(list
+        .fill_triangle(
+            Point::new(i32::MIN, i32::MAX),
+            Point::new(i32::MAX, i32::MIN),
+            Point::new(0, 0),
+            Color::WHITE,
+        )
+        .is_ok());
 }
-
 
 #[test]
 fn texture_cache_randomized_lifecycle_keeps_accounting_and_budget_consistent() {
@@ -212,8 +202,8 @@ fn texture_cache_randomized_lifecycle_keeps_accounting_and_budget_consistent() {
     let mut handles = Vec::new();
 
     for step in 0..2_048 {
-        let candidate = (!handles.is_empty())
-            .then(|| handles[rng.range(handles.len() as u32) as usize]);
+        let candidate =
+            (!handles.is_empty()).then(|| handles[rng.range(handles.len() as u32) as usize]);
         match rng.range(6) {
             0 | 1 => {
                 let color = Color::rgba(rng.next() as u8, rng.next() as u8, step as u8, 255);
@@ -319,7 +309,10 @@ fn surface_stride_and_buffer_boundaries_are_validated_without_partial_writes() {
         alpha_mode: AlphaMode::Straight,
         color_space: ColorSpace::Srgb,
     };
-    assert_eq!(overflow.required_buffer_len(), Err(SurfaceError::SizeOverflow));
+    assert_eq!(
+        overflow.required_buffer_len(),
+        Err(SurfaceError::SizeOverflow)
+    );
 }
 
 #[test]
@@ -359,6 +352,9 @@ fn arbitrary_truncated_image_inputs_fail_cleanly_without_panicking() {
             decode_texture_with_options(&bytes, ImageDecodeOptions::default())
         });
         assert!(result.is_ok(), "decoder panicked for {length} bytes");
-        assert!(result.unwrap().is_err(), "random bytes unexpectedly decoded");
+        assert!(
+            result.unwrap().is_err(),
+            "random bytes unexpectedly decoded"
+        );
     }
 }
