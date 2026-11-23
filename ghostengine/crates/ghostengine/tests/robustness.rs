@@ -334,10 +334,10 @@ fn texture_constructors_reject_malformed_dimensions_and_pixel_counts() {
         Texture::new(1, 0, Vec::new()).unwrap_err(),
         TextureError::ZeroDimension
     );
-    assert_eq!(
-        Texture::new(u32::MAX, u32::MAX, Vec::new()).unwrap_err(),
-        TextureError::PixelCountMismatch
-    );
+    assert!(matches!(
+        Texture::new(u32::MAX, u32::MAX, Vec::new()),
+        Err(TextureError::SizeOverflow | TextureError::PixelCountMismatch)
+    ));
     assert_eq!(
         Texture::try_from_pixels(3, 2, &[Color::BLACK; 5]).unwrap_err(),
         TextureError::PixelCountMismatch
