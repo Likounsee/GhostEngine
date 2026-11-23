@@ -220,14 +220,8 @@ impl NativeInputAdapter {
             && !self.super_down
             && !self.alt_down
         {
-            if let Some(text) = event
-                .text
-                .as_ref()
-                .filter(|text| !text.is_empty() && text.chars().any(|ch| !ch.is_control()))
-            {
-                self.frame
-                    .text_events
-                    .push(TextInputEvent::Insert(text.to_string()));
+            if let Some(text) = event.text.as_deref().and_then(insertable_text) {
+                self.frame.text_events.push(TextInputEvent::Insert(text));
             }
         }
     }
@@ -271,6 +265,12 @@ fn apply_logical_key(key: &Key, control: bool, input: &mut InputState) {
 
 fn accepts_text(key: &Key) -> bool {
     matches!(key, Key::Character(_) | Key::Named(NamedKey::Space))
+}
+
+/// Removes control characters from native text and rejects empty insertions.
+fn insertable_text(text: &str) -> Option<String> {
+    let text: String = text.chars().filter(|character| !character.is_control()).collect();
+    (!text.is_empty()).then_some(text)
 }
 
 /// Converts native wheel movement to the engine's pixel-based scroll unit.
@@ -549,6 +549,16 @@ mod tests {
         assert!(!input.copy_pressed);
         assert!(!input.cut_pressed);
         assert!(!input.paste_pressed);
+    }
+
+    #[test]
+    fn native_text_insertion_filters_control_characters_and_empty_values() {
+        assert_eq!(
+            super::insertable_text("hello\n\u{0007}world"),
+            Some("helloworld".to_owned())
+        );
+        assert_eq!(super::insertable_text("\n\t\u{0000}"), None);
+        assert_eq!(super::insertable_text("é漢字"), Some("é漢字".to_owned()));
     }
 
     #[test]
