@@ -82,3 +82,57 @@ Each integration must use the public API, not private renderer internals.
 3. Begin **3D rendering** on top of the GPU/resource architecture.
 
 There is no 2D V2 phase and no separate software-3D phase before GPU acceleration. Do not start 3D while 2D V1 acceptance criteria remain unmet. Never mark a milestone complete based on scaffolding alone.
+
+## 1.1 V1 execution checklist
+
+This checklist tracks implementation separately from release validation. A checked implementation item does **not** mean the whole V1 exit criteria have passed.
+
+### Implemented foundations
+
+- [x] CPU framebuffer, geometry, transforms and validated pixel storage.
+- [x] CPU rasterization for primitives, vector paths, strokes, clipping and antialiasing.
+- [x] Linear, radial and conic gradients with serial/parallel paths.
+- [x] Texture sampling, transformed drawing, atlas regions, nine-slice and mipmaps.
+- [x] Ordered display lists, layers, composition, blending and damage-region APIs.
+- [x] TTF/OTF glyph rasterization, OpenType shaping, bidi preparation and bounded glyph caches.
+- [x] Retained UI components, layout, focus and platform-independent input state.
+- [x] Common host contract and deterministic headless backend.
+- [x] Explicit CPU surface export contract (format, stride, alpha and color space).
+- [x] Callback-driven Winit/softbuffer host runner with normalized lifecycle/input events and redraw controls.
+- [x] Cross-platform CI workflow and CPU benchmark workflow are configured.
+
+### Remaining implementation and verification work
+
+#### P0 — required before calling V1 stable
+
+- [ ] Obtain a fully green run of the latest commit across Windows, Linux and macOS, including all feature combinations and the new host-pipeline integration tests.
+- [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
+- [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
+- [ ] Add deterministic golden/pixel-reference tests for representative paths, gradients, transformed textures, layer composition and text rendering.
+- [ ] Add property-based or fuzz-style tests for malformed geometry, clipping, dimensions, strides, display-list commands and image inputs; keep the regular CI suite deterministic and bounded.
+- [ ] Validate the public examples as end-to-end application workflows: vector drawing, images, text, UI interaction, input and presentation.
+- [ ] Publish an explicit list of platform limitations and unsupported capabilities based on actual platform runs.
+
+#### P1 — performance and long-running stability
+
+- [ ] Run release benchmarks on reference Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata.
+- [ ] Profile representative mixed scenes, not only isolated raster primitives.
+- [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
+- [ ] Stress-test texture, path, glyph and layer caches over repeated insert/evict/invalidate cycles; verify bounded memory and stale-handle behavior.
+- [ ] Stress-test repeated resize, minimize/restore, frame presentation and host shutdown.
+- [ ] Review allocation failure and oversized-input handling at every public allocation boundary.
+
+#### P2 — release packaging and API readiness
+
+- [ ] Review all public API docs and examples for accurate feature requirements and error behavior.
+- [ ] Document migration guidance for the common host/presentation API and transitional adapters.
+- [ ] Confirm license notices for bundled font fixtures and all optional dependencies.
+- [ ] Prepare a versioned 2D V1 release only after P0 is complete and no critical defects remain.
+
+### Current validation notes
+
+- The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
+- The CI workflow defines Windows, Linux and macOS jobs and exercises scalar, SIMD, parallel, native-input, native-window and all-feature configurations. A configured matrix is not proof that every job passed.
+- Automated compilation/tests of native adapters do not prove real desktop behavior. Interactive validation on each target OS remains outstanding until evidence is recorded.
+- GPU acceleration, 3D rendering and secure-display support are intentionally outside the 2D V1 scope.
+
