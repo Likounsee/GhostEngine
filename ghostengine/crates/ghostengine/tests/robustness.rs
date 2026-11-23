@@ -1,5 +1,6 @@
 use ghostengine::{
-    Color, DisplayList, Framebuffer, Path, Point, Rect, Transform2D, Vector,
+    Color, DisplayList, Framebuffer, Path, Point, Rect, Texture, TextureCache,
+    TextureCacheError, Transform2D, Vector,
 };
 
 /// Small deterministic generator: reproducible property-style coverage without
@@ -201,6 +202,64 @@ fn transforms_and_path_flattening_reject_non_finite_inputs_without_panicking() {
         Point::new(0, 0),
         Color::WHITE,
     ).is_ok());
+}
+
+
+#[test]
+fn texture_cache_randomized_lifecycle_keeps_accounting_and_budget_consistent() {
+    let mut rng = Generator::new(0x5445_5854_5552_4543);
+    let mut cache = TextureCache::new(64);
+    let mut handles = Vec::new();
+
+    for step in 0..2_048 {
+        let candidate = (!handles.is_empty())
+            .then(|| handles[rng.range(handles.len() as u32) as usize]);
+        match rng.range(6) {
+            0 | 1 => {
+                let color = Color::rgba(rng.next() as u8, rng.next() as u8, step as u8, 255);
+                if let Ok(handle) = cache.insert(Texture::new(1, 1, vec![color]).unwrap()) {
+                    handles.push(handle);
+                }
+            }
+            2 => {
+                if let Some(handle) = candidate {
+                    let _ = cache.get(handle);
+                }
+            }
+            3 => {
+                if let Some(handle) = candidate {
+                    let _ = cache.retain(handle);
+                }
+            }
+            4 => {
+                if let Some(handle) = candidate {
+                    let _ = cache.release(handle);
+                }
+            }
+            _ => {
+                let budget = (rng.range(17) as usize) * 4;
+                let result = cache.set_budget_bytes(budget);
+                if matches!(result, Err(TextureCacheError::CacheFullyRetained)) {
+                    assert!(cache.stats().used_bytes > budget);
+                }
+            }
+        }
+
+        let stats = cache.stats();
+        assert!(stats.used_bytes <= stats.budget_bytes);
+        assert_eq!(stats.used_bytes, stats.entries * 4);
+        assert_eq!(stats.entries, cache.len());
+        for handle in handles.iter().copied().rev().take(8) {
+            if let Some(retain_count) = cache.retain_count(handle) {
+                assert!(cache.peek(handle).is_some());
+                if retain_count > 0 {
+                    assert!(cache.release(handle));
+                }
+            } else {
+                assert!(cache.peek(handle).is_none());
+            }
+        }
+    }
 }
 
 #[cfg(feature = "image-decoding")]
