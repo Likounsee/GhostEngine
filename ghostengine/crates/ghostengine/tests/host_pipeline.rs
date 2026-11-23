@@ -30,9 +30,7 @@ fn headless_render_present_and_surface_export_work_through_public_api() {
     // Two 8-byte rows with four bytes of padding between them. No padding is
     // required after the final row, so the exact required length is 20 bytes.
     let mut output = [0xCD; 20];
-    presented
-        .write_to_surface(&mut output, descriptor)
-        .unwrap();
+    presented.write_to_surface(&mut output, descriptor).unwrap();
 
     assert_eq!(&output[0..8], &[0, 0, 255, 128, 0, 255, 0, 255]);
     assert_eq!(&output[8..12], &[0xCD; 4]);
@@ -91,7 +89,11 @@ fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
         let minimum_row_bytes = 2 * bytes_per_pixel;
         let row_stride = minimum_row_bytes + 3;
 
-        for alpha_mode in [AlphaMode::Straight, AlphaMode::Premultiplied, AlphaMode::Opaque] {
+        for alpha_mode in [
+            AlphaMode::Straight,
+            AlphaMode::Premultiplied,
+            AlphaMode::Opaque,
+        ] {
             let descriptor = SurfaceDescriptor {
                 width: 2,
                 height: 2,
@@ -144,4 +146,3 @@ fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
         }
     }
 }
-
