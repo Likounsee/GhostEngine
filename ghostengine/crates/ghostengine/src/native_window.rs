@@ -163,7 +163,6 @@ impl NativeWindowSurface {
     ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl,
-            ,
     {
         Self::run_with_config_control(HostWindowConfig::new(title, width, height), draw)
     }
@@ -201,8 +200,7 @@ impl NativeWindowSurface {
         draw: F,
     ) -> Result<(), NativeWindowError>
     where
-        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl
-            ,
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl,
     {
         config.validate().map_err(NativeWindowError::Host)?;
         let title = config.title;
