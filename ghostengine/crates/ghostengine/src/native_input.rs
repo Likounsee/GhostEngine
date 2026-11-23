@@ -313,35 +313,55 @@ fn apply_key_code(code: KeyCode, control: bool, shift: bool, input: &mut InputSt
 /// Clipboard access is deliberately kept outside the renderer and input
 /// adapter so applications can choose when to resolve a Copy/Paste request.
 pub struct NativeClipboard {
-    clipboard: Clipboard,
+    clipboard: Option<Clipboard>,
 }
 
 impl NativeClipboard {
     /// Opens the current user's system clipboard.
     pub fn new() -> Result<Self, NativeClipboardError> {
         Clipboard::new()
-            .map(|clipboard| Self { clipboard })
+            .map(|clipboard| Self {
+                clipboard: Some(clipboard),
+            })
             .map_err(NativeClipboardError::from)
+    }
+
+    /// Creates a clipboard adapter for hosts where clipboard access is absent.
+    ///
+    /// Native windows use this fallback so an unavailable clipboard never
+    /// prevents the window and CPU renderer from starting.
+    pub(crate) fn unavailable() -> Self {
+        Self { clipboard: None }
+    }
+
+    /// Returns whether system clipboard access was initialized successfully.
+    #[must_use]
+    pub fn is_available(&self) -> bool {
+        self.clipboard.is_some()
     }
 
     /// Executes a component-tree clipboard request.
     ///
     /// Copy writes the supplied text and returns `Ok(None)`. Paste reads the
-    /// current clipboard and returns `Ok(Some(text))` for insertion into the
-    /// focused text input.
+    /// current clipboard and returns `Ok(Some(text)` for insertion into the
+    /// focused text input. An unavailable system clipboard returns a typed
+    /// error without affecting window rendering.
     pub fn resolve(
         &mut self,
         action: &ClipboardAction,
     ) -> Result<Option<String>, NativeClipboardError> {
+        let clipboard = self
+            .clipboard
+            .as_mut()
+            .ok_or(NativeClipboardError::Unavailable)?;
         match action {
             ClipboardAction::Copy(text) => {
-                self.clipboard
+                clipboard
                     .set_text(text.clone())
                     .map_err(NativeClipboardError::from)?;
                 Ok(None)
             }
-            ClipboardAction::Paste => self
-                .clipboard
+            ClipboardAction::Paste => clipboard
                 .get_text()
                 .map(Some)
                 .map_err(NativeClipboardError::from),
@@ -351,23 +371,32 @@ impl NativeClipboard {
 
 /// Error returned when the native system clipboard cannot be opened or used.
 #[derive(Debug)]
-pub struct NativeClipboardError(arboard::Error);
+pub enum NativeClipboardError {
+    Unavailable,
+    Backend(arboard::Error),
+}
 
 impl fmt::Display for NativeClipboardError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "native clipboard error: {}", self.0)
+        match self {
+            Self::Unavailable => formatter.write_str("native clipboard is unavailable"),
+            Self::Backend(error) => write!(formatter, "native clipboard error: {error}"),
+        }
     }
 }
 
 impl Error for NativeClipboardError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(&self.0)
+        match self {
+            Self::Unavailable => None,
+            Self::Backend(error) => Some(error),
+        }
     }
 }
 
 impl From<arboard::Error> for NativeClipboardError {
     fn from(error: arboard::Error) -> Self {
-        Self(error)
+        Self::Backend(error)
     }
 }
 
@@ -376,6 +405,20 @@ mod tests {
     use super::{apply_key_code, apply_logical_key, clamp_coordinate, NativeInputAdapter};
     use crate::{input::InputState, TextInputEvent};
     use winit::keyboard::{KeyCode, NamedKey};
+
+    #[test]
+    fn unavailable_clipboard_is_reported_without_requiring_a_system_service() {
+        let mut clipboard = super::NativeClipboard::unavailable();
+        assert!(!clipboard.is_available());
+        assert!(matches!(
+            clipboard.resolve(&crate::ClipboardAction::Paste),
+            Err(super::NativeClipboardError::Unavailable)
+        ));
+        assert!(matches!(
+            clipboard.resolve(&crate::ClipboardAction::Copy("text".into())),
+            Err(super::NativeClipboardError::Unavailable)
+        ));
+    }
 
     #[test]
     fn native_key_mapping_preserves_shortcuts_and_navigation() {

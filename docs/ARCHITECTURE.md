@@ -92,6 +92,9 @@ Rules:
 - Capabilities that differ by OS (clipboard, IME, display scaling, window
   decorations, protected surfaces, etc.) are queried explicitly. Unsupported
   features return a typed result; they are never silently emulated as success.
+  Native window startup must not depend on optional clipboard initialization:
+  clipboard requests fail explicitly when the current desktop session cannot
+  provide that service.
 - A headless backend remains available for tests, servers, image generation and
   applications that provide their own surface.
 - Backend selection is internal to the common API (compile-time target

@@ -129,8 +129,11 @@ impl NativeWindowSurface {
         let context = Context::new(event_loop.owned_display_handle())
             .map_err(|error| NativeWindowError::Backend(error.to_string()))?;
         let framebuffer = Framebuffer::new(width, height, Color::BLACK)?;
-        let clipboard = NativeClipboard::new()
-            .map_err(|error| NativeWindowError::Clipboard(error.to_string()))?;
+        // Clipboard access is optional on several desktop sessions (for
+        // example, minimal Wayland/headless environments). Keep the window
+        // usable and report an explicit error only if the app requests it.
+        let clipboard =
+            NativeClipboard::new().unwrap_or_else(|_| NativeClipboard::unavailable());
 
         let mut app = NativeApp {
             context,
