@@ -476,7 +476,10 @@ mod tests {
         assert_eq!(framebuffer.width(), 4);
         assert_eq!(framebuffer.height(), 4);
         assert_eq!(framebuffer.pixels().as_ptr(), allocation);
-        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color.GREEN));
+        assert!(framebuffer
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Color::GREEN));
     }
 
     #[test]
