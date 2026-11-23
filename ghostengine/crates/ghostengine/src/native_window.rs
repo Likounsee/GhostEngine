@@ -145,6 +145,7 @@ impl NativeWindowSurface {
             clipboard,
             surface: None,
             surface_size: None,
+            drawable_size: (width, height),
             window: None,
             pending_events: Vec::new(),
             failure: None,
@@ -170,6 +171,8 @@ struct NativeApp<F> {
     clipboard: NativeClipboard,
     surface: Option<Surface<OwnedDisplayHandle, Arc<Window>>>,
     surface_size: Option<(u32, u32)>,
+    /// Last physical drawable size reported by the window system, including zero-sized minimized states.
+    drawable_size: (u32, u32),
     window: Option<Arc<Window>>,
     pending_events: Vec<HostEvent>,
     failure: Option<NativeWindowError>,
@@ -196,10 +199,11 @@ where
     /// Synchronizes the CPU framebuffer with the actual physical drawable size.
     /// Returns whether the drawable dimensions changed.
     fn sync_drawable_size(&mut self, size: PhysicalSize<u32>) -> Result<bool, FramebufferError> {
-        let changed =
-            self.framebuffer.width() != size.width || self.framebuffer.height() != size.height;
+        let next_size = (size.width, size.height);
+        let changed = self.drawable_size != next_size;
         self.resize_framebuffer(size)?;
         if changed {
+            self.drawable_size = next_size;
             self.pending_events.push(HostEvent::Resized {
                 width: size.width,
                 height: size.height,
@@ -276,6 +280,7 @@ where
         // size. The actual physical drawable size is authoritative for both
         // the framebuffer and the first normalized resize event.
         let actual_size = window.inner_size();
+        self.drawable_size = (actual_size.width, actual_size.height);
         if let Err(error) = self.resize_framebuffer(actual_size) {
             self.failure = Some(NativeWindowError::Framebuffer(error));
             event_loop.exit();
@@ -471,6 +476,24 @@ mod tests {
         assert!(!super::drawable_size_is_nonzero(640, 0));
         assert!(!super::drawable_size_is_nonzero(0, 480));
         assert!(super::drawable_size_is_nonzero(640, 480));
+    }
+
+    #[test]
+    fn drawable_size_tracks_minimize_and_restore_even_when_framebuffer_size_is_unchanged() {
+        let mut reported_size = (640, 480);
+        let framebuffer_size = (640, 480);
+
+        let minimized = (0, 0);
+        assert_ne!(reported_size, minimized);
+        reported_size = minimized;
+
+        let restored = (640, 480);
+        assert_ne!(reported_size, restored);
+        reported_size = restored;
+
+        // The drawable transition is observable even though the retained
+        // framebuffer never changed dimensions while the window was minimized.
+        assert_eq!(reported_size, framebuffer_size);
     }
 
     #[test]
