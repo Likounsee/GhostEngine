@@ -5,8 +5,8 @@
 
 use crate::{
     current_host_platform, input::InputState, Color, Framebuffer, FramebufferError,
-    HostCapabilities, HostError, HostPlatform,
-    HostEvent, HostWindowConfig, NativeClipboard, NativeInputAdapter,
+    HostCapabilities, HostError, HostEvent, HostPlatform, HostWindowConfig, NativeClipboard,
+    NativeInputAdapter,
 };
 use softbuffer::{Context, Surface};
 use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
