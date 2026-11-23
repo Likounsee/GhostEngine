@@ -50,6 +50,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for pixel in frame.pixels() {
         ppm.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
     }
+    if let Some(parent) = output.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&output, ppm)?;
 
     println!(
