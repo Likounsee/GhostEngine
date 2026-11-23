@@ -16,9 +16,10 @@ The current CPU benchmark uses a 1920x1080 destination and includes both small U
 
 A release benchmark was completed on all three GitHub-hosted runner platforms
 (workflow run [45207786406](https://github.com/Likounsee/GhostEngine/actions/runs/45207786406),
-source revision `6ee07257`). Each runner exposed only 3–4 logical CPUs, so these
-numbers are a reproducible CI snapshot, not a low-end desktop reference or a
-cross-machine performance guarantee.
+source revision `6ee07257`). All three used Rust `rustc 1.100.0`, Release mode,
+SIMD enabled and parallel rendering enabled. Each runner exposed only 3–4
+logical CPUs, so these numbers are a reproducible CI snapshot, not a low-end
+desktop reference or a cross-machine performance guarantee.
 
 | Workload | Windows x86_64 | Linux x86_64 | macOS arm64 |
 |---|---:|---:|---:|
@@ -28,6 +29,11 @@ cross-machine performance guarantee.
 | Antialiased UI button + text | 12.46 ms | 14.01 ms | 11.23 ms |
 | Nested groups, reused scratch (uncached) | 26.33 ms | 28.83 ms | 26.00 ms |
 | Nested groups, persistent cache | 9.19 ms | 9.03 ms | 9.83 ms |
+
+| Runner metadata | Windows x86_64 | Linux x86_64 | macOS arm64 |
+|---|---|---|---|
+| Reported CPU | AMD64 Family 25 Model 17 Stepping 1 | AMD EPYC 9V74 | Apple M1 (Virtual) |
+| Logical CPUs | 4 | 4 | 3 |
 
 The nested-group result is the clearest optimization signal: rebuilding every
 group surface each frame exceeds the isolated 16.67 ms diagnostic target on

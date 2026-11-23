@@ -1,6 +1,6 @@
 # GhostEngine — Architecture
 
-**Status:** proposed architecture, to be validated during implementation.
+**Status:** CPU-first 2D V1 implementation in progress. The software renderer, display-list pipeline, headless host and callback-driven Winit/softbuffer desktop adapter are implemented. Real interactive validation on Windows, Linux and macOS remains outstanding; GPU and 3D are deliberately deferred.
 
 ## 1. Scope and non-goals
 
@@ -101,12 +101,16 @@ Rules:
   selection or an explicit backend choice where useful). Applications should
   not need separate Windows/Linux/macOS rendering code.
 
-**Implementation timing:** define and test the common contract during 2D
-finalization, because the existing framebuffer and input types are already
-platform-independent. Implement and validate the Windows, Linux and macOS
-adapters incrementally. Do not create three empty crates or duplicate the
-renderer now. Keep the current window adapters as transitional integration
-paths until the common host API can replace them without breaking examples.
+**Implementation status:** the common contract is implemented in `host.rs`
+and re-exported from the crate root. `HeadlessHost` implements the synchronous
+polling contract; `NativeWindowSurface` provides the separate callback-driven
+Winit lifecycle. Keep these explicit lifecycle models rather than creating
+blocking or synthetic polling around Winit. The native adapter uses Winit and
+softbuffer for CPU-framebuffer presentation, with normalized events, runtime
+capability reporting, clipboard fallback/reconnection and paced redraw control.
+Do not create three empty platform crates or duplicate the renderer. Real
+interactive behavior and platform-specific capability differences still need
+validation on physical Windows, Linux and macOS systems.
 
 The platform-neutral contract now exists in `host.rs` and is re-exported from
 the crate root. It defines validated window configuration, backend creation and
@@ -139,16 +143,17 @@ behavior still requires platform CI and interactive testing.
 
 The software renderer is the reference backend and the first real implementation target.
 
-### Initial 2D pipeline
-1. Validate target dimensions, format and buffer layout.
-2. Clear or load the target.
-3. Transform primitive coordinates into target space.
-4. Clip geometry to the target and active clip region.
-5. Rasterize primitives into pixels.
-6. Apply documented blending and coverage rules.
-7. Produce a stable output buffer suitable for tests or presentation.
-
-Start with solid-color rectangles, lines and triangles, then add circles, paths, gradients, images, filtering and anti-aliasing. Avoid claiming full vector compatibility until edge cases and tests exist.
+### Implemented CPU 2D pipeline
+The current CPU implementation includes validated framebuffers and external
+surface export; rectangles, lines, triangles, circles, ellipses and rounded
+rectangles; vector path fill/stroke with clipping and antialiasing; linear,
+radial and conic gradients; texture sampling, atlas regions, nine-slice and
+mipmaps; affine layer composition and damage regions; ordered display lists;
+OpenType text shaping/bidi preparation; and retained UI/input primitives.
+The display-list renderer retains reusable texture-sampling scratch storage.
+These capabilities do not imply complete SVG, browser CSS, full Unicode line
+breaking or GPU compatibility. Remaining 2D V1 work is hardening, real-host
+validation, integration and performance optimization.
 
 ### 3D pipeline
 3D is intentionally deferred until after GhostEngine 2D V1 is complete and hardware acceleration has a working, validated foundation. Do not start a separate software-3D milestone between 2D V1 and GPU acceleration. The eventual 3D pipeline will reuse the GPU resource and command architecture:
