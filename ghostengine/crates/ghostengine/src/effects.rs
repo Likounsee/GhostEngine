@@ -484,11 +484,10 @@ mod box_blur_reference_tests {
                 let mut sums = [0_u64; 4];
                 let count = radius * 2 + 1;
                 for offset in 0..count {
-                    let coordinate = offset.saturating_sub(radius);
                     let (sample_x, sample_y) = if horizontal {
-                        (coordinate.min(width - 1), y)
+                        ((x as isize + offset as isize - radius as isize).clamp(0, width as isize - 1) as usize, y)
                     } else {
-                        (x, coordinate.min(height - 1))
+                        (x, (y as isize + offset as isize - radius as isize).clamp(0, height as isize - 1) as usize)
                     };
                     let pixel = source[sample_y * width + sample_x];
                     let alpha = u64::from(pixel.a);
