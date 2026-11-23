@@ -43,7 +43,12 @@ cargo test -p ghostengine --no-default-features --features native-input
 
 # Winit input + native window presentation, without minifb
 cargo run -p ghostengine --features native-window --example native_ui_demo
+cargo run -p ghostengine --features native-window --example native_animation_demo
 ```
+
+The native animation example uses `HostRunControl::RedrawAfter(Duration)` to request paced
+frames without a busy loop or direct Winit dependency. Use `Wait` for event-driven/static
+interfaces and `Exit` to finish the native event loop.
 
 Both `simd` and `parallel-rendering` are enabled by default. Use
 `--no-default-features` to validate the scalar kernels and disable automatic
