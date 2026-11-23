@@ -63,14 +63,10 @@ impl NativeInputAdapter {
                 self.mouse_position = None;
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let pixels = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => f64::from(*y) * 48.0,
-                    MouseScrollDelta::PixelDelta(position) => position.y,
-                };
                 self.frame.scroll_delta_y = self
                     .frame
                     .scroll_delta_y
-                    .saturating_add(clamp_coordinate(-pixels));
+                    .saturating_add(scroll_delta_to_pixels(delta));
             }
             WindowEvent::MouseInput {
                 state,
@@ -252,6 +248,17 @@ fn apply_logical_key(key: &Key, input: &mut InputState) {
 
 fn accepts_text(key: &Key) -> bool {
     matches!(key, Key::Character(_) | Key::Named(NamedKey::Space))
+}
+
+/// Converts native wheel movement to the engine's pixel-based scroll unit.
+fn scroll_delta_to_pixels(delta: &MouseScrollDelta) -> i32 {
+    let pixels = match delta {
+        // Winit line units are logical rows rather than pixels. Keep the
+        // conventional 48-pixel line step consistent across desktop hosts.
+        MouseScrollDelta::LineDelta(_, y) => f64::from(*y) * 48.0,
+        MouseScrollDelta::PixelDelta(position) => position.y,
+    };
+    clamp_coordinate(-pixels)
 }
 
 fn clamp_coordinate(value: f64) -> i32 {
@@ -537,6 +544,56 @@ mod tests {
         assert!(frame
             .text_events
             .contains(&TextInputEvent::CompositionCancel));
+    }
+
+    #[test]
+    fn wheel_line_and_pixel_deltas_use_consistent_scroll_direction() {
+        use super::scroll_delta_to_pixels;
+        use winit::dpi::PhysicalPosition;
+        use winit::event::MouseScrollDelta;
+
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::LineDelta(0.0, 1.0)),
+            -48
+        );
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::LineDelta(0.0, -2.0)),
+            96
+        );
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                0.0, 17.0
+            ))),
+            -17
+        );
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                0.0, -9.0
+            ))),
+            9
+        );
+    }
+
+    #[test]
+    fn wheel_delta_conversion_handles_non_finite_and_extreme_values() {
+        use super::scroll_delta_to_pixels;
+        use winit::dpi::PhysicalPosition;
+        use winit::event::MouseScrollDelta;
+
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                0.0,
+                f64::NAN
+            ))),
+            0
+        );
+        assert_eq!(
+            scroll_delta_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                0.0,
+                f64::INFINITY
+            ))),
+            i32::MIN
+        );
     }
 
     #[test]
