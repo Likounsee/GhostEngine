@@ -38,6 +38,8 @@ cargo test -p ghostengine
 
 # Image decoding, still headless
 cargo test -p ghostengine --features image-decoding
+# Decode an image, compare nearest/bilinear sampling and render a clipped mipmapped copy
+cargo run -p ghostengine --features image-decoding --example image_pipeline_demo -- image.png output.ppm
 
 # Display-free application using HostBackend
 cargo run -p ghostengine --example headless_host_demo
