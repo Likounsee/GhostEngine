@@ -241,6 +241,15 @@ impl Framebuffer {
             }
         }
 
+        // A resize can expose new rows without increasing the total pixel
+        // count (for example 2x1 -> 1x2). Vec::resize then leaves its length
+        // unchanged, so explicitly clear every row outside the preserved
+        // top-left overlap instead of leaking pixels from the old layout.
+        for y in copy_height..new_height {
+            let row_start = y * new_width;
+            self.pixels[row_start..row_start + new_width].fill(clear_color);
+        }
+
         self.pixels.resize(new_count, clear_color);
         self.width = width;
         self.height = height;
