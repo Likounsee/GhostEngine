@@ -150,8 +150,8 @@ fn surface_export_matrix_preserves_padding_and_handles_every_pixel_layout() {
 #[test]
 fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame() {
     use ghostengine::{
-        ComponentId, ComponentKey, ComponentTree, FontFace, Insets, LayoutDirection, LayoutItem,
-        StackLayout, UiComponent, UiTheme,
+        draw_text_shaped_clipped, ComponentId, ComponentKey, ComponentTree, FontFace, Insets,
+        LayoutDirection, LayoutItem, StackLayout, TextDirection, UiComponent, UiTheme,
     };
 
     const ROOT: ComponentId = ComponentId(100);
@@ -193,6 +193,20 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
 
     let mut frame = Framebuffer::new(320, 120, Color::rgb(238, 242, 248)).unwrap();
     tree.render(&mut frame, bounds, &font, 16.0, &UiTheme::default());
+    let shaped_hebrew = font
+        .shape_text_with_direction("שלום", 18.0, TextDirection::RightToLeft)
+        .expect("the bundled font should shape Hebrew text");
+    assert!(!shaped_hebrew.glyphs.is_empty());
+    let shaped_metrics = draw_text_shaped_clipped(
+        &mut frame,
+        &font,
+        &shaped_hebrew,
+        Point::new(16, 112),
+        18.0,
+        Color::rgb(30, 42, 60),
+        bounds,
+    );
+    assert!(shaped_metrics.width > 0.0);
     assert!(
         frame
             .pixels()
