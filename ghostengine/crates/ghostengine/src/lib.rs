@@ -66,7 +66,7 @@ pub use composition::{
     DamageRegion, Layer, LayerGroup, LayerGroupCache, LayerGroupChild, LayerGroupDamageTracker,
     LayerGroupId, LayerGroupScratch,
 };
-pub use display_list::{DisplayList, DisplayListRenderer, RenderStats};
+pub use display_list::{DisplayList, DisplayListError, DisplayListRenderer, RenderStats};
 pub use effects::{
     apply_box_blur, apply_gaussian_blur, draw_drop_shadow, DropShadowOptions, EffectScratch,
 };
