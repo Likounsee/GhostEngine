@@ -296,9 +296,8 @@ fn color_from_sums(sums: [u64; 4], count: u64) -> Color {
     let Some(sample_count) = std::num::NonZeroU64::new(count) else {
         return Color::TRANSPARENT;
     };
-    let channel = |premultiplied: u64| {
-        ((premultiplied + alpha_sum.get() / 2) / alpha_sum).min(255) as u8
-    };
+    let channel =
+        |premultiplied: u64| ((premultiplied + alpha_sum.get() / 2) / alpha_sum).min(255) as u8;
     let alpha = ((alpha_sum.get() + sample_count.get() / 2) / sample_count).min(255) as u8;
     Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
 }
@@ -522,9 +521,8 @@ mod box_blur_reference_tests {
                     .expect("reference blur kernel always has at least one sample");
                 let alpha =
                     ((alpha_sum.get() + sample_count.get() / 2) / sample_count).min(255) as u8;
-                let channel = |value: u64| {
-                    ((value + alpha_sum.get() / 2) / alpha_sum).min(255) as u8
-                };
+                let channel =
+                    |value: u64| ((value + alpha_sum.get() / 2) / alpha_sum).min(255) as u8;
                 output[y * width + x] =
                     Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha);
             }
