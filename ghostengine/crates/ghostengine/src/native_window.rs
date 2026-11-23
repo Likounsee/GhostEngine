@@ -82,10 +82,7 @@ impl NativeWindowSurface {
     /// runtime-dependent and is read from the initialized clipboard adapter.
     /// Resizing reflects the configuration used to create the window.
     #[must_use]
-    pub fn capabilities(
-        clipboard: &NativeClipboard,
-        resizable: bool,
-    ) -> HostCapabilities {
+    pub fn capabilities(clipboard: &NativeClipboard, resizable: bool) -> HostCapabilities {
         HostCapabilities {
             windowing: true,
             high_dpi: true,

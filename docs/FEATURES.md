@@ -100,7 +100,9 @@ framebuffer presentation and explicit rejection of operations after closure.
 Its tests cover these behaviors without a display server. The existing Winit/softbuffer integration now exposes
 `NativeWindowSurface::run_with_host_events`, which translates native resize,
 scale-factor, focus, close, redraw and accumulated input into common `HostEvent`
-values. The native UI demo consumes those events rather than Winit types. This
+values. The native UI demo consumes those events rather than Winit types. The
+native adapter also exposes runtime `HostCapabilities` reporting, including
+whether the system clipboard was actually initialized. This
 is the first native integration path, not yet the final `HostBackend` lifecycle
 implementation or proof of real-window behavior on all three operating systems.
 The native adapter deliberately remains callback-driven: Winit owns event dispatch
