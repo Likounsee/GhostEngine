@@ -123,6 +123,12 @@ impl std::error::Error for HostError {}
 /// preserve event order, report physical drawable dimensions, and reject or
 /// explicitly report unsupported optional capabilities. The renderer only
 /// supplies a completed CPU framebuffer; it never receives native handles.
+///
+/// `close` must be idempotent. Once closed, `is_open` must remain false,
+/// `request_redraw` must not schedule more work, and `present` must return an
+/// error. `poll_events` appends pending events to the caller's vector without
+/// removing or reordering events already present there. A close notification
+/// must be delivered at most once by the backend.
 pub trait HostBackend: Sized {
     type BackendError;
 
