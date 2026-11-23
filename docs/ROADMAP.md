@@ -37,10 +37,10 @@ Finish one complete, reliable and reusable 2D engine. There is **no separate 2D 
 - Unit, integration, golden-image, property and fuzz tests.
 - Cross-platform CI, examples, API documentation and migration guidance.
 - Repeatable release benchmarks with before/after comparisons; preserve pixel correctness. Initial Windows/Linux/macOS CI baselines are recorded in [PERFORMANCE.md](PERFORMANCE.md); representative hot spots remain under optimization.
-- Validate real application integrations and keep the public API usable by Archia Browser, ArchiaOS, PeaceEmu and other consumers.
+- Keep the public API usable by Archia Browser, ArchiaOS, PeaceEmu and other consumers. Integrating a consumer application (including Metis Launcher) is a separate follow-up after the engine milestone, not a GhostEngine 2D V1 implementation task.
 
 ### 2D V1 exit criteria
-2D V1 is complete only when the documented 2D feature set is implemented, supported CPU paths pass correctness/bounds/memory-safety tests, headless rendering works without a display server or GPU, the common host API is validated on Windows/Linux/macOS (with limitations explicit), examples exercise text/images/vector/UI/input/presentation, CI passes the supported matrix, performance baselines are recorded, and no known critical correctness or safety defects remain.
+2D V1 is complete when the documented 2D feature set is implemented, supported CPU paths pass correctness/bounds/memory-safety tests, headless rendering works without a display server or GPU, the common host API and native adapters pass the Windows/Linux/macOS CI matrix (with platform limitations explicit), examples exercise text/images/vector/UI/input/presentation, performance baselines are recorded, and no known critical correctness or safety defects remain. Manual desktop smoke tests are release-validation evidence, but consumer-launcher integration is deliberately outside this engine milestone.
 
 ## 2. Hardware acceleration — directly after 2D V1
 
@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green run of the latest commit across Windows, Linux and macOS, including all feature combinations and the new host-pipeline integration tests (verified on `718157ca3382ea8093c445249b4c30dadaad8ebc`, CI run `45246965509`).
+- [x] Obtain a fully green run of the latest commit across Windows, Linux and macOS, including all feature combinations, the public host-pipeline integration tests and the image pipeline example (verified on `d5ecf3eef79693b23d1449d210b0b4f93366b207`, CI run `45262411272`).
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -125,7 +125,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P1 — performance and long-running stability
 
-- [ ] Run release benchmarks on reference Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata.
+- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `45261600749`; its virtual runner results are not substitutes for reference desktop measurements.
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [ ] Stress-test texture, path, glyph and layer caches over repeated insert/evict/invalidate cycles; verify bounded memory and stale-handle behavior.
