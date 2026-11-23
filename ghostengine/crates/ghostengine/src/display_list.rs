@@ -784,8 +784,9 @@ impl DisplayList {
         Ok(())
     }
 
-    /// Records a text run using a shared font face. The baseline origin is transformed
-    /// when recorded; glyphs remain screen-aligned until affine glyph rendering is added.
+    /// Records a text run using a shared font face. OpenType shaping and paragraph-level
+    /// bidirectional ordering are prepared while recording; replay rasterizes positioned
+    /// glyph IDs with the active affine transform.
     /// Empty strings and invalid pixel sizes are ignored. Multiple commands can share one
     /// loaded font without copying its internal font data.
     pub fn draw_text(
@@ -806,8 +807,9 @@ impl DisplayList {
         );
     }
 
-    /// Records a wrapped and aligned text block. Its first baseline is transformed
-    /// when recorded; glyphs themselves remain screen-aligned.
+    /// Records a wrapped and aligned text block. OpenType shaping, bidirectional ordering,
+    /// fallback segmentation and line placement are prepared while recording. Replay only
+    /// rasterizes the positioned glyph runs using the captured affine transform.
     pub fn draw_text_box(
         &mut self,
         font: Arc<FontFace>,

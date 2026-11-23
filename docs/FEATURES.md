@@ -15,6 +15,12 @@ presentation, native input and image decoding are opt-in capabilities.
 | `simd` | Safe `wide`-based pixel blending (enabled by default) | Runtime ISA dispatch or GPU rendering |
 | `parallel-rendering` | Automatic worker selection for large raster/composition work (enabled by default) | A persistent background worker pool |
 
+The high-level `DisplayList::draw_text` and `draw_text_box` methods prepare OpenType shaping,
+paragraph-level bidirectional ordering and positioned glyph runs while recording. Replaying a
+display list therefore does not reshape text every frame. Applications that need a multi-face
+fallback chain can use `draw_shaped_text_box` or `draw_bidi_shaped_text_box`; the lower-level
+framebuffer drawing functions remain available for simple glyph-by-glyph rendering.
+
 The shared `InputState` and `ComponentTree::handle_window_input` API live
 in the platform-independent `input` module. This allows either window adapter
 to feed the same retained UI interaction pipeline. `InputState` is also re-exported

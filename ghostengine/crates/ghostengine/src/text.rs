@@ -2,7 +2,9 @@
 //!
 //! Text layout and glyph rasterization for application interfaces.
 //! Font fallback, glyph caching, kerning and basic combining-mark placement are
-//! supported. OpenType shaping is available through an explicit shaped-run API; automatic shaping in every text path remains a follow-up milestone.
+//! supported. The low-level framebuffer drawing functions retain a simple glyph-by-glyph
+//! path; the high-level display-list text API prepares OpenType-shaped, bidirectional
+//! fallback runs during recording so shaping is not repeated during frame replay.
 
 use crate::{
     rasterizer::blend_pixel, Color, Framebuffer, OpenTypeShaper, Point, Rect, ShapedText,
