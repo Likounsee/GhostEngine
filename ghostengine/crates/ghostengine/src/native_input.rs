@@ -351,6 +351,17 @@ impl NativeClipboard {
         self.clipboard.is_some()
     }
 
+    /// Retries initialization of the system clipboard after an unavailable session.
+    ///
+    /// This is useful when a desktop session or clipboard service becomes
+    /// available after the native window has already been created. On failure,
+    /// the current clipboard state is left unchanged.
+    pub fn reconnect(&mut self) -> Result<(), NativeClipboardError> {
+        let clipboard = Clipboard::new().map_err(NativeClipboardError::from)?;
+        self.clipboard = Some(clipboard);
+        Ok(())
+    }
+
     /// Executes a component-tree clipboard request.
     ///
     /// Copy writes the supplied text and returns `Ok(None)`. Paste reads the
