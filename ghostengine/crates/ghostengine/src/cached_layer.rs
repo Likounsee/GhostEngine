@@ -282,5 +282,4 @@ mod tests {
 
         assert_eq!(target.pixels(), original);
     }
-
 }
