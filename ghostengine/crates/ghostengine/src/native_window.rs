@@ -349,6 +349,9 @@ where
     F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> HostRunControl,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // Native windows are event-driven by default; animation only advances
+        // when the application explicitly returns a redraw control.
+        event_loop.set_control_flow(ControlFlow::Wait);
         if self.window.is_some() {
             return;
         }
