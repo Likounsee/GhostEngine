@@ -142,7 +142,7 @@ The software renderer is the reference backend and the first real implementation
 Start with solid-color rectangles, lines and triangles, then add circles, paths, gradients, images, filtering and anti-aliasing. Avoid claiming full vector compatibility until edge cases and tests exist.
 
 ### 3D pipeline
-Add a software 3D pipeline only after the 2D target and resource model are stable:
+3D is intentionally deferred until after GhostEngine 2D V1 is complete and hardware acceleration has a working, validated foundation. Do not start a separate software-3D milestone between 2D V1 and GPU acceleration. The eventual 3D pipeline will reuse the GPU resource and command architecture:
 1. Vertex transformation.
 2. Homogeneous clipping.
 3. Perspective divide and viewport mapping.
@@ -169,11 +169,13 @@ The first platform adapters target Windows and Linux. Keep operating-system APIs
 
 ArchiaOS integration is deferred until that operating system is ready. A future port may reuse the CPU renderer through a host-supplied framebuffer or surface descriptor. A no_std-compatible subset and bare-metal-specific integration are future investigations, not current implementation requirements.
 
-## 8. Hardware acceleration is out of initial scope
+## 8. Hardware acceleration follows 2D V1
 
-The initial engine is a CPU software renderer. It must not depend on Vulkan, DirectX, OpenGL, WebGPU or an existing rendering engine.
+The current implementation remains a CPU software renderer and must build without Vulkan, DirectX, OpenGL, WebGPU or a GPU. Once 2D V1 acceptance criteria are met, hardware acceleration becomes the next major development phase (there is no 2D V2 phase).
 
-If hardware acceleration is reconsidered later, it requires a separate feasibility study and an independently designed GhostEngine-owned architecture. It must not compromise the portability, testability or independence of the CPU renderer. No hardware backend or driver compatibility is claimed by the current project.
+That phase requires a feasibility study, a GhostEngine-owned backend/resource architecture, explicit device capabilities and fallback behavior, synchronization and resource-lifetime rules, device-loss handling, real-device correctness tests and repeatable end-to-end benchmarks. The CPU renderer remains a fully supported fallback and correctness reference. Do not claim GPU support or compatibility before it is implemented and tested on real devices.
+
+3D development begins only after the hardware-accelerated foundation is working and validated. It reuses that backend and resource architecture rather than introducing an unrelated renderer.
 
 ## 9. Testing strategy
 
