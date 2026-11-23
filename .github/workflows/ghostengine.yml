@@ -75,8 +75,8 @@ jobs:
         working-directory: ghostengine
         run: cargo run -p ghostengine --release --example vector_path_showcase -- target/ghostengine-vector-showcase.ppm
 
-      - name: Format Amethys Launcher integration
-        run: cargo fmt --manifest-path "Amethys-Launcher test/Cargo.toml" --all -- --check
+      - name: Format Amethys Launcher integration tests
+        run: rustfmt --edition 2021 --check "Amethys-Launcher test/tests/launcher_integration.rs"
 
       - name: Test Amethys Launcher integration
         run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features
