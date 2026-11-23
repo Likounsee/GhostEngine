@@ -2905,8 +2905,9 @@ mod tests {
 
         let valid_glyph_index = font.font.lookup_glyph_index('ש');
         assert_ne!(valid_glyph_index, 0);
-        for size in 1..=MAX_CACHED_GLYPHS_PER_FONT + 1 {
-            let _ = font.glyph_index(valid_glyph_index, size as f32);
+        for index in 0..=MAX_CACHED_GLYPHS_PER_FONT {
+            let pixel_size = 1.0 + index as f32 / MAX_CACHED_GLYPHS_PER_FONT as f32;
+            let _ = font.glyph_index(valid_glyph_index, pixel_size);
         }
         assert_eq!(font.indexed_glyph_cache.lock().unwrap().len(), 1);
         assert_eq!(font.cached_glyph_count(), 2);
