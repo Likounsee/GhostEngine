@@ -3202,6 +3202,113 @@ mod tests {
         }));
     }
 
+    fn framebuffer_rgba_hash(framebuffer: &crate::Framebuffer) -> u64 {
+        framebuffer.pixels().iter().fold(0xcbf29ce484222325, |hash, pixel| {
+            [pixel.r, pixel.g, pixel.b, pixel.a]
+                .into_iter()
+                .fold(hash, |hash, channel| (hash ^ u64::from(channel)).wrapping_mul(0x100000001b3))
+        })
+    }
+
+    #[test]
+    fn shaped_text_clipping_and_affine_rasterization_match_pixel_references() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let shaped = font
+            .shape_text_with_direction("שלום", 28.0, crate::TextDirection::RightToLeft)
+            .expect("Hebrew run should shape");
+
+        let background = crate::Color::rgba(18, 27, 36, 255);
+        let color = crate::Color::rgba(245, 180, 40, 192);
+        let clip = crate::Rect::new(18, 6, 84, 50);
+        let baseline = crate::Point::new(42, 46);
+
+        let mut clipped = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut clipped,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            color,
+            clip,
+        );
+
+        assert!(clipped.pixels().iter().any(|pixel| *pixel != background));
+        assert!(clipped.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % clipped.width() as usize;
+            let y = index / clipped.width() as usize;
+            (18..102).contains(&x) && (6..56).contains(&y) || *pixel == background
+        }));
+
+        let mut transformed = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
+        let transform = crate::Transform2D::translation(7.0, -3.0)
+            .then(crate::Transform2D::rotation(0.11));
+        super::draw_text_shaped_transformed_clipped(
+            &mut transformed,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            color,
+            clip,
+            transform,
+        );
+
+        assert!(transformed.pixels().iter().any(|pixel| *pixel != background));
+        assert!(transformed.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % transformed.width() as usize;
+            let y = index / transformed.width() as usize;
+            (18..102).contains(&x) && (6..56).contains(&y) || *pixel == background
+        }));
+
+        let hashes = (
+            framebuffer_rgba_hash(&clipped),
+            framebuffer_rgba_hash(&transformed),
+        );
+        assert_eq!(
+            hashes,
+            (0, 0),
+            "update these exact RGBA pixel references after reviewing the rendered output"
+        );
+    }
+
+    #[test]
+    fn transformed_shaped_text_identity_matches_untransformed_pixels_exactly() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let shaped = font
+            .shape_text_with_direction("שלום", 26.0, crate::TextDirection::RightToLeft)
+            .expect("Hebrew run should shape");
+        let clip = crate::Rect::new(10, 4, 100, 56);
+        let baseline = crate::Point::new(36, 44);
+        let color = crate::Color::rgba(90, 190, 245, 173);
+        let background = crate::Color::rgba(12, 20, 28, 91);
+
+        let mut direct = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
+        let mut identity = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut direct, &font, &shaped, baseline, 26.0, color, clip,
+        );
+        super::draw_text_shaped_transformed_clipped(
+            &mut identity,
+            &font,
+            &shaped,
+            baseline,
+            26.0,
+            color,
+            clip,
+            crate::Transform2D::IDENTITY,
+        );
+
+        assert_eq!(
+            identity.pixels(),
+            direct.pixels(),
+            "identity affine transform must preserve every text pixel and alpha value"
+        );
+        assert!(direct.pixels().iter().any(|pixel| *pixel != background));
+    }
+
     #[test]
     fn fallback_keeps_combining_sequences_on_one_font_face() {
         use std::sync::Arc;
