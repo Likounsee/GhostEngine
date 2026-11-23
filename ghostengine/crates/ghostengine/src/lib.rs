@@ -49,7 +49,7 @@ pub mod native_window;
 pub use native_input::{NativeClipboard, NativeClipboardError, NativeInputAdapter};
 
 #[cfg(feature = "native-window")]
-pub use native_window::{NativeWindowError, NativeWindowSurface};
+pub use native_window::{NativeWindowControl, NativeWindowError, NativeWindowSurface};
 
 pub use cached_layer::CachedLayer;
 pub use color::Color;

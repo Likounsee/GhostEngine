@@ -75,6 +75,17 @@ impl From<FramebufferError> for NativeWindowError {
 /// produced by ComponentTree can be resolved with `clipboard.resolve(&action)`.
 pub struct NativeWindowSurface;
 
+/// Controls native event-loop scheduling after a frame has been presented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeWindowControl {
+    /// Close the native window and finish the event loop.
+    Exit,
+    /// Wait for the operating system or user input to request another frame.
+    Wait,
+    /// Schedule another frame immediately after the current frame is presented.
+    Redraw,
+}
+
 impl NativeWindowSurface {
     /// Returns the desktop platform selected for this native window adapter.
     #[must_use]
@@ -155,12 +166,36 @@ impl NativeWindowSurface {
 
     /// Runs a native window using the platform-independent host configuration.
     ///
-    /// This is the native event-loop entry point for applications that need to
-    /// control the initial size and whether the user can resize the window.
-    /// The configuration is validated before any native resources are created.
-    pub fn run_with_config<F>(config: HostWindowConfig, draw: F) -> Result<(), NativeWindowError>
+    /// Returning true waits for the next OS/input redraw; returning false closes
+    /// the window. Use run_with_config_control when an application needs to
+    /// schedule continuous animation frames.
+    pub fn run_with_config<F>(config: HostWindowConfig, mut draw: F) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
+    {
+        Self::run_with_config_control(config, move |framebuffer, events, clipboard| {
+            if draw(framebuffer, events, clipboard) {
+                NativeWindowControl::Wait
+            } else {
+                NativeWindowControl::Exit
+            }
+        })
+    }
+
+    /// Runs a native window with explicit redraw scheduling.
+    ///
+    /// Redraw requests another frame after the current frame is presented,
+    /// which supports animation without exposing Winit types to applications.
+    /// Wait sleeps until an OS/input event requests a frame; Exit closes the
+    /// event loop. The configuration is validated before native resources are
+    /// created.
+    pub fn run_with_config_control<F>(
+        config: HostWindowConfig,
+        draw: F,
+    ) -> Result<(), NativeWindowError>
+    where
+        F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl
+            + 'static,
     {
         config.validate().map_err(NativeWindowError::Host)?;
         let title = config.title;
@@ -297,7 +332,7 @@ where
 
 impl<F> ApplicationHandler for NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -385,13 +420,20 @@ where
                 self.pending_events.push(HostEvent::RedrawRequested);
                 self.pending_events.push(HostEvent::Input(input));
                 let events = std::mem::take(&mut self.pending_events);
-                if !(self.draw)(&mut self.framebuffer, events, &mut self.clipboard) {
+                let control = (self.draw)(&mut self.framebuffer, events, &mut self.clipboard);
+                if control == NativeWindowControl::Exit {
                     event_loop.exit();
                     return;
                 }
                 if let Err(error) = self.present() {
                     self.failure = Some(error);
                     event_loop.exit();
+                    return;
+                }
+                if control == NativeWindowControl::Redraw {
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
                 }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
