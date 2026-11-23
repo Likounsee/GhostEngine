@@ -3668,5 +3668,4 @@ mod render_options_tests {
             }
         }
     }
-
 }
