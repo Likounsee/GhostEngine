@@ -228,6 +228,25 @@ mod tests {
     }
 
     #[test]
+    fn poll_events_appends_without_reordering_existing_caller_events() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
+        host.queue_event(HostEvent::FocusChanged { focused: false });
+        host.queue_event(HostEvent::RedrawRequested);
+
+        let mut events = vec![HostEvent::FocusChanged { focused: true }];
+        host.poll_events(&mut events);
+
+        assert_eq!(
+            events,
+            [
+                HostEvent::FocusChanged { focused: true },
+                HostEvent::FocusChanged { focused: false },
+                HostEvent::RedrawRequested,
+            ]
+        );
+    }
+
+    #[test]
     fn resize_updates_drawable_and_queues_event() {
         let mut host = HeadlessHost::new(HostWindowConfig::new("test", 64, 32)).unwrap();
         host.resize(128, 96).unwrap();
@@ -271,6 +290,9 @@ mod tests {
             Err(HeadlessHostError::Configuration(HostError::SizeOverflow))
         );
         assert_eq!(host.drawable_size(), (64, 32));
+        let mut events = Vec::new();
+        host.poll_events(&mut events);
+        assert!(events.is_empty());
     }
 
     #[test]
