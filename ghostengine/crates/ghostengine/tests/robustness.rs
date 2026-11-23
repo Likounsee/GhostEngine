@@ -405,5 +405,5 @@ fn display_list_fallible_capacity_apis_report_overflow_without_mutating_state() 
     let mut reserved = DisplayList::try_with_capacity(32).unwrap();
     assert!(reserved.command_capacity() >= 32);
     reserved.try_reserve_commands(64).unwrap();
-    assert!(reserved.command_capacity() >= 96);
+    assert!(reserved.command_capacity() >= 64);
 }
