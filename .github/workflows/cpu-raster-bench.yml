@@ -6,7 +6,11 @@ on:
     branches:
       - GhostEngine
     paths:
-      - "ghostengine/crates/ghostengine/src/**"
+      - "ghostengine/crates/ghostengine/src/rasterizer.rs"
+      - "ghostengine/crates/ghostengine/src/texture.rs"
+      - "ghostengine/crates/ghostengine/src/composition.rs"
+      - "ghostengine/crates/ghostengine/src/framebuffer.rs"
+      - "ghostengine/crates/ghostengine/src/simd.rs"
       - "ghostengine/crates/ghostengine/examples/cpu_raster_bench.rs"
       - "ghostengine/crates/ghostengine/Cargo.toml"
       - "ghostengine/Cargo.toml"
@@ -14,10 +18,11 @@ on:
 permissions:
   contents: read
 
-# Benchmark runs are also superseded by newer commits on the same ref.
+# Keep benchmark results associated with the exact source revision.
+# Avoid cancelling a run merely because another commit was pushed afterward.
 concurrency:
-  group: ghostengine-cpu-bench-${{ github.ref }}
-  cancel-in-progress: true
+  group: ghostengine-cpu-bench-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   benchmark:
