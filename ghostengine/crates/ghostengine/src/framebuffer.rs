@@ -445,12 +445,9 @@ mod tests {
             Color::BLUE,
             Color::WHITE,
         ]);
-        let allocation = framebuffer.pixels().as_ptr();
-
         framebuffer.resize_preserving(3, 3, Color::BLACK).unwrap();
         assert_eq!(framebuffer.width(), 3);
         assert_eq!(framebuffer.height(), 3);
-        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
         assert_eq!(
             framebuffer.pixels(),
             &[
@@ -459,6 +456,20 @@ mod tests {
                 Color::BLACK, Color::BLACK, Color::BLACK,
             ]
         );
+    }
+
+    #[test]
+    fn resize_preserving_reuses_capacity_when_growing_after_shrink() {
+        let mut framebuffer = Framebuffer::new(4, 4, Color::RED).unwrap();
+        let allocation = framebuffer.pixels().as_ptr();
+
+        framebuffer.resize_preserving(2, 2, Color::BLUE).unwrap();
+        framebuffer.resize_preserving(4, 4, Color.GREEN).unwrap();
+
+        assert_eq!(framebuffer.width(), 4);
+        assert_eq!(framebuffer.height(), 4);
+        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
+        assert!(framebuffer.pixels().iter().all(|pixel| *pixel == Color.GREEN));
     }
 
     #[test]
