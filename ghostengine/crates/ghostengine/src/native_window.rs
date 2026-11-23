@@ -72,7 +72,8 @@ impl From<FramebufferError> for NativeWindowError {
 /// The callback is invoked for each redraw with the accumulated native input
 /// frame and a system clipboard handle. It should render into the supplied
 /// framebuffer and return `false` to close the window. The control-based runner
-/// also supports explicit wait/continuous-redraw scheduling. Clipboard requests
+/// also supports explicit wait, immediate and paced redraw scheduling. Animation
+/// timers pause while the drawable is minimized and resume after restoration. Clipboard requests
 /// produced by ComponentTree can be resolved with `clipboard.resolve(&action)`.
 pub struct NativeWindowSurface;
 
@@ -456,16 +457,34 @@ where
                     HostRunControl::Redraw => {
                         self.redraw_deadline = None;
                         event_loop.set_control_flow(ControlFlow::Wait);
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
+                        if drawable_size_is_nonzero(
+                            self.drawable_size.0,
+                            self.drawable_size.1,
+                        ) {
+                            if let Some(window) = &self.window {
+                                window.request_redraw();
+                            }
                         }
                     }
                     HostRunControl::RedrawAfter(delay) => {
-                        let deadline = Instant::now()
-                            .checked_add(delay)
-                            .unwrap_or_else(Instant::now);
-                        self.redraw_deadline = Some(deadline);
-                        event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                        if !drawable_size_is_nonzero(
+                            self.drawable_size.0,
+                            self.drawable_size.1,
+                        ) {
+                            // Do not burn CPU rendering invisible animation frames
+                            // while minimized. A restore/resize event requests the
+                            // next frame and lets the application resume its cadence.
+                            self.redraw_deadline = None;
+                            event_loop.set_control_flow(ControlFlow::Wait);
+                        } else if let Some(deadline) = Instant::now().checked_add(delay) {
+                            self.redraw_deadline = Some(deadline);
+                            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                        } else {
+                            // An unrepresentably distant deadline must not turn
+                            // into an immediate redraw loop.
+                            self.redraw_deadline = None;
+                            event_loop.set_control_flow(ControlFlow::Wait);
+                        }
                     }
                     HostRunControl::Wait => {
                         self.redraw_deadline = None;

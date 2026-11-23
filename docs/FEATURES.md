@@ -50,6 +50,11 @@ The native animation example uses `HostRunControl::RedrawAfter(Duration)` to req
 frames without a busy loop or direct Winit dependency. Use `Wait` for event-driven/static
 interfaces and `Exit` to finish the native event loop.
 
+Paced and continuous redraw requests are suspended while the native drawable is minimized;
+restoring/resizing the window requests a fresh frame and resumes the application's chosen
+frame schedule. `HostWindowConfig::with_resizable(false)` can be used to request a fixed-size
+native window without depending on platform-specific window attributes.
+
 Both `simd` and `parallel-rendering` are enabled by default. Use
 `--no-default-features` to validate the scalar kernels and disable automatic
 worker selection. Explicit `*_parallel_with_threads` APIs remain available for

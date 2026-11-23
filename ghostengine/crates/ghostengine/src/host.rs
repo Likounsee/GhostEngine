@@ -31,6 +31,13 @@ impl HostWindowConfig {
         }
     }
 
+    /// Selects whether the native window can be resized by the user.
+    #[must_use]
+    pub fn with_resizable(mut self, resizable: bool) -> Self {
+        self.resizable = resizable;
+        self
+    }
+
     /// Validates dimensions before a platform backend allocates native resources.
     pub fn validate(&self) -> Result<(), HostError> {
         if self.width == 0 || self.height == 0 {

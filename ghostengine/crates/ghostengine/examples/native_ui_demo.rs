@@ -15,6 +15,7 @@ const ADDRESS: ComponentId = ComponentId(2);
 const ENABLED: ComponentId = ComponentId(3);
 const ACTION: ComponentId = ComponentId(4);
 const STATUS: ComponentId = ComponentId(5);
+const RECONNECT_CLIPBOARD: ComponentId = ComponentId(7);
 
 fn main() -> Result<(), Box<dyn Error>> {
     let font_path = std::env::args_os()
@@ -45,6 +46,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         UiComponent::checkbox(ENABLED, "Enable this option", true)
             .with_layout_item(LayoutItem::fixed(42)),
         UiComponent::button(ACTION, "Apply").with_layout_item(LayoutItem::fixed(48)),
+        UiComponent::button(RECONNECT_CLIPBOARD, "Reconnect clipboard")
+            .with_layout_item(LayoutItem::fixed(48)),
         UiComponent::label(
             STATUS,
             "Click the input, type, then try Ctrl+A / Ctrl+C / Ctrl+V.",
@@ -102,6 +105,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                             status.set_text(format!("Clipboard error: {error}"));
                         }
                     }
+                }
+            }
+            if events.activated == Some(RECONNECT_CLIPBOARD) {
+                let message = match clipboard.reconnect() {
+                    Ok(()) => "System clipboard reconnected.".to_owned(),
+                    Err(error) => format!("Clipboard reconnect failed: {error}"),
+                };
+                if let Some(status) = tree.find_mut(STATUS) {
+                    status.set_text(message);
                 }
             }
             if events.activated == Some(ACTION) {
