@@ -245,8 +245,8 @@ mod tests {
             assert_eq!(cache.framebuffer().get_pixel(x, y), Some(color));
 
             if iteration % 16 == 15 {
-                let width = 2 + (iteration / 16) % 5;
-                let height = 2 + (iteration / 16) % 3;
+                let width = 4 + (iteration / 16) % 5;
+                let height = 4 + (iteration / 16) % 3;
                 cache.resize(width, height, Color::BLUE).unwrap();
                 assert_eq!(cache.framebuffer().width(), width);
                 assert_eq!(cache.framebuffer().height(), height);
