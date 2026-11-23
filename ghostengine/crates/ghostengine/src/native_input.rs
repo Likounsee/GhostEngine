@@ -343,7 +343,7 @@ impl NativeClipboard {
     /// Executes a component-tree clipboard request.
     ///
     /// Copy writes the supplied text and returns `Ok(None)`. Paste reads the
-    /// current clipboard and returns `Ok(Some(text)` for insertion into the
+    /// current clipboard and returns `Ok(Some(text))` for insertion into the
     /// focused text input. An unavailable system clipboard returns a typed
     /// error without affecting window rendering.
     pub fn resolve(
