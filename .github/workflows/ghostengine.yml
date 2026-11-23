@@ -9,12 +9,11 @@ on:
 permissions:
   contents: read
 
-# Keep one active validation and only the newest pending revision per branch.
 # A burst of direct commits must not leave dozens of obsolete full test matrices
-# queued behind the latest source state.
+# queued behind the latest source state; cancel obsolete matrices when a newer commit arrives.
 concurrency:
   group: ghostengine-ci-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   rust:
