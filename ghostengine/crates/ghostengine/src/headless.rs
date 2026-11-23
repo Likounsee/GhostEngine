@@ -65,11 +65,12 @@ impl HeadlessHost {
     /// Creates a headless drawable using the requested physical dimensions.
     pub fn new(config: HostWindowConfig) -> Result<Self, HeadlessHostError> {
         config.validate()?;
+        let last_nonzero_drawable_size = (config.width, config.height);
         Ok(Self {
             config,
             events: VecDeque::new(),
             presented_frame: None,
-            last_nonzero_drawable_size: (config.width, config.height),
+            last_nonzero_drawable_size,
             open: true,
         })
     }
