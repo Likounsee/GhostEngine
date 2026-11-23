@@ -3233,11 +3233,25 @@ mod tests {
             &mut clipped, &font, &shaped, baseline, 28.0, color, clip,
         );
 
-        assert!(clipped.pixels().iter().any(|pixel| *pixel != background));
+        let mut unclipped =
+            crate::Framebuffer::new(128, 64, background).expect("reference framebuffer");
+        super::draw_text_shaped_clipped(
+            &mut unclipped,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            color,
+            crate::Rect::new(0, 0, 128, 64),
+        );
         assert!(clipped.pixels().iter().enumerate().all(|(index, pixel)| {
             let x = index % clipped.width() as usize;
             let y = index / clipped.width() as usize;
-            (18..102).contains(&x) && (6..56).contains(&y) || *pixel == background
+            if (18..102).contains(&x) && (6..56).contains(&y) {
+                *pixel == unclipped.pixels()[index]
+            } else {
+                *pixel == background
+            }
         }));
 
         let mut transformed = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
@@ -3254,12 +3268,31 @@ mod tests {
             transform,
         );
 
-        assert!(transformed.pixels().iter().any(|pixel| *pixel != background));
-        assert!(transformed.pixels().iter().enumerate().all(|(index, pixel)| {
-            let x = index % transformed.width() as usize;
-            let y = index / transformed.width() as usize;
-            (18..102).contains(&x) && (6..56).contains(&y) || *pixel == background
-        }));
+        let mut transformed_reference =
+            crate::Framebuffer::new(128, 64, background).expect("reference framebuffer");
+        super::draw_text_shaped_transformed_clipped(
+            &mut transformed_reference,
+            &font,
+            &shaped,
+            baseline,
+            28.0,
+            color,
+            crate::Rect::new(0, 0, 128, 64),
+            transform,
+        );
+        assert!(transformed
+            .pixels()
+            .iter()
+            .enumerate()
+            .all(|(index, pixel)| {
+                let x = index % transformed.width() as usize;
+                let y = index / transformed.width() as usize;
+                if (18..102).contains(&x) && (6..56).contains(&y) {
+                    *pixel == transformed_reference.pixels()[index]
+                } else {
+                    *pixel == background
+                }
+            }));
 
         let hashes = (
             framebuffer_rgba_hash(&clipped),
