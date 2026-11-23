@@ -111,6 +111,7 @@ impl HostBackend for HeadlessHost {
     fn close(&mut self) {
         if self.open {
             self.open = false;
+            self.presented_frame = None;
             self.queue_event(HostEvent::CloseRequested);
         }
     }
@@ -155,7 +156,11 @@ impl HostBackend for HeadlessHost {
         if (framebuffer.width(), framebuffer.height()) != self.drawable_size() {
             return Err(HeadlessHostError::DimensionMismatch);
         }
-        self.presented_frame = Some(framebuffer.try_clone()?);
+        if let Some(presented) = self.presented_frame.as_mut() {
+            presented.copy_pixels_from(framebuffer.pixels())?;
+        } else {
+            self.presented_frame = Some(framebuffer.try_clone()?);
+        }
         Ok(())
     }
 }
@@ -250,6 +255,33 @@ mod tests {
         let presented = host.take_presented_frame().unwrap();
         assert_eq!(presented.get_pixel(0, 0), Some(Color::RED));
         assert!(host.take_presented_frame().is_none());
+    }
+
+    #[test]
+    fn repeated_presentation_reuses_the_owned_frame_allocation() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 2, 1)).unwrap();
+        let mut frame = Framebuffer::new(2, 1, Color::BLACK).unwrap();
+        host.present(&frame).unwrap();
+        let allocation = host.presented_frame.as_ref().unwrap().pixels().as_ptr();
+
+        frame.pixels_mut().copy_from_slice(&[Color::RED, Color::BLUE]);
+        host.present(&frame).unwrap();
+
+        let presented = host.presented_frame.as_ref().unwrap();
+        assert_eq!(presented.pixels(), &[Color::RED, Color::BLUE]);
+        assert_eq!(presented.pixels().as_ptr(), allocation);
+    }
+
+    #[test]
+    fn close_releases_the_last_presented_frame() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("test", 1, 1)).unwrap();
+        let frame = Framebuffer::new(1, 1, Color::RED).unwrap();
+        host.present(&frame).unwrap();
+        assert!(host.presented_frame.is_some());
+
+        host.close();
+
+        assert!(host.presented_frame.is_none());
     }
 
     #[test]
