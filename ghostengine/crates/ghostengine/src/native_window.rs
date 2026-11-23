@@ -509,11 +509,10 @@ mod tests {
             Some("source pixel count does not match framebuffer dimensions")
         );
 
-        let presentation =
-            super::NativeWindowError::PresentationBufferSizeMismatch {
-                expected: 4,
-                actual: 3,
-            };
+        let presentation = super::NativeWindowError::PresentationBufferSizeMismatch {
+            expected: 4,
+            actual: 3,
+        };
         assert!(presentation.source().is_none());
     }
 

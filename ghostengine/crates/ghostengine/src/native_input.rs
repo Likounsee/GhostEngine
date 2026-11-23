@@ -630,10 +630,7 @@ mod tests {
         adapter.process_window_event(&WindowEvent::Ime(Ime::Enabled));
         assert!(adapter.ime_enabled);
 
-        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit(
-            "に".to_owned(),
-            None,
-        )));
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit("に".to_owned(), None)));
         adapter.process_window_event(&WindowEvent::Ime(Ime::Commit(
             "日本".to_owned(),
         )));
@@ -664,21 +661,14 @@ mod tests {
 
         let mut adapter = NativeInputAdapter::new();
         adapter.process_window_event(&WindowEvent::Ime(Ime::Enabled));
-        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit(
-            "かな".to_owned(),
-            None,
-        )));
+        adapter.process_window_event(&WindowEvent::Ime(Ime::Preedit("かな".to_owned(), None)));
         adapter.process_window_event(&WindowEvent::Focused(false));
 
         let frame = adapter.take_frame();
-        assert_eq!(
-            frame.text_events,
-            vec![TextInputEvent::CompositionCancel]
-        );
+        assert_eq!(frame.text_events, vec![TextInputEvent::CompositionCancel]);
         assert!(!adapter.ime_enabled);
         assert!(adapter.take_frame().text_events.is_empty());
     }
-
 
     #[test]
     fn losing_focus_discards_stale_input_edges_and_resets_click_history() {
