@@ -36,7 +36,7 @@ Finish one complete, reliable and reusable 2D engine. There is **no separate 2D 
 - Resource lifetime, cache invalidation, bounded scratch/memory use and robust errors.
 - Unit, integration, golden-image, property and fuzz tests.
 - Cross-platform CI, examples, API documentation and migration guidance.
-- Repeatable release benchmarks with before/after comparisons; preserve pixel correctness.
+- Repeatable release benchmarks with before/after comparisons; preserve pixel correctness. Initial Windows/Linux/macOS CI baselines are recorded in [PERFORMANCE.md](PERFORMANCE.md); representative hot spots remain under optimization.
 - Validate real application integrations and keep the public API usable by Archia Browser, ArchiaOS, PeaceEmu and other consumers.
 
 ### 2D V1 exit criteria
