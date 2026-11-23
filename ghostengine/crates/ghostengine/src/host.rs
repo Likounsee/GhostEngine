@@ -11,7 +11,9 @@ use crate::{Framebuffer, InputState};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostWindowConfig {
     pub title: String,
+    /// Requested client-area width in physical pixels.
     pub width: u32,
+    /// Requested client-area height in physical pixels.
     pub height: u32,
     pub resizable: bool,
 }

@@ -253,13 +253,24 @@ where
         };
         let window = Arc::new(window);
         window.set_ime_allowed(true);
+
+        // Window managers and display scaling can adjust the requested client
+        // size. The actual physical drawable size is authoritative for both
+        // the framebuffer and the first normalized resize event.
+        let actual_size = window.inner_size();
+        if let Err(error) = self.resize_framebuffer(actual_size) {
+            self.failure = Some(NativeWindowError::Framebuffer(error));
+            event_loop.exit();
+            return;
+        }
+
         match Surface::new(&self.context, window.clone()) {
             Ok(surface) => {
                 self.surface = Some(surface);
                 self.window = Some(window.clone());
                 self.pending_events.push(HostEvent::Resized {
-                    width: self.initial_size.width,
-                    height: self.initial_size.height,
+                    width: actual_size.width,
+                    height: actual_size.height,
                 });
                 self.pending_events.push(HostEvent::ScaleFactorChanged {
                     scale_factor: window.scale_factor(),
