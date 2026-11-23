@@ -1,7 +1,7 @@
 //! Native keyboard, text, IME and clipboard input for desktop applications.
 //!
 //! This adapter consumes events from winit, which delegates keyboard layout,
-//! text input and IME handling to the active Windows or Linux window system.
+//! text input and IME handling to the active Windows, Linux or macOS window system.
 //! It does not render or create a graphics context: applications continue to
 //! render into GhostEngine's CPU framebuffer.
 //!
@@ -339,7 +339,8 @@ impl NativeClipboard {
     /// Creates a clipboard adapter for hosts where clipboard access is absent.
     ///
     /// Native windows use this fallback so an unavailable clipboard never
-    /// prevents the window and CPU renderer from starting.
+    /// prevents the window and CPU renderer from starting. Query `is_available`
+    /// before advertising clipboard support to application code.
     pub(crate) fn unavailable() -> Self {
         Self { clipboard: None }
     }
