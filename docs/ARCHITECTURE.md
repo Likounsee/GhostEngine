@@ -192,9 +192,9 @@ the deterministic headless backend. The native Winit adapter provides an
 application-facing callback runner through `NativeWindowSurface::run_with_config`
 and `run_with_config_control`. It delivers normalized lifecycle/input events,
 owns event-loop dispatch, presents the CPU framebuffer and supports `HostRunControl::Wait`, `HostRunControl::Redraw`,
-`HostRunControl::RedrawAfter(Duration)` and `HostRunControl::Exit` outcomes. Paced and continuous redraw requests are suspended while
-the drawable is minimized; a restore/resize event requests a new frame so the
-application can resume its own cadence without a hidden busy loop. It deliberately does not implement the
+`HostRunControl::RedrawAfter(Duration)` and `HostRunControl::Exit` outcomes. Paced and continuous redraw requests are suspended while the normalized drawable size is
+zero. Pending animation deadlines are discarded while minimized; a restore/resize event
+requests a new frame so the application can resume its own cadence without a hidden busy loop. It deliberately does not implement the
 poll-based `HostBackend` trait: Winit owns a callback-driven event loop, and the
 engine must not pretend it can synchronously poll that loop from an arbitrary
 caller thread. Keep both lifecycle models explicit rather than hiding the

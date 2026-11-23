@@ -58,9 +58,10 @@ frames without a busy loop or direct Winit dependency. Use `Wait` for event-driv
 interfaces, `Redraw` for intentionally continuous rendering, and `Exit` to finish the native
 event loop. A zero `RedrawAfter` duration is unthrottled; use a non-zero interval for pacing.
 
-Paced and continuous redraw requests are suspended while the native drawable is minimized;
-restoring/resizing the window requests a fresh frame and resumes the application's chosen
-frame schedule. `HostWindowConfig::with_resizable(false)` can be used to request a fixed-size
+Paced and continuous redraw requests are suspended while the normalized drawable size is
+zero. Pending animation deadlines are discarded while minimized, so they cannot wake the
+window in a redraw loop; restoring/resizing requests a fresh frame and resumes the application's
+chosen frame schedule. `HostWindowConfig::with_resizable(false)` can be used to request a fixed-size
 native window without depending on platform-specific window attributes.
 
 Both `simd` and `parallel-rendering` are enabled by default. Use

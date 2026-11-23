@@ -306,10 +306,7 @@ where
         // A minimized window can have a zero-sized drawable. Keep the last
         // framebuffer, but do not ask softbuffer to present into an unavailable
         // surface; the next non-zero resize will resume normal presentation.
-        if self.window.as_ref().is_some_and(|window| {
-            let size = window.inner_size();
-            !drawable_size_is_nonzero(size.width, size.height)
-        }) {
+        if !drawable_size_is_nonzero(self.drawable_size.0, self.drawable_size.1) {
             return Ok(());
         }
         let Some(surface) = self.surface.as_mut() else {
@@ -402,6 +399,11 @@ where
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if !drawable_size_is_nonzero(self.drawable_size.0, self.drawable_size.1) {
+            self.redraw_deadline = None;
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        }
         let Some(deadline) = self.redraw_deadline else {
             return;
         };
