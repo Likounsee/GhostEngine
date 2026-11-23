@@ -474,7 +474,10 @@ mod tests {
         adapter.frame.left_mouse_pressed = true;
         adapter.frame.right_mouse_pressed = true;
         adapter.frame.shortcut_keys.push('a');
-        adapter.frame.text_events.push(TextInputEvent::Insert("x".into()));
+        adapter
+            .frame
+            .text_events
+            .push(TextInputEvent::Insert("x".into()));
         assert_eq!(
             adapter
                 .left_click_tracker
