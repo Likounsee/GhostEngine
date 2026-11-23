@@ -184,7 +184,10 @@ impl NativeWindowSurface {
     /// Returning true waits for the next OS/input redraw; returning false closes
     /// the window. Use run_with_config_control when an application needs to
     /// schedule continuous animation frames.
-    pub fn run_with_config<F>(config: HostWindowConfig, mut draw: F) -> Result<(), NativeWindowError>
+    pub fn run_with_config<F>(
+        config: HostWindowConfig,
+        mut draw: F,
+    ) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
     {
@@ -272,7 +275,7 @@ struct NativeApp<F> {
 
 impl<F> NativeApp<F>
 where
-    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
+    F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> NativeWindowControl,
 {
     fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) -> Result<(), FramebufferError> {
         if size.width == 0 || size.height == 0 {
