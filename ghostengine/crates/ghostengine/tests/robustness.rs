@@ -182,8 +182,14 @@ fn transforms_and_path_flattening_reject_non_finite_inputs_without_panicking() {
                     rng.range(20_000) as f32 - 10_000.0,
                     rng.range(20_000) as f32 - 10_000.0,
                 ),
-                Vector::new(rng.range(20_000) as f32 - 10_000.0, rng.range(20_000) as f32 - 10_000.0),
-                Vector::new(rng.range(20_000) as f32 - 10_000.0, rng.range(20_000) as f32 - 10_000.0),
+                Vector::new(
+                    rng.range(20_000) as f32 - 10_000.0,
+                    rng.range(20_000) as f32 - 10_000.0,
+                ),
+                Vector::new(
+                    rng.range(20_000) as f32 - 10_000.0,
+                    rng.range(20_000) as f32 - 10_000.0,
+                ),
             );
         }
         let flattened = path.flatten(4.0).unwrap();
