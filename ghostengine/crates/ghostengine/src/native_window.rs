@@ -110,10 +110,7 @@ impl NativeWindowSurface {
     /// This is the native event-loop entry point for applications that need to
     /// control the initial size and whether the user can resize the window.
     /// The configuration is validated before any native resources are created.
-    pub fn run_with_config<F>(
-        config: HostWindowConfig,
-        draw: F,
-    ) -> Result<(), NativeWindowError>
+    pub fn run_with_config<F>(config: HostWindowConfig, draw: F) -> Result<(), NativeWindowError>
     where
         F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool + 'static,
     {
