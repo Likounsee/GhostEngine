@@ -120,6 +120,7 @@ impl NativeWindowSurface {
             input: NativeInputAdapter::new(),
             clipboard,
             surface: None,
+            surface_size: None,
             window: None,
             pending_events: Vec::new(),
             failure: None,
@@ -143,6 +144,7 @@ struct NativeApp<F> {
     input: NativeInputAdapter,
     clipboard: NativeClipboard,
     surface: Option<Surface<OwnedDisplayHandle, Arc<Window>>>,
+    surface_size: Option<(u32, u32)>,
     window: Option<Arc<Window>>,
     pending_events: Vec<HostEvent>,
     failure: Option<NativeWindowError>,
@@ -184,9 +186,12 @@ where
         else {
             return Ok(());
         };
-        surface
-            .resize(width_nz, height_nz)
-            .map_err(|error| NativeWindowError::Backend(error.to_string()))?;
+        if self.surface_size != Some((width, height)) {
+            surface
+                .resize(width_nz, height_nz)
+                .map_err(|error| NativeWindowError::Backend(error.to_string()))?;
+            self.surface_size = Some((width, height));
+        }
 
         let mut buffer = surface
             .buffer_mut()
