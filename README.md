@@ -10,7 +10,7 @@ Its goal is to implement its own rendering technology: geometry processing, rast
 
 The native adapters target **Windows, Linux and macOS**, while the first interactive integrations are developed and validated incrementally across those platforms. ArchiaOS is a possible future platform, but it is not an immediate development target. The first interactive application target is a browser-style frontend rendered entirely by GhostEngine's CPU framebuffer.
 
-> **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, damage-region layer composition, transformed layer filtering and source-over, multiply, screen and add blending, display lists, retained UI components, TrueType/OpenType glyph rasterization, text layout and shaping. The optional `image-decoding` feature decodes BMP, JPEG, PNG and PNM files into CPU textures. Optional window adapters present completed CPU framebuffers and forward input. The software 3D pipeline is not implemented yet. The 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
+> **Project status:** the reusable CPU 2D core includes clipped primitives, anti-aliased drawing and fills, paths and strokes, gradients, affine transforms, nested clipping, texture sampling, damage-region layer composition, transformed layer filtering and source-over, multiply, screen and add blending, display lists with recording-time OpenType shaping and bidirectional text ordering, retained UI components, TrueType/OpenType glyph rasterization and text layout. The optional `image-decoding` feature decodes BMP, JPEG, PNG and PNM files into CPU textures. Optional Windows, Linux and macOS window adapters present completed CPU framebuffers and forward normalized input; the Winit runner supports event-driven and paced animation. The software 3D pipeline is not implemented yet. The 2D implementation is covered by deterministic unit tests and headless examples; performance work is measured with `cpu_raster_bench`.
 
 ## Vision
 
@@ -117,7 +117,7 @@ GhostEngine platform adapter
 Native window / display facilities
 ```
 
-The platform adapter is deliberately small. It handles the operating-system boundary; it does not decide how primitives, triangles, text or effects are rendered.
+The platform adapter is deliberately small. It handles the operating-system boundary; it does not decide how primitives, triangles, text or effects are rendered. The Winit path delivers normalized HostEvent values and uses HostRunControl for wait, immediate redraw, paced redraw and exit without exposing Winit types.
 
 ### Proposed Rust modules
 
@@ -170,6 +170,7 @@ cargo test -p ghostengine --features image-decoding
 cargo run -p ghostengine --example first_image -- first-image.ppm
 cargo run -p ghostengine --features window --example browser_frontend
 cargo run -p ghostengine --features native-window --example native_ui_demo
+cargo run -p ghostengine --features native-window --example native_animation_demo
 cargo run -p ghostengine --release --example cpu_raster_bench -- 5
 ```
 
