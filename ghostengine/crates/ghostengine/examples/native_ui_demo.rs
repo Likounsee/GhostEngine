@@ -3,8 +3,8 @@
 //! Run with: cargo run -p ghostengine --example native_ui_demo --features native-window
 
 use ghostengine::{
-    ComponentId, ComponentTree, FontFace, HostEvent, InputState, Insets, LayoutDirection,
-    LayoutItem, NativeWindowSurface, HostRunControl, Rect, StackLayout, UiComponent, UiTheme,
+    ComponentId, ComponentTree, FontFace, HostEvent, HostRunControl, InputState, Insets,
+    LayoutDirection, LayoutItem, NativeWindowSurface, Rect, StackLayout, UiComponent, UiTheme,
 };
 use std::{error::Error, fs, path::PathBuf};
 

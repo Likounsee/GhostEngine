@@ -53,10 +53,12 @@ cargo run -p ghostengine --features native-window --example native_ui_demo
 cargo run -p ghostengine --features native-window --example native_animation_demo
 ```
 
-The native animation example uses `HostRunControl::RedrawAfter(Duration)` to request paced
-frames without a busy loop or direct Winit dependency. Use `Wait` for event-driven/static
-interfaces, `Redraw` for intentionally continuous rendering, and `Exit` to finish the native
-event loop. A zero `RedrawAfter` duration is unthrottled; use a non-zero interval for pacing.
+The native UI example uses `HostRunControl::Wait` for an event-driven interface that sleeps
+between input/redraw events. The native animation example uses
+`HostRunControl::RedrawAfter(Duration)` to request paced frames without a busy loop or direct
+Winit dependency. Use `Redraw` for intentionally continuous rendering and `Exit` to finish
+the native event loop. A zero `RedrawAfter` duration is unthrottled; use a non-zero interval
+for pacing.
 
 Paced and continuous redraw requests are suspended while the normalized drawable size is
 zero. Pending animation deadlines are discarded while minimized, so they cannot wake the
