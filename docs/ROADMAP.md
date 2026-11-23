@@ -115,7 +115,9 @@ This checklist tracks implementation separately from release validation. A check
   - [x] Transformed/bilinear texture sampling with exact expected pixels (`transformed_opaque_bilinear_texture_replaces_destination`).
   - [x] Layer composition, opacity and blend modes with exact expected pixels.
   - [x] Text rendering with a licensed deterministic font fixture and pixel-by-pixel references for clipping, affine rotation/translation, identity equivalence and alpha compositing.
-- [ ] Add property-based or fuzz-style tests for malformed geometry, clipping, dimensions, strides, display-list commands and image inputs; keep the regular CI suite deterministic and bounded.
+- [x] Add deterministic property/fuzz-style regression tests for malformed geometry, clipping, dimensions, strides, display-list commands, texture-cache lifecycles and truncated image inputs; keep the regular CI suite bounded.
+- [x] Exercise fallible capacity reservation for display lists and verify allocation/capacity errors leave existing state unchanged.
+- [x] Verify framebuffer/texture checked dimensions, surface-buffer overflow, image decoder dimension/allocation limits and texture-cache budget failures.
 - [ ] Validate the public examples as end-to-end application workflows: vector drawing, images, text, UI interaction, input and presentation.
 - [ ] Publish an explicit list of platform limitations and unsupported capabilities based on actual platform runs.
 
@@ -126,7 +128,7 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [ ] Stress-test texture, path, glyph and layer caches over repeated insert/evict/invalidate cycles; verify bounded memory and stale-handle behavior.
 - [ ] Stress-test repeated resize, minimize/restore, frame presentation and host shutdown.
-- [ ] Review allocation failure and oversized-input handling at every public allocation boundary.
+- [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
 
 #### P2 — release packaging and API readiness
 
@@ -138,7 +140,7 @@ This checklist tracks implementation separately from release validation. A check
 ### Current validation notes
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
-- The latest verified commit `718157ca3382ea8093c445249b4c30dadaad8ebc` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45246965509`).
+- The latest pre-follow-up robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`).
 - Automated compilation/tests of native adapters do not prove real desktop behavior. Interactive validation on each target OS remains outstanding until evidence is recorded.
 - GPU acceleration, 3D rendering and secure-display support are intentionally outside the 2D V1 scope.
 
