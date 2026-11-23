@@ -3232,19 +3232,15 @@ mod tests {
             color,
             crate::Rect::new(0, 0, 128, 64),
         );
-        assert!(clipped
-            .pixels()
-            .iter()
-            .enumerate()
-            .all(|(index, pixel)| {
-                let x = index % clipped.width() as usize;
-                let y = index / clipped.width() as usize;
-                if (18..102).contains(&x) && (6..56).contains(&y) {
-                    *pixel == unclipped.pixels()[index]
-                } else {
-                    *pixel == background
-                }
-            }));
+        assert!(clipped.pixels().iter().enumerate().all(|(index, pixel)| {
+            let x = index % clipped.width() as usize;
+            let y = index / clipped.width() as usize;
+            if (18..102).contains(&x) && (6..56).contains(&y) {
+                *pixel == unclipped.pixels()[index]
+            } else {
+                *pixel == background
+            }
+        }));
 
         let mut transformed = crate::Framebuffer::new(128, 64, background).expect("framebuffer");
         let transform =
