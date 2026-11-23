@@ -46,7 +46,19 @@ impl fmt::Display for NativeWindowError {
     }
 }
 
-impl Error for NativeWindowError {}
+impl Error for NativeWindowError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Host(error) => Some(error),
+            Self::Framebuffer(error) => Some(error),
+            Self::InvalidDimensions
+            | Self::EventLoop(_)
+            | Self::Backend(_)
+            | Self::Clipboard(_)
+            | Self::PresentationBufferSizeMismatch { .. } => None,
+        }
+    }
+}
 
 impl From<FramebufferError> for NativeWindowError {
     fn from(value: FramebufferError) -> Self {
@@ -478,6 +490,31 @@ mod tests {
                 crate::HostError::InvalidDimensions
             ))
         ));
+    }
+
+    #[test]
+    fn native_window_errors_expose_wrapped_error_sources() {
+        use std::error::Error;
+
+        let host = super::NativeWindowError::Host(crate::HostError::InvalidDimensions);
+        assert_eq!(
+            host.source().map(ToString::to_string).as_deref(),
+            Some("window dimensions must be non-zero")
+        );
+
+        let framebuffer =
+            super::NativeWindowError::Framebuffer(crate::FramebufferError::PixelCountMismatch);
+        assert_eq!(
+            framebuffer.source().map(ToString::to_string).as_deref(),
+            Some("source pixel count does not match framebuffer dimensions")
+        );
+
+        let presentation =
+            super::NativeWindowError::PresentationBufferSizeMismatch {
+                expected: 4,
+                actual: 3,
+            };
+        assert!(presentation.source().is_none());
     }
 
     #[test]
