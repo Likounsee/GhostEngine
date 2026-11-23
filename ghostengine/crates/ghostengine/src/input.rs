@@ -296,10 +296,7 @@ mod tests {
         let start = Instant::now();
         let mut tracker = super::ClickTracker::default();
         assert_eq!(
-            tracker.record_at(
-                Some(crate::Point::new(i32::MIN, i32::MIN)),
-                start
-            ),
+            tracker.record_at(Some(crate::Point::new(i32::MIN, i32::MIN)), start),
             1
         );
         assert_eq!(

@@ -274,7 +274,10 @@ fn accepts_text(key: &Key) -> bool {
 
 /// Removes control characters from native text and rejects empty insertions.
 fn insertable_text(text: &str) -> Option<String> {
-    let text: String = text.chars().filter(|character| !character.is_control()).collect();
+    let text: String = text
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
     (!text.is_empty()).then_some(text)
 }
 
