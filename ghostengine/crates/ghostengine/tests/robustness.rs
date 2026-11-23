@@ -1,6 +1,6 @@
 use ghostengine::{
-    Color, DisplayList, Framebuffer, Path, Point, Rect, Texture, TextureCache,
-    TextureCacheError, Transform2D, Vector,
+    AlphaMode, Color, ColorSpace, DisplayList, Framebuffer, Path, PixelFormat, Point, Rect,
+    SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError, Transform2D, Vector,
 };
 
 /// Small deterministic generator: reproducible property-style coverage without
@@ -260,6 +260,88 @@ fn texture_cache_randomized_lifecycle_keeps_accounting_and_budget_consistent() {
             }
         }
     }
+}
+
+
+#[test]
+fn surface_stride_and_buffer_boundaries_are_validated_without_partial_writes() {
+    let mut rng = Generator::new(0x5355_5246_4143_4553);
+    for width in 1..=8 {
+        for height in 1..=6 {
+            let frame = Framebuffer::new(width, height, Color::rgba(31, 63, 127, 191)).unwrap();
+            for format in [
+                PixelFormat::Rgb8,
+                PixelFormat::Bgr8,
+                PixelFormat::Rgba8,
+                PixelFormat::Bgra8,
+            ] {
+                let minimum = width as usize * format.bytes_per_pixel();
+                let stride = minimum + rng.range(9) as usize;
+                let descriptor = SurfaceDescriptor {
+                    width,
+                    height,
+                    row_stride: stride,
+                    pixel_format: format,
+                    alpha_mode: AlphaMode::Straight,
+                    color_space: ColorSpace::Srgb,
+                };
+                let required = descriptor.required_buffer_len().unwrap();
+                assert_eq!(required, stride * (height as usize - 1) + minimum);
+
+                let mut exact = vec![0xD7; required];
+                frame.write_to_surface(&mut exact, descriptor).unwrap();
+                for row in 0..height as usize {
+                    let padding_start = row * stride + minimum;
+                    let padding_end = ((row + 1) * stride).min(required);
+                    assert!(exact[padding_start..padding_end]
+                        .iter()
+                        .all(|byte| *byte == 0xD7));
+                }
+
+                if required > 0 {
+                    let mut short = vec![0xA9; required - 1];
+                    let before = short.clone();
+                    assert_eq!(
+                        frame.write_to_surface(&mut short, descriptor),
+                        Err(SurfaceError::BufferTooSmall)
+                    );
+                    assert_eq!(short, before);
+                }
+            }
+        }
+    }
+
+    let overflow = SurfaceDescriptor {
+        width: u32::MAX,
+        height: u32::MAX,
+        row_stride: usize::MAX,
+        pixel_format: PixelFormat::Rgba8,
+        alpha_mode: AlphaMode::Straight,
+        color_space: ColorSpace::Srgb,
+    };
+    assert_eq!(overflow.required_buffer_len(), Err(SurfaceError::SizeOverflow));
+}
+
+#[test]
+fn texture_constructors_reject_malformed_dimensions_and_pixel_counts() {
+    use ghostengine::TextureError;
+
+    assert_eq!(
+        Texture::new(0, 1, Vec::new()).unwrap_err(),
+        TextureError::ZeroDimension
+    );
+    assert_eq!(
+        Texture::new(1, 0, Vec::new()).unwrap_err(),
+        TextureError::ZeroDimension
+    );
+    assert_eq!(
+        Texture::new(u32::MAX, u32::MAX, Vec::new()).unwrap_err(),
+        TextureError::PixelCountMismatch
+    );
+    assert_eq!(
+        Texture::try_from_pixels(3, 2, &[Color::BLACK; 5]).unwrap_err(),
+        TextureError::PixelCountMismatch
+    );
 }
 
 #[cfg(feature = "image-decoding")]
