@@ -209,6 +209,10 @@ impl Framebuffer {
             self.pixels
                 .try_reserve_exact(new_count - self.pixels.len())
                 .map_err(|_| FramebufferError::AllocationFailed)?;
+            // Make every destination row addressable before moving rows.
+            // This is essential when widening: a destination row can start
+            // beyond the old vector length even though capacity was reserved.
+            self.pixels.resize(new_count, clear_color);
         }
 
         let old_width = self.width as usize;
