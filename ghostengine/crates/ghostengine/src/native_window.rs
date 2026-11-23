@@ -76,6 +76,12 @@ impl NativeWindowSurface {
             width,
             height,
             move |framebuffer, events, clipboard| {
+                // The legacy callback has no lifecycle-event parameter, so it
+                // must still honor the native close button instead of silently
+                // discarding CloseRequested and leaving the window alive.
+                if legacy_close_requested(&events) {
+                    return false;
+                }
                 let input = events
                     .into_iter()
                     .find_map(|event| match event {
@@ -349,6 +355,14 @@ where
     }
 }
 
+/// The legacy input-only callback cannot inspect lifecycle events, so
+/// native close requests must terminate it automatically.
+fn legacy_close_requested(events: &[HostEvent]) -> bool {
+    events
+        .iter()
+        .any(|event| matches!(event, HostEvent::CloseRequested))
+}
+
 /// Returns whether a physical drawable has an area available for presentation.
 fn drawable_size_is_nonzero(width: u32, height: u32) -> bool {
     width != 0 && height != 0
@@ -405,6 +419,17 @@ mod tests {
                 crate::HostError::InvalidDimensions
             ))
         ));
+    }
+
+    #[test]
+    fn legacy_callback_honors_native_close_requests() {
+        use crate::HostEvent;
+
+        assert!(super::legacy_close_requested(&[HostEvent::CloseRequested]));
+        assert!(!super::legacy_close_requested(&[
+            HostEvent::RedrawRequested,
+            HostEvent::FocusChanged { focused: true },
+        ]));
     }
 
     #[test]
