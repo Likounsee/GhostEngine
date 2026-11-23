@@ -201,7 +201,11 @@ impl NativeInputAdapter {
         // Some platform keyboard backends can report an unidentified physical
         // key while still providing its semantic meaning. Prefer the physical
         // mapping above, but retain editing/navigation through the logical key.
-        apply_logical_key(&event.logical_key, &mut self.frame);
+        apply_logical_key(
+            &event.logical_key,
+            self.control_down || self.super_down,
+            &mut self.frame,
+        );
 
         // KeyEvent::text is produced using the active OS keyboard layout. It
         // therefore supports AZERTY/QWERTY and composed characters, unlike
@@ -229,9 +233,9 @@ impl NativeInputAdapter {
     }
 }
 
-fn apply_logical_key(key: &Key, input: &mut InputState) {
-    if let Key::Named(named) = key {
-        match named {
+fn apply_logical_key(key: &Key, control: bool, input: &mut InputState) {
+    match key {
+        Key::Named(named) => match named {
             NamedKey::Backspace => input.backspace_pressed = true,
             NamedKey::Delete => input.delete_pressed = true,
             NamedKey::ArrowLeft => input.left_pressed = true,
@@ -242,7 +246,24 @@ fn apply_logical_key(key: &Key, input: &mut InputState) {
             NamedKey::Space => input.space_pressed = true,
             NamedKey::Tab => input.tab_pressed = true,
             _ => {}
+        },
+        Key::Character(value) if control => {
+            // Use the OS-resolved logical key, not a physical US-layout key
+            // position. This keeps Ctrl/Command shortcuts correct on AZERTY
+            // and other non-US keyboard layouts.
+            let mut characters = value.chars();
+            let character = characters.next().map(char::to_ascii_lowercase);
+            if characters.next().is_none() {
+                match character {
+                    Some('a') => input.select_all_pressed = true,
+                    Some('c') => input.copy_pressed = true,
+                    Some('x') => input.cut_pressed = true,
+                    Some('v') => input.paste_pressed = true,
+                    _ => {}
+                }
+            }
         }
+        _ => {}
     }
 }
 
@@ -281,10 +302,6 @@ fn apply_key_code(code: KeyCode, control: bool, shift: bool, input: &mut InputSt
         KeyCode::Enter | KeyCode::NumpadEnter => input.enter_pressed = true,
         KeyCode::Space => input.space_pressed = true,
         KeyCode::Tab => input.tab_pressed = true,
-        KeyCode::KeyA if control => input.select_all_pressed = true,
-        KeyCode::KeyC if control => input.copy_pressed = true,
-        KeyCode::KeyX if control => input.cut_pressed = true,
-        KeyCode::KeyV if control => input.paste_pressed = true,
         _ => {}
     }
     input.shift_down = shift;
@@ -365,8 +382,8 @@ mod tests {
         let mut input = InputState::default();
         apply_key_code(KeyCode::ArrowLeft, true, true, &mut input);
         apply_key_code(KeyCode::Backspace, true, true, &mut input);
-        apply_key_code(KeyCode::KeyA, true, true, &mut input);
-        apply_key_code(KeyCode::KeyC, true, true, &mut input);
+        apply_logical_key(&winit::keyboard::Key::Character("a".into()), true, &mut input);
+        apply_logical_key(&winit::keyboard::Key::Character("c".into()), true, &mut input);
 
         assert!(input.left_pressed);
         assert!(input.backspace_pressed);
@@ -393,10 +410,26 @@ mod tests {
             super_down: modifiers.super_down,
             ..InputState::default()
         };
-        apply_key_code(KeyCode::KeyA, input.super_down, false, &mut input);
-        apply_key_code(KeyCode::KeyC, input.super_down, false, &mut input);
-        apply_key_code(KeyCode::KeyX, input.super_down, false, &mut input);
-        apply_key_code(KeyCode::KeyV, input.super_down, false, &mut input);
+        apply_logical_key(
+            &winit::keyboard::Key::Character("a".into()),
+            input.super_down,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("c".into()),
+            input.super_down,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("x".into()),
+            input.super_down,
+            &mut input,
+        );
+        apply_logical_key(
+            &winit::keyboard::Key::Character("v".into()),
+            input.super_down,
+            &mut input,
+        );
         input.control_down = modifiers.control_down;
         input.super_down = modifiers.super_down;
 
@@ -413,9 +446,36 @@ mod tests {
         let mut input = InputState::default();
         apply_logical_key(
             &winit::keyboard::Key::Named(NamedKey::Backspace),
+            false,
             &mut input,
         );
         assert!(input.backspace_pressed);
+    }
+
+    #[test]
+    fn command_shortcuts_follow_logical_keys_instead_of_us_physical_positions() {
+        let mut input = InputState::default();
+
+        apply_logical_key(&winit::keyboard::Key::Character("A".into()), true, &mut input);
+        apply_logical_key(&winit::keyboard::Key::Character("c".into()), true, &mut input);
+        apply_logical_key(&winit::keyboard::Key::Character("x".into()), true, &mut input);
+        apply_logical_key(&winit::keyboard::Key::Character("v".into()), true, &mut input);
+
+        assert!(input.select_all_pressed);
+        assert!(input.copy_pressed);
+        assert!(input.cut_pressed);
+        assert!(input.paste_pressed);
+    }
+
+    #[test]
+    fn logical_shortcuts_are_ignored_without_control_or_command_modifier() {
+        let mut input = InputState::default();
+        apply_logical_key(&winit::keyboard::Key::Character("a".into()), false, &mut input);
+
+        assert!(!input.select_all_pressed);
+        assert!(!input.copy_pressed);
+        assert!(!input.cut_pressed);
+        assert!(!input.paste_pressed);
     }
 
     #[test]
