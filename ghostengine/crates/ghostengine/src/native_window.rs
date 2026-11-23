@@ -523,10 +523,10 @@ mod tests {
 
     #[test]
     fn rejects_a_native_presentation_buffer_with_the_wrong_pixel_count() {
-        assert!(validate_presentation_buffer_len(4, 4).is_ok());
+        assert!(super::validate_presentation_buffer_len(4, 4).is_ok());
         assert!(matches!(
-            validate_presentation_buffer_len(4, 3),
-            Err(NativeWindowError::PresentationBufferSizeMismatch {
+            super::validate_presentation_buffer_len(4, 3),
+            Err(super::NativeWindowError::PresentationBufferSizeMismatch {
                 expected: 4,
                 actual: 3
             })
