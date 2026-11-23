@@ -1,4 +1,5 @@
 use crate::{Color, Framebuffer};
+use std::sync::OnceLock;
 
 /// Byte layout used when exporting a CPU framebuffer to an external surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -130,6 +131,9 @@ impl Framebuffer {
         }
 
         let bpp = descriptor.pixel_format.bytes_per_pixel();
+        // Resolve the transfer-function table once, outside the pixel loop.
+        let linear_lut = (descriptor.color_space == ColorSpace::LinearSrgb)
+            .then(srgb_to_linear_lut);
         for (y, row) in self
             .pixels()
             .chunks_exact(self.width() as usize)
@@ -137,7 +141,7 @@ impl Framebuffer {
         {
             let row_start = y * descriptor.row_stride;
             for (x, pixel) in row.iter().copied().enumerate() {
-                let [r, g, b, a] = convert_pixel(pixel, descriptor);
+                let [r, g, b, a] = convert_pixel(pixel, descriptor, linear_lut);
                 let offset = row_start + x * bpp;
                 match descriptor.pixel_format {
                     PixelFormat::Rgb8 => {
@@ -159,7 +163,11 @@ impl Framebuffer {
     }
 }
 
-fn convert_pixel(pixel: Color, descriptor: SurfaceDescriptor) -> [u8; 4] {
+fn convert_pixel(
+    pixel: Color,
+    descriptor: SurfaceDescriptor,
+    linear_lut: Option<&'static [u8; 256]>,
+) -> [u8; 4] {
     let mut r = pixel.r;
     let mut g = pixel.g;
     let mut b = pixel.b;
@@ -169,10 +177,10 @@ fn convert_pixel(pixel: Color, descriptor: SurfaceDescriptor) -> [u8; 4] {
         pixel.a
     };
 
-    if descriptor.color_space == ColorSpace::LinearSrgb {
-        r = srgb_to_linear(r);
-        g = srgb_to_linear(g);
-        b = srgb_to_linear(b);
+    if let Some(table) = linear_lut {
+        r = table[usize::from(r)];
+        g = table[usize::from(g)];
+        b = table[usize::from(b)];
     }
     if descriptor.alpha_mode == AlphaMode::Premultiplied && descriptor.pixel_format.has_alpha() {
         r = multiply_alpha(r, a);
@@ -180,6 +188,23 @@ fn convert_pixel(pixel: Color, descriptor: SurfaceDescriptor) -> [u8; 4] {
         b = multiply_alpha(b, a);
     }
     [r, g, b, a]
+}
+
+/// Returns an immutable sRGB-to-linear lookup table initialized once and
+/// shared safely by concurrent surface exports.
+fn srgb_to_linear_lut() -> &'static [u8; 256] {
+    static TABLE: OnceLock<[u8; 256]> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        std::array::from_fn(|channel| {
+            let value = channel as f64 / 255.0;
+            let linear = if value <= 0.04045 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            };
+            linear.mul_add(255.0, 0.5).floor() as u8
+        })
+    })
 }
 
 fn multiply_alpha(channel: u8, alpha: u8) -> u8 {
