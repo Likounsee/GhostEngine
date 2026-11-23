@@ -513,8 +513,7 @@ mod tests {
     fn resize_preserving_matches_reference_for_all_small_dimension_pairs() {
         for old_height in 1..=8 {
             for old_width in 1..=8 {
-                let mut original =
-                    Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
+                let mut original = Framebuffer::new(old_width, old_height, Color::BLACK).unwrap();
                 for y in 0..old_height {
                     for x in 0..old_width {
                         let color = Color::rgba(
