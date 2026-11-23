@@ -12,7 +12,9 @@ permissions:
 # Preserve each pushed revision's validation instead of cancelling a run
 # while a newer commit is being prepared or pushed.
 concurrency:
-  group: ghostengine-ci-${{ github.ref }}
+  # Give every commit its own group so queued validations are not superseded
+  # by a later push to the same branch.
+  group: ghostengine-ci-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
