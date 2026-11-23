@@ -132,8 +132,8 @@ impl Framebuffer {
 
         let bpp = descriptor.pixel_format.bytes_per_pixel();
         // Resolve the transfer-function table once, outside the pixel loop.
-        let linear_lut = (descriptor.color_space == ColorSpace::LinearSrgb)
-            .then(srgb_to_linear_lut);
+        let linear_lut =
+            (descriptor.color_space == ColorSpace::LinearSrgb).then(srgb_to_linear_lut);
         for (y, row) in self
             .pixels()
             .chunks_exact(self.width() as usize)
