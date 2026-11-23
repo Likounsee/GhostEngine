@@ -121,9 +121,11 @@ window behavior must still be validated on all three operating systems.
 The native adapter deliberately remains callback-driven: Winit owns event dispatch
 and redraw scheduling, while `HostBackend::poll_events` is a synchronous polling
 contract. These lifecycle models must not be joined by blocking, synthetic
-polling, or an adapter that hides event-loop ownership. The remaining host work is real-window validation on Windows, Linux and macOS,
-plus a deliberate decision about whether a future common API should expose a
-callback-driven runner alongside the synchronous headless polling contract.
+polling, or an adapter that hides event-loop ownership. The public host API now exposes both lifecycle models explicitly: synchronous
+polling through `HostBackend` for headless/poll-driven hosts and callback-driven
+frame scheduling through `HostRunControl` for native event loops. Remaining host
+work is real-window validation on Windows, Linux and macOS and any platform-specific
+capability corrections revealed by that validation.
 
 ## Planned feature groups
 
