@@ -3223,7 +3223,7 @@ mod tests {
             .shape_text_with_direction("שלום", 28.0, crate::TextDirection::RightToLeft)
             .expect("Hebrew run should shape");
 
-        let background = crate::Color::rgba(18, 27, 36, 255);
+        let background = crate::Color::rgba(18, 27, 36, 91);
         let color = crate::Color::rgba(245, 180, 40, 192);
         let clip = crate::Rect::new(18, 6, 84, 50);
         let baseline = crate::Point::new(42, 46);
