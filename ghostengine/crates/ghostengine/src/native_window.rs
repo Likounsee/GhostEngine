@@ -122,11 +122,16 @@ impl NativeWindowSurface {
             surface: None,
             window: None,
             pending_events: Vec::new(),
+            failure: None,
             draw,
         };
         event_loop
             .run_app(&mut app)
-            .map_err(|error| NativeWindowError::EventLoop(error.to_string()))
+            .map_err(|error| NativeWindowError::EventLoop(error.to_string()))?;
+        if let Some(error) = app.failure.take() {
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
@@ -140,6 +145,7 @@ struct NativeApp<F> {
     surface: Option<Surface<OwnedDisplayHandle, Arc<Window>>>,
     window: Option<Arc<Window>>,
     pending_events: Vec<HostEvent>,
+    failure: Option<NativeWindowError>,
     draw: F,
 }
 
@@ -147,26 +153,32 @@ impl<F> NativeApp<F>
 where
     F: FnMut(&mut Framebuffer, Vec<HostEvent>, &mut NativeClipboard) -> bool,
 {
-    fn resize_framebuffer(&mut self, size: PhysicalSize<u32>) {
+    fn resize_framebuffer(
+        &mut self,
+        size: PhysicalSize<u32>,
+    ) -> Result<(), FramebufferError> {
         if size.width == 0 || size.height == 0 {
-            return;
+            return Ok(());
         }
         if self.framebuffer.width() == size.width && self.framebuffer.height() == size.height {
-            return;
+            return Ok(());
         }
-        let Ok(mut resized) = Framebuffer::new(size.width, size.height, Color::BLACK) else {
-            return;
-        };
-        let copy_width = self.framebuffer.width().min(size.width);
-        let copy_height = self.framebuffer.height().min(size.height);
+
+        let mut resized = Framebuffer::new(size.width, size.height, Color::BLACK)?;
+        let copy_width = self.framebuffer.width().min(size.width) as usize;
+        let copy_height = self.framebuffer.height().min(size.height) as usize;
+        let source_width = self.framebuffer.width() as usize;
+        let destination_width = size.width as usize;
         for y in 0..copy_height {
-            for x in 0..copy_width {
-                if let Some(pixel) = self.framebuffer.get_pixel(x, y) {
-                    resized.set_pixel(x, y, pixel);
-                }
-            }
+            let source_start = y * source_width;
+            let destination_start = y * destination_width;
+            resized.pixels_mut()[destination_start..destination_start + copy_width]
+                .copy_from_slice(
+                    &self.framebuffer.pixels()[source_start..source_start + copy_width],
+                );
         }
         self.framebuffer = resized;
+        Ok(())
     }
 
     fn present(&mut self) -> Result<(), NativeWindowError> {
@@ -209,9 +221,13 @@ where
         let attributes = WindowAttributes::default()
             .with_title(self.title.clone())
             .with_inner_size(self.initial_size);
-        let Ok(window) = event_loop.create_window(attributes) else {
-            event_loop.exit();
-            return;
+        let window = match event_loop.create_window(attributes) {
+            Ok(window) => window,
+            Err(error) => {
+                self.failure = Some(NativeWindowError::Backend(error.to_string()));
+                event_loop.exit();
+                return;
+            }
         };
         let window = Arc::new(window);
         window.set_ime_allowed(true);
@@ -228,7 +244,10 @@ where
                 });
                 window.request_redraw();
             }
-            Err(_) => event_loop.exit(),
+            Err(error) => {
+                self.failure = Some(NativeWindowError::Backend(error.to_string()));
+                event_loop.exit();
+            }
         }
     }
 
@@ -254,7 +273,11 @@ where
                 }
             }
             WindowEvent::Resized(size) => {
-                self.resize_framebuffer(size);
+                if let Err(error) = self.resize_framebuffer(size) {
+                    self.failure = Some(NativeWindowError::Framebuffer(error));
+                    event_loop.exit();
+                    return;
+                }
                 self.pending_events.push(HostEvent::Resized {
                     width: size.width,
                     height: size.height,
@@ -272,7 +295,8 @@ where
                     event_loop.exit();
                     return;
                 }
-                if self.present().is_err() {
+                if let Err(error) = self.present() {
+                    self.failure = Some(error);
                     event_loop.exit();
                 }
             }
