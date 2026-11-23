@@ -171,7 +171,7 @@ where
         // surface; the next non-zero resize will resume normal presentation.
         if self.window.as_ref().is_some_and(|window| {
             let size = window.inner_size();
-            size.width == 0 || size.height == 0
+            !drawable_size_is_nonzero(size.width, size.height)
         }) {
             return Ok(());
         }
