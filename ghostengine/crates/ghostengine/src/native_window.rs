@@ -166,6 +166,15 @@ where
     }
 
     fn present(&mut self) -> Result<(), NativeWindowError> {
+        // A minimized window can have a zero-sized drawable. Keep the last
+        // framebuffer, but do not ask softbuffer to present into an unavailable
+        // surface; the next non-zero resize will resume normal presentation.
+        if self.window.as_ref().is_some_and(|window| {
+            let size = window.inner_size();
+            size.width == 0 || size.height == 0
+        }) {
+            return Ok(());
+        }
         let Some(surface) = self.surface.as_mut() else {
             return Ok(());
         };
@@ -333,6 +342,11 @@ fn resize_framebuffer_contents(
     Ok(resized)
 }
 
+/// Returns whether a physical drawable has an area available for presentation.
+fn drawable_size_is_nonzero(width: u32, height: u32) -> bool {
+    width != 0 && height != 0
+}
+
 /// Converts a straight-alpha GhostEngine color to softbuffer's 0x00RRGGBB layout.
 fn pack_softbuffer_pixel(color: Color) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
@@ -370,6 +384,14 @@ mod tests {
 
         let cropped = super::resize_framebuffer_contents(&source, 1, 1).unwrap();
         assert_eq!(cropped.pixels(), &[Color::RED]);
+    }
+
+    #[test]
+    fn minimized_window_size_is_not_presentable() {
+        assert!(!super::drawable_size_is_nonzero(0, 0));
+        assert!(!super::drawable_size_is_nonzero(640, 0));
+        assert!(!super::drawable_size_is_nonzero(0, 480));
+        assert!(super::drawable_size_is_nonzero(640, 480));
     }
 
     #[test]
