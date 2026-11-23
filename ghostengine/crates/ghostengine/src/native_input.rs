@@ -475,7 +475,12 @@ mod tests {
         adapter.frame.right_mouse_pressed = true;
         adapter.frame.shortcut_keys.push('a');
         adapter.frame.text_events.push(TextInputEvent::Insert("x".into()));
-        adapter.left_click_tracker.click_count = 2;
+        assert_eq!(
+            adapter
+                .left_click_tracker
+                .record(Some(crate::Point::new(4, 4))),
+            1
+        );
 
         adapter.process_window_event(&WindowEvent::Focused(false));
         let frame = adapter.take_frame();
