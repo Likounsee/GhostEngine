@@ -63,6 +63,10 @@ jobs:
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --no-default-features --features native-window
 
+      - name: Test native window backend without default features
+        working-directory: ghostengine
+        run: cargo test --workspace --all-targets --no-default-features --features native-window
+
       - name: Run tests with all optional features
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --all-features
