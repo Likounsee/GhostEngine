@@ -26,6 +26,7 @@ pub enum NativeWindowError {
     EventLoop(String),
     Backend(String),
     Clipboard(String),
+    PresentationBufferSizeMismatch { expected: usize, actual: usize },
 }
 
 impl fmt::Display for NativeWindowError {
@@ -37,6 +38,10 @@ impl fmt::Display for NativeWindowError {
             Self::EventLoop(error) => write!(f, "event loop error: {error}"),
             Self::Backend(error) => write!(f, "native presentation error: {error}"),
             Self::Clipboard(error) => write!(f, "native clipboard error: {error}"),
+            Self::PresentationBufferSizeMismatch { expected, actual } => write!(
+                f,
+                "native presentation buffer has {actual} pixels; expected {expected}"
+            ),
         }
     }
 }
@@ -240,6 +245,7 @@ where
         let mut buffer = surface
             .buffer_mut()
             .map_err(|error| NativeWindowError::Backend(error.to_string()))?;
+        validate_presentation_buffer_len(self.framebuffer.pixels().len(), buffer.len())?;
         for (destination, source) in buffer.iter_mut().zip(self.framebuffer.pixels()) {
             *destination = pack_softbuffer_pixel(*source);
         }
@@ -411,6 +417,17 @@ fn drawable_size_changed(previous: (u32, u32), next: (u32, u32)) -> bool {
 }
 
 /// Converts a straight-alpha GhostEngine color to softbuffer's 0x00RRGGBB layout.
+fn validate_presentation_buffer_len(
+    expected: usize,
+    actual: usize,
+) -> Result<(), NativeWindowError> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(NativeWindowError::PresentationBufferSizeMismatch { expected, actual })
+    }
+}
+
 fn pack_softbuffer_pixel(color: Color) -> u32 {
     (u32::from(color.r) << 16) | (u32::from(color.g) << 8) | u32::from(color.b)
 }
@@ -501,6 +518,18 @@ mod tests {
         assert!(!super::drawable_size_changed(
             reported_size,
             framebuffer_size
+        ));
+    }
+
+    #[test]
+    fn rejects_a_native_presentation_buffer_with_the_wrong_pixel_count() {
+        assert!(validate_presentation_buffer_len(4, 4).is_ok());
+        assert!(matches!(
+            validate_presentation_buffer_len(4, 3),
+            Err(NativeWindowError::PresentationBufferSizeMismatch {
+                expected: 4,
+                actual: 3
+            })
         ));
     }
 
