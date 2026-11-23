@@ -12,6 +12,36 @@ GhostEngine's CPU renderer is a first-class backend, not a temporary fallback. I
 
 The current CPU benchmark uses a 1920x1080 destination and includes both small UI-like work and large raster workloads. Its 16.67 ms indicator is a per-operation diagnostic threshold, not a universal promise for every machine or every scene. Results must always be interpreted alongside the CPU model, resolution, build mode and benchmark protocol.
 
+## Recorded CI baseline — 2026-11-23
+
+A release benchmark was completed on all three GitHub-hosted runner platforms
+(workflow run [45207786406](https://github.com/Likounsee/GhostEngine/actions/runs/45207786406),
+source revision `6ee07257`). Each runner exposed only 3–4 logical CPUs, so these
+numbers are a reproducible CI snapshot, not a low-end desktop reference or a
+cross-machine performance guarantee.
+
+| Workload | Windows x86_64 | Linux x86_64 | macOS arm64 |
+|---|---:|---:|---:|
+| Linear gradient | 11.81 ms | 11.76 ms | 11.05 ms |
+| Radial gradient | 12.08 ms | 12.04 ms | 15.13 ms |
+| Texture bilinear | 9.17 ms | 11.19 ms | 4.86 ms |
+| Antialiased UI button + text | 12.46 ms | 14.01 ms | 11.23 ms |
+| Nested groups, reused scratch (uncached) | 26.33 ms | 28.83 ms | 26.00 ms |
+| Nested groups, persistent cache | 9.19 ms | 9.03 ms | 9.83 ms |
+
+The nested-group result is the clearest optimization signal: rebuilding every
+group surface each frame exceeds the isolated 16.67 ms diagnostic target on
+these virtual runners, while retaining stable group IDs and using
+`LayerGroupCache` keeps the measured composition below 10 ms. Prefer the
+persistent cache for mostly static group content and mark local damage when
+content changes. The uncached path remains useful for dynamic scenes and as a
+simple correctness/reference path.
+
+Mipmap construction for the 3840x2160 source took 50.7–139.7 ms as one-time
+setup on these runners; steady-state 4K-to-1080p mipmapped drawing measured
+0.18–0.46 ms per frame. Keep these setup and frame costs separate when
+evaluating the workload.
+
 ## GPU backend (future work)
 
 A future GPU backend should target substantially lower rendering latency and higher throughput where supported by the hardware. Its targets must be defined separately after selecting an API and measuring real devices. Do not compare CPU and GPU numbers without accounting for upload, synchronization, readback, presentation and workload differences.
