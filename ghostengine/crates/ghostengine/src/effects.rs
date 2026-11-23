@@ -471,7 +471,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod box_blur_reference_tests {
     use super::{apply_box_blur, EffectScratch};
@@ -561,7 +560,6 @@ mod box_blur_reference_tests {
     }
 }
 
-
 #[cfg(test)]
 mod gaussian_reference_tests {
     use super::{apply_gaussian_blur, EffectScratch};
@@ -609,9 +607,7 @@ mod gaussian_reference_tests {
                 let pixel = if sums[3] <= 0.0 || total <= 0.0 {
                     Color::TRANSPARENT
                 } else {
-                    let channel = |value: f64| {
-                        (value / sums[3]).round().clamp(0.0, 255.0) as u8
-                    };
+                    let channel = |value: f64| (value / sums[3]).round().clamp(0.0, 255.0) as u8;
                     let alpha = (sums[3] / total * 255.0).round().clamp(0.0, 255.0) as u8;
                     Color::rgba(channel(sums[0]), channel(sums[1]), channel(sums[2]), alpha)
                 };
@@ -639,8 +635,14 @@ mod gaussian_reference_tests {
                 for requested_radius in [1_u32, 2, 5, 8] {
                     let radius = (requested_radius as usize).min(width.max(height) - 1);
                     let sigma = (radius as f64 * 0.5).max(0.5);
-                    let horizontal =
-                        reference_axis(frame.pixels(), width, height, radius.min(width - 1), sigma, true);
+                    let horizontal = reference_axis(
+                        frame.pixels(),
+                        width,
+                        height,
+                        radius.min(width - 1),
+                        sigma,
+                        true,
+                    );
                     let expected = reference_axis(
                         &horizontal,
                         width,
