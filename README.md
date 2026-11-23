@@ -82,17 +82,14 @@ The engine will not promise performance figures before reproducible benchmarks e
 - Layers, off-screen targets and compositing.
 - Text layout, glyph rasterization and font integration.
 
-### 3D
+### 3D — future phase after GPU acceleration
 
 - Vertices, indices, meshes and materials.
-- Model, view and projection transformations.
-- Triangle clipping and rasterization.
-- Perspective-correct interpolation.
-- Depth buffering and visibility handling.
-- Textures, lighting and shading.
-- Render targets and a documented material/shader model.
+- Cameras, model/view/projection transforms.
+- Triangle clipping, perspective-correct interpolation and depth buffering.
+- Textures, lighting and a documented material/shader model.
 
-The 3D pipeline will be implemented incrementally, with a software reference path and tests for each stage.
+3D starts only after the hardware-accelerated foundation is implemented and validated.
 
 ## Target architecture
 
@@ -140,23 +137,17 @@ The final crate boundaries will be chosen as implementation solidifies. The init
 
 ## Development priorities
 
-1. **Project foundation:** Rust workspace, formatting, linting, CI, errors, math and basic public types.
-2. **CPU renderer foundation:** pixel buffers, formats, clipping, blending, deterministic output and tests.
-3. **Fast 2D renderer:** primitives, transforms, paths, tile-based execution and multithreading.
-4. **Images and composition:** image resources, layers, off-screen surfaces and compositor.
-5. **Text:** glyph rasterization, layout and caching.
-6. **Software 3D:** transformations, clipping, triangle rasterization, depth, textures and basic lighting.
-7. **Windows and Linux presentation:** minimal native adapters to display GhostEngine-produced frames.
-8. **Optimization and hardening:** profiling, SIMD, memory budgets, benchmarks, stress tests and API stability.
-9. **Application integration:** PeaceEmu, Archia Browser and the Office suite.
-10. **Future hardware research:** investigate whether a GhostEngine-owned GPU/driver architecture is viable without relying on existing graphics APIs.
-11. **Future ArchiaOS port:** only when ArchiaOS is ready to integrate an independent graphics engine.
+1. **Project foundation:** Rus## Development priorities
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for milestones and acceptance criteria, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical design. See [docs/FEATURES.md](docs/FEATURES.md) for optional Cargo features and build selections.
+1. **Finish GhostEngine 2D V1:** complete rendering, paths, strokes, gradients, images, text, UI, composition, input, presentation and platform integration.
+2. **Harden 2D V1:** fix correctness and safety issues, validate Windows/Linux/macOS host paths, expand deterministic/property/fuzz tests, document the public API and record reproducible CPU performance baselines.
+3. **Hardware acceleration:** after 2D V1 acceptance criteria pass, design and implement a GhostEngine-owned GPU path, keeping CPU rendering as a supported fallback and correctness reference.
+4. **3D rendering:** only after the GPU foundation works on real devices; reuse its resource and command architecture.
+5. **Application integration:** Archia Browser, PeaceEmu, Office suite and ArchiaOS as their platform foundations become ready.
 
-## Quality requirements
+There is **no 2D V2 milestone** and no separate software-3D phase before GPU acceleration. See [docs/ROADMAP.md](docs/ROADMAP.md) for acceptance criteria and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical boundaries.
 
-- The CPU renderer must work without a GPU.
+hout a GPU.
 - Core rendering tests must run in CI without a display server.
 - Small deterministic scenes should have pixel-output tests.
 - Multithreaded and single-threaded output should be consistent.
