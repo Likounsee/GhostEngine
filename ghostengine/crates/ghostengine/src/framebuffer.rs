@@ -135,9 +135,9 @@ impl Framebuffer {
 
     /// Consumes the framebuffer and returns its dimensions and pixel allocation.
     ///
-    /// This crate-private transfer lets other owned image types reuse the same
-    /// allocation without copying the framebuffer contents.
-    pub(crate) fn into_parts(self) -> (u32, u32, Vec<Color>) {
+    /// The returned vector retains the framebuffer's original allocation, so
+    /// applications can transfer pixels to another subsystem without copying.
+    pub fn into_parts(self) -> (u32, u32, Vec<Color>) {
         (self.width, self.height, self.pixels)
     }
 
@@ -335,6 +335,19 @@ mod tests {
         assert_eq!(framebuffer.height(), 2);
         assert_eq!(framebuffer.pixels().as_ptr(), allocation);
         assert_eq!(framebuffer.pixels(), &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+    }
+
+    #[test]
+    fn into_parts_returns_original_pixel_allocation() {
+        let framebuffer =
+            Framebuffer::new(2, 2, Color::MAGENTA).unwrap();
+        let allocation = framebuffer.pixels().as_ptr();
+
+        let (width, height, pixels) = framebuffer.into_parts();
+
+        assert_eq!((width, height), (2, 2));
+        assert_eq!(pixels.as_ptr(), allocation);
+        assert_eq!(pixels, vec![Color::MAGENTA; 4]);
     }
 
     #[test]
