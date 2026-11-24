@@ -134,8 +134,7 @@ impl TextureCache {
         // used_bytes + bytes can overflow when callers configure a budget
         // near usize::MAX, undercounting required evictions and potentially
         // leaving the eviction loop with no eligible entry.
-        let required_bytes =
-            required_eviction_bytes(self.used_bytes, self.budget_bytes, bytes);
+        let required_bytes = required_eviction_bytes(self.used_bytes, self.budget_bytes, bytes);
         let reclaimable_bytes = self
             .entries
             .values()
@@ -468,9 +467,7 @@ mod tests {
         let mut cache = TextureCache::new(8);
         let texture = texture(Color::BLUE, 3);
 
-        let (error, returned) = cache
-            .try_insert_preserving_texture(texture)
-            .unwrap_err();
+        let (error, returned) = cache.try_insert_preserving_texture(texture).unwrap_err();
 
         assert_eq!(
             error,
