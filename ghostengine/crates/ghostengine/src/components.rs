@@ -2684,6 +2684,27 @@ impl ComponentTree {
                     self.context_menu_state = Some(menu);
                     return ComponentEvents::default();
                 }
+                ComponentKey::Home | ComponentKey::End => {
+                    let next = if key == ComponentKey::Home {
+                        current_items.iter().position(|item| item.enabled)
+                    } else {
+                        current_items.iter().rposition(|item| item.enabled)
+                    };
+                    if let Some(next) = next {
+                        if depth == 0 {
+                            menu.selected = next;
+                            menu.submenu_depth = 0;
+                            menu.submenu_open = false;
+                        } else {
+                            menu.submenu_path[depth - 1] = next;
+                            menu.submenu_depth = depth;
+                            menu.submenu_selected = menu.submenu_path[0];
+                            menu.submenu_open = true;
+                        }
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
                 ComponentKey::ArrowRight => {
                     if let Some(item) = current_items.get(selected) {
                         if item.enabled
@@ -3198,6 +3219,74 @@ mod tests {
         let event = tree.handle_key(bounds, ComponentKey::Enter, false);
         assert_eq!(event.context_menu_action, Some(43));
         assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_home_and_end_select_first_and_last_enabled_commands() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 300, 160);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(70, "Disabled first").with_enabled(false),
+            ContextMenuItem::new(71, "Open"),
+            ContextMenuItem::new(72, "Disabled middle").with_enabled(false),
+            ContextMenuItem::new(73, "Delete"),
+            ContextMenuItem::new(74, "Disabled last").with_enabled(false),
+        ]);
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(71)
+        );
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(73)
+        );
+    }
+
+    #[test]
+    fn context_menu_home_and_end_navigate_nested_submenu_items() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![ContextMenuItem::new(80, "File").with_submenu(vec![
+            ContextMenuItem::new(81, "Disabled").with_enabled(false),
+            ContextMenuItem::new(82, "Export").with_submenu(vec![
+                ContextMenuItem::new(83, "Disabled PNG").with_enabled(false),
+                ContextMenuItem::new(84, "PNG"),
+                ContextMenuItem::new(85, "Disabled SVG").with_enabled(false),
+                ContextMenuItem::new(86, "SVG"),
+            ]),
+            ContextMenuItem::new(87, "Close"),
+        ])]);
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(86)
+        );
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(84)
+        );
     }
 
     #[test]
