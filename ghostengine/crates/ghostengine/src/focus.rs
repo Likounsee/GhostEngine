@@ -152,4 +152,62 @@ mod tests {
         focus.focus_next(&[true, true, true], false);
         assert_eq!(focus.focused(), Some(0));
     }
+
+    #[test]
+    fn traversal_matches_reference_for_every_small_enabled_mask() {
+        for count in 0..=8 {
+            for mask in 0..(1usize << count) {
+                let enabled: Vec<bool> = (0..count)
+                    .map(|index| mask & (1 << index) != 0)
+                    .collect();
+
+                for start in 0..=count {
+                    if start < count && !enabled[start] {
+                        continue;
+                    }
+                    for reverse in [false, true] {
+                        let mut focus = FocusManager::new();
+                        if start < count {
+                            focus.set_focus(Some(start), &enabled);
+                        }
+
+                        let expected = if start < count {
+                            (1..=count)
+                                .map(|step| {
+                                    if reverse {
+                                        (start + count - (step % count)) % count
+                                    } else {
+                                        (start + step) % count
+                                    }
+                                })
+                                .find(|index| enabled[*index])
+                        } else if reverse {
+                            (0..count).rev().find(|index| enabled[*index])
+                        } else {
+                            (0..count).find(|index| enabled[*index])
+                        };
+
+                        focus.focus_next(&enabled, reverse);
+                        assert_eq!(
+                            focus.focused(),
+                            expected,
+                            "count={count}, mask={mask:#010b}, start={start}, reverse={reverse}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reconciliation_preserves_focus_when_enabled_order_changes_around_it() {
+        let mut focus = FocusManager::new();
+        focus.set_focus(Some(3), &[true, false, true, true, false]);
+
+        focus.reconcile(&[false, true, true, true, true, true]);
+        assert_eq!(focus.focused(), Some(3));
+
+        focus.reconcile(&[true, true, false, false, true]);
+        assert_eq!(focus.focused(), Some(0));
+    }
 }

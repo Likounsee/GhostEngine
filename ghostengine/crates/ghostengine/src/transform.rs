@@ -267,4 +267,80 @@ mod tests {
         close(result.x, origin.x);
         close(result.y, origin.y);
     }
+
+    fn next_random(seed: &mut u64) -> f32 {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        ((*seed >> 40) as f32 / (1_u32 << 24) as f32) * 2.0 - 1.0
+    }
+
+    #[test]
+    fn randomized_composition_matches_sequential_point_transforms() {
+        let mut seed = 0x6a09_e667_f3bc_c909_u64;
+        for _ in 0..2_000 {
+            let first = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let second = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let point = Vector::new(
+                next_random(&mut seed) * 100.0,
+                next_random(&mut seed) * 100.0,
+            );
+
+            let sequential = second.transform_point(first.transform_point(point));
+            let composed = first.then(second).transform_point(point);
+            assert!(
+                (sequential.x - composed.x).abs() < 0.002
+                    && (sequential.y - composed.y).abs() < 0.002,
+                "sequential={sequential:?}, composed={composed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn randomized_inverses_round_trip_points_across_rotations_and_reflections() {
+        let mut seed = 0xbb67_ae85_84ca_a73b_u64;
+        for _ in 0..2_000 {
+            let transform = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    (0.1 + next_random(&mut seed).abs() * 5.0)
+                        * if next_random(&mut seed) < 0.0 { -1.0 } else { 1.0 },
+                    (0.1 + next_random(&mut seed).abs() * 5.0)
+                        * if next_random(&mut seed) < 0.0 { -1.0 } else { 1.0 },
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let point = Vector::new(
+                next_random(&mut seed) * 100.0,
+                next_random(&mut seed) * 100.0,
+            );
+            let restored = transform
+                .inverse()
+                .expect("generated transform must be invertible")
+                .transform_point(transform.transform_point(point));
+
+            assert!(
+                (restored.x - point.x).abs() < 0.002
+                    && (restored.y - point.y).abs() < 0.002,
+                "original={point:?}, restored={restored:?}, transform={transform:?}"
+            );
+        }
+    }
 }
