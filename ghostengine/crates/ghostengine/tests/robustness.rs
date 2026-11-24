@@ -1,8 +1,9 @@
 use ghostengine::{
-    fill_polygon_aa, fill_polygon_aa_parallel_with_threads, fill_polygon_parallel_with_threads,
-    AlphaMode, CachedLayer, Color, ColorSpace, DamageRegion, DisplayList, FontFace, Framebuffer,
-    Path, PathGeometryCache, PixelFormat, Point, Rect, SurfaceDescriptor, SurfaceError, Texture,
-    TextureCache, TextureCacheError, Transform2D, Vector,
+    compose_layers, compose_layers_auto, fill_polygon_aa, fill_polygon_aa_parallel_with_threads,
+    fill_polygon_parallel_with_threads, AlphaMode, BlendMode, CachedLayer, Color, ColorSpace,
+    DamageRegion, DisplayList, FontFace, Framebuffer, Layer, Path, PathGeometryCache, PixelFormat,
+    Point, Rect, SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError,
+    TextureFilter, Transform2D, Vector,
 };
 
 /// Small deterministic generator: reproducible property-style coverage without
@@ -117,6 +118,71 @@ fn damage_region_randomized_union_matches_a_pixel_reference_without_overlap() {
         assert_eq!(
             damage.covers_entire_target(),
             expected_area == u64::from(WIDTH) * u64::from(HEIGHT)
+        );
+    }
+}
+
+#[test]
+fn automatic_layer_composition_matches_serial_for_randomized_large_scenes() {
+    const WIDTH: u32 = 512;
+    const HEIGHT: u32 = 256;
+    let mut rng = Generator::new(0x4155_544f_434f_4d50);
+    let blend_modes = [
+        BlendMode::SourceOver,
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Add,
+        BlendMode::Difference,
+    ];
+
+    for case in 0..12 {
+        let mut layers = Vec::new();
+        for index in 0..6_u32 {
+            let mut framebuffer =
+                Framebuffer::new(WIDTH, HEIGHT, Color::TRANSPARENT).unwrap();
+            for pixel in framebuffer.pixels_mut() {
+                *pixel = Color::rgba(
+                    rng.next() as u8,
+                    rng.next() as u8,
+                    rng.next() as u8,
+                    rng.next() as u8,
+                );
+            }
+
+            let mut layer = Layer::from_framebuffer(framebuffer);
+            layer.set_position(
+                rng.range(49) as i32 - 24,
+                rng.range(33) as i32 - 16,
+            );
+            layer.set_opacity(rng.range(256) as u8);
+            layer.set_blend_mode(blend_modes[(case + index as usize) % blend_modes.len()]);
+            layer.set_filter(if index % 2 == 0 {
+                TextureFilter::Nearest
+            } else {
+                TextureFilter::Bilinear
+            });
+            match index % 3 {
+                1 => layer.set_transform(
+                    Transform2D::rotation(0.035).then(Transform2D::scale(1.08, 0.94)),
+                ),
+                2 => layer.set_transform(
+                    Transform2D::rotation(-0.025).then(Transform2D::scale(0.92, 1.06)),
+                ),
+                _ => {}
+            }
+            layers.push(layer);
+        }
+
+        let initial = Color::rgba(17, 29, 43, 211);
+        let mut expected = Framebuffer::new(WIDTH, HEIGHT, initial).unwrap();
+        compose_layers(&mut expected, &layers);
+
+        let mut actual = Framebuffer::new(WIDTH, HEIGHT, initial).unwrap();
+        compose_layers_auto(&mut actual, &layers);
+        assert_eq!(
+            actual.pixels(),
+            expected.pixels(),
+            "automatic compositor differs from serial output in scene {case}"
         );
     }
 }
