@@ -337,6 +337,36 @@ mod tests {
     }
 
     #[test]
+    fn clock_rebase_preserves_lru_order_and_handle_identity() {
+        let mut cache = TextureCache::new(24);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::GREEN, 2)).unwrap();
+        let third = cache.insert(texture(Color::BLUE, 2)).unwrap();
+
+        // Force the overflow path with a deliberately non-insertion ordering.
+        cache.clock = u64::MAX;
+        cache.entries.get_mut(&first).unwrap().last_used = 20;
+        cache.entries.get_mut(&second).unwrap().last_used = 10;
+        cache.entries.get_mut(&third).unwrap().last_used = 30;
+
+        // Advancing the clock rebases timestamps, then marks first newest.
+        assert!(cache.get(first).is_some());
+        assert_eq!(cache.entries[&second].last_used, 1);
+        assert_eq!(cache.entries[&third].last_used, 3);
+        assert_eq!(cache.entries[&first].last_used, 4);
+
+        // The next insertion must evict the genuinely least-recently-used
+        // entry, not whichever handle happened to be first in the map.
+        let fourth = cache.insert(texture(Color::WHITE, 2)).unwrap();
+        assert!(cache.peek(second).is_none());
+        assert!(cache.peek(first).is_some());
+        assert!(cache.peek(third).is_some());
+        assert!(cache.peek(fourth).is_some());
+        assert_eq!(cache.stats().used_bytes, 24);
+        assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
     fn inserts_and_retrieves_with_stable_handles() {
         let mut cache = TextureCache::new(64);
         let handle = cache.insert(texture(Color::RED, 4)).unwrap();
