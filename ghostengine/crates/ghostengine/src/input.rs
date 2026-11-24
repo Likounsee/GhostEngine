@@ -358,4 +358,102 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn click_tracker_accepts_exact_time_and_distance_boundaries() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        assert_eq!(tracker.record_at(Some(crate::Point::new(0, 0)), start), 1);
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(3, 4)),
+                start + Duration::from_millis(500)
+            ),
+            2
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(8, 4)),
+                start + Duration::from_millis(600)
+            ),
+            3
+        );
+    }
+
+    #[test]
+    fn click_tracker_rejects_just_outside_time_and_distance_boundaries() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        assert_eq!(tracker.record_at(Some(crate::Point::new(0, 0)), start), 1);
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(3, 4)),
+                start + Duration::from_millis(501)
+            ),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(7, 8)),
+                start + Duration::from_millis(600)
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn click_tracker_saturates_triple_click_count_and_restarts_after_gap() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        for (index, expected) in [(0, 1), (1, 2), (2, 3), (3, 3), (4, 3)] {
+            assert_eq!(
+                tracker.record_at(
+                    Some(crate::Point::new(40, 40)),
+                    start + Duration::from_millis(index * 100)
+                ),
+                expected
+            );
+        }
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(40, 40)),
+                start + Duration::from_millis(1_001)
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn missing_pointer_position_resets_click_sequence() {
+        use std::time::{Duration, Instant};
+
+        let start = Instant::now();
+        let mut tracker = super::ClickTracker::default();
+        assert_eq!(tracker.record_at(Some(crate::Point::new(12, 18)), start), 1);
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(12, 18)),
+                start + Duration::from_millis(100)
+            ),
+            2
+        );
+        assert_eq!(
+            tracker.record_at(None, start + Duration::from_millis(150)),
+            1
+        );
+        assert_eq!(
+            tracker.record_at(
+                Some(crate::Point::new(12, 18)),
+                start + Duration::from_millis(200)
+            ),
+            1
+        );
+    }
+
 }
