@@ -123,9 +123,19 @@ impl FontFace {
     /// Returns the recommended baseline-to-baseline distance at this size.
     #[must_use]
     pub fn line_height(&self, pixel_size: f32) -> f32 {
+        if !pixel_size.is_finite() || pixel_size <= 0.0 {
+            return 0.0;
+        }
+
         self.font
             .horizontal_line_metrics(pixel_size)
-            .map_or(pixel_size.max(1.0), |metrics| metrics.new_line_size)
+            .map_or(pixel_size.max(1.0), |metrics| {
+                if metrics.new_line_size.is_finite() && metrics.new_line_size > 0.0 {
+                    metrics.new_line_size
+                } else {
+                    pixel_size.max(1.0)
+                }
+            })
     }
 
     /// Measures a UTF-8 string using advances and four-space tab stops.
@@ -2901,6 +2911,28 @@ mod tests {
 
         let _ = font.glyph('ש', 24.0);
         assert_eq!(font.cached_glyph_count(), 1);
+    }
+
+    #[test]
+    fn line_height_rejects_non_finite_and_non_positive_sizes() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+
+        for invalid_size in [0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(
+                font.line_height(invalid_size),
+                0.0,
+                "invalid pixel size {invalid_size:?} should not reach the font backend"
+            );
+        }
+
+        for valid_size in [1.0, 12.0, 24.0, 128.0] {
+            let height = font.line_height(valid_size);
+            assert!(
+                height.is_finite() && height > 0.0,
+                "valid pixel size {valid_size} should produce a positive finite line height"
+            );
+        }
     }
 
     #[test]
