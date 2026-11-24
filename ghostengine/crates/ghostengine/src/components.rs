@@ -3422,7 +3422,7 @@ mod tests {
                             .with_visible(visible)
                     })
                     .collect();
-                let bounds = Rect::new(0, 0, 100, (count * 8) as u32);
+                let bounds = Rect::new(0, 0, 100, count * 8);
                 let mut tree = ComponentTree::new(roots);
 
                 tree.focus_first(bounds);
