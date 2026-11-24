@@ -745,45 +745,91 @@ impl ComponentTree {
         self.focusable_ids.clear();
         self.focusable_bounds.clear();
 
-        let roots: Vec<_> = self
+        // Keep the tree borrowed in place: cloning every visible root (and its
+        // descendants) on every frame made layout allocate and copy far more
+        // memory than the geometry calculation itself requires.
+        let root_items: Vec<_> = self
             .roots
             .iter()
             .filter(|node| node.visible)
-            .cloned()
+            .map(|node| node.layout_item)
             .collect();
-        let root_items: Vec<_> = roots.iter().map(|node| node.layout_item).collect();
         let root_rects = StackLayout::default().layout(bounds, &root_items);
-        for (node, rect) in roots.iter().zip(root_rects) {
-            self.place_node(node, rect, true);
+
+        let roots = &self.roots;
+        let placed = &mut self.placed;
+        let focusable_ids = &mut self.focusable_ids;
+        let focusable_bounds = &mut self.focusable_bounds;
+        let interaction = self.interaction;
+        for (node, rect) in roots
+            .iter()
+            .filter(|node| node.visible)
+            .zip(root_rects)
+        {
+            Self::place_node_into(
+                node,
+                rect,
+                true,
+                placed,
+                focusable_ids,
+                focusable_bounds,
+                interaction,
+            );
         }
         self.placed.as_slice()
     }
 
-    fn place_node(&mut self, node: &UiComponent, bounds: Rect, ancestors_enabled: bool) {
+    fn place_node_into(
+        node: &UiComponent,
+        bounds: Rect,
+        ancestors_enabled: bool,
+        placed: &mut Vec<PlacedComponent>,
+        focusable_ids: &mut Vec<ComponentId>,
+        focusable_bounds: &mut Vec<Rect>,
+        interaction: UiInteraction,
+    ) {
         let effectively_enabled = ancestors_enabled && node.enabled;
         let state = if node.is_focusable() && ancestors_enabled {
-            let index = self.focusable_ids.len();
-            self.focusable_ids.push(node.id);
-            self.focusable_bounds.push(bounds);
-            self.interaction.widget_state(index, true)
+            let index = focusable_ids.len();
+            focusable_ids.push(node.id);
+            focusable_bounds.push(bounds);
+            interaction.widget_state(index, true)
         } else if !effectively_enabled {
             WidgetState::Disabled
         } else {
             WidgetState::Normal
         };
-        self.placed.push(PlacedComponent {
+        placed.push(PlacedComponent {
             id: node.id,
             bounds,
             state,
         });
 
-        let children: Vec<_> = node.children.iter().filter(|child| child.visible).collect();
-        if !children.is_empty() {
-            let items: Vec<_> = children.iter().map(|child| child.layout_item).collect();
-            let child_rects = node.child_layout.layout(bounds, &items);
-            for (child, child_bounds) in children.into_iter().zip(child_rects) {
-                self.place_node(child, child_bounds, effectively_enabled);
-            }
+        let children = &node.children;
+        let child_items: Vec<_> = children
+            .iter()
+            .filter(|child| child.visible)
+            .map(|child| child.layout_item)
+            .collect();
+        if child_items.is_empty() {
+            return;
+        }
+
+        let child_rects = node.child_layout.layout(bounds, &child_items);
+        for (child, child_bounds) in children
+            .iter()
+            .filter(|child| child.visible)
+            .zip(child_rects)
+        {
+            Self::place_node_into(
+                child,
+                child_bounds,
+                effectively_enabled,
+                placed,
+                focusable_ids,
+                focusable_bounds,
+                interaction,
+            );
         }
     }
 
