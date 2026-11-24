@@ -1826,7 +1826,7 @@ fn compose_layer_groups_cached_internal(
         if let Some(damage) = target_damage {
             compose_layers_in_damage_regions(target, std::slice::from_ref(&entry.layer), damage);
         } else {
-            compose_layers(target, std::slice::from_ref(&entry.layer));
+            compose_layers_auto(target, std::slice::from_ref(&entry.layer));
         }
     }
     Ok(())
@@ -1858,7 +1858,7 @@ pub fn compose_layer_groups_with_scratch(
             continue;
         }
         render_layer_group_into(group, scratch, 0)?;
-        compose_layers(target, &scratch.layers[..1]);
+        compose_layers_auto(target, &scratch.layers[..1]);
     }
     Ok(())
 }
@@ -2125,7 +2125,7 @@ fn render_layer_group_into(
     for child in &group.children {
         match child {
             LayerGroupChild::Layer(layer) => {
-                compose_layers(
+                compose_layers_auto(
                     scratch.layers[depth].framebuffer_mut(),
                     std::slice::from_ref(layer),
                 );
@@ -2136,7 +2136,7 @@ fn render_layer_group_into(
                 }
                 render_layer_group_into(nested, scratch, depth + 1)?;
                 let (parents, children) = scratch.layers.split_at_mut(depth + 1);
-                compose_layers(
+                compose_layers_auto(
                     parents[depth].framebuffer_mut(),
                     std::slice::from_ref(&children[0]),
                 );
@@ -2568,6 +2568,78 @@ mod tests {
             actual.get_pixel(0, 0),
             Some(per_child.get_pixel(0, 0).unwrap().blend_over(background))
         );
+    }
+
+    #[test]
+    fn nested_group_parallel_composition_matches_serial_pixel_reference() {
+        let mut transformed = Layer::new(512, 256, Color::TRANSPARENT).unwrap();
+        for y in 0..256 {
+            for x in 0..512 {
+                let checker = ((x / 16) + (y / 16)) % 2 == 0;
+                let color = if checker {
+                    Color::rgba(55, 145, 235, 230)
+                } else {
+                    Color::rgba(235, 105, 65, 190)
+                };
+                transformed.framebuffer_mut().set_pixel(x, y, color);
+            }
+        }
+        transformed.set_position(24, 18);
+        transformed.set_opacity(211);
+        transformed.set_transform(
+            Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)),
+        );
+        transformed.set_filter(TextureFilter::Bilinear);
+
+        let mut inner = LayerGroup::new(512, 256).unwrap();
+        inner.add_layer(transformed.clone());
+        inner.set_position(42, 28);
+        inner.set_opacity(190);
+        inner.set_blend_mode(BlendMode::Screen);
+
+        let mut background = Layer::new(640, 360, Color::rgba(35, 90, 155, 255)).unwrap();
+        background.set_position(0, 0);
+        let mut outer = LayerGroup::new(640, 360).unwrap();
+        outer.add_layer(background.clone());
+        outer.add_group(inner.clone());
+        outer.set_position(10, 8);
+        outer.set_opacity(230);
+        outer.set_blend_mode(BlendMode::Multiply);
+
+        let initial = Color::rgb(18, 24, 32);
+        let mut actual = Framebuffer::new(660, 380, initial).unwrap();
+        let mut scratch = LayerGroupScratch::with_capacity(2);
+        compose_layer_groups_with_scratch(
+            &mut actual,
+            std::slice::from_ref(&outer),
+            &mut scratch,
+        )
+        .unwrap();
+
+        let mut inner_surface =
+            Framebuffer::new(inner.width, inner.height, Color::TRANSPARENT).unwrap();
+        compose_layers(&mut inner_surface, &[transformed]);
+        let mut inner_layer = Layer::from_framebuffer(inner_surface);
+        inner_layer.set_position(inner.x, inner.y);
+        inner_layer.set_opacity(inner.opacity);
+        inner_layer.set_blend_mode(inner.blend_mode);
+        inner_layer.set_transform(inner.transform);
+        inner_layer.set_filter(inner.filter);
+
+        let mut outer_surface =
+            Framebuffer::new(outer.width, outer.height, Color::TRANSPARENT).unwrap();
+        compose_layers(&mut outer_surface, &[background, inner_layer]);
+        let mut outer_layer = Layer::from_framebuffer(outer_surface);
+        outer_layer.set_position(outer.x, outer.y);
+        outer_layer.set_opacity(outer.opacity);
+        outer_layer.set_blend_mode(outer.blend_mode);
+        outer_layer.set_transform(outer.transform);
+        outer_layer.set_filter(outer.filter);
+
+        let mut expected = Framebuffer::new(660, 380, initial).unwrap();
+        compose_layers(&mut expected, &[outer_layer]);
+
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
