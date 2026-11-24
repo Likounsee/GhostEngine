@@ -116,10 +116,10 @@ fn padded_rows_preserve_export_padding_and_ignore_import_padding() {
     frame.set_pixel(0, 1, Color::rgba(9, 10, 11, 12));
     frame.set_pixel(1, 1, Color::rgba(13, 14, 15, 16));
 
-    let mut output = vec![0xA5; 20];
+    let mut output = vec![0xA5; 24];
     frame.write_to_surface(&mut output, descriptor).unwrap();
     assert_eq!(&output[8..12], &[0xA5; 4]);
-    assert_eq!(&output[16..20], &[0xA5; 4]);
+    assert_eq!(&output[20..24], &[0xA5; 4]);
 
     let mut imported = Framebuffer::new(2, 2, Color::BLACK).unwrap();
     imported.read_from_surface(&output, descriptor).unwrap();
