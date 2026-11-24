@@ -65,6 +65,13 @@ impl LayoutItem {
     }
 }
 
+/// Errors returned when a layout cannot allocate its output storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutError {
+    /// The output vector could not reserve enough memory for all child rectangles.
+    AllocationFailed,
+}
+
 /// Configuration for a simple vertical or horizontal stack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StackLayout {
@@ -107,9 +114,32 @@ impl StackLayout {
     /// assigned one pixel at a time to earlier flexible children.
     #[must_use]
     pub fn layout(self, bounds: Rect, items: &[LayoutItem]) -> Vec<Rect> {
+        let mut result = Vec::new();
+        self.try_layout_into(bounds, items, &mut result)
+            .expect("layout output allocation failed");
+        result
+    }
+
+    /// Computes child rectangles into caller-owned storage.
+    ///
+    /// Existing capacity is reused across frames. The vector is reserved before
+    /// it is cleared, so an allocation failure leaves its previous contents
+    /// untouched.
+    pub fn try_layout_into(
+        self,
+        bounds: Rect,
+        items: &[LayoutItem],
+        result: &mut Vec<Rect>,
+    ) -> Result<(), LayoutError> {
         if items.is_empty() {
-            return Vec::new();
+            result.clear();
+            return Ok(());
         }
+
+        result
+            .try_reserve(items.len())
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        result.clear();
 
         let (origin_x, origin_y, main_available, cross_available) = match self.direction {
             LayoutDirection::Vertical => (
@@ -146,7 +176,6 @@ impl StackLayout {
         let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
         let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
         let mut consumed = 0_u32;
-        let mut result = Vec::with_capacity(items.len());
 
         for (index, item) in items.iter().enumerate() {
             let requested = match item.main_size {
@@ -182,7 +211,7 @@ impl StackLayout {
                 consumed = consumed.saturating_add(self.gap);
             }
         }
-        result
+        Ok(())
     }
 }
 
@@ -383,6 +412,31 @@ mod tests {
         assert_eq!(viewport.offset(), i32::MAX as u32);
         viewport.scroll_by(i32::MIN);
         assert_eq!(viewport.offset(), 0);
+    }
+
+    #[test]
+    fn layout_into_reuses_output_capacity_and_replaces_previous_results() {
+        let layout = StackLayout::new(LayoutDirection::Vertical).with_gap(2);
+        let bounds = Rect::new(3, 4, 20, 20);
+        let items = [LayoutItem::fixed(5), LayoutItem::flexible()];
+        let expected = layout.layout(bounds, &items);
+        let mut output = Vec::with_capacity(8);
+        output.push(Rect::new(99, 99, 1, 1));
+        let capacity = output.capacity();
+
+        layout.try_layout_into(bounds, &items, &mut output).unwrap();
+
+        assert_eq!(output, expected);
+        assert_eq!(output.capacity(), capacity);
+    }
+
+    #[test]
+    fn layout_into_clears_output_for_empty_input() {
+        let mut output = vec![Rect::new(1, 2, 3, 4)];
+        StackLayout::default()
+            .try_layout_into(Rect::new(0, 0, 10, 10), &[], &mut output)
+            .unwrap();
+        assert!(output.is_empty());
     }
 
     #[test]
