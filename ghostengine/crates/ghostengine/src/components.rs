@@ -2296,6 +2296,58 @@ impl ComponentTree {
         true
     }
 
+    /// Returns the labels currently displayed by a tab strip.
+    #[must_use]
+    pub fn tabs_labels(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::Tabs { labels } => Some(labels.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Selects a tab by index. Invalid indices leave the current selection unchanged.
+    pub fn set_tabs_selected(&mut self, id: ComponentId, selected: usize) -> bool {
+        let Some(tab_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::Tabs { labels } => Some(labels.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        self.tabs_states
+            .entry(id)
+            .or_default()
+            .select(selected, tab_count)
+    }
+
+    /// Replaces tab labels and keeps the selected index when it remains valid.
+    ///
+    /// If the old selection no longer exists, the final tab is selected.
+    /// An empty label list clears the selection.
+    pub fn set_tabs_labels(&mut self, id: ComponentId, labels: Vec<String>) -> bool {
+        let selected = self.tabs_states.get(&id).and_then(|state| state.selected());
+        let Some(tab_count) = self.find_mut(id).and_then(|component| {
+            match &mut component.kind {
+                ComponentKind::Tabs { labels: current } => {
+                    *current = labels;
+                    Some(current.len())
+                }
+                _ => None,
+            }
+        }) else {
+            return false;
+        };
+        let selected = selected
+            .filter(|index| *index < tab_count)
+            .or_else(|| tab_count.checked_sub(1));
+        let state = self.tabs_states.entry(id).or_default();
+        if let Some(index) = selected {
+            state.select(index, tab_count);
+        } else {
+            *state = TabsState::new();
+        }
+        true
+    }
+
     /// Returns the selected tab index of a tab strip.
     #[must_use]
     pub fn tabs_selected(&self, id: ComponentId) -> Option<usize> {
@@ -4155,6 +4207,38 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(0));
         assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("A"));
         assert_eq!(tree.list_view_selected(id), None);
+    }
+
+    #[test]
+    fn retained_tabs_labels_and_selection_can_be_updated() {
+        let id = ComponentId(147);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["Home".into(), "Settings".into(), "About".into()],
+        )]);
+        assert_eq!(
+            tree.tabs_labels(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["Home", "Settings", "About"]
+        );
+        assert!(tree.set_tabs_selected(id, 2));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+        assert!(!tree.set_tabs_selected(id, 3));
+        assert!(!tree.set_tabs_selected(id, 99));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+
+        assert!(tree.set_tabs_labels(id, vec!["First".into(), "Second".into()]));
+        assert_eq!(tree.tabs_selected(id), Some(1));
+        assert!(tree.set_tabs_selected(id, 0));
+        assert!(tree.set_tabs_labels(id, vec!["Only".into()]));
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        assert!(tree.set_tabs_labels(id, Vec::new()));
+        assert_eq!(tree.tabs_labels(id).unwrap(), &[]);
+        assert_eq!(tree.tabs_selected(id), None);
+        assert!(!tree.set_tabs_labels(ComponentId(999), vec!["Missing".into()]));
     }
 
     #[test]
