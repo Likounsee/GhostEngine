@@ -176,11 +176,7 @@ impl TextureAtlasBuilder {
     /// This is the allocation-efficient path for loading a collection of
     /// textures directly into an atlas. Duplicate IDs and reservation failures
     /// leave the builder's existing entries unchanged.
-    pub fn add_owned(
-        &mut self,
-        id: u64,
-        texture: Texture,
-    ) -> Result<(), TextureAtlasError> {
+    pub fn add_owned(&mut self, id: u64, texture: Texture) -> Result<(), TextureAtlasError> {
         if self.ids.contains(&id) {
             return Err(TextureAtlasError::DuplicateId);
         }
