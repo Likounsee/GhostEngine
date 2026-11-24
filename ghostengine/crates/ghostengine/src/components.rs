@@ -1812,6 +1812,24 @@ impl ComponentTree {
         self.list_states.get(&id).and_then(|state| state.selected())
     }
 
+    /// Returns the current pixel scroll offset of a retained list view.
+    #[must_use]
+    pub fn list_view_scroll_offset(&self, id: ComponentId) -> Option<u32> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { scroll_offset, .. } => Some(*scroll_offset),
+            _ => None,
+        })
+    }
+
+    /// Returns the rows currently stored in a retained list view.
+    #[must_use]
+    pub fn list_view_items(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { items, .. } => Some(items.as_slice()),
+            _ => None,
+        })
+    }
+
     /// Selects a row in a retained list view programmatically.
     ///
     /// Passing None clears the selection. An out-of-range row index is
@@ -3812,6 +3830,29 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn retained_list_view_exposes_rows_and_scroll_offset() {
+        let id = ComponentId(142);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+
+        assert_eq!(
+            tree.list_view_items(id),
+            Some(["A", "B", "C", "D"].as_slice())
+        );
+        assert_eq!(tree.list_view_scroll_offset(id), Some(0));
+        assert_eq!(tree.list_view_items(ComponentId(999)), None);
+        assert_eq!(tree.list_view_scroll_offset(ComponentId(999)), None);
+
+        assert!(tree.set_list_view_scroll(id, 16));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(16));
     }
 
     #[test]
