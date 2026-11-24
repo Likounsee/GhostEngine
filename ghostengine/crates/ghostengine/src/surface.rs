@@ -509,7 +509,10 @@ mod tests {
         let bytes = [30, 20, 10, 40, 0xCC, 0xCC, 0xCC, 0xCC, 70, 60, 50, 80];
         frame.read_from_surface(&bytes, descriptor).unwrap();
 
-        assert_eq!(frame.pixels(), &[Color::rgba(10, 20, 30, 40), Color::rgba(50, 60, 70, 80)]);
+        assert_eq!(
+            frame.pixels(),
+            &[Color::rgba(10, 20, 30, 40), Color::rgba(50, 60, 70, 80)]
+        );
     }
 
     #[test]
