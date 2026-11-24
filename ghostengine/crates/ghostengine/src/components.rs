@@ -2277,16 +2277,20 @@ impl ComponentTree {
     /// If the selected index no longer exists, the final entry becomes selected.
     /// Replacing with an empty list clears the selection.
     pub fn set_combo_box_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
-        let selected = self.combo_states.get(&id).and_then(|state| state.selected());
-        let Some(item_count) = self.find_mut(id).and_then(|component| {
-            match &mut component.kind {
+        let selected = self
+            .combo_states
+            .get(&id)
+            .and_then(|state| state.selected());
+        let Some(item_count) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
                 ComponentKind::ComboBox { items: current } => {
                     *current = items;
                     Some(current.len())
                 }
                 _ => None,
-            }
-        }) else {
+            })
+        else {
             return false;
         };
         let selected = selected
@@ -2328,15 +2332,16 @@ impl ComponentTree {
     /// An empty label list clears the selection.
     pub fn set_tabs_labels(&mut self, id: ComponentId, labels: Vec<String>) -> bool {
         let selected = self.tabs_states.get(&id).and_then(|state| state.selected());
-        let Some(tab_count) = self.find_mut(id).and_then(|component| {
-            match &mut component.kind {
+        let Some(tab_count) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
                 ComponentKind::Tabs { labels: current } => {
                     *current = labels;
                     Some(current.len())
                 }
                 _ => None,
-            }
-        }) else {
+            })
+        else {
             return false;
         };
         let selected = selected
