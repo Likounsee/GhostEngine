@@ -543,6 +543,56 @@ mod tests {
     }
 
     #[test]
+    fn imports_rgb_and_bgr_without_alpha_as_opaque() {
+        let mut rgb = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
+        let rgb_descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgb8,
+            AlphaMode::Straight,
+            ColorSpace::Srgb,
+        );
+        rgb.read_from_surface(&[10, 20, 30], rgb_descriptor).unwrap();
+        assert_eq!(rgb.pixels(), &[Color::rgba(10, 20, 30, 255)]);
+
+        let mut bgr = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
+        let bgr_descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Bgr8,
+            AlphaMode::Straight,
+            ColorSpace::Srgb,
+        );
+        bgr.read_from_surface(&[30, 20, 10], bgr_descriptor).unwrap();
+        assert_eq!(bgr.pixels(), &[Color::rgba(10, 20, 30, 255)]);
+    }
+
+    #[test]
+    fn premultiplied_import_with_zero_alpha_clears_rgb_channels() {
+        let mut frame = Framebuffer::new(1, 1, Color::RED).unwrap();
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgba8,
+            AlphaMode::Premultiplied,
+            ColorSpace::Srgb,
+        );
+
+        frame.read_from_surface(&[200, 100, 50, 0], descriptor).unwrap();
+
+        assert_eq!(frame.pixels(), &[Color::TRANSPARENT]);
+    }
+
+    #[test]
+    fn linear_to_srgb_lookup_has_monotonic_values_and_exact_endpoints() {
+        let table = super::linear_to_srgb_lut();
+        assert_eq!(table[0], 0);
+        assert_eq!(table[255], 255);
+        assert!(table.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert_eq!(table[55], 128);
+    }
+
+    #[test]
     fn rejects_short_import_without_modifying_framebuffer() {
         let mut frame = Framebuffer::new(1, 1, Color::RED).unwrap();
         let descriptor = SurfaceDescriptor::tightly_packed(
