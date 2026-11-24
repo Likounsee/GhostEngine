@@ -64,8 +64,7 @@ pub use composition::{
     compose_layer_groups_with_scratch, compose_layers, compose_layers_auto,
     compose_layers_in_damage_regions, compose_layers_parallel_with_threads, BlendMode,
     DamageRegion, DamageRegionError, Layer, LayerGroup, LayerGroupCache, LayerGroupChild,
-    LayerGroupDamageTracker,
-    LayerGroupId, LayerGroupScratch,
+    LayerGroupDamageTracker, LayerGroupId, LayerGroupScratch,
 };
 pub use display_list::{DisplayList, DisplayListError, DisplayListRenderer, RenderStats};
 pub use effects::{
