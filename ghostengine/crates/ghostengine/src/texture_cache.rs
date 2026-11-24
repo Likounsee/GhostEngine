@@ -248,6 +248,13 @@ impl TextureCache {
         }
     }
 
+    /// Resets hit, miss and eviction counters without changing cached textures.
+    pub fn reset_stats(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+        self.evictions = 0;
+    }
+
     /// Returns the number of currently cached textures.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -483,6 +490,28 @@ mod tests {
         assert!(cache.peek(second).is_none());
         assert!(cache.peek(third).is_some());
         assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
+    fn resetting_stats_preserves_entries_and_memory_accounting() {
+        let mut cache = TextureCache::new(16);
+        let handle = cache.insert(texture(Color::RED, 2)).unwrap();
+        assert!(cache.get(handle).is_some());
+        assert!(cache.get(TextureHandle(999)).is_none());
+        cache.insert(texture(Color::BLUE, 2)).unwrap();
+        cache.insert(texture(Color::GREEN, 2)).unwrap();
+        assert_eq!(cache.stats().evictions, 1);
+
+        cache.reset_stats();
+
+        let stats = cache.stats();
+        assert_eq!(stats.entries, 2);
+        assert_eq!(stats.used_bytes, 16);
+        assert_eq!(stats.budget_bytes, 16);
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.evictions, 0);
+        assert!(cache.peek(handle).is_none());
     }
 
     #[test]
