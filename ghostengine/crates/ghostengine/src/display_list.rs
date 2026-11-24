@@ -2325,7 +2325,10 @@ mod tests {
         let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
 
-        assert_eq!(target.pixels(), &[Color::BLACK, Color::GREEN, Color::GREEN, Color::BLACK]);
+        assert_eq!(
+            target.pixels(),
+            &[Color::BLACK, Color::GREEN, Color::GREEN, Color::BLACK]
+        );
         assert_eq!(stats.commands_submitted, 1);
         assert_eq!(stats.commands_executed, 1);
     }
