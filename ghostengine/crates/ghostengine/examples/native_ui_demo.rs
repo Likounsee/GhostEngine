@@ -88,7 +88,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             let bounds = Rect::new(0, 0, framebuffer.width(), framebuffer.height());
-            let events = tree.handle_window_input_with_text_font(bounds, &input, Some((&font, 19.0)));
+            let events =
+                tree.handle_window_input_with_text_font(bounds, &input, Some((&font, 19.0)));
             if let Some(action) = events.clipboard_action {
                 match clipboard.resolve(&action) {
                     Ok(Some(text)) => {
