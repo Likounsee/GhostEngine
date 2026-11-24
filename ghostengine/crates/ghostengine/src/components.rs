@@ -3615,7 +3615,10 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(1));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 0, .. }
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
         ));
 
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
