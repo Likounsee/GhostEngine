@@ -1508,15 +1508,7 @@ mod tests {
         ] {
             let mut actual = Framebuffer::new(320, 120, Color::BLACK).unwrap();
             let mut expected = Framebuffer::new(320, 120, Color::BLACK).unwrap();
-            draw_button_aa(
-                &mut actual,
-                &font,
-                rect,
-                label,
-                pixel_size,
-                state,
-                &theme,
-            );
+            draw_button_aa(&mut actual, &font, rect, label, pixel_size, state, &theme);
 
             let background = match state {
                 WidgetState::Normal => theme.accent,
@@ -1536,8 +1528,7 @@ mod tests {
                 background,
             );
             let metrics = font.measure(label, pixel_size);
-            let x = i64::from(rect.x)
-                + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
+            let x = i64::from(rect.x) + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
             let line_height = font.line_height(pixel_size);
             let y = i64::from(rect.y)
                 + (i64::from(rect.height) - line_height.round() as i64) / 2
