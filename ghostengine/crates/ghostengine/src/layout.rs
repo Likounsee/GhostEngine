@@ -137,7 +137,7 @@ impl StackLayout {
         }
 
         result
-            .try_reserve(items.len())
+            .try_reserve(items.len().saturating_sub(result.len()))
             .map_err(|_| LayoutError::AllocationFailed)?;
         result.clear();
 
