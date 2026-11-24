@@ -3596,13 +3596,9 @@ mod tests {
             .is_none());
     }
 
-
     #[test]
     fn layout_capacity_can_be_reserved_before_the_first_frame() {
-        let mut tree = ComponentTree::new(vec![UiComponent::button(
-            ComponentId(910),
-            "Ready",
-        )]);
+        let mut tree = ComponentTree::new(vec![UiComponent::button(ComponentId(910), "Ready")]);
         tree.try_reserve_layout_capacity(32).unwrap();
 
         assert!(tree.placed.capacity() >= 32);
