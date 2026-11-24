@@ -4243,7 +4243,7 @@ mod tests {
         assert!(tree.set_tabs_labels(id, vec!["Only".into()]));
         assert_eq!(tree.tabs_selected(id), Some(0));
         assert!(tree.set_tabs_labels(id, Vec::new()));
-        assert_eq!(tree.tabs_labels(id).unwrap(), &[]);
+        assert!(tree.tabs_labels(id).unwrap().is_empty());
         assert_eq!(tree.tabs_selected(id), None);
         assert!(!tree.set_tabs_labels(ComponentId(999), vec!["Missing".into()]));
     }
@@ -4287,7 +4287,7 @@ mod tests {
         assert!(tree.set_combo_box_items(id, vec!["Only".into()]));
         assert_eq!(tree.combo_box_selected(id), Some(0));
         assert!(tree.set_combo_box_items(id, Vec::new()));
-        assert_eq!(tree.combo_box_items(id).unwrap(), &[]);
+        assert!(tree.combo_box_items(id).unwrap().is_empty());
         assert_eq!(tree.combo_box_selected(id), None);
         assert!(!tree.set_combo_box_items(ComponentId(999), vec!["X".into()]));
     }
