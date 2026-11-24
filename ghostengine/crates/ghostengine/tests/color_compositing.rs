@@ -1,33 +1,35 @@
 use ghostengine::Color;
 
+// Independent high-precision reference for the straight-alpha source-over equation.
 fn reference_source_over(source: Color, destination: Color) -> Color {
-    let source_alpha = f64::from(source.a) / 255.0;
-    let destination_alpha = f64::from(destination.a) / 255.0;
-    let output_alpha =
-        source_alpha + destination_alpha * (1.0 - source_alpha);
+    let source_alpha = u128::from(source.a);
+    let destination_alpha = u128::from(destination.a);
+    let inverse_source_alpha = 255 - source_alpha;
+    let alpha_numerator =
+        source_alpha * 255 + destination_alpha * inverse_source_alpha;
 
-    if output_alpha == 0.0 {
+    if alpha_numerator == 0 {
         return Color::TRANSPARENT;
     }
 
     let channel = |source_channel: u8, destination_channel: u8| {
-        let premultiplied = f64::from(source_channel) * source_alpha
-            + f64::from(destination_channel)
+        let numerator = u128::from(source_channel) * source_alpha * 255
+            + u128::from(destination_channel)
                 * destination_alpha
-                * (1.0 - source_alpha);
-        (premultiplied / output_alpha).round() as u8
+                * inverse_source_alpha;
+        ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
     };
 
     Color::rgba(
         channel(source.r, destination.r),
         channel(source.g, destination.g),
         channel(source.b, destination.b),
-        (output_alpha * 255.0).round() as u8,
+        ((alpha_numerator + 127) / 255) as u8,
     )
 }
 
 #[test]
-fn source_over_matches_float_reference_for_every_alpha_pair() {
+fn source_over_matches_reference_for_every_alpha_pair() {
     let channel_pairs = [
         ([0, 0, 0], [255, 255, 255]),
         ([255, 0, 0], [0, 255, 255]),
