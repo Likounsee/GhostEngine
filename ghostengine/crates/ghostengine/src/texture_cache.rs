@@ -107,10 +107,13 @@ impl TextureCache {
             .checked_add(1)
             .ok_or(TextureCacheError::HandleExhausted)?;
 
+        // Subtract the incoming allocation from the budget first. Adding
+        // used_bytes + bytes can overflow when callers configure a budget
+        // near usize::MAX, undercounting required evictions and potentially
+        // leaving the eviction loop with no eligible entry.
         let required_bytes = self
             .used_bytes
-            .saturating_add(bytes)
-            .saturating_sub(self.budget_bytes);
+            .saturating_sub(self.budget_bytes - bytes);
         let reclaimable_bytes = self
             .entries
             .values()
@@ -314,6 +317,17 @@ mod tests {
 
     fn texture(color: Color, pixels: usize) -> Texture {
         Texture::new(pixels as u32, 1, vec![color; pixels]).unwrap()
+    }
+
+    #[test]
+    fn insertion_eviction_requirement_does_not_overflow_near_usize_max() {
+        let budget = usize::MAX;
+        let used = usize::MAX - 5;
+        let incoming = 10;
+
+        let required = used.saturating_sub(budget - incoming);
+
+        assert_eq!(required, 5);
     }
 
     #[test]
