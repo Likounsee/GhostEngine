@@ -43,9 +43,7 @@ fn export_matrix_covers_every_pixel_format_and_alpha_mode() {
             };
             let channels = match alpha_mode {
                 AlphaMode::Straight | AlphaMode::Opaque => [100, 50, 20, alpha],
-                AlphaMode::Premultiplied if format.bytes_per_pixel() == 4 => {
-                    [50, 25, 10, alpha]
-                }
+                AlphaMode::Premultiplied if format.bytes_per_pixel() == 4 => [50, 25, 10, alpha],
                 AlphaMode::Premultiplied => [100, 50, 20, 255],
             };
             assert_eq!(
@@ -155,7 +153,10 @@ fn every_validation_failure_is_transactional_for_import_and_export() {
     );
     assert_eq!(short_output, [0xCC; 7]);
 
-    let invalid_stride = SurfaceDescriptor { row_stride: 7, ..valid };
+    let invalid_stride = SurfaceDescriptor {
+        row_stride: 7,
+        ..valid
+    };
     let mut output = [0xCC; 8];
     assert_eq!(
         frame.write_to_surface(&mut output, invalid_stride),
