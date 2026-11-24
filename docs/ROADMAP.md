@@ -128,7 +128,7 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `45261600749`; its virtual runner results are not substitutes for reference desktop measurements.
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
-- [x] Complete a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` plus the randomized texture-cache lifecycle test).
+- [ ] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` has been added; await green CI).
 - [ ] Stress-test repeated resize, minimize/restore, frame presentation and host shutdown.
 - [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
 
