@@ -255,7 +255,13 @@ pub fn draw_drop_shadow(
             }
         }
 
-        try_apply_gaussian_blur(&mut shadow, blur_radius, scratch)?;
+        if let Err(error) = try_apply_gaussian_blur(&mut shadow, blur_radius, scratch) {
+            // Keep the retained surface even when a temporary blur allocation
+            // fails. The destination has not been modified yet, so returning
+            // the cached framebuffer is safe and avoids discarding its capacity.
+            scratch.shadow = Some(shadow);
+            return Err(error);
+        }
         for pixel in shadow.pixels_mut() {
             pixel.a = ((u16::from(pixel.a) * u16::from(color.a) + 127) / 255) as u8;
         }
