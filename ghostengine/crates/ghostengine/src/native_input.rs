@@ -953,5 +953,4 @@ mod tests {
         assert_eq!(frame.scroll_delta_x, 0);
         assert_eq!(frame.scroll_delta_y, 0);
     }
-
 }
