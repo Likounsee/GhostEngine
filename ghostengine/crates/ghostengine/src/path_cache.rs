@@ -356,4 +356,75 @@ mod tests {
         assert!(cache.entries.iter().any(|entry| entry.key == 1));
         assert!(!cache.entries.iter().any(|entry| entry.key == 2));
     }
+
+
+    #[test]
+    fn failed_flatten_does_not_evict_valid_geometry_or_corrupt_lru_state() {
+        let valid = triangle();
+        let mut invalid = Path::new();
+        invalid.line_to(Vector::new(1.0, 1.0));
+        let mut cache = PathGeometryCache::new(1);
+
+        cache.get_or_flatten(10, &valid, 0.25).unwrap();
+        let before = cache.stats();
+
+        assert!(cache.get_or_flatten(20, &invalid, 0.25).is_err());
+        assert_eq!(cache.stats().entries, before.entries);
+        assert_eq!(cache.stats().hits, before.hits);
+        assert_eq!(cache.stats().misses, before.misses + 1);
+
+        // A failed miss must not replace the existing entry or make it older.
+        cache.get_or_flatten(10, &valid, 0.25).unwrap();
+        assert_eq!(cache.hit_count(), 1);
+        assert_eq!(cache.len(), 1);
+
+        // A later successful miss still performs the expected bounded eviction.
+        cache.get_or_flatten(30, &valid, 0.5).unwrap();
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.stats().misses, 3);
+        assert!(cache.entries.iter().any(|entry| entry.key == 30));
+        assert!(!cache.entries.iter().any(|entry| entry.key == 10));
+    }
+
+    #[test]
+    fn clear_preserves_lookup_counters_and_cache_remains_reusable() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(2);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+
+        cache.clear();
+
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 2);
+
+        cache.get_or_flatten(3, &path, 0.25).unwrap();
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.stats().misses, 3);
+        cache.get_or_flatten(3, &path, 0.25).unwrap();
+        assert_eq!(cache.stats().hits, 2);
+    }
+
+    #[test]
+    fn tolerance_bits_are_isolated_and_invalid_tolerances_never_enter_cache() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(4);
+
+        cache.get_or_flatten(7, &path, 0.25).unwrap();
+        cache.get_or_flatten(7, &path, 0.5).unwrap();
+        assert_eq!(cache.len(), 2);
+
+        for tolerance in [0.0, -0.25, f32::NAN, f32::INFINITY] {
+            assert!(cache.get_or_flatten(9, &path, tolerance).is_err());
+        }
+
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.stats().misses, 6);
+        assert_eq!(cache.stats().hits, 0);
+        cache.get_or_flatten(7, &path, 0.25).unwrap();
+        assert_eq!(cache.stats().hits, 1);
+    }
+
 }
