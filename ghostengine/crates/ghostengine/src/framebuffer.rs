@@ -346,8 +346,7 @@ mod tests {
 
     #[test]
     fn into_parts_returns_original_pixel_allocation() {
-        let framebuffer =
-            Framebuffer::new(2, 2, Color::MAGENTA).unwrap();
+        let framebuffer = Framebuffer::new(2, 2, Color::MAGENTA).unwrap();
         let allocation = framebuffer.pixels().as_ptr();
 
         let (width, height, pixels) = framebuffer.into_parts();
