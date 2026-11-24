@@ -164,6 +164,77 @@ impl Framebuffer {
         }
         Ok(())
     }
+
+    /// Imports caller-owned RGB/BGR or RGBA/BGRA memory into this framebuffer.
+    ///
+    /// Supports padded rows, straight or premultiplied alpha, and sRGB/linear-sRGB
+    /// input. Source padding is ignored. Validation errors leave this framebuffer
+    /// unchanged.
+    pub fn read_from_surface(
+        &mut self,
+        source: &[u8],
+        descriptor: SurfaceDescriptor,
+    ) -> Result<(), SurfaceError> {
+        let required_len = descriptor.required_buffer_len()?;
+        if descriptor.width != self.width() || descriptor.height != self.height() {
+            return Err(SurfaceError::DimensionMismatch);
+        }
+        if source.len() < required_len {
+            return Err(SurfaceError::BufferTooSmall);
+        }
+
+        let bpp = descriptor.pixel_format.bytes_per_pixel();
+        let srgb_lut =
+            (descriptor.color_space == ColorSpace::LinearSrgb).then(linear_to_srgb_lut);
+        let width = self.width() as usize;
+        for (y, row) in self.pixels_mut().chunks_exact_mut(width).enumerate() {
+            let row_start = y * descriptor.row_stride;
+            for (x, pixel) in row.iter_mut().enumerate() {
+                let offset = row_start + x * bpp;
+                let (mut r, mut g, mut b, a) = match descriptor.pixel_format {
+                    PixelFormat::Rgb8 => (
+                        source[offset],
+                        source[offset + 1],
+                        source[offset + 2],
+                        255,
+                    ),
+                    PixelFormat::Bgr8 => (
+                        source[offset + 2],
+                        source[offset + 1],
+                        source[offset],
+                        255,
+                    ),
+                    PixelFormat::Rgba8 => (
+                        source[offset],
+                        source[offset + 1],
+                        source[offset + 2],
+                        source[offset + 3],
+                    ),
+                    PixelFormat::Bgra8 => (
+                        source[offset + 2],
+                        source[offset + 1],
+                        source[offset],
+                        source[offset + 3],
+                    ),
+                };
+
+                if let Some(table) = srgb_lut {
+                    r = table[usize::from(r)];
+                    g = table[usize::from(g)];
+                    b = table[usize::from(b)];
+                }
+                if descriptor.alpha_mode == AlphaMode::Premultiplied
+                    && descriptor.pixel_format.has_alpha()
+                {
+                    r = unmultiply_alpha(r, a);
+                    g = unmultiply_alpha(g, a);
+                    b = unmultiply_alpha(b, a);
+                }
+                *pixel = Color::rgba(r, g, b, a);
+            }
+        }
+        Ok(())
+    }
 }
 
 fn convert_pixel(
@@ -210,8 +281,33 @@ fn srgb_to_linear_lut() -> &'static [u8; 256] {
     })
 }
 
+/// Returns a shared linear-sRGB-to-sRGB transfer-function lookup table.
+fn linear_to_srgb_lut() -> &'static [u8; 256] {
+    static TABLE: OnceLock<[u8; 256]> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        std::array::from_fn(|channel| {
+            let value = channel as f64 / 255.0;
+            let srgb = if value <= 0.003_130_8 {
+                value * 12.92
+            } else {
+                1.055 * value.powf(1.0 / 2.4) - 0.055
+            };
+            srgb.mul_add(255.0, 0.5).floor() as u8
+        })
+    })
+}
+
 fn multiply_alpha(channel: u8, alpha: u8) -> u8 {
     ((u16::from(channel) * u16::from(alpha) + 127) / 255) as u8
+}
+
+fn unmultiply_alpha(channel: u8, alpha: u8) -> u8 {
+    if alpha == 0 {
+        0
+    } else {
+        ((u16::from(channel) * 255 + u16::from(alpha) / 2) / u16::from(alpha))
+            .min(255) as u8
+    }
 }
 
 #[cfg(test)]
