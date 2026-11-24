@@ -1323,7 +1323,10 @@ mod tests {
         let flattened = path.flatten(0.1).unwrap();
         assert_eq!(flattened.subpaths.len(), 2);
         assert_eq!(flattened.subpaths[1].points.first(), Some(&start));
-        assert_eq!(flattened.subpaths[1].points.last(), Some(&Vector::new(8.0, 9.0)));
+        assert_eq!(
+            flattened.subpaths[1].points.last(),
+            Some(&Vector::new(8.0, 9.0))
+        );
     }
 
     #[test]
