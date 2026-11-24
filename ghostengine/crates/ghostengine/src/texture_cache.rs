@@ -43,6 +43,13 @@ pub enum TextureCacheError {
     AllocationFailed,
 }
 
+/// Returns how many bytes must be reclaimed before an allocation fits.
+///
+/// The incoming size must not exceed the budget; callers validate this first.
+fn required_eviction_bytes(used_bytes: usize, budget_bytes: usize, incoming_bytes: usize) -> usize {
+    used_bytes.saturating_sub(budget_bytes - incoming_bytes)
+}
+
 #[derive(Debug)]
 struct Entry {
     texture: Texture,
@@ -111,9 +118,8 @@ impl TextureCache {
         // used_bytes + bytes can overflow when callers configure a budget
         // near usize::MAX, undercounting required evictions and potentially
         // leaving the eviction loop with no eligible entry.
-        let required_bytes = self
-            .used_bytes
-            .saturating_sub(self.budget_bytes - bytes);
+        let required_bytes =
+            required_eviction_bytes(self.used_bytes, self.budget_bytes, bytes);
         let reclaimable_bytes = self
             .entries
             .values()
@@ -325,7 +331,7 @@ mod tests {
         let used = usize::MAX - 5;
         let incoming = 10;
 
-        let required = used.saturating_sub(budget - incoming);
+        let required = required_eviction_bytes(used, budget, incoming);
 
         assert_eq!(required, 5);
     }
