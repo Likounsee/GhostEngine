@@ -438,9 +438,11 @@ fn unified_cache_lifecycle_stays_bounded_under_repeated_churn() {
             .is_empty());
         assert!(path_cache.stats().entries <= path_cache.stats().capacity);
 
-        layer.mark_dirty(Rect::new(cycle % 8, cycle % 8, 1, 1));
+        let pixel_x = cycle % layer.framebuffer().width();
+        let pixel_y = cycle % layer.framebuffer().height();
+        layer.mark_dirty(Rect::new(pixel_x, pixel_y, 1, 1));
         assert!(layer.render_if_dirty(|frame, _damage| {
-            frame.set_pixel(cycle % frame.width(), cycle % frame.height(), color);
+            frame.set_pixel(pixel_x, pixel_y, color);
         }));
         if cycle % 17 == 0 {
             let width = 4 + cycle % 9;
@@ -452,8 +454,9 @@ fn unified_cache_lifecycle_stays_bounded_under_repeated_churn() {
 
     // The glyph cache deliberately clears in bounded batches instead of growing
     // without limit when applications encounter many size/glyph combinations.
-    for size in 8..5_000 {
-        let measured = font.measure("ا", size as f32);
+    for index in 0..5_000 {
+        let pixel_size = 12.0 + index as f32 / 5_000.0;
+        let measured = font.measure("ا", pixel_size);
         assert!(measured.width.is_finite());
     }
     assert!(font.cached_glyph_count() <= 4_096);
