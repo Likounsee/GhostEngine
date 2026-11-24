@@ -4164,19 +4164,33 @@ mod tests {
             id,
             vec!["One".into(), "Two".into(), "Three".into()],
         )]);
-        assert_eq!(tree.combo_box_items(id).unwrap().iter().map(String::as_str).collect::<Vec<_>>(), ["One", "Two", "Three"]);
+        assert_eq!(
+            tree.combo_box_items(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["One", "Two", "Three"]
+        );
         assert_eq!(tree.combo_box_selected(id), Some(0));
 
         assert!(tree.set_combo_box_selected(id, Some(2)));
         assert_eq!(tree.combo_box_selected(id), Some(2));
         assert!(!tree.set_combo_box_selected(id, Some(3)));
-        assert!(!tree.set_combo_box_selected(id, Some(0 + 99)));
+        assert!(!tree.set_combo_box_selected(id, Some(99)));
         assert!(tree.set_combo_box_selected(id, None));
         assert_eq!(tree.combo_box_selected(id), None);
 
         assert!(tree.set_combo_box_selected(id, Some(1)));
         assert!(tree.set_combo_box_items(id, vec!["A".into(), "B".into()]));
-        assert_eq!(tree.combo_box_items(id).unwrap().iter().map(String::as_str).collect::<Vec<_>>(), ["A", "B"]);
+        assert_eq!(
+            tree.combo_box_items(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["A", "B"]
+        );
         assert_eq!(tree.combo_box_selected(id), Some(1));
 
         assert!(tree.set_combo_box_items(id, vec!["Only".into()]));
