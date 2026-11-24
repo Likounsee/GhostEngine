@@ -2639,6 +2639,39 @@ mod tests {
     }
 
     #[test]
+    fn fallible_damage_region_updates_preserve_exact_coverage() {
+        let mut damage = DamageRegion::new(8, 6);
+        damage.try_add(Rect::new(0, 0, 4, 4)).unwrap();
+        damage.try_add(Rect::new(2, 2, 4, 4)).unwrap();
+
+        assert_eq!(damage.area(), 28);
+        assert_eq!(damage.bounding_rect(), Some(Rect::new(0, 0, 6, 6)));
+        for (index, first) in damage.rectangles().iter().enumerate() {
+            for second in damage.rectangles().iter().skip(index + 1) {
+                assert!(first.intersection(*second).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn fallible_damage_region_reservation_reports_capacity_overflow() {
+        let mut damage = DamageRegion::new(4, 4);
+        damage.add(Rect::new(0, 0, 2, 2));
+        let original = damage.clone();
+
+        assert_eq!(
+            damage.try_reserve(usize::MAX),
+            Err(super::DamageRegionError::AllocationFailed)
+        );
+        assert_eq!(damage, original);
+        assert_eq!(
+            damage.try_add(Rect::new(usize::MAX as u32, 0, 1, 1)),
+            Ok(())
+        );
+        assert_eq!(damage, original);
+    }
+
+    #[test]
     fn damage_region_reports_bounds_area_and_full_coverage() {
         let mut damage = DamageRegion::new(10, 8);
         assert_eq!(damage.bounding_rect(), None);
