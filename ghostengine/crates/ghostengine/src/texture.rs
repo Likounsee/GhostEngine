@@ -246,7 +246,7 @@ mod opaque_identity_copy_tests {
 
         for y in 0..8 {
             for x in 0..9 {
-                if x >= 4 && x < 7 && y >= 2 && y < 5 {
+                if (4..7).contains(&x) && (2..5).contains(&y) {
                     let sx = x - destination.x;
                     let sy = y - destination.y;
                     expected.set_pixel(x, y, texture.get_pixel(sx, sy).unwrap());
