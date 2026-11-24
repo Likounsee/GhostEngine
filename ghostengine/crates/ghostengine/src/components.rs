@@ -3633,7 +3633,8 @@ mod tests {
     #[test]
     fn try_layout_reserves_visible_tree_and_reuses_frame_buffers() {
         let child = UiComponent::button(ComponentId(912), "Child");
-        let root = UiComponent::panel(ComponentId(911), vec![child]);
+        let root =
+            UiComponent::panel(ComponentId(911), StackLayout::default()).with_children(vec![child]);
         let mut tree = ComponentTree::new(vec![
             root,
             UiComponent::button(ComponentId(913), "Hidden").with_visible(false),
