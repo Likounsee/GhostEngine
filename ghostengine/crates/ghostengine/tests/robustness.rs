@@ -138,7 +138,7 @@ fn parallel_polygon_rasterization_matches_serial_for_randomized_concave_geometry
             rng.range(256) as u8,
             rng.range(256) as u8,
         );
-        let mut initial = Framebuffer::new(WIDTH, HEIGHT).unwrap();
+        let mut initial = Framebuffer::new(WIDTH, HEIGHT, Color::TRANSPARENT).unwrap();
         for pixel in initial.pixels_mut() {
             *pixel = Color::rgba(
                 rng.range(256) as u8,
