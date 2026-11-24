@@ -263,6 +263,39 @@ impl DisplayList {
             .map_err(|_| DisplayListError::AllocationFailed)
     }
 
+    /// Fallibly reserves additional clip and transform stack entries.
+    ///
+    /// Reserve these before recording deeply nested drawing state when the
+    /// maximum nesting depth is known. On failure, the active stack contents
+    /// remain unchanged (either capacity may already have increased).
+    pub fn try_reserve_stacks(
+        &mut self,
+        additional_clips: usize,
+        additional_transforms: usize,
+    ) -> Result<(), DisplayListError> {
+        self.clips
+            .try_reserve(additional_clips)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        self.transforms
+            .try_reserve(additional_transforms)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        Ok(())
+    }
+
+    /// Returns the number of clip-stack entries that can be stored without
+    /// growing the backing allocation.
+    #[must_use]
+    pub fn clip_stack_capacity(&self) -> usize {
+        self.clips.capacity()
+    }
+
+    /// Returns the number of transform-stack entries that can be stored
+    /// without growing the backing allocation.
+    #[must_use]
+    pub fn transform_stack_capacity(&self) -> usize {
+        self.transforms.capacity()
+    }
+
     /// Reserves room for at least the requested number of additional drawing
     /// commands without reallocating the command buffer.
     ///
@@ -1693,6 +1726,30 @@ mod tests {
 
         list.reserve_commands(16);
         assert!(list.command_capacity() >= 16);
+    }
+
+    #[test]
+    fn fallible_stack_reservation_reuses_clip_and_transform_storage() {
+        let mut list = DisplayList::new();
+        list.try_reserve_stacks(4, 3).unwrap();
+
+        let clip_capacity = list.clip_stack_capacity();
+        let transform_capacity = list.transform_stack_capacity();
+        assert!(clip_capacity >= 4);
+        assert!(transform_capacity >= 3);
+
+        for _ in 0..4 {
+            list.push_clip(Rect::new(0, 0, 8, 8));
+        }
+        for _ in 0..3 {
+            list.push_transform(Transform2D::translation(1.0, 1.0));
+        }
+        assert_eq!(list.clip_stack_capacity(), clip_capacity);
+        assert_eq!(list.transform_stack_capacity(), transform_capacity);
+
+        list.clear();
+        assert_eq!(list.clip_stack_capacity(), clip_capacity);
+        assert_eq!(list.transform_stack_capacity(), transform_capacity);
     }
 
     #[test]
