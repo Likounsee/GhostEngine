@@ -426,6 +426,29 @@ mod tests {
     }
 
     #[test]
+    fn preserving_insert_failure_keeps_cache_metrics_and_lru_unchanged() {
+        let mut cache = TextureCache::new(16);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        assert!(cache.retain(first));
+        let before = cache.stats();
+        let first_last_used = cache.entries[&first].last_used;
+        let second_last_used = cache.entries[&second].last_used;
+        let clock = cache.clock;
+
+        let (error, returned) = cache
+            .try_insert_preserving_texture(texture(Color::GREEN, 3))
+            .unwrap_err();
+
+        assert_eq!(error, TextureCacheError::CacheFullyRetained);
+        assert_eq!(returned.pixels(), &[Color::GREEN; 3]);
+        assert_eq!(cache.stats(), before);
+        assert_eq!(cache.entries[&first].last_used, first_last_used);
+        assert_eq!(cache.entries[&second].last_used, second_last_used);
+        assert_eq!(cache.clock, clock);
+    }
+
+    #[test]
     fn preserving_insert_returns_texture_when_handle_space_is_exhausted() {
         let mut cache = TextureCache::new(16);
         cache.next_handle = u64::MAX;
