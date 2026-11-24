@@ -2331,12 +2331,22 @@ impl ComponentTree {
                     }
                 }
                 Some(ComponentKind::ListView { items, .. })
-                    if key == ComponentKey::ArrowUp || key == ComponentKey::ArrowDown =>
+                    if matches!(
+                        key,
+                        ComponentKey::ArrowUp
+                            | ComponentKey::ArrowDown
+                            | ComponentKey::Home
+                            | ComponentKey::End
+                    ) =>
                 {
-                    self.list_states.entry(id).or_default().move_selection(
-                        if key == ComponentKey::ArrowUp { -1 } else { 1 },
-                        items.len(),
-                    );
+                    let state = self.list_states.entry(id).or_default();
+                    match key {
+                        ComponentKey::ArrowUp => state.move_selection(-1, items.len()),
+                        ComponentKey::ArrowDown => state.move_selection(1, items.len()),
+                        ComponentKey::Home => state.select_first(items.len()),
+                        ComponentKey::End => state.select_last(items.len()),
+                        _ => {}
+                    }
                     self.ensure_list_selection_visible(id);
                     return ComponentEvents::default();
                 }
@@ -3640,6 +3650,41 @@ mod tests {
             tree.find(id).unwrap().kind(),
             ComponentKind::ListView {
                 scroll_offset: 48,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_home_and_end_select_visible_boundaries() {
+        let id = ComponentId(139);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
                 ..
             }
         ));
