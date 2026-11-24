@@ -3605,7 +3605,10 @@ mod tests {
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 0, .. }
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
         ));
 
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
@@ -3619,7 +3622,10 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(2));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 16, .. }
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
         ));
 
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
@@ -3627,7 +3633,10 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(4));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 48, .. }
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
         ));
     }
 
