@@ -129,7 +129,7 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [ ] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` has been added; await green CI).
-- [ ] Stress-test repeated resize, minimize/restore, frame presentation and host shutdown.
+- [x] Stress-test repeated headless resize, zero-sized minimize/restore, frame presentation and host shutdown (`repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent`, 1,000 cycles). Native desktop lifecycle stress remains part of the per-OS manual validation gate.
 - [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
 
 #### P2 — release packaging and API readiness
