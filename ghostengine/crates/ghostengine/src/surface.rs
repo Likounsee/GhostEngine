@@ -223,17 +223,17 @@ impl Framebuffer {
                 {
                     a = 255;
                 }
-                if let Some(table) = srgb_lut {
-                    r = table[usize::from(r)];
-                    g = table[usize::from(g)];
-                    b = table[usize::from(b)];
-                }
                 if descriptor.alpha_mode == AlphaMode::Premultiplied
                     && descriptor.pixel_format.has_alpha()
                 {
                     r = unmultiply_alpha(r, a);
                     g = unmultiply_alpha(g, a);
                     b = unmultiply_alpha(b, a);
+                }
+                if let Some(table) = srgb_lut {
+                    r = table[usize::from(r)];
+                    g = table[usize::from(g)];
+                    b = table[usize::from(b)];
                 }
                 *pixel = Color::rgba(r, g, b, a);
             }
