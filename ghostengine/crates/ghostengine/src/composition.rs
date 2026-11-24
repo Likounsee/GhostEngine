@@ -51,6 +51,20 @@ fn subtract_rect(source: Rect, cutter: Rect, output: &mut Vec<Rect>) {
     }
 }
 
+/// Failure returned when a damage region cannot reserve storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DamageRegionError {
+    AllocationFailed,
+}
+
+impl core::fmt::Display for DamageRegionError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("could not allocate damage-region storage")
+    }
+}
+
+impl std::error::Error for DamageRegionError {}
+
 /// A bounded collection of framebuffer regions that need recomposition.
 ///
 /// Added rectangles are clipped to the dimensions supplied at construction.
@@ -83,7 +97,16 @@ impl DamageRegion {
         }
     }
 
+    /// Reserves additional storage without panicking on allocation failure.
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), DamageRegionError> {
+        self.rectangles
+            .try_reserve(additional)
+            .map_err(|_| DamageRegionError::AllocationFailed)
+    }
+
     /// Reserves additional storage for at least the requested number of more rectangles.
+    ///
+    /// This convenience method follows Vec::reserve and may panic if allocation fails.
     pub fn reserve(&mut self, additional: usize) {
         self.rectangles.reserve(additional);
     }
@@ -115,24 +138,50 @@ impl DamageRegion {
     /// Overlapping coverage is split into disjoint rectangles before insertion.
     /// Only rectangles sharing a complete edge are coalesced, so the stored
     /// region remains an exact representation of damaged pixels.
+    ///
+    /// This convenience method leaves the region unchanged if allocation fails.
     pub fn add(&mut self, rectangle: Rect) {
+        let _ = self.try_add(rectangle);
+    }
+
+    /// Fallibly adds a rectangle while preserving the region on allocation failure.
+    ///
+    /// All temporary and destination capacity is reserved before the stored
+    /// rectangles are changed. This makes it suitable for applications that
+    /// need to handle memory pressure without unwinding.
+    pub fn try_add(&mut self, rectangle: Rect) -> Result<(), DamageRegionError> {
         let bounds = Rect::new(0, 0, self.width, self.height);
         let Some(clipped) = rectangle.intersection(bounds) else {
-            return;
+            return Ok(());
         };
 
-        let mut pending = vec![clipped];
+        let mut pending = Vec::new();
+        pending
+            .try_reserve_exact(1)
+            .map_err(|_| DamageRegionError::AllocationFailed)?;
+        pending.push(clipped);
+
         for existing in &self.rectangles {
+            let capacity = pending
+                .len()
+                .checked_mul(4)
+                .ok_or(DamageRegionError::AllocationFailed)?;
             let mut remaining = Vec::new();
+            remaining
+                .try_reserve_exact(capacity)
+                .map_err(|_| DamageRegionError::AllocationFailed)?;
             for candidate in pending {
                 subtract_rect(candidate, *existing, &mut remaining);
             }
             pending = remaining;
             if pending.is_empty() {
-                return;
+                return Ok(());
             }
         }
 
+        self.rectangles
+            .try_reserve(pending.len())
+            .map_err(|_| DamageRegionError::AllocationFailed)?;
         self.rectangles.extend(pending);
 
         // Coalesce only exact full-edge neighbors. This cannot fill an
@@ -175,6 +224,7 @@ impl DamageRegion {
                 index += 1;
             }
         }
+        Ok(())
     }
 
     /// Returns the disjoint rectangles currently marked for recomposition.
