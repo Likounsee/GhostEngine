@@ -357,7 +357,6 @@ mod tests {
         assert!(!cache.entries.iter().any(|entry| entry.key == 2));
     }
 
-
     #[test]
     fn failed_flatten_does_not_evict_valid_geometry_or_corrupt_lru_state() {
         let valid = triangle();
@@ -426,5 +425,4 @@ mod tests {
         cache.get_or_flatten(7, &path, 0.25).unwrap();
         assert_eq!(cache.stats().hits, 1);
     }
-
 }
