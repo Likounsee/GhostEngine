@@ -1,4 +1,5 @@
 use ghostengine::{
+    fill_polygon_aa, fill_polygon_aa_parallel_with_threads, fill_polygon_parallel_with_threads,
     AlphaMode, CachedLayer, Color, ColorSpace, DamageRegion, DisplayList, FontFace, Framebuffer,
     Path, PathGeometryCache, PixelFormat, Point, Rect, SurfaceDescriptor, SurfaceError, Texture,
     TextureCache, TextureCacheError, Transform2D, Vector,
@@ -117,6 +118,64 @@ fn damage_region_randomized_union_matches_a_pixel_reference_without_overlap() {
             damage.covers_entire_target(),
             expected_area == u64::from(WIDTH) * u64::from(HEIGHT)
         );
+    }
+}
+
+#[test]
+fn parallel_polygon_rasterization_matches_serial_for_randomized_concave_geometry() {
+    const WIDTH: u32 = 96;
+    const HEIGHT: u32 = 72;
+    let mut rng = Generator::new(0x504f_4c59_474f_4e31);
+
+    for case in 0..96 {
+        let vertex_count = 3 + rng.range(18) as usize;
+        let vertices: Vec<_> = (0..vertex_count)
+            .map(|_| Point::new(rng.range(180) as i32 - 42, rng.range(150) as i32 - 38))
+            .collect();
+        let color = Color::rgba(
+            rng.range(256) as u8,
+            rng.range(256) as u8,
+            rng.range(256) as u8,
+            rng.range(256) as u8,
+        );
+        let mut initial = Framebuffer::new(WIDTH, HEIGHT).unwrap();
+        for pixel in initial.pixels_mut() {
+            *pixel = Color::rgba(
+                rng.range(256) as u8,
+                rng.range(256) as u8,
+                rng.range(256) as u8,
+                rng.range(256) as u8,
+            );
+        }
+
+        let mut serial = initial.clone();
+        fill_polygon_aa(&mut serial, &vertices, color);
+        for workers in [1, 2, 3, 4, 7, 16] {
+            let mut parallel = initial.clone();
+            fill_polygon_aa_parallel_with_threads(&mut parallel, &vertices, color, workers);
+            assert_eq!(
+                parallel.pixels(),
+                serial.pixels(),
+                "AA polygon output differs in case {case} with {workers} workers"
+            );
+        }
+
+        let mut serial = initial.clone();
+        ghostengine::fill_polygon_with_scratch(
+            &mut serial,
+            &vertices,
+            color,
+            &mut ghostengine::RasterizerScratch::default(),
+        );
+        for workers in [1, 2, 3, 4, 7, 16] {
+            let mut parallel = initial.clone();
+            fill_polygon_parallel_with_threads(&mut parallel, &vertices, color, workers);
+            assert_eq!(
+                parallel.pixels(),
+                serial.pixels(),
+                "polygon output differs in case {case} with {workers} workers"
+            );
+        }
     }
 }
 
