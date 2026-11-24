@@ -309,6 +309,43 @@ mod tests {
     }
 
     #[test]
+    fn repeated_cache_lifecycle_keeps_capacity_and_lookup_accounting_consistent() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(4);
+
+        for step in 0..2_048_u64 {
+            let key = step % 23;
+            let tolerance = match step % 3 {
+                0 => 0.125,
+                1 => 0.25,
+                _ => 0.5,
+            };
+            cache.get_or_flatten(key, &path, tolerance).unwrap();
+
+            if step % 11 == 0 {
+                cache.invalidate(key);
+            }
+            if step % 29 == 0 {
+                cache.set_capacity((step as usize % 7) + 1).unwrap();
+            }
+            if step % 97 == 0 {
+                cache.clear();
+            }
+
+            let stats = cache.stats();
+            assert!(stats.capacity >= 1);
+            assert!(stats.entries <= stats.capacity);
+            assert_eq!(stats.entries, cache.len());
+            assert_eq!(stats.hits + stats.misses, step + 1);
+        }
+
+        cache.reset_stats();
+        assert_eq!(cache.hit_count(), 0);
+        assert_eq!(cache.miss_count(), 0);
+        assert!(cache.len() <= cache.stats().capacity);
+    }
+
+    #[test]
     fn evicts_least_recently_used_entry() {
         let path = triangle();
         let mut cache = PathGeometryCache::new(2);
