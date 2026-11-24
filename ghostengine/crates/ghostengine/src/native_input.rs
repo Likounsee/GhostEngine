@@ -63,6 +63,10 @@ impl NativeInputAdapter {
                 self.mouse_position = None;
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                self.frame.scroll_delta_x = self
+                    .frame
+                    .scroll_delta_x
+                    .saturating_add(scroll_delta_x_to_pixels(delta));
                 self.frame.scroll_delta_y = self
                     .frame
                     .scroll_delta_y
@@ -281,7 +285,17 @@ fn insertable_text(text: &str) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Converts native wheel movement to the engine's pixel-based scroll unit.
+/// Converts native horizontal wheel movement to the engine's pixel-based scroll unit.
+fn scroll_delta_x_to_pixels(delta: &MouseScrollDelta) -> i32 {
+    let pixels = match delta {
+        // Winit line units are logical columns rather than pixels.
+        MouseScrollDelta::LineDelta(x, _) => f64::from(*x) * 48.0,
+        MouseScrollDelta::PixelDelta(position) => position.x,
+    };
+    clamp_coordinate(-pixels)
+}
+
+/// Converts native vertical wheel movement to the engine's pixel-based scroll unit.
 fn scroll_delta_to_pixels(delta: &MouseScrollDelta) -> i32 {
     let pixels = match delta {
         // Winit line units are logical rows rather than pixels. Keep the
@@ -822,8 +836,40 @@ mod tests {
             phase: winit::event::TouchPhase::Moved,
         });
 
-        assert_eq!(adapter.take_frame().scroll_delta_y, -60);
-        assert_eq!(adapter.take_frame().scroll_delta_y, 0);
+        let frame = adapter.take_frame();
+        assert_eq!(frame.scroll_delta_x, 0);
+        assert_eq!(frame.scroll_delta_y, -60);
+        let next_frame = adapter.take_frame();
+        assert_eq!(next_frame.scroll_delta_x, 0);
+        assert_eq!(next_frame.scroll_delta_y, 0);
+    }
+
+    #[test]
+    fn horizontal_wheel_line_and_pixel_deltas_use_consistent_scroll_direction() {
+        use super::scroll_delta_x_to_pixels;
+        use winit::dpi::PhysicalPosition;
+        use winit::event::MouseScrollDelta;
+
+        assert_eq!(
+            scroll_delta_x_to_pixels(&MouseScrollDelta::LineDelta(1.0, 0.0)),
+            -48
+        );
+        assert_eq!(
+            scroll_delta_x_to_pixels(&MouseScrollDelta::LineDelta(-2.0, 0.0)),
+            96
+        );
+        assert_eq!(
+            scroll_delta_x_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                17.0, 0.0
+            ))),
+            -17
+        );
+        assert_eq!(
+            scroll_delta_x_to_pixels(&MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                -9.0, 0.0
+            ))),
+            9
+        );
     }
 
     #[test]
