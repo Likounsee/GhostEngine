@@ -458,6 +458,8 @@ struct ContextMenuState {
 pub struct ComponentEvents {
     pub activated: Option<ComponentId>,
     pub focus_changed: Option<ComponentId>,
+    /// Whether the previously focused component lost focus without a replacement.
+    pub focus_cleared: bool,
     /// Host clipboard operation requested by a keyboard shortcut.
     pub clipboard_action: Option<ClipboardAction>,
     /// Application-defined action selected from a context menu.
@@ -1530,6 +1532,22 @@ impl ComponentTree {
                 }
             }
         }
+    }
+
+    /// Moves focus to the first visible enabled control in depth-first tab order.
+    pub fn focus_first(&mut self, bounds: Rect) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self.interaction.focus_first(&enabled);
+        self.translate_events(events)
+    }
+
+    /// Moves focus to the last visible enabled control in depth-first tab order.
+    pub fn focus_last(&mut self, bounds: Rect) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self.interaction.focus_last(&enabled);
+        self.translate_events(events)
     }
 
     /// Moves focus through visible enabled controls in depth-first tab order.
@@ -2826,6 +2844,8 @@ impl ComponentTree {
             }
         }
         match key {
+            ComponentKey::Home if self.focused_text_input().is_none() => self.focus_first(bounds),
+            ComponentKey::End if self.focused_text_input().is_none() => self.focus_last(bounds),
             ComponentKey::Tab => self.focus_next(bounds, shift),
             ComponentKey::Enter | ComponentKey::Space => {
                 if self.focused_text_input().is_some() {
@@ -2994,6 +3014,7 @@ impl ComponentTree {
             focus_changed: events
                 .focus_changed
                 .and_then(|index| self.focusable_ids.get(index).copied()),
+            focus_cleared: events.focus_cleared,
             clipboard_action: None,
             context_menu_action: None,
             context_menu_target: None,
@@ -3325,6 +3346,65 @@ mod tests {
         let events = tree.update_pointer(bounds, Some(Point::new(20, 30)), false, true);
         assert_eq!(events.activated, Some(ComponentId(3)));
         assert_eq!(events.focus_changed, None);
+    }
+
+    #[test]
+    fn home_and_end_focus_first_and_last_visible_enabled_components() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let root = UiComponent::panel(
+            ComponentId(10),
+            StackLayout::new(LayoutDirection::Vertical),
+        )
+        .with_children(vec![
+            UiComponent::button(ComponentId(11), "First")
+                .with_layout_item(LayoutItem::fixed(10)),
+            UiComponent::button(ComponentId(12), "Disabled")
+                .with_layout_item(LayoutItem::fixed(10))
+                .with_enabled(false),
+            UiComponent::button(ComponentId(13), "Hidden")
+                .with_layout_item(LayoutItem::fixed(10))
+                .with_visible(false),
+            UiComponent::button(ComponentId(14), "Last")
+                .with_layout_item(LayoutItem::fixed(10)),
+        ]);
+        let mut tree = ComponentTree::new(vec![root]);
+
+        assert_eq!(tree.focus_first(bounds).focus_changed, Some(ComponentId(11)));
+        assert_eq!(tree.focus_last(bounds).focus_changed, Some(ComponentId(14)));
+        assert_eq!(tree.focus_first(bounds).focus_changed, Some(ComponentId(11)));
+    }
+
+    #[test]
+    fn home_and_end_keys_navigate_component_focus() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let mut tree = sample_tree();
+
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Home, false).focus_changed,
+            Some(ComponentId(3))
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::End, false).focus_changed,
+            Some(ComponentId(4))
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Home, false).focus_changed,
+            Some(ComponentId(3))
+        );
+    }
+
+    #[test]
+    fn home_and_end_on_empty_component_tree_leave_focus_empty() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let mut tree = ComponentTree::default();
+
+        let home = tree.handle_key(bounds, ComponentKey::Home, false);
+        let end = tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(home.focus_changed, None);
+        assert!(!home.focus_cleared);
+        assert_eq!(end.focus_changed, None);
+        assert!(!end.focus_cleared);
+        assert_eq!(tree.focused_component(), None);
     }
 
     #[test]
