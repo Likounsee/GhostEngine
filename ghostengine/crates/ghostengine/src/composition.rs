@@ -2206,8 +2206,8 @@ mod tests {
         compose_layer_groups, compose_layer_groups_cached,
         compose_layer_groups_cached_in_damage_regions, compose_layer_groups_with_scratch,
         compose_layers, compose_layers_in_damage_regions, compose_layers_parallel_with_threads,
-        BlendMode, DamageRegion, Layer,
-        LayerGroup, LayerGroupCache, LayerGroupChild, LayerGroupScratch,
+        BlendMode, DamageRegion, Layer, LayerGroup, LayerGroupCache, LayerGroupChild,
+        LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
 
