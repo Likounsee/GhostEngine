@@ -3351,27 +3351,30 @@ mod tests {
     #[test]
     fn home_and_end_focus_first_and_last_visible_enabled_components() {
         let bounds = Rect::new(0, 0, 100, 80);
-        let root = UiComponent::panel(
-            ComponentId(10),
-            StackLayout::new(LayoutDirection::Vertical),
-        )
-        .with_children(vec![
-            UiComponent::button(ComponentId(11), "First")
-                .with_layout_item(LayoutItem::fixed(10)),
-            UiComponent::button(ComponentId(12), "Disabled")
-                .with_layout_item(LayoutItem::fixed(10))
-                .with_enabled(false),
-            UiComponent::button(ComponentId(13), "Hidden")
-                .with_layout_item(LayoutItem::fixed(10))
-                .with_visible(false),
-            UiComponent::button(ComponentId(14), "Last")
-                .with_layout_item(LayoutItem::fixed(10)),
-        ]);
+        let root = UiComponent::panel(ComponentId(10), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
+                UiComponent::button(ComponentId(11), "First")
+                    .with_layout_item(LayoutItem::fixed(10)),
+                UiComponent::button(ComponentId(12), "Disabled")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_enabled(false),
+                UiComponent::button(ComponentId(13), "Hidden")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_visible(false),
+                UiComponent::button(ComponentId(14), "Last")
+                    .with_layout_item(LayoutItem::fixed(10)),
+            ]);
         let mut tree = ComponentTree::new(vec![root]);
 
-        assert_eq!(tree.focus_first(bounds).focus_changed, Some(ComponentId(11)));
+        assert_eq!(
+            tree.focus_first(bounds).focus_changed,
+            Some(ComponentId(11))
+        );
         assert_eq!(tree.focus_last(bounds).focus_changed, Some(ComponentId(14)));
-        assert_eq!(tree.focus_first(bounds).focus_changed, Some(ComponentId(11)));
+        assert_eq!(
+            tree.focus_first(bounds).focus_changed,
+            Some(ComponentId(11))
+        );
     }
 
     #[test]
@@ -3380,17 +3383,100 @@ mod tests {
         let mut tree = sample_tree();
 
         assert_eq!(
-            tree.handle_key(bounds, ComponentKey::Home, false).focus_changed,
+            tree.handle_key(bounds, ComponentKey::Home, false)
+                .focus_changed,
             Some(ComponentId(3))
         );
         assert_eq!(
-            tree.handle_key(bounds, ComponentKey::End, false).focus_changed,
+            tree.handle_key(bounds, ComponentKey::End, false)
+                .focus_changed,
             Some(ComponentId(4))
         );
         assert_eq!(
-            tree.handle_key(bounds, ComponentKey::Home, false).focus_changed,
+            tree.handle_key(bounds, ComponentKey::Home, false)
+                .focus_changed,
             Some(ComponentId(3))
         );
+    }
+
+    #[test]
+    fn home_and_end_cover_every_enabled_and_visible_focus_pattern() {
+        for count in 1..=7 {
+            let combinations = 3usize.pow(count);
+            for pattern in 0..combinations {
+                let mut encoded = pattern;
+                let mut expected = Vec::new();
+                let roots = (0..count)
+                    .map(|index| {
+                        let state = encoded % 3;
+                        encoded /= 3;
+                        let id = ComponentId(1_000 + index as u64);
+                        let enabled = state == 2;
+                        let visible = state != 0;
+                        if enabled {
+                            expected.push(id);
+                        }
+                        UiComponent::button(id, format!("Control {index}"))
+                            .with_layout_item(LayoutItem::fixed(8))
+                            .with_enabled(enabled)
+                            .with_visible(visible)
+                    })
+                    .collect();
+                let bounds = Rect::new(0, 0, 100, (count * 8) as u32);
+                let mut tree = ComponentTree::new(roots);
+
+                tree.focus_first(bounds);
+                assert_eq!(
+                    tree.focused_component(),
+                    expected.first().copied(),
+                    "first focus mismatch: count={count}, pattern={pattern}"
+                );
+                let events = tree.focus_last(bounds);
+                assert_eq!(
+                    tree.focused_component(),
+                    expected.last().copied(),
+                    "last focus mismatch: count={count}, pattern={pattern}"
+                );
+                assert!(!events.focus_cleared);
+            }
+        }
+    }
+
+    #[test]
+    fn home_and_end_keep_text_input_caret_navigation_local() {
+        let id = ComponentId(150);
+        let bounds = Rect::new(0, 0, 100, 40);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Name", "hello")
+                .with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(151), "Continue")
+                .with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        for _ in 0..5 {
+            assert!(tree.move_text_cursor(id, true, false));
+        }
+
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 0);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "hello".len());
+        assert_eq!(tree.focused_component(), Some(id));
+    }
+
+    #[test]
+    fn component_events_report_focus_cleared_when_focused_control_becomes_disabled() {
+        let id = ComponentId(152);
+        let bounds = Rect::new(0, 0, 100, 20);
+        let mut tree = ComponentTree::new(vec![UiComponent::button(id, "Only")]);
+        assert_eq!(tree.focus_first(bounds).focus_changed, Some(id));
+
+        assert!(tree.find_mut(id).unwrap().set_enabled(false));
+        let events = tree.update_pointer(bounds, None, false, false);
+
+        assert!(events.focus_cleared);
+        assert_eq!(events.focus_changed, None);
+        assert_eq!(tree.focused_component(), None);
     }
 
     #[test]
