@@ -47,9 +47,9 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps
 
-      - name: Validate distributable crate contents
+      - name: Validate distributable crate contents and build the packaged crate
         working-directory: ghostengine
-        run: cargo package -p ghostengine --locked --no-verify
+        run: cargo package -p ghostengine --locked
 
       - name: Test scalar fallback without automatic parallel selection
         working-directory: ghostengine
