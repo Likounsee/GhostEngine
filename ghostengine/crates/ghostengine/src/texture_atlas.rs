@@ -158,7 +158,25 @@ impl TextureAtlasBuilder {
         }
     }
 
+    /// Adds a texture by cloning its pixel storage.
+    ///
+    /// Use `add_owned` when the caller no longer needs the source texture;
+    /// transferring ownership avoids a full pixel-buffer copy.
     pub fn add(&mut self, id: u64, texture: &Texture) -> Result<(), TextureAtlasError> {
+        let texture = texture.try_clone().map_err(TextureAtlasError::Texture)?;
+        self.add_owned(id, texture)
+    }
+
+    /// Adds a texture by taking ownership of its pixel storage.
+    ///
+    /// This is the allocation-efficient path for loading a collection of
+    /// textures directly into an atlas. Duplicate IDs and reservation failures
+    /// leave the builder's existing entries unchanged.
+    pub fn add_owned(
+        &mut self,
+        id: u64,
+        texture: Texture,
+    ) -> Result<(), TextureAtlasError> {
         if self.ids.contains(&id) {
             return Err(TextureAtlasError::DuplicateId);
         }
@@ -168,7 +186,6 @@ impl TextureAtlasBuilder {
         self.items
             .try_reserve(1)
             .map_err(|_| TextureAtlasError::AllocationFailed)?;
-        let texture = texture.try_clone().map_err(TextureAtlasError::Texture)?;
         self.ids.insert(id);
         self.items.push(AtlasItem { id, texture });
         Ok(())
@@ -335,6 +352,21 @@ mod tests {
         assert_eq!(copied, original);
         assert_ne!(copied.pixels().as_ptr(), original.pixels().as_ptr());
         assert_eq!(copied.pixels(), original.pixels());
+    }
+
+    #[test]
+    fn add_owned_transfers_texture_into_atlas_builder() {
+        let texture = Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
+        let original_ptr = texture.pixels().as_ptr();
+        let mut builder = TextureAtlasBuilder::new(4, 2, 0);
+
+        builder.add_owned(5, texture).unwrap();
+        let (atlas, regions) = builder.build().unwrap();
+
+        assert_eq!(regions.len(), 1);
+        assert_eq!(atlas.pixels()[0], Color::RED);
+        assert_eq!(atlas.pixels()[1], Color::BLUE);
+        assert_ne!(atlas.pixels().as_ptr(), original_ptr);
     }
 
     #[test]
