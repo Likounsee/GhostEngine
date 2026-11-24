@@ -2718,7 +2718,7 @@ impl ComponentTree {
                         .iter()
                         .find(|placement| placement.id == id)
                         .map_or(1, |placement| {
-                            (placement.bounds.height / *row_height).max(1) as isize
+                            (placement.bounds.height / row_height).max(1) as isize
                         });
                     let state = self.list_states.entry(id).or_default();
                     match key {
@@ -4164,7 +4164,7 @@ mod tests {
             id,
             vec!["One".into(), "Two".into(), "Three".into()],
         )]);
-        assert_eq!(tree.combo_box_items(id).unwrap(), ["One", "Two", "Three"]);
+        assert_eq!(tree.combo_box_items(id).unwrap().iter().map(String::as_str).collect::<Vec<_>>(), ["One", "Two", "Three"]);
         assert_eq!(tree.combo_box_selected(id), Some(0));
 
         assert!(tree.set_combo_box_selected(id, Some(2)));
@@ -4176,13 +4176,13 @@ mod tests {
 
         assert!(tree.set_combo_box_selected(id, Some(1)));
         assert!(tree.set_combo_box_items(id, vec!["A".into(), "B".into()]));
-        assert_eq!(tree.combo_box_items(id).unwrap(), ["A", "B"]);
+        assert_eq!(tree.combo_box_items(id).unwrap().iter().map(String::as_str).collect::<Vec<_>>(), ["A", "B"]);
         assert_eq!(tree.combo_box_selected(id), Some(1));
 
         assert!(tree.set_combo_box_items(id, vec!["Only".into()]));
         assert_eq!(tree.combo_box_selected(id), Some(0));
         assert!(tree.set_combo_box_items(id, Vec::new()));
-        assert_eq!(tree.combo_box_items(id).unwrap(), []);
+        assert_eq!(tree.combo_box_items(id).unwrap(), &[]);
         assert_eq!(tree.combo_box_selected(id), None);
         assert!(!tree.set_combo_box_items(ComponentId(999), vec!["X".into()]));
     }
@@ -4228,7 +4228,7 @@ mod tests {
 
         assert_eq!(
             tree.list_view_items(id),
-            Some(["A", "B", "C", "D"].as_slice())
+            Some(["A", "B", "C", "D"].map(str::to_owned).as_slice())
         );
         assert_eq!(tree.list_view_scroll_offset(id), Some(0));
         assert_eq!(tree.list_view_items(ComponentId(999)), None);
