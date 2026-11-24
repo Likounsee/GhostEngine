@@ -246,7 +246,6 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
     );
 }
 
-
 #[test]
 fn repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent() {
     let mut host = HeadlessHost::new(HostWindowConfig::new("lifecycle stress", 8, 6)).unwrap();
@@ -258,8 +257,7 @@ fn repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consiste
 
         host.resize(width, height).unwrap();
         assert_eq!(host.drawable_size(), (width, height));
-        let frame = Framebuffer::new(width, height, Color::rgba(cycle as u8, 31, 63, 255))
-            .unwrap();
+        let frame = Framebuffer::new(width, height, Color::rgba(cycle as u8, 31, 63, 255)).unwrap();
         host.present(&frame).unwrap();
 
         let presented = host
@@ -281,10 +279,9 @@ fn repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consiste
         host.resize(width, height).unwrap();
 
         host.poll_events(&mut events);
-        assert!(events.iter().all(|event| matches!(
-            event,
-            HostEvent::Resized { .. }
-        )));
+        assert!(events
+            .iter()
+            .all(|event| matches!(event, HostEvent::Resized { .. })));
         events.clear();
     }
 
@@ -294,7 +291,10 @@ fn repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consiste
         host.present(&Framebuffer::new(1, 1, Color::BLACK).unwrap()),
         Err(ghostengine::HeadlessHostError::Closed)
     );
-    assert_eq!(host.resize(8, 6), Err(ghostengine::HeadlessHostError::Closed));
+    assert_eq!(
+        host.resize(8, 6),
+        Err(ghostengine::HeadlessHostError::Closed)
+    );
     host.poll_events(&mut events);
     assert_eq!(events, [HostEvent::CloseRequested]);
 }
