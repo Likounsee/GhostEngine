@@ -191,7 +191,7 @@ impl Framebuffer {
             let row_start = y * descriptor.row_stride;
             for (x, pixel) in row.iter_mut().enumerate() {
                 let offset = row_start + x * bpp;
-                let (mut r, mut g, mut b, a) = match descriptor.pixel_format {
+                let (mut r, mut g, mut b, mut a) = match descriptor.pixel_format {
                     PixelFormat::Rgb8 => (
                         source[offset],
                         source[offset + 1],
@@ -218,6 +218,11 @@ impl Framebuffer {
                     ),
                 };
 
+                if descriptor.alpha_mode == AlphaMode::Opaque
+                    || !descriptor.pixel_format.has_alpha()
+                {
+                    a = 255;
+                }
                 if let Some(table) = srgb_lut {
                     r = table[usize::from(r)];
                     g = table[usize::from(g)];
@@ -488,5 +493,70 @@ mod tests {
             Err(SurfaceError::DimensionMismatch)
         );
         assert_eq!(bytes, [0xAA; 8]);
+    }
+
+    #[test]
+    fn imports_bgra_from_padded_rows_and_ignores_padding() {
+        let mut frame = Framebuffer::new(1, 2, Color::RED).unwrap();
+        let descriptor = SurfaceDescriptor {
+            width: 1,
+            height: 2,
+            row_stride: 8,
+            pixel_format: PixelFormat::Bgra8,
+            alpha_mode: AlphaMode::Straight,
+            color_space: ColorSpace::Srgb,
+        };
+        let bytes = [30, 20, 10, 40, 0xCC, 0xCC, 0xCC, 0xCC, 70, 60, 50, 80];
+        frame.read_from_surface(&bytes, descriptor).unwrap();
+
+        assert_eq!(frame.pixels(), &[Color::rgba(10, 20, 30, 40), Color::rgba(50, 60, 70, 80)]);
+    }
+
+    #[test]
+    fn imports_premultiplied_linear_rgba_and_unpremultiplies_alpha() {
+        let mut frame = Framebuffer::new(1, 1, Color::RED).unwrap();
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgba8,
+            AlphaMode::Premultiplied,
+            ColorSpace::LinearSrgb,
+        );
+        frame.read_from_surface(&[27, 7, 0, 128], descriptor).unwrap();
+
+        assert_eq!(frame.pixels(), &[Color::rgba(56, 13, 0, 128)]);
+    }
+
+    #[test]
+    fn opaque_import_discards_stored_alpha() {
+        let mut frame = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgba8,
+            AlphaMode::Opaque,
+            ColorSpace::Srgb,
+        );
+        frame.read_from_surface(&[10, 20, 30, 0], descriptor).unwrap();
+
+        assert_eq!(frame.pixels(), &[Color::rgba(10, 20, 30, 255)]);
+    }
+
+    #[test]
+    fn rejects_short_import_without_modifying_framebuffer() {
+        let mut frame = Framebuffer::new(1, 1, Color::RED).unwrap();
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            1,
+            1,
+            PixelFormat::Rgba8,
+            AlphaMode::Straight,
+            ColorSpace::Srgb,
+        );
+
+        assert_eq!(
+            frame.read_from_surface(&[1, 2, 3], descriptor),
+            Err(SurfaceError::BufferTooSmall)
+        );
+        assert_eq!(frame.pixels(), &[Color::RED]);
     }
 }
