@@ -3447,8 +3447,7 @@ mod tests {
         let id = ComponentId(150);
         let bounds = Rect::new(0, 0, 100, 40);
         let mut tree = ComponentTree::new(vec![
-            UiComponent::text_input(id, "Name", "hello")
-                .with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::text_input(id, "Name", "hello").with_layout_item(LayoutItem::fixed(20)),
             UiComponent::button(ComponentId(151), "Continue")
                 .with_layout_item(LayoutItem::fixed(20)),
         ]);
