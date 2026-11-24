@@ -139,9 +139,11 @@ impl DamageRegion {
     /// Only rectangles sharing a complete edge are coalesced, so the stored
     /// region remains an exact representation of damaged pixels.
     ///
-    /// This convenience method leaves the region unchanged if allocation fails.
+    /// This convenience method may panic if allocation fails. Use try_add when
+    /// the caller needs to handle memory pressure explicitly.
     pub fn add(&mut self, rectangle: Rect) {
-        let _ = self.try_add(rectangle);
+        self.try_add(rectangle)
+            .expect("failed to allocate damage-region storage");
     }
 
     /// Fallibly adds a rectangle while preserving the region on allocation failure.
