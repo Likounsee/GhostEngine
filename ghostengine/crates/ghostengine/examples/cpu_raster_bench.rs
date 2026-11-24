@@ -930,6 +930,62 @@ fn main() {
                 ),
             );
         }),
+        measure(
+            "Mixed image + vector + text + UI + layers",
+            iterations.min(50),
+            |target| {
+                // A representative application frame: compose a background and
+                // foreground, draw a filtered image, vector decoration, text,
+                // an antialiased interactive control and a clipped label.
+                compose_layers_auto(target, &layers);
+                draw_texture_clipped_with_scratch(
+                    target,
+                    &texture,
+                    Rect::new(760, 120, 520, 520),
+                    TextureFilter::Bilinear,
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                    &mut texture_scratch,
+                );
+                fill_path_even_odd_aa(
+                    target,
+                    &path,
+                    Color::rgba(245, 130, 45, 220),
+                    0.35 * SCALE_F32,
+                )
+                .expect("mixed benchmark vector path should be valid");
+                draw_text(
+                    target,
+                    &font,
+                    text,
+                    Point::new(80 * SCALE, 220 * SCALE),
+                    28.0 * SCALE_F32,
+                    Color::WHITE,
+                );
+                ghostengine::draw_button_aa(
+                    target,
+                    &font,
+                    Rect::new(
+                        110 * SCALE_U32,
+                        100 * SCALE_U32,
+                        260 * SCALE_U32,
+                        64 * SCALE_U32,
+                    ),
+                    "مرحبا",
+                    28.0 * SCALE_F32,
+                    WidgetState::Hovered,
+                    &theme,
+                );
+                ghostengine::draw_label_ellipsized(
+                    target,
+                    &font,
+                    "Mixed application scene — responsive label",
+                    Point::new(80 * SCALE, 255 * SCALE),
+                    22.0 * SCALE_F32,
+                    Color::WHITE,
+                    Rect::new(80 * SCALE_U32, 230 * SCALE_U32, 360 * SCALE_U32, 35 * SCALE_U32),
+                );
+            },
+        ),
     ];
 
     // Treat 60 FPS (16.67 ms) as the per-operation CPU budget on
