@@ -9671,7 +9671,6 @@ mod transformed_conic_gradient_tests {
     }
 }
 
-
 #[cfg(test)]
 mod clipped_rectangle_batch_tests {
     use super::{fill_rect, fill_rects_clipped};
@@ -9717,11 +9716,21 @@ mod clipped_rectangle_batch_tests {
                 fill_rect(&mut expected, clipped, Color::WHITE);
             }
         }
-        fill_rects_clipped(&mut actual, &rectangles, Color::WHITE, Rect::new(0, 1, 8, 3));
+        fill_rects_clipped(
+            &mut actual,
+            &rectangles,
+            Color::WHITE,
+            Rect::new(0, 1, 8, 3),
+        );
         assert_eq!(actual, expected);
 
         let before = actual.clone();
-        fill_rects_clipped(&mut actual, &rectangles, Color::RED, Rect::new(20, 20, 3, 3));
+        fill_rects_clipped(
+            &mut actual,
+            &rectangles,
+            Color::RED,
+            Rect::new(20, 20, 3, 3),
+        );
         assert_eq!(actual, before);
     }
 }
