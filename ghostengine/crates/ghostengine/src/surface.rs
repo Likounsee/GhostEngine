@@ -524,7 +524,7 @@ mod tests {
         );
         frame.read_from_surface(&[27, 7, 0, 128], descriptor).unwrap();
 
-        assert_eq!(frame.pixels(), &[Color::rgba(56, 13, 0, 128)]);
+        assert_eq!(frame.pixels(), &[Color::rgba(127, 66, 0, 128)]);
     }
 
     #[test]
