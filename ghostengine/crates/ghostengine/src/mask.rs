@@ -136,4 +136,120 @@ mod tests {
         assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(1, 2, 3, 0)));
         assert_eq!(target.get_pixel(1, 0), Some(Color::rgba(1, 2, 3, 0)));
     }
+
+    fn next_random(seed: &mut u64) -> u32 {
+        *seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        (*seed >> 32) as u32
+    }
+
+    #[test]
+    fn randomized_masks_match_a_pixel_by_pixel_reference() {
+        let mut seed = 0x7a31_9d42_c5e8_b601;
+
+        for _case in 0..2_500 {
+            let target_width = next_random(&mut seed) % 7 + 1;
+            let target_height = next_random(&mut seed) % 7 + 1;
+            let mask_width = next_random(&mut seed) % 6 + 1;
+            let mask_height = next_random(&mut seed) % 6 + 1;
+            let origin = Point::new(
+                (next_random(&mut seed) % 17) as i32 - 8,
+                (next_random(&mut seed) % 17) as i32 - 8,
+            );
+            let clip = Rect::new(
+                next_random(&mut seed) % (target_width + 4),
+                next_random(&mut seed) % (target_height + 4),
+                next_random(&mut seed) % (target_width + 4),
+                next_random(&mut seed) % (target_height + 4),
+            );
+            let mut target = Framebuffer::new(target_width, target_height, Color::TRANSPARENT)
+                .unwrap();
+            for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
+                *pixel = Color::rgba(
+                    (index as u8).wrapping_mul(17),
+                    (index as u8).wrapping_mul(31),
+                    (index as u8).wrapping_mul(47),
+                    next_random(&mut seed) as u8,
+                );
+            }
+
+            let mut mask =
+                Framebuffer::new(mask_width, mask_height, Color::TRANSPARENT).unwrap();
+            for pixel in mask.pixels_mut() {
+                *pixel = Color::rgba(
+                    next_random(&mut seed) as u8,
+                    next_random(&mut seed) as u8,
+                    next_random(&mut seed) as u8,
+                    next_random(&mut seed) as u8,
+                );
+            }
+
+            let mut expected = target.clone();
+            if let Some(clipped) = clip.intersection(Rect::new(
+                0,
+                0,
+                target_width,
+                target_height,
+            )) {
+                for y in clipped.y..clipped.y + clipped.height {
+                    for x in clipped.x..clipped.x + clipped.width {
+                        let mask_x = i64::from(x) - i64::from(origin.x);
+                        let mask_y = i64::from(y) - i64::from(origin.y);
+                        let pixel = expected.get_pixel(x, y).unwrap();
+                        let alpha = if mask_x >= 0
+                            && mask_y >= 0
+                            && mask_x < i64::from(mask_width)
+                            && mask_y < i64::from(mask_height)
+                        {
+                            let coverage = mask
+                                .get_pixel(mask_x as u32, mask_y as u32)
+                                .unwrap()
+                                .a;
+                            ((u16::from(pixel.a) * u16::from(coverage) + 127) / 255) as u8
+                        } else {
+                            0
+                        };
+                        expected.set_pixel(x, y, Color::rgba(pixel.r, pixel.g, pixel.b, alpha));
+                    }
+                }
+            }
+
+            apply_alpha_mask_clipped(&mut target, &mask, origin, clip);
+            assert_eq!(
+                target.pixels(),
+                expected.pixels(),
+                "mask mismatch: target={target_width}x{target_height}, mask={mask_width}x{mask_height}, origin={origin:?}, clip={clip:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extreme_mask_origins_clear_only_the_requested_clip() {
+        for origin in [
+            Point::new(i32::MIN, i32::MIN),
+            Point::new(i32::MAX, i32::MAX),
+            Point::new(i32::MIN, i32::MAX),
+            Point::new(i32::MAX, i32::MIN),
+        ] {
+            let mut target = Framebuffer::new(3, 2, Color::rgba(12, 34, 56, 200)).unwrap();
+            let mask = Framebuffer::new(2, 2, Color::WHITE).unwrap();
+            apply_alpha_mask_clipped(
+                &mut target,
+                &mask,
+                origin,
+                Rect::new(1, 0, 2, 2),
+            );
+
+            assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(12, 34, 56, 200)));
+            for y in 0..2 {
+                for x in 1..3 {
+                    assert_eq!(
+                        target.get_pixel(x, y),
+                        Some(Color::rgba(12, 34, 56, 0)),
+                        "origin={origin:?}, pixel=({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+
 }
