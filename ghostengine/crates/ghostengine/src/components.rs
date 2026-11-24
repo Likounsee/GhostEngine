@@ -2236,6 +2236,66 @@ impl ComponentTree {
             .and_then(|state| state.selected())
     }
 
+    /// Returns the current entries of a combo box.
+    #[must_use]
+    pub fn combo_box_items(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ComboBox { items } => Some(items.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Sets the selected combo box entry, or clears the selection with None.
+    ///
+    /// Invalid indices are rejected without changing the current selection.
+    pub fn set_combo_box_selected(
+        &mut self,
+        id: ComponentId,
+        selected: Option<usize>,
+    ) -> bool {
+        let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ComboBox { items } => Some(items.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        if selected.is_some_and(|index| index >= item_count) {
+            return false;
+        }
+        self.combo_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        true
+    }
+
+    /// Replaces the entries of a combo box while retaining a valid selection.
+    ///
+    /// If the selected index no longer exists, the final entry becomes selected.
+    /// Replacing with an empty list clears the selection.
+    pub fn set_combo_box_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
+        let selected = self.combo_states.get(&id).and_then(|state| state.selected());
+        let Some(item_count) = self.find_mut(id).and_then(|component| {
+            match &mut component.kind {
+                ComponentKind::ComboBox { items: current } => {
+                    *current = items;
+                    Some(current.len())
+                }
+                _ => None,
+            }
+        }) else {
+            return false;
+        };
+        let selected = selected
+            .filter(|index| *index < item_count)
+            .or_else(|| item_count.checked_sub(1));
+        self.combo_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        true
+    }
+
     /// Returns the selected tab index of a tab strip.
     #[must_use]
     pub fn tabs_selected(&self, id: ComponentId) -> Option<usize> {
@@ -4095,6 +4155,36 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(0));
         assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("A"));
         assert_eq!(tree.list_view_selected(id), None);
+    }
+
+    #[test]
+    fn retained_combo_box_items_and_selection_can_be_updated() {
+        let id = ComponentId(146);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["One".into(), "Two".into(), "Three".into()],
+        )]);
+        assert_eq!(tree.combo_box_items(id).unwrap(), ["One", "Two", "Three"]);
+        assert_eq!(tree.combo_box_selected(id), Some(0));
+
+        assert!(tree.set_combo_box_selected(id, Some(2)));
+        assert_eq!(tree.combo_box_selected(id), Some(2));
+        assert!(!tree.set_combo_box_selected(id, Some(3)));
+        assert!(!tree.set_combo_box_selected(id, Some(0 + 99)));
+        assert!(tree.set_combo_box_selected(id, None));
+        assert_eq!(tree.combo_box_selected(id), None);
+
+        assert!(tree.set_combo_box_selected(id, Some(1)));
+        assert!(tree.set_combo_box_items(id, vec!["A".into(), "B".into()]));
+        assert_eq!(tree.combo_box_items(id).unwrap(), ["A", "B"]);
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+
+        assert!(tree.set_combo_box_items(id, vec!["Only".into()]));
+        assert_eq!(tree.combo_box_selected(id), Some(0));
+        assert!(tree.set_combo_box_items(id, Vec::new()));
+        assert_eq!(tree.combo_box_items(id).unwrap(), []);
+        assert_eq!(tree.combo_box_selected(id), None);
+        assert!(!tree.set_combo_box_items(ComponentId(999), vec!["X".into()]));
     }
 
     #[test]
