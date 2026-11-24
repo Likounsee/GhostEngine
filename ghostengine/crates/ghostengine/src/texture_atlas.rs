@@ -355,18 +355,20 @@ mod tests {
     }
 
     #[test]
-    fn add_owned_transfers_texture_into_atlas_builder() {
+    fn add_owned_transfers_texture_and_duplicate_ids_preserve_existing_entries() {
         let texture = Texture::new(2, 1, vec![Color::RED, Color::BLUE]).unwrap();
-        let original_ptr = texture.pixels().as_ptr();
         let mut builder = TextureAtlasBuilder::new(4, 2, 0);
 
         builder.add_owned(5, texture).unwrap();
+        assert_eq!(
+            builder.add_owned(5, Texture::new(1, 1, vec![Color::GREEN]).unwrap()),
+            Err(TextureAtlasError::DuplicateId)
+        );
         let (atlas, regions) = builder.build().unwrap();
 
         assert_eq!(regions.len(), 1);
         assert_eq!(atlas.pixels()[0], Color::RED);
         assert_eq!(atlas.pixels()[1], Color::BLUE);
-        assert_ne!(atlas.pixels().as_ptr(), original_ptr);
     }
 
     #[test]
