@@ -324,6 +324,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_overflowing_padded_surface_size_before_writing() {
+        let frame = Framebuffer::new(1, 2, Color::RED).unwrap();
+        let descriptor = SurfaceDescriptor {
+            width: 1,
+            height: 2,
+            row_stride: usize::MAX,
+            pixel_format: PixelFormat::Rgba8,
+            alpha_mode: AlphaMode::Straight,
+            color_space: ColorSpace::Srgb,
+        };
+        let mut bytes = [0xA5; 8];
+
+        assert_eq!(
+            frame.write_to_surface(&mut bytes, descriptor),
+            Err(SurfaceError::SizeOverflow)
+        );
+        assert_eq!(bytes, [0xA5; 8]);
+    }
+
+    #[test]
     fn rejects_invalid_stride_and_short_buffer_before_writing() {
         let frame = Framebuffer::new(2, 1, Color::RED).unwrap();
         let invalid = SurfaceDescriptor {
