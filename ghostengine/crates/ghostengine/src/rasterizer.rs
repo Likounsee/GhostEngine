@@ -622,11 +622,17 @@ pub fn fill_rect_parallel_with_threads(
     let start = top * width;
     let end = bottom * width;
     let rows = &mut target.pixels_mut()[start..end];
-    process_rows_mut(rows, width, thread_count, |band| {
-        for row in band.chunks_mut(width) {
-            row[left..right].fill(color);
-        }
-    });
+    if left == 0 && right == width {
+        // Each worker owns a contiguous full-width band, so one slice fill
+        // avoids rebuilding row slices for every row in that band.
+        process_rows_mut(rows, width, thread_count, |band| band.fill(color));
+    } else {
+        process_rows_mut(rows, width, thread_count, |band| {
+            for row in band.chunks_mut(width) {
+                row[left..right].fill(color);
+            }
+        });
+    }
 }
 
 /// Alpha-composites a clipped rectangle over the framebuffer.
