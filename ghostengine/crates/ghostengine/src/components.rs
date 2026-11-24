@@ -2856,6 +2856,8 @@ impl ComponentTree {
             | ComponentKey::WordRight
             | ComponentKey::Home
             | ComponentKey::End
+            | ComponentKey::PageUp
+            | ComponentKey::PageDown
             | ComponentKey::Backspace
             | ComponentKey::Delete
             | ComponentKey::DeleteWordBackward
