@@ -47,6 +47,8 @@ pub struct InputState {
     pub right_pressed: bool,
     pub home_pressed: bool,
     pub end_pressed: bool,
+    pub page_up_pressed: bool,
+    pub page_down_pressed: bool,
     pub enter_pressed: bool,
     pub space_pressed: bool,
     pub tab_pressed: bool,
@@ -207,6 +209,12 @@ impl ComponentTree {
         }
         if input.end_pressed {
             self.handle_key(bounds, ComponentKey::End, input.shift_down);
+        }
+        if input.page_up_pressed {
+            self.handle_key(bounds, ComponentKey::PageUp, input.shift_down);
+        }
+        if input.page_down_pressed {
+            self.handle_key(bounds, ComponentKey::PageDown, input.shift_down);
         }
         if input.backspace_pressed {
             self.handle_key(
