@@ -748,30 +748,29 @@ impl ComponentTree {
         // Keep the tree borrowed in place: cloning every visible root (and its
         // descendants) on every frame made layout allocate and copy far more
         // memory than the geometry calculation itself requires.
-        let root_items: Vec<_> = self
-            .roots
-            .iter()
-            .filter(|node| node.visible)
-            .map(|node| node.layout_item)
-            .collect();
-        let root_rects = StackLayout::default().layout(bounds, &root_items);
-
         let roots = &self.roots;
         let placed = &mut self.placed;
         let focusable_ids = &mut self.focusable_ids;
         let focusable_bounds = &mut self.focusable_bounds;
         let interaction = self.interaction;
-        for (node, rect) in roots.iter().filter(|node| node.visible).zip(root_rects) {
-            Self::place_node_into(
-                node,
-                rect,
-                true,
-                placed,
-                focusable_ids,
-                focusable_bounds,
-                interaction,
-            );
-        }
+        let mut visible_roots = roots.iter().filter(|node| node.visible);
+        StackLayout::default().for_each_layout(
+            bounds,
+            visible_roots.clone().map(|node| node.layout_item),
+            |rect| {
+                if let Some(node) = visible_roots.next() {
+                    Self::place_node_into(
+                        node,
+                        rect,
+                        true,
+                        placed,
+                        focusable_ids,
+                        focusable_bounds,
+                        interaction,
+                    );
+                }
+            },
+        );
         self.placed.as_slice()
     }
 
@@ -802,31 +801,24 @@ impl ComponentTree {
         });
 
         let children = &node.children;
-        let child_items: Vec<_> = children
-            .iter()
-            .filter(|child| child.visible)
-            .map(|child| child.layout_item)
-            .collect();
-        if child_items.is_empty() {
-            return;
-        }
-
-        let child_rects = node.child_layout.layout(bounds, &child_items);
-        for (child, child_bounds) in children
-            .iter()
-            .filter(|child| child.visible)
-            .zip(child_rects)
-        {
-            Self::place_node_into(
-                child,
-                child_bounds,
-                effectively_enabled,
-                placed,
-                focusable_ids,
-                focusable_bounds,
-                interaction,
-            );
-        }
+        let mut visible_children = children.iter().filter(|child| child.visible);
+        node.child_layout.for_each_layout(
+            bounds,
+            visible_children.clone().map(|child| child.layout_item),
+            |child_bounds| {
+                if let Some(child) = visible_children.next() {
+                    Self::place_node_into(
+                        child,
+                        child_bounds,
+                        effectively_enabled,
+                        placed,
+                        focusable_ids,
+                        focusable_bounds,
+                        interaction,
+                    );
+                }
+            },
+        );
     }
 
     /// Updates pointer state and emits activation/focus events for visible controls.
