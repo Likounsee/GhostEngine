@@ -86,7 +86,7 @@ pub use image::{
 };
 pub use input::InputState;
 pub use interaction::{InteractionEvents, UiInteraction};
-pub use layout::{Insets, LayoutDirection, LayoutItem, ScrollViewport, StackLayout};
+pub use layout::{Insets, LayoutDirection, LayoutError, LayoutItem, ScrollViewport, StackLayout};
 pub use mask::apply_alpha_mask_clipped;
 pub use mipmap::{draw_mipmapped_texture_clipped, MipmapChain};
 pub use path::{
