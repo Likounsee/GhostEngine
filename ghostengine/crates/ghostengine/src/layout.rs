@@ -138,26 +138,36 @@ impl StackLayout {
             LayoutDirection::Vertical => (
                 bounds.x.saturating_add(self.padding.left),
                 bounds.y.saturating_add(self.padding.top),
-                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
-                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds
+                    .height
+                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds
+                    .width
+                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
             ),
             LayoutDirection::Horizontal => (
                 bounds.x.saturating_add(self.padding.left),
                 bounds.y.saturating_add(self.padding.top),
-                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
-                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds
+                    .width
+                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds
+                    .height
+                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
             ),
         };
 
         let gaps = self.gap.saturating_mul(item_count.saturating_sub(1) as u32);
         let available = main_available.saturating_sub(gaps);
         let (fixed_total, flexible_count) =
-            items.clone().fold((0_u32, 0_u32), |(fixed, flexible), item| {
-                match item.main_size {
-                    Some(size) => (fixed.saturating_add(size), flexible),
-                    None => (fixed, flexible.saturating_add(1)),
-                }
-            });
+            items
+                .clone()
+                .fold((0_u32, 0_u32), |(fixed, flexible), item| {
+                    match item.main_size {
+                        Some(size) => (fixed.saturating_add(size), flexible),
+                        None => (fixed, flexible.saturating_add(1)),
+                    }
+                });
         let remaining = available.saturating_sub(fixed_total);
         let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
         let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
@@ -172,7 +182,9 @@ impl StackLayout {
                     flexible_base.saturating_add(extra)
                 }
             };
-            let gaps_after = self.gap.saturating_mul(item_count.saturating_sub(index + 1) as u32);
+            let gaps_after = self
+                .gap
+                .saturating_mul(item_count.saturating_sub(index + 1) as u32);
             let maximum = main_available.saturating_sub(consumed.saturating_add(gaps_after));
             let main_size = requested.min(maximum);
             let rect = match self.direction {
