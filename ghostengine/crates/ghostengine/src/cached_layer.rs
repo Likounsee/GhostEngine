@@ -291,7 +291,7 @@ mod tests {
 
                     let effective_alpha =
                         ((u16::from(source_alpha) * u16::from(opacity) + 127) / 255) as u8;
-                    let expected = Color { a: effective_alpha, ..source }.blend_over(background);
+                    let expected = Color {\n                        a: effective_alpha,\n                        ..source\n                    }\n                    .blend_over(background);
                     assert_eq!(
                         target.get_pixel(0, 0),
                         Some(expected),
@@ -329,7 +329,7 @@ mod tests {
         let original_damage = cache.damage().clone();
         let original_frames = cache.rendered_frames();
 
-        assert_eq!(cache.resize(0, 4, Color::BLUE), Err(FramebufferError::ZeroDimension));
+        assert_eq!(\n            cache.resize(0, 4, Color::BLUE),\n            Err(FramebufferError::ZeroDimension)\n        );
         assert_eq!(cache.framebuffer(), &original_framebuffer);
         assert_eq!(cache.damage(), &original_damage);
         assert_eq!(cache.rendered_frames(), original_frames);
