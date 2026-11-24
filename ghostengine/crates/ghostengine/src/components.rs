@@ -2178,8 +2178,10 @@ impl ComponentTree {
         let viewport_bottom = current_offset.saturating_add(viewport_height);
         // A row taller than the viewport cannot fit completely. Keep its top
         // edge anchored instead of alternating between top and bottom offsets.
-        let next_offset = if row_height >= viewport_height || row_top < current_offset {
+        let next_offset = if row_height >= viewport_height {
             row_top
+        } else if row_top < current_offset {
+            row_top.saturating_sub(viewport_height.saturating_sub(row_height))
         } else if row_bottom > viewport_bottom {
             row_bottom.saturating_sub(viewport_height)
         } else {
