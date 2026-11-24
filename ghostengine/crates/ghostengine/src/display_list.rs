@@ -449,6 +449,41 @@ impl DisplayList {
         }
     }
 
+    /// Fallibly records multiple same-color rectangles as one batch command.
+    ///
+    /// Both the command buffer and copied rectangle storage are reserved before
+    /// the command is appended. If either reservation fails, the recorded
+    /// display list remains unchanged.
+    pub fn try_fill_rects(
+        &mut self,
+        rectangles: &[Rect],
+        color: Color,
+    ) -> Result<(), DisplayListError> {
+        if rectangles.is_empty() {
+            return Ok(());
+        }
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+
+        let mut owned_rectangles = Vec::new();
+        owned_rectangles
+            .try_reserve_exact(rectangles.len())
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        owned_rectangles.extend_from_slice(rectangles);
+
+        self.commands.push(Command::FillRects {
+            rectangles: owned_rectangles,
+            color,
+            clip,
+        });
+        Ok(())
+    }
+
     /// Records a one-pixel rectangle outline using the active affine transform.
     pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
         if rect.width == 0 || rect.height == 0 {
@@ -2278,6 +2313,29 @@ mod tests {
         assert_eq!(first_pixels, second.pixels());
         assert_eq!(first_stats.commands_submitted, 1);
         assert_eq!(first_stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn fallible_rectangle_batch_records_owned_geometry_and_replays() {
+        let rectangles = [Rect::new(0, 0, 2, 1), Rect::new(2, 0, 2, 1)];
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(1, 0, 2, 1));
+        list.try_fill_rects(&rectangles, Color::GREEN).unwrap();
+
+        let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+
+        assert_eq!(target.pixels(), &[Color::BLACK, Color::GREEN, Color::GREEN, Color::BLACK]);
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn fallible_rectangle_batch_without_clip_is_a_noop() {
+        let mut list = DisplayList::new();
+        list.try_fill_rects(&[Rect::new(0, 0, 2, 2)], Color::WHITE)
+            .unwrap();
+        assert!(list.is_empty());
     }
 
     #[test]
