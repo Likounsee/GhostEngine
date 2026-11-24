@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# Keep validation for each pushed commit. A newer documentation or source commit
-# must not cancel a matrix that is already queued or running.
+# Only the newest commit on a branch needs a full matrix. Cancel stale queued
+# or running matrices so release validation is not delayed by obsolete commits.
 concurrency:
-  group: ghostengine-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: ghostengine-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust:
