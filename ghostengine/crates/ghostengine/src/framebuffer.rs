@@ -34,6 +34,29 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
+    /// Builds a framebuffer by taking ownership of an existing row-major pixel buffer.
+    ///
+    /// No pixel allocation or copy is performed. Dimensions must be non-zero
+    /// and the vector must contain exactly width * height pixels.
+    pub fn from_pixels(
+        width: u32,
+        height: u32,
+        pixels: Vec<Color>,
+    ) -> Result<Self, FramebufferError> {
+        if width == 0 || height == 0 {
+            return Err(FramebufferError::ZeroDimension);
+        }
+
+        let expected_count = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        if pixels.len() != expected_count {
+            return Err(FramebufferError::PixelCountMismatch);
+        }
+
+        Ok(Self { width, height, pixels })
+    }
+
     pub fn new(width: u32, height: u32, clear_color: Color) -> Result<Self, FramebufferError> {
         if width == 0 || height == 0 {
             return Err(FramebufferError::ZeroDimension);
@@ -300,6 +323,31 @@ impl Framebuffer {
 mod tests {
     use super::{Framebuffer, FramebufferError};
     use crate::Color;
+
+    #[test]
+    fn from_pixels_takes_ownership_without_copying() {
+        let pixels = vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE];
+        let allocation = pixels.as_ptr();
+
+        let framebuffer = Framebuffer::from_pixels(2, 2, pixels).unwrap();
+
+        assert_eq!(framebuffer.width(), 2);
+        assert_eq!(framebuffer.height(), 2);
+        assert_eq!(framebuffer.pixels().as_ptr(), allocation);
+        assert_eq!(framebuffer.pixels(), &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+    }
+
+    #[test]
+    fn from_pixels_rejects_invalid_dimensions_and_pixel_counts() {
+        assert_eq!(
+            Framebuffer::from_pixels(0, 2, Vec::new()),
+            Err(FramebufferError::ZeroDimension)
+        );
+        assert_eq!(
+            Framebuffer::from_pixels(2, 2, vec![Color::RED]),
+            Err(FramebufferError::PixelCountMismatch)
+        );
+    }
 
     #[test]
     fn creates_and_initializes_framebuffer() {
