@@ -137,9 +137,13 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Review all public API docs and examples for accurate feature requirements and error behavior.
 - [x] Document migration guidance for the common host/presentation API and transitional adapters (`APPLICATION_INTEGRATION.md` and `FEATURES.md`).
 - [ ] Confirm license notices for bundled font fixtures and all optional dependencies.
-- [x] Add a release gate covering CI, desktop validation, reliability, benchmarks, licensing and packaging (`RELEASE_CHECKLIST.md`).\n- [x] Add a repeatable per-OS desktop validation record (`PLATFORM_VALIDATION.md`).\n- [ ] Prepare a versioned 2D V1 release only after P0 is complete and no critical defects remain.
+- [x] Add a release gate covering CI, desktop validation, reliability, benchmarks, licensing and packaging (`RELEASE_CHECKLIST.md`).
+- [x] Add a repeatable per-OS desktop validation record (`PLATFORM_VALIDATION.md`).
+- [ ] Prepare a versioned 2D V1 release only after P0 is complete and no critical defects remain.
 
-### Current validation notes\n\n- The release gate and per-OS desktop validation record are now documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
+### Current validation notes
+
+- The release gate and per-OS desktop validation record are now documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
 - Historical robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`). Later commits require their own green matrix.
