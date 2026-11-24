@@ -1,6 +1,7 @@
 use ghostengine::{
-    AlphaMode, Color, ColorSpace, DisplayList, Framebuffer, Path, PixelFormat, Point, Rect,
-    SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError, Transform2D, Vector,
+    AlphaMode, CachedLayer, Color, ColorSpace, DisplayList, FontFace, Framebuffer, Path,
+    PathGeometryCache, PixelFormat, Point, Rect, SurfaceDescriptor, SurfaceError, Texture,
+    TextureCache, TextureCacheError, Transform2D, Vector,
 };
 
 /// Small deterministic generator: reproducible property-style coverage without
@@ -405,4 +406,60 @@ fn display_list_fallible_capacity_apis_report_overflow_without_mutating_state() 
     assert!(reserved.command_capacity() >= 32);
     reserved.try_reserve_commands(64).unwrap();
     assert!(reserved.command_capacity() >= 64);
+}
+
+
+#[test]
+fn unified_cache_lifecycle_stays_bounded_under_repeated_churn() {
+    let mut texture_cache = TextureCache::new(256);
+    let mut path_cache = PathGeometryCache::new(8);
+    let mut layer = CachedLayer::new(8, 8, Color::BLACK).unwrap();
+    let font = FontFace::from_bytes(include_bytes!("fixtures/NotoSansArabic[wdth,wght].ttf"))
+        .expect("bundled Arabic font fixture must load");
+
+    let mut path = Path::new();
+    path.move_to(Vector::new(0.0, 0.0))
+        .line_to(Vector::new(12.0, 0.0))
+        .line_to(Vector::new(6.0, 12.0))
+        .close();
+
+    for cycle in 0..2_000u32 {
+        let color = Color::rgba(cycle as u8, (cycle >> 3) as u8, 127, 255);
+        if let Ok(handle) = texture_cache.insert(Texture::new(2, 2, vec![color; 4]).unwrap()) {
+            assert!(texture_cache.peek(handle).is_some());
+        }
+        assert!(texture_cache.stats().used_bytes <= texture_cache.stats().budget_bytes);
+
+        let tolerance = 0.25 + (cycle % 4) as f32 * 0.125;
+        assert!(!path_cache
+            .get_or_flatten(u64::from(cycle % 32), &path, tolerance)
+            .unwrap()
+            .subpaths
+            .is_empty());
+        assert!(path_cache.stats().entries <= path_cache.stats().capacity);
+
+        layer.mark_dirty(Rect::new(cycle % 8, cycle % 8, 1, 1));
+        assert!(layer.render_if_dirty(|frame, _damage| {
+            frame.set_pixel(cycle % frame.width(), cycle % frame.height(), color);
+        }));
+        if cycle % 17 == 0 {
+            let width = 4 + cycle % 9;
+            let height = 4 + (cycle / 17) % 9;
+            layer.resize(width, height, Color::BLACK).unwrap();
+            assert!(layer.render_if_dirty(|frame, _damage| frame.clear(color)));
+        }
+    }
+
+    // The glyph cache deliberately clears in bounded batches instead of growing
+    // without limit when applications encounter many size/glyph combinations.
+    for size in 8..5_000 {
+        let measured = font.measure("ا", size as f32);
+        assert!(measured.width.is_finite());
+    }
+    assert!(font.cached_glyph_count() <= 4_096);
+    assert!(font.cached_glyph_count() > 0);
+
+    assert!(path_cache.stats().entries <= 8);
+    assert!(texture_cache.stats().used_bytes <= 256);
+    assert!(layer.damage().is_empty());
 }
