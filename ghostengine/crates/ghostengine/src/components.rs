@@ -4428,6 +4428,60 @@ mod tests {
     }
 
     #[test]
+    fn retained_list_view_selection_stays_visible_across_viewport_and_row_sizes() {
+        let item_count = 64_usize;
+        for viewport_height in 1..=32_u32 {
+            for row_height in 1..=16_u32 {
+                let id = ComponentId(20_000);
+                let bounds = Rect::new(0, 0, 128, viewport_height);
+                let items = (0..item_count)
+                    .map(|index| format!("Row {index}"))
+                    .collect();
+                let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+                    id,
+                    items,
+                    row_height,
+                )
+                .with_layout_item(LayoutItem::fixed(viewport_height))]);
+                tree.layout(bounds);
+                tree.focus_next(bounds, false);
+
+                let assert_selection_visible = |tree: &ComponentTree| {
+                    let selected = tree.list_view_selected(id).unwrap() as u32;
+                    let offset = tree.list_view_scroll_offset(id).unwrap();
+                    let row_top = selected * row_height;
+                    if row_height >= viewport_height {
+                        assert_eq!(offset, row_top);
+                    } else {
+                        assert!(row_top >= offset);
+                        assert!(
+                            row_top.saturating_add(row_height)
+                                <= offset.saturating_add(viewport_height)
+                        );
+                    }
+                };
+
+                for _ in 0..item_count {
+                    tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..item_count {
+                    tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..16 {
+                    tree.handle_key(bounds, ComponentKey::PageDown, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..16 {
+                    tree.handle_key(bounds, ComponentKey::PageUp, false);
+                    assert_selection_visible(&tree);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn retained_list_view_keeps_tall_selected_rows_stably_top_aligned() {
         let id = ComponentId(138);
         let bounds = Rect::new(0, 0, 100, 8);
