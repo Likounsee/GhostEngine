@@ -604,7 +604,8 @@ pub fn compose_layers_parallel_with_threads(
         }
         if layer.transform == Transform2D::IDENTITY {
             std::thread::scope(|scope| {
-                for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+                for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate()
+                {
                     let row_origin = (worker_index * rows_per_worker) as u32;
                     let row_end = (row_origin as usize + pixels.len() / width) as u32;
                     scope.spawn(move || {
@@ -833,7 +834,9 @@ fn compose_identity_layer_rows(
     let source_right = source_left + (destination_right - destination_left) as usize;
     let source_width = layer.framebuffer.width() as usize;
 
-    let destination_top = i64::from(layer.y).max(i64::from(clip.y)).max(i64::from(row_origin));
+    let destination_top = i64::from(layer.y)
+        .max(i64::from(clip.y))
+        .max(i64::from(row_origin));
     let destination_bottom = (i64::from(layer.y) + i64::from(layer.framebuffer.height()))
         .min(i64::from(clip.y) + i64::from(clip.height))
         .min(i64::from(row_end));
@@ -851,8 +854,7 @@ fn compose_identity_layer_rows(
         let source_row =
             &layer.framebuffer.pixels()[source_start..source_y * source_width + source_right];
         let row_offset = (destination_y - i64::from(row_origin)) as usize * target_width;
-        let Some(destination_row) =
-            target_pixels.get_mut(row_offset..row_offset + target_width)
+        let Some(destination_row) = target_pixels.get_mut(row_offset..row_offset + target_width)
         else {
             continue;
         };
@@ -2680,9 +2682,7 @@ mod tests {
         }
         transformed.set_position(24, 18);
         transformed.set_opacity(211);
-        transformed.set_transform(
-            Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)),
-        );
+        transformed.set_transform(Transform2D::rotation(0.08).then(Transform2D::scale(1.35, 1.35)));
         transformed.set_filter(TextureFilter::Bilinear);
 
         let mut inner = LayerGroup::new(512, 256).unwrap();
