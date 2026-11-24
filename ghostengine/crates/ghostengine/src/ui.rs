@@ -6,7 +6,7 @@
 
 use crate::rasterizer::{
     draw_line_aa, draw_rect, draw_rounded_rect_aa, fill_rect, fill_rect_clipped, fill_rounded_rect,
-    fill_rounded_rect_aa_parallel,
+    fill_rounded_rect_aa, fill_rounded_rect_aa_parallel,
 };
 use crate::{
     draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
