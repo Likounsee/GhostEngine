@@ -161,6 +161,8 @@ enum Command {
 pub enum DisplayListError {
     /// The requested command capacity cannot be represented or allocated.
     AllocationFailed,
+    /// A transform contains non-finite values or composes to a non-finite matrix.
+    InvalidTransform,
 }
 
 impl std::fmt::Display for DisplayListError {
@@ -168,6 +170,9 @@ impl std::fmt::Display for DisplayListError {
         match self {
             Self::AllocationFailed => {
                 formatter.write_str("could not reserve display-list command storage")
+            }
+            Self::InvalidTransform => {
+                formatter.write_str("display-list transform must contain finite values")
             }
         }
     }
@@ -339,6 +344,22 @@ impl DisplayList {
         self.clips.push(effective.unwrap_or_default());
     }
 
+    /// Fallibly pushes a clip rectangle without changing the stack on failure.
+    ///
+    /// Nested clips are intersected with their parent. An empty intersection
+    /// remains empty until the matching pop.
+    pub fn try_push_clip(&mut self, clip: Rect) -> Result<(), DisplayListError> {
+        let effective = self
+            .clips
+            .last()
+            .map_or(Some(clip), |parent| parent.intersection(clip));
+        self.clips
+            .try_reserve(1)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        self.clips.push(effective.unwrap_or_default());
+        Ok(())
+    }
+
     /// Removes the most recently pushed clip. Returns false for an empty stack.
     pub fn pop_clip(&mut self) -> bool {
         self.clips.pop().is_some()
@@ -363,6 +384,33 @@ impl DisplayList {
         }
         self.transforms.push(combined);
         true
+    }
+
+    /// Fallibly pushes a composed affine transform.
+    ///
+    /// Invalid transforms and allocation failures leave the active stack
+    /// unchanged.
+    pub fn try_push_transform(
+        &mut self,
+        transform: Transform2D,
+    ) -> Result<(), DisplayListError> {
+        if !transform.is_finite() {
+            return Err(DisplayListError::InvalidTransform);
+        }
+        let combined = self
+            .transforms
+            .last()
+            .copied()
+            .unwrap_or(Transform2D::IDENTITY)
+            .then(transform);
+        if !combined.is_finite() {
+            return Err(DisplayListError::InvalidTransform);
+        }
+        self.transforms
+            .try_reserve(1)
+            .map_err(|_| DisplayListError::AllocationFailed)?;
+        self.transforms.push(combined);
+        Ok(())
     }
 
     /// Removes the most recently pushed transform. Returns false for an empty stack.
@@ -1750,6 +1798,30 @@ mod tests {
         list.clear();
         assert_eq!(list.clip_stack_capacity(), clip_capacity);
         assert_eq!(list.transform_stack_capacity(), transform_capacity);
+    }
+
+    #[test]
+    fn fallible_stack_pushes_preserve_state_and_reject_invalid_transforms() {
+        let mut list = DisplayList::new();
+        list.try_reserve_stacks(2, 2).unwrap();
+
+        list.try_push_clip(Rect::new(0, 0, 10, 10)).unwrap();
+        list.try_push_clip(Rect::new(5, 5, 10, 10)).unwrap();
+        assert_eq!(list.clip_stack_capacity(), 2);
+
+        list.try_push_transform(Transform2D::translation(2.0, 3.0))
+            .unwrap();
+        let before = list.transform_stack_capacity();
+        assert_eq!(
+            list.try_push_transform(Transform2D::new(
+                f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0
+            )),
+            Err(super::DisplayListError::InvalidTransform)
+        );
+        assert_eq!(list.transform_stack_capacity(), before);
+        assert!(list.pop_clip());
+        assert!(list.pop_clip());
+        assert!(!list.pop_clip());
     }
 
     #[test]
