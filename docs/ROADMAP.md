@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green run of the latest commit across Windows, Linux and macOS, including all feature combinations, the public host-pipeline integration tests and the image pipeline example (verified on `d5ecf3eef79693b23d1449d210b0b4f93366b207`, CI run `45262411272`).
+- [ ] Obtain a fully green run for the release-candidate commit across Windows, Linux and macOS, including all feature combinations, the public host-pipeline integration tests and the image pipeline example. A historical green matrix was recorded on `d5ecf3eef79693b23d1449d210b0b4f93366b207` (CI run `45262411272`); it does not validate later commits.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -128,7 +128,7 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `45261600749`; its virtual runner results are not substitutes for reference desktop measurements.
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
-- [ ] Stress-test texture, path, glyph and layer caches over repeated insert/evict/invalidate cycles; verify bounded memory and stale-handle behavior.
+- [ ] Complete a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate cycles; verify bounded memory and stale-handle behavior. Targeted lifecycle tests exist, including texture-cache randomized accounting, path-cache repeated eviction/invalidation, bounded glyph caches and repeated layer damage/resize cycles.
 - [ ] Stress-test repeated resize, minimize/restore, frame presentation and host shutdown.
 - [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
 
@@ -142,7 +142,7 @@ This checklist tracks implementation separately from release validation. A check
 ### Current validation notes\n\n- The release gate and per-OS desktop validation record are now documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
-- The latest pre-follow-up robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`).
+- Historical robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`). Later commits require their own green matrix.
 - Automated compilation/tests of native adapters do not prove real desktop behavior. Interactive validation on each target OS remains outstanding until evidence is recorded.
 - GPU acceleration, 3D rendering and secure-display support are intentionally outside the 2D V1 scope.
 
