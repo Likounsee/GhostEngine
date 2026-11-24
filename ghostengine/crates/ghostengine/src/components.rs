@@ -1810,6 +1810,34 @@ impl ComponentTree {
         self.list_states.get(&id).and_then(|state| state.selected())
     }
 
+    /// Selects a row in a retained list view programmatically.
+    ///
+    /// Passing None clears the selection. An out-of-range row index is
+    /// rejected without changing the current selection.
+    pub fn set_list_view_selected(
+        &mut self,
+        id: ComponentId,
+        selected: Option<usize>,
+    ) -> bool {
+        let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { items, .. } => Some(items.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        if selected.is_some_and(|index| index >= item_count) {
+            return false;
+        }
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        if selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
     /// Updates the pixel scroll offset of a retained list view.
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
         let viewport_height = self
@@ -3599,6 +3627,36 @@ mod tests {
             }
         ));
         assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
+    }
+
+    #[test]
+    fn retained_list_view_supports_programmatic_selection() {
+        let id = ComponentId(136);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert!(tree.set_list_view_selected(id, Some(4)));
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+
+        assert!(!tree.set_list_view_selected(id, Some(5)));
+        assert_eq!(tree.list_view_selected(id), Some(4));
+
+        assert!(tree.set_list_view_selected(id, None));
+        assert_eq!(tree.list_view_selected(id), None);
+        assert!(!tree.set_list_view_selected(ComponentId(999), Some(0)));
     }
 
     #[test]
