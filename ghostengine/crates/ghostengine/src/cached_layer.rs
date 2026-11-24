@@ -270,4 +270,108 @@ mod tests {
 
         assert_eq!(target.pixels(), original);
     }
+
+    #[test]
+    fn compositing_matches_source_over_for_alpha_and_layer_opacity() {
+        let mut cache = CachedLayer::new(1, 1, Color::TRANSPARENT).unwrap();
+        let backgrounds = [
+            Color::TRANSPARENT,
+            Color::rgba(17, 83, 149, 91),
+            Color::rgb(31, 127, 223),
+        ];
+        let opacities = [0, 1, 63, 127, 128, 192, 254, 255];
+
+        for source_alpha in 0..=u8::MAX {
+            let source = Color::rgba(231, 79, 143, source_alpha);
+            cache.framebuffer_mut().set_pixel(0, 0, source);
+            for opacity in opacities {
+                for background in backgrounds {
+                    let mut target = Framebuffer::new(1, 1, background).unwrap();
+                    cache.composite_onto(&mut target, 0, 0, opacity, Rect::new(0, 0, 1, 1));
+
+                    let effective_alpha =
+                        ((u16::from(source_alpha) * u16::from(opacity) + 127) / 255) as u8;
+                    let expected = Color { a: effective_alpha, ..source }.blend_over(background);
+                    assert_eq!(
+                        target.get_pixel(0, 0),
+                        Some(expected),
+                        "source alpha={source_alpha}, opacity={opacity}, background={background:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compositing_clips_negative_offsets_and_preserves_uncovered_pixels() {
+        let mut cache = CachedLayer::new(3, 2, Color::TRANSPARENT).unwrap();
+        cache.framebuffer_mut().pixels_mut().copy_from_slice(&[
+            Color::RED, Color::GREEN, Color::BLUE,
+            Color::YELLOW, Color::CYAN, Color::MAGENTA,
+        ]);
+        let mut target = Framebuffer::new(3, 2, Color::BLACK).unwrap();
+
+        cache.composite_onto(&mut target, -1, 0, 255, Rect::new(0, 0, 2, 2));
+
+        assert_eq!(
+            target.pixels(),
+            &[Color::GREEN, Color::BLUE, Color::BLACK,
+              Color::CYAN, Color::MAGENTA, Color::BLACK]
+        );
+    }
+
+    #[test]
+    fn failed_resize_preserves_framebuffer_and_pending_damage() {
+        let mut cache = CachedLayer::new(3, 2, Color::BLACK).unwrap();
+        cache.render_if_dirty(|_, _| {});
+        cache.mark_dirty(Rect::new(1, 0, 1, 1));
+        let original_framebuffer = cache.framebuffer().clone();
+        let original_damage = cache.damage().clone();
+        let original_frames = cache.rendered_frames();
+
+        assert_eq!(cache.resize(0, 4, Color::BLUE), Err(FramebufferError::ZeroDimension));
+        assert_eq!(cache.framebuffer(), &original_framebuffer);
+        assert_eq!(cache.damage(), &original_damage);
+        assert_eq!(cache.rendered_frames(), original_frames);
+    }
+
+    #[test]
+    fn renderer_panic_keeps_damage_pending_for_a_retry() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let mut cache = CachedLayer::new(4, 3, Color::BLACK).unwrap();
+        let original_damage = cache.damage().clone();
+
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            cache.render_if_dirty(|_, _| panic!("simulated renderer failure"));
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(cache.damage(), &original_damage);
+        assert_eq!(cache.rendered_frames(), 0);
+
+        assert!(cache.render_if_dirty(|target, damage| {
+            for rect in damage.rectangles() {
+                target.fill_rect(*rect, Color::GREEN);
+            }
+        }));
+        assert!(cache.damage().is_empty());
+        assert_eq!(cache.rendered_frames(), 1);
+        assert_eq!(cache.framebuffer().get_pixel(3, 2), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn direct_framebuffer_mutation_requires_explicit_invalidation() {
+        let mut cache = CachedLayer::new(2, 2, Color::BLACK).unwrap();
+        cache.render_if_dirty(|_, _| {});
+        cache.framebuffer_mut().set_pixel(1, 1, Color::RED);
+
+        assert!(!cache.render_if_dirty(|_, _| panic!("clean cache must not render")));
+        cache.mark_dirty(Rect::new(1, 1, 1, 1));
+        assert!(cache.render_if_dirty(|target, _| {
+            target.set_pixel(1, 1, Color::BLUE);
+        }));
+        assert_eq!(cache.framebuffer().get_pixel(1, 1), Some(Color::BLUE));
+    }
+
 }
