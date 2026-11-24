@@ -150,11 +150,17 @@ fn automatic_layer_composition_matches_serial_for_randomized_large_scenes() {
             }
 
             let mut layer = Layer::from_framebuffer(framebuffer);
-            layer.set_position(
-                rng.range(49) as i32 - 24,
-                rng.range(33) as i32 - 16,
-            );
-            layer.set_opacity(rng.range(256) as u8);
+            if index % 3 == 0 {
+                // Keep at least one identity layer exactly at the parallel
+                // compositor's pixel threshold so the automatic path is tested.
+                layer.set_position(0, 0);
+            } else {
+                layer.set_position(
+                    rng.range(49) as i32 - 24,
+                    rng.range(33) as i32 - 16,
+                );
+            }
+            layer.set_opacity((1 + rng.range(255)) as u8);
             layer.set_blend_mode(blend_modes[(case + index as usize) % blend_modes.len()]);
             layer.set_filter(if index % 2 == 0 {
                 TextureFilter::Nearest
