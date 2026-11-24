@@ -1862,17 +1862,18 @@ impl ComponentTree {
     pub fn set_list_view_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
         let selected = self.list_states.get(&id).and_then(|state| state.selected());
         let Some((row_height, current_offset)) =
-            self.find_mut(id).and_then(|component| match &mut component.kind {
-                ComponentKind::ListView {
-                    items: current_items,
-                    row_height,
-                    scroll_offset,
-                } => {
-                    *current_items = items;
-                    Some((*row_height, *scroll_offset))
-                }
-                _ => None,
-            })
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items: current_items,
+                        row_height,
+                        scroll_offset,
+                    } => {
+                        *current_items = items;
+                        Some((*row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })
         else {
             return false;
         };
@@ -3869,10 +3870,7 @@ mod tests {
         tree.set_list_view_selected(id, Some(6));
         assert_eq!(tree.list_view_selected(id), Some(6));
 
-        assert!(tree.set_list_view_items(
-            id,
-            (0..3).map(|index| format!("New {index}")).collect(),
-        ));
+        assert!(tree.set_list_view_items(id, (0..3).map(|index| format!("New {index}")).collect(),));
         assert_eq!(tree.list_view_selected(id), Some(2));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
