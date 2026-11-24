@@ -23,6 +23,8 @@ pub struct InputState {
     pub left_click_count: u8,
     pub right_mouse_down: bool,
     pub right_mouse_pressed: bool,
+    /// Horizontal wheel movement in pixels; positive values scroll toward later columns.
+    pub scroll_delta_x: i32,
     /// Vertical wheel movement in pixels; positive values scroll toward later rows.
     pub scroll_delta_y: i32,
     /// True while either Shift key is held.
