@@ -553,6 +553,7 @@ mod tests {
             ColorSpace::Srgb,
         );
         rgb.read_from_surface(&[10, 20, 30], rgb_descriptor).unwrap();
+            .unwrap();
         assert_eq!(rgb.pixels(), &[Color::rgba(10, 20, 30, 255)]);
 
         let mut bgr = Framebuffer::new(1, 1, Color::TRANSPARENT).unwrap();
@@ -564,6 +565,7 @@ mod tests {
             ColorSpace::Srgb,
         );
         bgr.read_from_surface(&[30, 20, 10], bgr_descriptor).unwrap();
+            .unwrap();
         assert_eq!(bgr.pixels(), &[Color::rgba(10, 20, 30, 255)]);
     }
 
@@ -579,6 +581,7 @@ mod tests {
         );
 
         frame.read_from_surface(&[200, 100, 50, 0], descriptor).unwrap();
+            .unwrap();
 
         assert_eq!(frame.pixels(), &[Color::TRANSPARENT]);
     }
