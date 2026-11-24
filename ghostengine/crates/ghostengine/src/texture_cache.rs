@@ -426,6 +426,21 @@ mod tests {
     }
 
     #[test]
+    fn preserving_insert_returns_texture_when_handle_space_is_exhausted() {
+        let mut cache = TextureCache::new(16);
+        cache.next_handle = u64::MAX;
+
+        let (error, returned) = cache
+            .try_insert_preserving_texture(texture(Color::GREEN, 1))
+            .unwrap_err();
+
+        assert_eq!(error, TextureCacheError::HandleExhausted);
+        assert_eq!(returned.pixels(), &[Color::GREEN]);
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().used_bytes, 0);
+    }
+
+    #[test]
     fn preserving_insert_returns_texture_when_it_exceeds_budget() {
         let mut cache = TextureCache::new(8);
         let texture = texture(Color::BLUE, 3);
