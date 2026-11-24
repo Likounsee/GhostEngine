@@ -40,20 +40,25 @@ pub struct EffectScratch {
 /// The scratch allocation is retained between calls. Runtime is linear in the
 /// number of pixels and independent of blur radius after initialization.
 pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut EffectScratch) {
+    let _ = try_apply_box_blur(target, radius, scratch);
+}
+
+/// Fallible box blur. The target is unchanged if scratch storage cannot be reserved.
+pub fn try_apply_box_blur(
+    target: &mut Framebuffer,
+    radius: u32,
+    scratch: &mut EffectScratch,
+) -> Result<(), FramebufferError> {
     if radius == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     let width = target.width() as usize;
     let height = target.height() as usize;
     let radius_x = (radius as usize).min(width.saturating_sub(1));
     let radius_y = (radius as usize).min(height.saturating_sub(1));
-    scratch
-        .source
-        .resize(target.pixels().len(), Color::TRANSPARENT);
+    try_resize_with_default(&mut scratch.source, target.pixels().len(), Color::TRANSPARENT)?;
+    try_resize_with_default(&mut scratch.pixels, target.pixels().len(), Color::TRANSPARENT)?;
     scratch.source.copy_from_slice(target.pixels());
-    scratch
-        .pixels
-        .resize(scratch.source.len(), Color::TRANSPARENT);
 
     for y in 0..height {
         let mut sums = [0_u64; 4];
@@ -86,6 +91,7 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
             add_pixel(&mut sums, scratch.pixels[add_y * width + x], 1);
         }
     }
+    Ok(())
 }
 
 /// Applies a separable Gaussian blur in-place using premultiplied-alpha arithmetic.
@@ -93,31 +99,37 @@ pub fn apply_box_blur(target: &mut Framebuffer, radius: u32, scratch: &mut Effec
 /// The radius is the kernel half-width; standard deviation is max(radius / 2, 0.5).
 /// Edge kernels are clipped to the image bounds and renormalized. Scratch allocations persist.
 pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut EffectScratch) {
+    let _ = try_apply_gaussian_blur(target, radius, scratch);
+}
+
+/// Fallible Gaussian blur. All scratch storage is reserved before the target changes.
+pub fn try_apply_gaussian_blur(
+    target: &mut Framebuffer,
+    radius: u32,
+    scratch: &mut EffectScratch,
+) -> Result<(), FramebufferError> {
     if radius == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     let width = target.width() as usize;
     let height = target.height() as usize;
     let radius = (radius as usize).min(width.max(height).saturating_sub(1));
     if radius == 0 {
-        return;
+        return Ok(());
     }
 
     let sigma = (radius as f64 * 0.5).max(0.5);
     let denominator = 2.0 * sigma * sigma;
-    scratch.weights.resize(radius + 1, 0.0);
+    let weight_count = radius.checked_add(1).ok_or(FramebufferError::SizeOverflow)?;
+    try_resize_with_default(&mut scratch.weights, weight_count, 0.0)?;
+    try_resize_with_default(&mut scratch.source, target.pixels().len(), Color::TRANSPARENT)?;
+    try_resize_with_default(&mut scratch.pixels, target.pixels().len(), Color::TRANSPARENT)?;
     for (distance, weight) in scratch.weights.iter_mut().enumerate() {
         let distance = distance as f64;
         *weight = (-(distance * distance) / denominator).exp();
     }
 
-    scratch
-        .source
-        .resize(target.pixels().len(), Color::TRANSPARENT);
     scratch.source.copy_from_slice(target.pixels());
-    scratch
-        .pixels
-        .resize(scratch.source.len(), Color::TRANSPARENT);
 
     let radius_x = radius.min(width - 1);
     for y in 0..height {
@@ -150,6 +162,21 @@ pub fn apply_gaussian_blur(target: &mut Framebuffer, radius: u32, scratch: &mut 
             target.pixels_mut()[y * width + x] = weighted_color(sums, total_weight);
         }
     }
+    Ok(())
+}
+
+/// Grows scratch storage only after a successful fallible reservation.
+fn try_resize_with_default<T: Clone>(
+    buffer: &mut Vec<T>,
+    length: usize,
+    value: T,
+) -> Result<(), FramebufferError> {
+    if length > buffer.len() {
+        buffer.try_reserve_exact(length - buffer.len())
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+    }
+    buffer.resize(length, value);
+    Ok(())
 }
 
 /// Draws a source image over a tinted, blurred copy of its alpha mask.
@@ -209,7 +236,7 @@ pub fn draw_drop_shadow(
             }
         }
 
-        apply_gaussian_blur(&mut shadow, blur_radius, scratch);
+        try_apply_gaussian_blur(&mut shadow, blur_radius, scratch)?;
         for pixel in shadow.pixels_mut() {
             pixel.a = ((u16::from(pixel.a) * u16::from(color.a) + 127) / 255) as u8;
         }
