@@ -228,7 +228,6 @@ impl Texture {
     }
 }
 
-
 #[cfg(test)]
 mod opaque_identity_copy_tests {
     use super::{draw_texture_clipped, Texture, TextureFilter};
