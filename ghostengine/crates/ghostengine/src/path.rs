@@ -179,6 +179,9 @@ impl Path {
         let tolerance_squared = f64::from(tolerance) * f64::from(tolerance);
         let mut result = FlattenedPath::default();
         let mut current: Option<usize> = None;
+        // After Close, the next drawing command starts a new contour at the
+        // closed contour's initial point, matching conventional path semantics.
+        let mut closed_start: Option<Vector> = None;
         for command in &self.commands {
             match *command {
                 Command::MoveTo(p) => {
@@ -188,20 +191,34 @@ impl Path {
                         closed: false,
                     });
                     current = Some(result.subpaths.len() - 1);
+                    closed_start = None;
                 }
                 Command::LineTo(p) => {
                     validate(p)?;
-                    let contour = current
-                        .and_then(|i| result.subpaths.get_mut(i))
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    contour.points.push(p);
+                    let index = current.or_else(|| {
+                        let start = closed_start.take()?;
+                        result.subpaths.push(FlattenedSubpath {
+                            points: vec![start],
+                            closed: false,
+                        });
+                        Some(result.subpaths.len() - 1)
+                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    current = Some(index);
+                    result.subpaths[index].points.push(p);
                 }
                 Command::QuadTo(control, end) => {
                     validate(control)?;
                     validate(end)?;
-                    let contour = current
-                        .and_then(|i| result.subpaths.get_mut(i))
-                        .ok_or(PathError::MissingCurrentPoint)?;
+                    let index = current.or_else(|| {
+                        let start = closed_start.take()?;
+                        result.subpaths.push(FlattenedSubpath {
+                            points: vec![start],
+                            closed: false,
+                        });
+                        Some(result.subpaths.len() - 1)
+                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    current = Some(index);
+                    let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
                         .last()
@@ -219,9 +236,16 @@ impl Path {
                     validate(c1)?;
                     validate(c2)?;
                     validate(end)?;
-                    let contour = current
-                        .and_then(|i| result.subpaths.get_mut(i))
-                        .ok_or(PathError::MissingCurrentPoint)?;
+                    let index = current.or_else(|| {
+                        let start = closed_start.take()?;
+                        result.subpaths.push(FlattenedSubpath {
+                            points: vec![start],
+                            closed: false,
+                        });
+                        Some(result.subpaths.len() - 1)
+                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    current = Some(index);
+                    let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
                         .last()
@@ -238,7 +262,9 @@ impl Path {
                 }
                 Command::Close => {
                     let index = current.ok_or(PathError::MissingCurrentPoint)?;
-                    result.subpaths[index].closed = true;
+                    let contour = &mut result.subpaths[index];
+                    contour.closed = true;
+                    closed_start = contour.points.first().copied();
                     current = None;
                 }
             }
@@ -1255,6 +1281,43 @@ mod tests {
         fill_path_even_odd(&mut target, &path, Color::WHITE, 0.1).unwrap();
 
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn drawing_after_close_starts_at_the_closed_contours_initial_point() {
+        let start = Vector::new(1.0, 2.0);
+        let mut path = Path::new();
+        path.move_to(start)
+            .line_to(Vector::new(5.0, 2.0))
+            .line_to(Vector::new(5.0, 6.0))
+            .close()
+            .line_to(Vector::new(8.0, 2.0))
+            .line_to(Vector::new(9.0, 4.0));
+
+        let flattened = path.flatten(0.25).unwrap();
+        assert_eq!(flattened.subpaths.len(), 2);
+        assert!(flattened.subpaths[0].closed);
+        assert_eq!(
+            flattened.subpaths[1].points,
+            [start, Vector::new(8.0, 2.0), Vector::new(9.0, 4.0)]
+        );
+        assert!(!flattened.subpaths[1].closed);
+    }
+
+    #[test]
+    fn curve_after_close_starts_a_new_contour_at_the_closed_start() {
+        let start = Vector::new(2.0, 3.0);
+        let mut path = Path::new();
+        path.move_to(start)
+            .line_to(Vector::new(6.0, 3.0))
+            .line_to(Vector::new(6.0, 7.0))
+            .close()
+            .quadratic_to(Vector::new(4.0, 10.0), Vector::new(8.0, 9.0));
+
+        let flattened = path.flatten(0.1).unwrap();
+        assert_eq!(flattened.subpaths.len(), 2);
+        assert_eq!(flattened.subpaths[1].points.first(), Some(&start));
+        assert_eq!(flattened.subpaths[1].points.last(), Some(&Vector::new(8.0, 9.0)));
     }
 
     #[test]
