@@ -2784,7 +2784,13 @@ impl ComponentTree {
                         ComponentKey::Home => state.select_first(items.len()),
                         ComponentKey::End => state.select_last(items.len()),
                         ComponentKey::PageUp => state.move_selection(-page_rows, items.len()),
-                        ComponentKey::PageDown => state.move_selection(page_rows, items.len()),
+                        ComponentKey::PageDown => {
+                            if state.selected().is_none() {
+                                state.select(Some(page_rows.max(0) as usize), items.len());
+                            } else {
+                                state.move_selection(page_rows, items.len());
+                            }
+                        }
                         _ => {}
                     }
                     self.ensure_list_selection_visible(id);
@@ -4263,7 +4269,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["One", "Two", "Three"]
         );
-        assert_eq!(tree.combo_box_selected(id), Some(0));
+        // Combo boxes start without a committed selection; opening the popup
+        // highlights the first item without selecting it.
+        assert_eq!(tree.combo_box_selected(id), None);
 
         assert!(tree.set_combo_box_selected(id, Some(2)));
         assert_eq!(tree.combo_box_selected(id), Some(2));
