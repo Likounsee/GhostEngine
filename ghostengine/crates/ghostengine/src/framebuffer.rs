@@ -314,6 +314,58 @@ mod tests {
     }
 
     #[test]
+    fn resize_preserving_matches_top_left_reference_for_all_small_dimensions() {
+        let clear = Color::rgba(17, 29, 43, 61);
+
+        for old_width in 1..=8 {
+            for old_height in 1..=8 {
+                let mut original =
+                    Framebuffer::new(old_width, old_height, Color::TRANSPARENT).unwrap();
+                for y in 0..old_height {
+                    for x in 0..old_width {
+                        original.set_pixel(
+                            x,
+                            y,
+                            Color::rgba(
+                                (x * 19 + y * 3) as u8,
+                                (y * 23 + x * 5) as u8,
+                                (x * 7 + y * 11) as u8,
+                                255,
+                            ),
+                        );
+                    }
+                }
+
+                for new_width in 1..=8 {
+                    for new_height in 1..=8 {
+                        let mut resized = original.try_clone().unwrap();
+                        resized
+                            .resize_preserving(new_width, new_height, clear)
+                            .unwrap();
+
+                        assert_eq!(resized.width(), new_width);
+                        assert_eq!(resized.height(), new_height);
+                        for y in 0..new_height {
+                            for x in 0..new_width {
+                                let expected = if x < old_width && y < old_height {
+                                    original.get_pixel(x, y).unwrap()
+                                } else {
+                                    clear
+                                };
+                                assert_eq!(
+                                    resized.get_pixel(x, y),
+                                    Some(expected),
+                                    "resize {old_width}x{old_height} -> {new_width}x{new_height} at ({x}, {y})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn try_clone_copies_pixels_into_independent_storage() {
         let mut original = Framebuffer::new(2, 2, Color::BLACK).unwrap();
         original.pixels_mut().copy_from_slice(&[
