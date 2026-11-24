@@ -9,7 +9,7 @@ use crate::rasterizer::fill_rect;
 use crate::{
     draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
     draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
-    InteractionEvents, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout, TabsState,
+    InteractionEvents, LayoutError, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout, TabsState,
     TextInputOptions, TextInputState, UiInteraction, UiTheme, WidgetState,
 };
 
@@ -721,6 +721,27 @@ impl ComponentTree {
         self.focusable_ids.clear();
         self.focusable_bounds.clear();
         self.placed.clear();
+    }
+
+    /// Fallibly reserves per-frame layout storage for additional components.
+    ///
+    /// Call this during application setup when the expected visible component
+    /// count is known. Once the reserved capacity is sufficient, layout can
+    /// reuse these buffers without growing them on subsequent frames.
+    pub fn try_reserve_layout_capacity(
+        &mut self,
+        additional_components: usize,
+    ) -> Result<(), LayoutError> {
+        self.placed
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        self.focusable_ids
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        self.focusable_bounds
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        Ok(())
     }
 
     #[must_use]
@@ -3572,6 +3593,24 @@ mod tests {
         assert!(tree
             .activate_context_menu_shortcut('u', true, false, false)
             .is_none());
+    }
+
+
+    #[test]
+    fn layout_capacity_can_be_reserved_before_the_first_frame() {
+        let mut tree = ComponentTree::new(vec![UiComponent::button(
+            ComponentId(910),
+            "Ready",
+        )]);
+        tree.try_reserve_layout_capacity(32).unwrap();
+
+        assert!(tree.placed.capacity() >= 32);
+        assert!(tree.focusable_ids.capacity() >= 32);
+        assert!(tree.focusable_bounds.capacity() >= 32);
+
+        let capacity = tree.placed.capacity();
+        tree.layout(Rect::new(0, 0, 100, 40));
+        assert_eq!(tree.placed.capacity(), capacity);
     }
 
     #[test]
