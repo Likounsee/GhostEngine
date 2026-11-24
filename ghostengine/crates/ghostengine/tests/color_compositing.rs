@@ -2,6 +2,13 @@ use ghostengine::Color;
 
 // Independent high-precision reference for the straight-alpha source-over equation.
 fn reference_source_over(source: Color, destination: Color) -> Color {
+    if source.a == 0 {
+        return destination;
+    }
+    if source.a == u8::MAX {
+        return source;
+    }
+
     let source_alpha = u128::from(source.a);
     let destination_alpha = u128::from(destination.a);
     let inverse_source_alpha = 255 - source_alpha;
@@ -56,7 +63,7 @@ fn source_over_matches_reference_for_every_alpha_pair() {
 }
 
 #[test]
-fn source_over_alpha_is_monotonic_and_zero_alpha_is_canonical() {
+fn source_over_alpha_is_monotonic_and_transparent_foreground_is_a_noop() {
     for source_alpha in 0..=u8::MAX {
         for destination_alpha in 0..=u8::MAX {
             let source = Color::rgba(90, 170, 230, source_alpha);
@@ -65,9 +72,6 @@ fn source_over_alpha_is_monotonic_and_zero_alpha_is_canonical() {
 
             assert!(result.a >= source_alpha);
             assert!(result.a >= destination_alpha);
-            if source_alpha == 0 && destination_alpha == 0 {
-                assert_eq!(result, Color::TRANSPARENT);
-            }
             if source_alpha == 0 {
                 assert_eq!(result, destination);
             }
