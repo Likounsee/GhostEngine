@@ -161,8 +161,8 @@ mod tests {
                 next_random(&mut seed) % (target_width + 4),
                 next_random(&mut seed) % (target_height + 4),
             );
-            let mut target = Framebuffer::new(target_width, target_height, Color::TRANSPARENT)
-                .unwrap();
+            let mut target =
+                Framebuffer::new(target_width, target_height, Color::TRANSPARENT).unwrap();
             for (index, pixel) in target.pixels_mut().iter_mut().enumerate() {
                 *pixel = Color::rgba(
                     (index as u8).wrapping_mul(17),
@@ -172,8 +172,7 @@ mod tests {
                 );
             }
 
-            let mut mask =
-                Framebuffer::new(mask_width, mask_height, Color::TRANSPARENT).unwrap();
+            let mut mask = Framebuffer::new(mask_width, mask_height, Color::TRANSPARENT).unwrap();
             for pixel in mask.pixels_mut() {
                 *pixel = Color::rgba(
                     next_random(&mut seed) as u8,
@@ -184,12 +183,7 @@ mod tests {
             }
 
             let mut expected = target.clone();
-            if let Some(clipped) = clip.intersection(Rect::new(
-                0,
-                0,
-                target_width,
-                target_height,
-            )) {
+            if let Some(clipped) = clip.intersection(Rect::new(0, 0, target_width, target_height)) {
                 for y in clipped.y..clipped.y + clipped.height {
                     for x in clipped.x..clipped.x + clipped.width {
                         let mask_x = i64::from(x) - i64::from(origin.x);
@@ -200,10 +194,7 @@ mod tests {
                             && mask_x < i64::from(mask_width)
                             && mask_y < i64::from(mask_height)
                         {
-                            let coverage = mask
-                                .get_pixel(mask_x as u32, mask_y as u32)
-                                .unwrap()
-                                .a;
+                            let coverage = mask.get_pixel(mask_x as u32, mask_y as u32).unwrap().a;
                             ((u16::from(pixel.a) * u16::from(coverage) + 127) / 255) as u8
                         } else {
                             0
@@ -232,12 +223,7 @@ mod tests {
         ] {
             let mut target = Framebuffer::new(3, 2, Color::rgba(12, 34, 56, 200)).unwrap();
             let mask = Framebuffer::new(2, 2, Color::WHITE).unwrap();
-            apply_alpha_mask_clipped(
-                &mut target,
-                &mask,
-                origin,
-                Rect::new(1, 0, 2, 2),
-            );
+            apply_alpha_mask_clipped(&mut target, &mask, origin, Rect::new(1, 0, 2, 2));
 
             assert_eq!(target.get_pixel(0, 0), Some(Color::rgba(12, 34, 56, 200)));
             for y in 0..2 {
@@ -251,5 +237,4 @@ mod tests {
             }
         }
     }
-
 }
