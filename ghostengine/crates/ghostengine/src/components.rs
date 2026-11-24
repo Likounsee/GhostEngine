@@ -1835,6 +1835,44 @@ impl ComponentTree {
         true
     }
 
+    /// Moves the viewport when keyboard navigation selects an off-screen row.
+    fn ensure_list_selection_visible(&mut self, id: ComponentId) {
+        let Some(selected) = self.list_states.get(&id).and_then(ListState::selected) else {
+            return;
+        };
+        let Some((row_height, current_offset, viewport_height)) = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .and_then(|placement| {
+                self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::ListView {
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => Some((*row_height, *scroll_offset, placement.bounds.height)),
+                    _ => None,
+                })
+            })
+        else {
+            return;
+        };
+
+        let row_top = (selected as u32).saturating_mul(row_height);
+        let row_bottom = row_top.saturating_add(row_height);
+        let viewport_bottom = current_offset.saturating_add(viewport_height);
+        let next_offset = if row_top < current_offset {
+            row_top
+        } else if row_bottom > viewport_bottom {
+            row_bottom.saturating_sub(viewport_height)
+        } else {
+            current_offset
+        };
+        if next_offset != current_offset {
+            self.set_list_view_scroll(id, next_offset);
+        }
+    }
+
     /// Scrolls the list view beneath the pointer by a pixel delta.
     /// Positive deltas move the content down toward later rows.
     pub fn scroll_list_view_at(&mut self, pointer: Point, delta_y: i32) -> bool {
@@ -2297,6 +2335,7 @@ impl ComponentTree {
                         if key == ComponentKey::ArrowUp { -1 } else { 1 },
                         items.len(),
                     );
+                    self.ensure_list_selection_visible(id);
                     return ComponentEvents::default();
                 }
                 Some(ComponentKind::Slider {
@@ -3548,6 +3587,41 @@ mod tests {
             }
         ));
         assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
+    }
+
+    #[test]
+    fn retained_list_view_keeps_keyboard_selection_visible() {
+        let id = ComponentId(137);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 0, .. }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, .. }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 48, .. }
+        ));
     }
 
     #[test]
