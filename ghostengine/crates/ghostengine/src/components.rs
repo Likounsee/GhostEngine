@@ -744,6 +744,27 @@ impl ComponentTree {
         Ok(())
     }
 
+    /// Computes visible component geometry after fallibly reserving all frame buffers.
+    ///
+    /// Unlike the infallible layout convenience method, this reports allocation
+    /// failure instead of allowing the per-frame output vectors to grow implicitly.
+    pub fn try_layout(&mut self, bounds: Rect) -> Result<&[PlacedComponent], LayoutError> {
+        fn count_visible(nodes: &[UiComponent]) -> usize {
+            nodes
+                .iter()
+                .filter(|node| node.visible)
+                .map(|node| 1_usize.saturating_add(count_visible(&node.children)))
+                .fold(0_usize, usize::saturating_add)
+        }
+
+        let visible_count = count_visible(&self.roots);
+        self.placed.clear();
+        self.focusable_ids.clear();
+        self.focusable_bounds.clear();
+        self.try_reserve_layout_capacity(visible_count)?;
+        Ok(self.layout(bounds))
+    }
+
     #[must_use]
     pub fn roots(&self) -> &[UiComponent] {
         &self.roots
@@ -3606,6 +3627,24 @@ mod tests {
 
         let capacity = tree.placed.capacity();
         tree.layout(Rect::new(0, 0, 100, 40));
+        assert_eq!(tree.placed.capacity(), capacity);
+    }
+
+    #[test]
+    fn try_layout_reserves_visible_tree_and_reuses_frame_buffers() {
+        let child = UiComponent::button(ComponentId(912), "Child");
+        let root = UiComponent::panel(ComponentId(911), vec![child]);
+        let mut tree = ComponentTree::new(vec![
+            root,
+            UiComponent::button(ComponentId(913), "Hidden").with_visible(false),
+        ]);
+
+        let placed = tree.try_layout(Rect::new(0, 0, 200, 100)).unwrap();
+        assert_eq!(placed.len(), 2);
+        let capacity = tree.placed.capacity();
+
+        let placed = tree.try_layout(Rect::new(0, 0, 200, 100)).unwrap();
+        assert_eq!(placed.len(), 2);
         assert_eq!(tree.placed.capacity(), capacity);
     }
 
