@@ -96,23 +96,39 @@ impl TextureCache {
     ///
     /// The size is calculated from the owned RGBA pixel buffer. Hash-map and
     /// allocator overhead are intentionally not included in this accounting.
+    /// On failure, the cache remains unchanged and the consumed texture is dropped.
     pub fn insert(&mut self, texture: Texture) -> Result<TextureHandle, TextureCacheError> {
+        self.try_insert_preserving_texture(texture)
+            .map_err(|(error, _texture)| error)
+    }
+
+    /// Inserts a texture while returning ownership of it if insertion fails.
+    ///
+    /// This is useful when the caller wants to retry with a larger budget or
+    /// keep the resource outside the cache. No existing cache entry is evicted
+    /// unless the insertion can proceed.
+    pub fn try_insert_preserving_texture(
+        &mut self,
+        texture: Texture,
+    ) -> Result<TextureHandle, (TextureCacheError, Texture)> {
         let bytes = texture
             .pixels()
             .len()
             .saturating_mul(std::mem::size_of::<crate::Color>());
         if bytes > self.budget_bytes {
-            return Err(TextureCacheError::TextureExceedsBudget {
-                texture_bytes: bytes,
-                budget_bytes: self.budget_bytes,
-            });
+            return Err((
+                TextureCacheError::TextureExceedsBudget {
+                    texture_bytes: bytes,
+                    budget_bytes: self.budget_bytes,
+                },
+                texture,
+            ));
         }
 
         let handle = TextureHandle(self.next_handle);
-        let next_handle = self
-            .next_handle
-            .checked_add(1)
-            .ok_or(TextureCacheError::HandleExhausted)?;
+        let Some(next_handle) = self.next_handle.checked_add(1) else {
+            return Err((TextureCacheError::HandleExhausted, texture));
+        };
 
         // Subtract the incoming allocation from the budget first. Adding
         // used_bytes + bytes can overflow when callers configure a budget
@@ -127,14 +143,14 @@ impl TextureCache {
             .map(|entry| entry.bytes)
             .fold(0usize, usize::saturating_add);
         if reclaimable_bytes < required_bytes {
-            return Err(TextureCacheError::CacheFullyRetained);
+            return Err((TextureCacheError::CacheFullyRetained, texture));
         }
 
-        // Reserve before evicting anything: if allocation fails, the cache
-        // remains unchanged and the caller keeps the texture they passed in.
-        self.entries
-            .try_reserve(1)
-            .map_err(|_| TextureCacheError::AllocationFailed)?;
+        // Reserve before evicting anything so allocation failure leaves the
+        // cache and the caller-owned texture unchanged.
+        if self.entries.try_reserve(1).is_err() {
+            return Err((TextureCacheError::AllocationFailed, texture));
+        }
 
         while self.used_bytes > self.budget_bytes - bytes {
             let evicted = self.evict_least_recently_used();
@@ -407,6 +423,43 @@ mod tests {
         );
         assert!(cache.peek(retained).is_some());
         assert_eq!(cache.stats().entries, 1);
+    }
+
+    #[test]
+    fn preserving_insert_returns_texture_when_it_exceeds_budget() {
+        let mut cache = TextureCache::new(8);
+        let texture = texture(Color::BLUE, 3);
+
+        let (error, returned) = cache
+            .try_insert_preserving_texture(texture)
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            TextureCacheError::TextureExceedsBudget {
+                texture_bytes: 12,
+                budget_bytes: 8,
+            }
+        );
+        assert_eq!(returned.pixels(), &[Color::BLUE; 3]);
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().used_bytes, 0);
+    }
+
+    #[test]
+    fn preserving_insert_returns_texture_when_all_entries_are_retained() {
+        let mut cache = TextureCache::new(8);
+        let retained = cache.insert(texture(Color::RED, 2)).unwrap();
+        assert!(cache.retain(retained));
+
+        let (error, returned) = cache
+            .try_insert_preserving_texture(texture(Color::BLUE, 2))
+            .unwrap_err();
+
+        assert_eq!(error, TextureCacheError::CacheFullyRetained);
+        assert_eq!(returned.pixels(), &[Color::BLUE; 2]);
+        assert!(cache.peek(retained).is_some());
+        assert_eq!(cache.stats().used_bytes, 8);
     }
 
     #[test]
