@@ -504,10 +504,15 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
         return;
     }
 
-    for y in top..bottom {
-        if let Some(row) = target.row_mut(y as u32) {
-            row[left as usize..right as usize].fill(color);
-        }
+    // Work directly on the packed pixel buffer for partial-width rows too.
+    // The clipped bounds are already validated, so this avoids a row lookup
+    // and its bounds branch for every scanline.
+    let left = left as usize;
+    let right = right as usize;
+    let pixels = target.pixels_mut();
+    for y in top as usize..bottom as usize {
+        let row_start = y * framebuffer_width;
+        pixels[row_start + left..row_start + right].fill(color);
     }
 }
 
