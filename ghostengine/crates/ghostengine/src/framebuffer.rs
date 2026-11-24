@@ -54,7 +54,7 @@ impl Framebuffer {
             return Err(FramebufferError::PixelCountMismatch);
         }
 
-        Ok(Self { width, height, pixels })
+        Ok(Self {\n            width,\n            height,\n            pixels,\n        })
     }
 
     pub fn new(width: u32, height: u32, clear_color: Color) -> Result<Self, FramebufferError> {
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(framebuffer.width(), 2);
         assert_eq!(framebuffer.height(), 2);
         assert_eq!(framebuffer.pixels().as_ptr(), allocation);
-        assert_eq!(framebuffer.pixels(), &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+        assert_eq!(\n            framebuffer.pixels(),\n            &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]\n        );
     }
 
     #[test]
