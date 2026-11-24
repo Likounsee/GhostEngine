@@ -192,18 +192,12 @@ impl Framebuffer {
             for (x, pixel) in row.iter_mut().enumerate() {
                 let offset = row_start + x * bpp;
                 let (mut r, mut g, mut b, mut a) = match descriptor.pixel_format {
-                    PixelFormat::Rgb8 => (
-                        source[offset],
-                        source[offset + 1],
-                        source[offset + 2],
-                        255,
-                    ),
-                    PixelFormat::Bgr8 => (
-                        source[offset + 2],
-                        source[offset + 1],
-                        source[offset],
-                        255,
-                    ),
+                    PixelFormat::Rgb8 => {
+                        (source[offset], source[offset + 1], source[offset + 2], 255)
+                    }
+                    PixelFormat::Bgr8 => {
+                        (source[offset + 2], source[offset + 1], source[offset], 255)
+                    }
                     PixelFormat::Rgba8 => (
                         source[offset],
                         source[offset + 1],
@@ -310,8 +304,7 @@ fn unmultiply_alpha(channel: u8, alpha: u8) -> u8 {
     if alpha == 0 {
         0
     } else {
-        ((u16::from(channel) * 255 + u16::from(alpha) / 2) / u16::from(alpha))
-            .min(255) as u8
+        ((u16::from(channel) * 255 + u16::from(alpha) / 2) / u16::from(alpha)).min(255) as u8
     }
 }
 
@@ -525,7 +518,9 @@ mod tests {
             AlphaMode::Premultiplied,
             ColorSpace::LinearSrgb,
         );
-        frame.read_from_surface(&[27, 7, 0, 128], descriptor).unwrap();
+        frame
+            .read_from_surface(&[27, 7, 0, 128], descriptor)
+            .unwrap();
 
         assert_eq!(frame.pixels(), &[Color::rgba(127, 66, 0, 128)]);
     }
@@ -540,7 +535,9 @@ mod tests {
             AlphaMode::Opaque,
             ColorSpace::Srgb,
         );
-        frame.read_from_surface(&[10, 20, 30, 0], descriptor).unwrap();
+        frame
+            .read_from_surface(&[10, 20, 30, 0], descriptor)
+            .unwrap();
 
         assert_eq!(frame.pixels(), &[Color::rgba(10, 20, 30, 255)]);
     }
