@@ -1836,6 +1836,49 @@ impl ComponentTree {
         true
     }
 
+    /// Replaces the rows in a retained list view.
+    ///
+    /// Keeps the selected index when it still exists, otherwise selects the
+    /// new final row. An empty replacement clears the selection. The viewport
+    /// is clamped to the new content and follows the retained selection.
+    pub fn set_list_view_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, scroll_offset)) =
+            self.find_mut(id).and_then(|component| match &mut component.kind {
+                ComponentKind::ListView {
+                    items: current_items,
+                    row_height,
+                    scroll_offset,
+                } => {
+                    *current_items = items;
+                    Some((*row_height, scroll_offset))
+                }
+                _ => None,
+            })
+        else {
+            return false;
+        };
+
+        let item_count = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { items, .. } => Some(items.len()),
+            _ => None,
+        }).unwrap_or(0);
+        let selected = selected.filter(|index| *index < item_count)
+            .or_else(|| item_count.checked_sub(1));
+        self.list_states.entry(id).or_default().select(selected, item_count);
+
+        let viewport_height = self.placed.iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let content_height = (item_count as u32).saturating_mul(row_height);
+        *scroll_offset = (*scroll_offset).min(content_height.saturating_sub(viewport_height));
+
+        if selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
     /// Updates the pixel scroll offset of a retained list view.
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
         let viewport_height = self
@@ -3755,6 +3798,39 @@ mod tests {
                 scroll_offset: 0,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_replaces_rows_and_clamps_selection_and_scroll() {
+        let id = ComponentId(141);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..8).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+        tree.set_list_view_selected(id, Some(6));
+        assert_eq!(tree.list_view_selected(id), Some(6));
+
+        assert!(tree.set_list_view_items(
+            id,
+            (0..3).map(|index| format!("New {index}")).collect(),
+        ));
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, items, .. }
+                if items == &vec!["New 0", "New 1", "New 2"]
+        ));
+
+        assert!(tree.set_list_view_items(id, Vec::new()));
+        assert_eq!(tree.list_view_selected(id), None);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 0, items, .. } if items.is_empty()
         ));
     }
 
