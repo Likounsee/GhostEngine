@@ -138,8 +138,7 @@ fn automatic_layer_composition_matches_serial_for_randomized_large_scenes() {
     for case in 0..12 {
         let mut layers = Vec::new();
         for index in 0..6_u32 {
-            let mut framebuffer =
-                Framebuffer::new(WIDTH, HEIGHT, Color::TRANSPARENT).unwrap();
+            let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT, Color::TRANSPARENT).unwrap();
             for pixel in framebuffer.pixels_mut() {
                 *pixel = Color::rgba(
                     rng.next() as u8,
@@ -155,10 +154,7 @@ fn automatic_layer_composition_matches_serial_for_randomized_large_scenes() {
                 // compositor's pixel threshold so the automatic path is tested.
                 layer.set_position(0, 0);
             } else {
-                layer.set_position(
-                    rng.range(49) as i32 - 24,
-                    rng.range(33) as i32 - 16,
-                );
+                layer.set_position(rng.range(49) as i32 - 24, rng.range(33) as i32 - 16);
             }
             layer.set_opacity((1 + rng.range(255)) as u8);
             layer.set_blend_mode(blend_modes[(case + index as usize) % blend_modes.len()]);
