@@ -1970,6 +1970,70 @@ impl ComponentTree {
         true
     }
 
+    /// Moves a row to a new index in a retained list view.
+    ///
+    /// The destination is interpreted in the list after the source row is
+    /// removed. Selection follows the moved row and all other selected rows
+    /// retain their identity.
+    pub fn move_list_view_item(&mut self, id: ComponentId, from: usize, to: usize) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, current_offset, item_count)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if from < items.len() && to < items.len() => {
+                        if from != to {
+                            let item = items.remove(from);
+                            items.insert(to, item);
+                        }
+                        Some((*row_height, *scroll_offset, items.len()))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+        if from == to {
+            return false;
+        }
+
+        let next_selected = selected.map(|selected| {
+            if selected == from {
+                to
+            } else if from < selected && selected <= to {
+                selected - 1
+            } else if to <= selected && selected < from {
+                selected + 1
+            } else {
+                selected
+            }
+        });
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
     /// Removes and returns the row at the given index.
     ///
     /// Selection follows its original row when possible. Removing the selected
@@ -3977,6 +4041,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn retained_list_view_moves_rows_and_preserves_selected_item() {
+        let id = ComponentId(145);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+        assert!(tree.set_list_view_selected(id, Some(1)));
+
+        assert!(tree.move_list_view_item(id, 1, 3));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["A", "C", "D", "B"]);
+        assert_eq!(tree.list_view_selected(id), Some(3));
+
+        assert!(tree.move_list_view_item(id, 0, 2));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["C", "D", "A", "B"]);
+        assert_eq!(tree.list_view_selected(id), Some(3));
+
+        assert!(!tree.move_list_view_item(id, 2, 2));
+        assert!(!tree.move_list_view_item(id, 99, 0));
+        assert!(!tree.move_list_view_item(id, 0, 99));
     }
 
     #[test]
