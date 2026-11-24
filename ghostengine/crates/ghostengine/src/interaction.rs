@@ -152,6 +152,30 @@ impl UiInteraction {
         }
     }
 
+    /// Moves keyboard focus to the first enabled widget (Home-key behavior).
+    pub fn focus_first(&mut self, enabled: &[bool]) -> InteractionEvents {
+        let previous = self.focus.focused();
+        self.focus.focus_first(enabled);
+        let current = self.focus.focused();
+        InteractionEvents {
+            clicked: None,
+            focus_changed: (current != previous).then_some(current).flatten(),
+            focus_cleared: previous.is_some() && current.is_none(),
+        }
+    }
+
+    /// Moves keyboard focus to the last enabled widget (End-key behavior).
+    pub fn focus_last(&mut self, enabled: &[bool]) -> InteractionEvents {
+        let previous = self.focus.focused();
+        self.focus.focus_last(enabled);
+        let current = self.focus.focused();
+        InteractionEvents {
+            clicked: None,
+            focus_changed: (current != previous).then_some(current).flatten(),
+            focus_cleared: previous.is_some() && current.is_none(),
+        }
+    }
+
     /// Moves keyboard focus through enabled widgets in tab order.
     pub fn focus_next(&mut self, enabled: &[bool], reverse: bool) -> InteractionEvents {
         let previous = self.focus.focused();
@@ -421,5 +445,35 @@ mod tests {
 
         assert_eq!(events.focus_changed, Some(1));
         assert!(!events.focus_cleared);
+    }
+
+    #[test]
+    fn home_and_end_navigation_select_first_and_last_enabled_widgets() {
+        let mut ui = UiInteraction::new();
+
+        assert_eq!(ui.focus_first(&[false, true, false, true]).focus_changed, Some(1));
+        assert_eq!(ui.focus_last(&[false, true, false, true]).focus_changed, Some(3));
+        assert_eq!(ui.focus_first(&[false, true, false, true]).focus_changed, Some(1));
+    }
+
+    #[test]
+    fn home_and_end_navigation_report_focus_loss_when_no_widget_is_enabled() {
+        let mut ui = UiInteraction::new();
+        ui.focus_first(&[true, false]);
+
+        let events = ui.focus_last(&[false, false]);
+        assert_eq!(ui.focused(), None);
+        assert!(events.focus_cleared);
+        assert_eq!(events.focus_changed, None);
+    }
+
+    #[test]
+    fn home_and_end_navigation_on_empty_lists_leave_focus_empty() {
+        let mut ui = UiInteraction::new();
+
+        assert_eq!(ui.focus_first(&[]).focus_changed, None);
+        assert!(!ui.focus_first(&[]).focus_cleared);
+        assert_eq!(ui.focus_last(&[]).focus_changed, None);
+        assert!(!ui.focus_last(&[]).focus_cleared);
     }
 }
