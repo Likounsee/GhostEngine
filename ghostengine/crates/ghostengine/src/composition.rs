@@ -529,17 +529,35 @@ pub fn compose_layers_auto(target: &mut Framebuffer, layers: &[Layer]) {
     // Base the decision on the pixels a transformed layer can actually touch,
     // not the full target size. A small sprite on a large framebuffer should
     // not pay the cost of spawning scoped worker threads.
-    let has_large_transformed_layer = layers.iter().any(|layer| {
-        if !layer.visible || layer.opacity == 0 || layer.transform == Transform2D::IDENTITY {
+    let has_large_layer = layers.iter().any(|layer| {
+        if !layer.visible || layer.opacity == 0 {
             return false;
         }
-        let Some(prepared) = prepare_transformed_layer(target, layer) else {
-            return false;
+        let bounds = if layer.transform == Transform2D::IDENTITY {
+            let left = i64::from(layer.x).max(0);
+            let top = i64::from(layer.y).max(0);
+            let right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
+                .min(i64::from(target.width()));
+            let bottom = (i64::from(layer.y) + i64::from(layer.framebuffer.height()))
+                .min(i64::from(target.height()));
+            if left >= right || top >= bottom {
+                return false;
+            }
+            Rect::new(
+                left as u32,
+                top as u32,
+                (right - left) as u32,
+                (bottom - top) as u32,
+            )
+        } else {
+            let Some(prepared) = prepare_transformed_layer(target, layer) else {
+                return false;
+            };
+            prepared.bounds
         };
-        u64::from(prepared.bounds.width) * u64::from(prepared.bounds.height)
-            >= PARALLEL_PIXEL_THRESHOLD
+        u64::from(bounds.width) * u64::from(bounds.height) >= PARALLEL_PIXEL_THRESHOLD
     });
-    if !has_large_transformed_layer {
+    if !has_large_layer {
         compose_layers(target, layers);
         return;
     }
@@ -585,7 +603,22 @@ pub fn compose_layers_parallel_with_threads(
             continue;
         }
         if layer.transform == Transform2D::IDENTITY {
-            compose_layer_clipped(target, layer, target_bounds, None);
+            std::thread::scope(|scope| {
+                for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
+                    let row_origin = (worker_index * rows_per_worker) as u32;
+                    let row_end = (row_origin as usize + pixels.len() / width) as u32;
+                    scope.spawn(move || {
+                        compose_identity_layer_rows(
+                            pixels,
+                            width,
+                            layer,
+                            target_bounds,
+                            row_origin,
+                            row_end,
+                        );
+                    });
+                }
+            });
             continue;
         }
         let Some(prepared) = prepare_transformed_layer(target, layer) else {
@@ -777,6 +810,19 @@ fn compose_layer_clipped(
         return;
     }
 
+    let width = target.width() as usize;
+    let height = target.height();
+    compose_identity_layer_rows(target.pixels_mut(), width, layer, clip, 0, height);
+}
+
+fn compose_identity_layer_rows(
+    target_pixels: &mut [Color],
+    target_width: usize,
+    layer: &Layer,
+    clip: Rect,
+    row_origin: u32,
+    row_end: u32,
+) {
     let destination_left = i64::from(layer.x).max(i64::from(clip.x));
     let destination_right = (i64::from(layer.x) + i64::from(layer.framebuffer.width()))
         .min(i64::from(clip.x) + i64::from(clip.width));
@@ -787,34 +833,32 @@ fn compose_layer_clipped(
     let source_right = source_left + (destination_right - destination_left) as usize;
     let source_width = layer.framebuffer.width() as usize;
 
-    let destination_top = i64::from(layer.y).max(i64::from(clip.y));
+    let destination_top = i64::from(layer.y).max(i64::from(clip.y)).max(i64::from(row_origin));
     let destination_bottom = (i64::from(layer.y) + i64::from(layer.framebuffer.height()))
-        .min(i64::from(clip.y) + i64::from(clip.height));
+        .min(i64::from(clip.y) + i64::from(clip.height))
+        .min(i64::from(row_end));
     if destination_top >= destination_bottom {
         return;
     }
-    let source_top = (destination_top - i64::from(layer.y)) as usize;
-    let source_bottom = (destination_bottom - i64::from(layer.y)) as usize;
 
-    // These layer-wide properties do not change between scanlines. Hoist
-    // them out of both the row classifier and the per-pixel composition loop.
     let source_over = layer.blend_mode == BlendMode::SourceOver;
     let full_opacity = layer.opacity == u8::MAX;
     let can_copy_opaque = source_over && full_opacity;
 
-    for source_y in source_top..source_bottom {
-        let destination_y = (i64::from(layer.y) + source_y as i64) as u32;
+    for destination_y in destination_top..destination_bottom {
+        let source_y = (destination_y - i64::from(layer.y)) as usize;
         let source_start = source_y * source_width + source_left;
         let source_row =
             &layer.framebuffer.pixels()[source_start..source_y * source_width + source_right];
-        let Some(destination_row) = target.row_mut(destination_y) else {
+        let row_offset = (destination_y - i64::from(row_origin)) as usize * target_width;
+        let Some(destination_row) =
+            target_pixels.get_mut(row_offset..row_offset + target_width)
+        else {
             continue;
         };
         let destination =
             &mut destination_row[destination_left as usize..destination_right as usize];
 
-        // Classify the row in one pass. This avoids scanning every pixel
-        // twice for transparent and opaque fast paths.
         let mut has_visible_pixel = false;
         let mut fully_opaque = can_copy_opaque;
         for pixel in source_row {
@@ -2568,6 +2612,56 @@ mod tests {
             actual.get_pixel(0, 0),
             Some(per_child.get_pixel(0, 0).unwrap().blend_over(background))
         );
+    }
+
+    #[test]
+    fn parallel_identity_layer_composition_matches_serial_across_blend_modes() {
+        let mut layers = Vec::new();
+        let blend_modes = [
+            BlendMode::SourceOver,
+            BlendMode::Multiply,
+            BlendMode::Screen,
+            BlendMode::Overlay,
+            BlendMode::Difference,
+        ];
+        for index in 0..7_u32 {
+            let width = 53 + index * 7;
+            let height = 31 + index * 5;
+            let mut layer = Layer::new(width, height, Color::TRANSPARENT).unwrap();
+            for y in 0..height {
+                for x in 0..width {
+                    let alpha = ((x * 17 + y * 29 + index * 41) & 255) as u8;
+                    layer.framebuffer_mut().set_pixel(
+                        x,
+                        y,
+                        Color::rgba(
+                            (x * 11 + index * 13) as u8,
+                            (y * 19 + index * 7) as u8,
+                            (x * 3 + y * 5 + index * 23) as u8,
+                            alpha,
+                        ),
+                    );
+                }
+            }
+            layer.set_position(index as i32 * 13 - 24, index as i32 * 9 - 12);
+            layer.set_opacity((255 - index * 23) as u8);
+            layer.set_blend_mode(blend_modes[index as usize % blend_modes.len()]);
+            layers.push(layer);
+        }
+
+        let initial = Color::rgba(22, 34, 46, 190);
+        let mut serial = Framebuffer::new(128, 96, initial).unwrap();
+        compose_layers(&mut serial, &layers);
+
+        for threads in [2, 3, 4, 7, 16] {
+            let mut parallel = Framebuffer::new(128, 96, initial).unwrap();
+            compose_layers_parallel_with_threads(&mut parallel, &layers, threads);
+            assert_eq!(
+                parallel.pixels(),
+                serial.pixels(),
+                "identity composition differs with {threads} workers"
+            );
+        }
     }
 
     #[test]
