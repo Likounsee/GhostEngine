@@ -2325,20 +2325,25 @@ mod tests {
         let mut target = Framebuffer::new(4, 1, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
 
-        assert_eq!(
-            target.pixels(),
-            &[Color::BLACK, Color::GREEN, Color::GREEN, Color::BLACK]
-        );
+        assert_eq!(target.pixels(), &[Color::BLACK, Color::GREEN, Color::GREEN, Color::BLACK]);
         assert_eq!(stats.commands_submitted, 1);
         assert_eq!(stats.commands_executed, 1);
     }
 
     #[test]
-    fn fallible_rectangle_batch_without_clip_is_a_noop() {
+    fn fallible_rectangle_batch_without_explicit_clip_uses_unbounded_default_clip() {
         let mut list = DisplayList::new();
         list.try_fill_rects(&[Rect::new(0, 0, 2, 2)], Color::WHITE)
             .unwrap();
-        assert!(list.is_empty());
+
+        let mut target = Framebuffer::new(3, 3, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+
+        assert_eq!(target.get_pixel(0, 0), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(1, 1), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(2, 2), Some(Color::BLACK));
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 1);
     }
 
     #[test]
