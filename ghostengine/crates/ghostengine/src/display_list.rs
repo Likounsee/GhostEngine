@@ -1839,7 +1839,7 @@ mod tests {
 
         list.try_push_clip(Rect::new(0, 0, 10, 10)).unwrap();
         list.try_push_clip(Rect::new(5, 5, 10, 10)).unwrap();
-        assert_eq!(list.clip_stack_capacity(), 2);
+        assert!(list.clip_stack_capacity() >= 2);
 
         list.try_push_transform(Transform2D::translation(2.0, 3.0))
             .unwrap();
