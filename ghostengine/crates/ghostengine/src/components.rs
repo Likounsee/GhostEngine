@@ -2766,13 +2766,20 @@ mod tests {
     #[test]
     fn tree_layout_computes_nested_geometry_and_paint_order() {
         let mut tree = sample_tree();
-        let placed = tree.layout(Rect::new(10, 10, 100, 80));
+        let bounds = Rect::new(10, 10, 100, 80);
+        let placed = tree.layout(bounds);
         assert_eq!(placed.len(), 4);
         assert_eq!(placed[0].id, ComponentId(1));
         assert_eq!(placed[1].id, ComponentId(2));
         assert_eq!(placed[1].bounds, Rect::new(12, 12, 96, 12));
         assert_eq!(placed[2].bounds, Rect::new(12, 26, 96, 20));
         assert_eq!(placed[3].bounds, Rect::new(12, 48, 96, 20));
+
+        // Repeated layout must preserve paint order and geometry without
+        // accumulating duplicate placed components or focus targets.
+        let first_layout = placed.to_vec();
+        assert_eq!(tree.layout(bounds), first_layout);
+        assert_eq!(tree.layout(bounds), first_layout);
     }
 
     #[test]
