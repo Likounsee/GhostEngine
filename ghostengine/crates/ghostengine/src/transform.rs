@@ -319,9 +319,17 @@ mod tests {
             let transform = Transform2D::rotation(next_random(&mut seed) * 3.0)
                 .then(Transform2D::scale(
                     (0.1 + next_random(&mut seed).abs() * 5.0)
-                        * if next_random(&mut seed) < 0.0 { -1.0 } else { 1.0 },
+                        * if next_random(&mut seed) < 0.0 {
+                            -1.0
+                        } else {
+                            1.0
+                        },
                     (0.1 + next_random(&mut seed).abs() * 5.0)
-                        * if next_random(&mut seed) < 0.0 { -1.0 } else { 1.0 },
+                        * if next_random(&mut seed) < 0.0 {
+                            -1.0
+                        } else {
+                            1.0
+                        },
                 ))
                 .then(Transform2D::translation(
                     next_random(&mut seed) * 100.0,
@@ -337,8 +345,7 @@ mod tests {
                 .transform_point(transform.transform_point(point));
 
             assert!(
-                (restored.x - point.x).abs() < 0.002
-                    && (restored.y - point.y).abs() < 0.002,
+                (restored.x - point.x).abs() < 0.002 && (restored.y - point.y).abs() < 0.002,
                 "original={point:?}, restored={restored:?}, transform={transform:?}"
             );
         }

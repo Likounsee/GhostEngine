@@ -13,6 +13,8 @@ pub struct InteractionEvents {
     pub clicked: Option<usize>,
     /// Widget that received focus during this update.
     pub focus_changed: Option<usize>,
+    /// Whether a previously focused widget lost focus without a replacement.
+    pub focus_cleared: bool,
 }
 
 /// Stateful interaction model shared by buttons, checkboxes, menus, and other controls.
@@ -130,6 +132,7 @@ impl UiInteraction {
             focus_changed: (self.focus.focused() != previous_focus)
                 .then_some(self.focus.focused())
                 .flatten(),
+            focus_cleared: previous_focus.is_some() && self.focus.focused().is_none(),
         }
     }
 
@@ -145,6 +148,7 @@ impl UiInteraction {
         InteractionEvents {
             clicked,
             focus_changed: None,
+            focus_cleared: false,
         }
     }
 
@@ -157,6 +161,7 @@ impl UiInteraction {
             focus_changed: (self.focus.focused() != previous)
                 .then_some(self.focus.focused())
                 .flatten(),
+            focus_cleared: previous.is_some() && self.focus.focused().is_none(),
         }
     }
 
@@ -358,5 +363,63 @@ mod tests {
         assert_eq!(ui.hovered(), None);
         assert_eq!(ui.captured(), None);
         assert_eq!(ui.focused(), None);
+    }
+
+    #[test]
+    fn losing_the_last_enabled_widget_reports_focus_cleared() {
+        let (_, bounds) = controls();
+        let mut ui = UiInteraction::new();
+        ui.update(
+            Some(Point::new(2, 2)),
+            true,
+            false,
+            &[true, true, false],
+            &bounds,
+        );
+        let events = ui.update(
+            Some(Point::new(30, 30)),
+            false,
+            false,
+            &[false, false, false],
+            &bounds,
+        );
+
+        assert_eq!(ui.focused(), None);
+        assert_eq!(events.focus_changed, None);
+        assert!(events.focus_cleared);
+    }
+
+    #[test]
+    fn losing_focus_during_tab_navigation_is_reported() {
+        let mut ui = UiInteraction::new();
+        ui.focus_next(&[true, false], false);
+        let events = ui.focus_next(&[false, false], false);
+
+        assert_eq!(ui.focused(), None);
+        assert!(events.focus_cleared);
+        assert_eq!(events.focus_changed, None);
+    }
+
+    #[test]
+    fn retaining_or_changing_focus_to_another_widget_does_not_report_clear() {
+        let (_, bounds) = controls();
+        let mut ui = UiInteraction::new();
+        ui.update(
+            Some(Point::new(2, 2)),
+            true,
+            false,
+            &[true, true, false],
+            &bounds,
+        );
+        let events = ui.update(
+            Some(Point::new(30, 30)),
+            false,
+            false,
+            &[false, true, false],
+            &bounds,
+        );
+
+        assert_eq!(events.focus_changed, Some(1));
+        assert!(!events.focus_cleared);
     }
 }

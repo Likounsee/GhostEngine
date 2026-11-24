@@ -157,9 +157,7 @@ mod tests {
     fn traversal_matches_reference_for_every_small_enabled_mask() {
         for count in 0..=8 {
             for mask in 0..(1usize << count) {
-                let enabled: Vec<bool> = (0..count)
-                    .map(|index| mask & (1 << index) != 0)
-                    .collect();
+                let enabled: Vec<bool> = (0..count).map(|index| mask & (1 << index) != 0).collect();
 
                 for start in 0..=count {
                     if start < count && !enabled[start] {
