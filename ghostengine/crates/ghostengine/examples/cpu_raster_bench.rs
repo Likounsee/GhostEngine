@@ -915,7 +915,7 @@ fn main() {
                 &theme,
             );
         }),
-        measure("UI button AA + text", iterations, |target| {
+        measure("UI button AA + text (auto)", iterations, |target| {
             ghostengine::draw_button_aa(
                 target,
                 &font,
@@ -948,7 +948,7 @@ fn main() {
             );
         }),
         measure(
-            "Mixed image + vector + text + UI + layers",
+            "Mixed app scene (image+vector+UI)",
             iterations.min(50),
             |target| {
                 // A representative application frame: compose a background and
