@@ -1859,15 +1859,24 @@ impl ComponentTree {
             return false;
         };
 
-        let item_count = self.find(id).and_then(|component| match component.kind() {
-            ComponentKind::ListView { items, .. } => Some(items.len()),
-            _ => None,
-        }).unwrap_or(0);
-        let selected = selected.filter(|index| *index < item_count)
+        let item_count = self
+            .find(id)
+            .and_then(|component| match component.kind() {
+                ComponentKind::ListView { items, .. } => Some(items.len()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let selected = selected
+            .filter(|index| *index < item_count)
             .or_else(|| item_count.checked_sub(1));
-        self.list_states.entry(id).or_default().select(selected, item_count);
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
 
-        let viewport_height = self.placed.iter()
+        let viewport_height = self
+            .placed
+            .iter()
             .find(|placement| placement.id == id)
             .map_or(0, |placement| placement.bounds.height);
         let content_height = (item_count as u32).saturating_mul(row_height);
@@ -3875,7 +3884,10 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(2));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 16, .. }
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
         ));
     }
 
