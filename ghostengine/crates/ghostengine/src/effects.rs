@@ -495,6 +495,23 @@ mod tests {
     }
 
     #[test]
+    fn fallible_blur_apis_preserve_zero_radius_frames_and_report_reservation_errors() {
+        let mut target = Framebuffer::new(2, 2, Color::rgba(12, 34, 56, 78)).unwrap();
+        let original = target.clone();
+        let mut scratch = EffectScratch::default();
+
+        try_apply_box_blur(&mut target, 0, &mut scratch).unwrap();
+        try_apply_gaussian_blur(&mut target, 0, &mut scratch).unwrap();
+        assert_eq!(target, original);
+
+        assert_eq!(
+            try_resize_with_default(&mut scratch.weights, usize::MAX, 0.0),
+            Err(FramebufferError::AllocationFailed)
+        );
+        assert_eq!(target, original);
+    }
+
+    #[test]
     fn zero_radius_is_a_noop() {
         let mut target = Framebuffer::new(1, 1, Color::BLUE).unwrap();
         apply_box_blur(&mut target, 0, &mut EffectScratch::default());
