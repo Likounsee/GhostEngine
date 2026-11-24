@@ -761,11 +761,7 @@ impl ComponentTree {
         let focusable_ids = &mut self.focusable_ids;
         let focusable_bounds = &mut self.focusable_bounds;
         let interaction = self.interaction;
-        for (node, rect) in roots
-            .iter()
-            .filter(|node| node.visible)
-            .zip(root_rects)
-        {
+        for (node, rect) in roots.iter().filter(|node| node.visible).zip(root_rects) {
             Self::place_node_into(
                 node,
                 rect,
