@@ -344,6 +344,8 @@ pub enum ComponentKey {
     WordRight,
     Home,
     End,
+    PageUp,
+    PageDown,
     Backspace,
     Delete,
     DeleteWordBackward,
@@ -2358,21 +2360,33 @@ impl ComponentTree {
                         return ComponentEvents::default();
                     }
                 }
-                Some(ComponentKind::ListView { items, .. })
-                    if matches!(
-                        key,
-                        ComponentKey::ArrowUp
-                            | ComponentKey::ArrowDown
-                            | ComponentKey::Home
-                            | ComponentKey::End
-                    ) =>
+                Some(ComponentKind::ListView {
+                    items, row_height, ..
+                }) if matches!(
+                    key,
+                    ComponentKey::ArrowUp
+                        | ComponentKey::ArrowDown
+                        | ComponentKey::Home
+                        | ComponentKey::End
+                        | ComponentKey::PageUp
+                        | ComponentKey::PageDown
+                ) =>
                 {
+                    let page_rows = self
+                        .placed
+                        .iter()
+                        .find(|placement| placement.id == id)
+                        .map_or(1, |placement| {
+                            (placement.bounds.height / *row_height).max(1) as isize
+                        });
                     let state = self.list_states.entry(id).or_default();
                     match key {
                         ComponentKey::ArrowUp => state.move_selection(-1, items.len()),
                         ComponentKey::ArrowDown => state.move_selection(1, items.len()),
                         ComponentKey::Home => state.select_first(items.len()),
                         ComponentKey::End => state.select_last(items.len()),
+                        ComponentKey::PageUp => state.move_selection(-page_rows, items.len()),
+                        ComponentKey::PageDown => state.move_selection(page_rows, items.len()),
                         _ => {}
                     }
                     self.ensure_list_selection_visible(id);
@@ -3745,6 +3759,41 @@ mod tests {
                 scroll_offset: 0,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_page_keys_move_by_visible_rows() {
+        let id = ComponentId(140);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..10).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+        tree.focus_next(bounds, false);
+
+        tree.handle_key(bounds, ComponentKey::PageDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, .. }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::PageDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 48, .. }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::PageUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, .. }
         ));
     }
 
