@@ -184,8 +184,7 @@ impl Framebuffer {
         }
 
         let bpp = descriptor.pixel_format.bytes_per_pixel();
-        let srgb_lut =
-            (descriptor.color_space == ColorSpace::LinearSrgb).then(linear_to_srgb_lut);
+        let srgb_lut = (descriptor.color_space == ColorSpace::LinearSrgb).then(linear_to_srgb_lut);
         let width = self.width() as usize;
         for (y, row) in self.pixels_mut().chunks_exact_mut(width).enumerate() {
             let row_start = y * descriptor.row_stride;
