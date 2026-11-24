@@ -552,7 +552,7 @@ mod tests {
             AlphaMode::Straight,
             ColorSpace::Srgb,
         );
-        rgb.read_from_surface(&[10, 20, 30], rgb_descriptor).unwrap();
+        rgb.read_from_surface(&[10, 20, 30], rgb_descriptor)
             .unwrap();
         assert_eq!(rgb.pixels(), &[Color::rgba(10, 20, 30, 255)]);
 
@@ -564,7 +564,7 @@ mod tests {
             AlphaMode::Straight,
             ColorSpace::Srgb,
         );
-        bgr.read_from_surface(&[30, 20, 10], bgr_descriptor).unwrap();
+        bgr.read_from_surface(&[30, 20, 10], bgr_descriptor)
             .unwrap();
         assert_eq!(bgr.pixels(), &[Color::rgba(10, 20, 30, 255)]);
     }
@@ -580,7 +580,8 @@ mod tests {
             ColorSpace::Srgb,
         );
 
-        frame.read_from_surface(&[200, 100, 50, 0], descriptor).unwrap();
+        frame
+            .read_from_surface(&[200, 100, 50, 0], descriptor)
             .unwrap();
 
         assert_eq!(frame.pixels(), &[Color::TRANSPARENT]);
