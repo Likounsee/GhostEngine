@@ -390,5 +390,4 @@ mod tests {
         }));
         assert_eq!(cache.framebuffer().get_pixel(1, 1), Some(Color::BLUE));
     }
-
 }
