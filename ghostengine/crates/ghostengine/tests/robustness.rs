@@ -1,5 +1,5 @@
 use ghostengine::{
-    AlphaMode, CachedLayer, Color, ColorSpace, DisplayList, FontFace, Framebuffer, Path,
+    AlphaMode, CachedLayer, Color, ColorSpace, DamageRegion, DisplayList, FontFace, Framebuffer, Path,
     PathGeometryCache, PixelFormat, Point, Rect, SurfaceDescriptor, SurfaceError, Texture,
     TextureCache, TextureCacheError, Transform2D, Vector,
 };
@@ -56,6 +56,67 @@ fn rectangle_intersections_obey_half_open_bounds_for_adversarial_coordinates() {
                 assert!(ix0 >= sx0 && iy0 >= sy0 && ix1 <= sx1 && iy1 <= sy1);
             }
         }
+    }
+}
+
+#[test]
+fn damage_region_randomized_union_matches_a_pixel_reference_without_overlap() {
+    const WIDTH: u32 = 17;
+    const HEIGHT: u32 = 11;
+    const PIXEL_COUNT: usize = WIDTH as usize * HEIGHT as usize;
+
+    let mut rng = Generator::new(0x4441_4d41_4745_554e);
+    for _ in 0..48 {
+        let mut damage = DamageRegion::new(WIDTH, HEIGHT);
+        let mut expected = vec![false; PIXEL_COUNT];
+
+        for _ in 0..64 {
+            let rectangle = Rect::new(
+                rng.range(WIDTH * 2),
+                rng.range(HEIGHT * 2),
+                rng.range(WIDTH + 1),
+                rng.range(HEIGHT + 1),
+            );
+            damage.try_add(rectangle).unwrap();
+
+            if let Some(clipped) = rectangle.intersection(Rect::new(0, 0, WIDTH, HEIGHT)) {
+                for y in clipped.y..clipped.y + clipped.height {
+                    for x in clipped.x..clipped.x + clipped.width {
+                        expected[(y * WIDTH + x) as usize] = true;
+                    }
+                }
+            }
+        }
+
+        let mut actual = vec![false; PIXEL_COUNT];
+        for (index, rectangle) in damage.rectangles().iter().copied().enumerate() {
+            assert!(rectangle.width > 0 && rectangle.height > 0);
+            assert!(rectangle.x + rectangle.width <= WIDTH);
+            assert!(rectangle.y + rectangle.height <= HEIGHT);
+
+            for y in rectangle.y..rectangle.y + rectangle.height {
+                for x in rectangle.x..rectangle.x + rectangle.width {
+                    let pixel = (y * WIDTH + x) as usize;
+                    assert!(!actual[pixel], "damage rectangles overlap at pixel {pixel}");
+                    actual[pixel] = true;
+                }
+            }
+
+            for other in damage.rectangles().iter().skip(index + 1) {
+                assert!(
+                    rectangle.intersection(*other).is_none(),
+                    "damage rectangles must remain disjoint"
+                );
+            }
+        }
+
+        let expected_area = expected.iter().filter(|covered| **covered).count() as u64;
+        assert_eq!(actual, expected);
+        assert_eq!(damage.area(), expected_area);
+        assert_eq!(
+            damage.covers_entire_target(),
+            expected_area == u64::from(WIDTH) * u64::from(HEIGHT)
+        );
     }
 }
 
