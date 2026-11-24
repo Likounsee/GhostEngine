@@ -220,86 +220,11 @@ impl StackLayout {
         items: &[LayoutItem],
         result: &mut Vec<Rect>,
     ) -> Result<(), LayoutError> {
-        if items.is_empty() {
-            result.clear();
-            return Ok(());
-        }
-
         result
             .try_reserve(items.len().saturating_sub(result.len()))
             .map_err(|_| LayoutError::AllocationFailed)?;
         result.clear();
-
-        let (origin_x, origin_y, main_available, cross_available) = match self.direction {
-            LayoutDirection::Vertical => (
-                bounds.x.saturating_add(self.padding.left),
-                bounds.y.saturating_add(self.padding.top),
-                bounds
-                    .height
-                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
-                bounds
-                    .width
-                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
-            ),
-            LayoutDirection::Horizontal => (
-                bounds.x.saturating_add(self.padding.left),
-                bounds.y.saturating_add(self.padding.top),
-                bounds
-                    .width
-                    .saturating_sub(self.padding.left.saturating_add(self.padding.right)),
-                bounds
-                    .height
-                    .saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
-            ),
-        };
-
-        let gaps = self
-            .gap
-            .saturating_mul(items.len().saturating_sub(1) as u32);
-        let available = main_available.saturating_sub(gaps);
-        let fixed_total = items.iter().fold(0_u32, |sum, item| {
-            sum.saturating_add(item.main_size.unwrap_or(0))
-        });
-        let flexible_count = items.iter().filter(|item| item.main_size.is_none()).count() as u32;
-        let remaining = available.saturating_sub(fixed_total);
-        let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
-        let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
-        let mut consumed = 0_u32;
-
-        for (index, item) in items.iter().enumerate() {
-            let requested = match item.main_size {
-                Some(size) => size,
-                None => {
-                    let extra = u32::from(remainder > 0);
-                    remainder = remainder.saturating_sub(extra);
-                    flexible_base.saturating_add(extra)
-                }
-            };
-            let gaps_after = self
-                .gap
-                .saturating_mul(items.len().saturating_sub(index + 1) as u32);
-            let maximum = main_available.saturating_sub(consumed.saturating_add(gaps_after));
-            let main_size = requested.min(maximum);
-            let (x, y, width, height) = match self.direction {
-                LayoutDirection::Vertical => (
-                    origin_x,
-                    origin_y.saturating_add(consumed),
-                    cross_available,
-                    main_size,
-                ),
-                LayoutDirection::Horizontal => (
-                    origin_x.saturating_add(consumed),
-                    origin_y,
-                    main_size,
-                    cross_available,
-                ),
-            };
-            result.push(Rect::new(x, y, width, height));
-            consumed = consumed.saturating_add(main_size);
-            if index + 1 < items.len() {
-                consumed = consumed.saturating_add(self.gap);
-            }
-        }
+        self.for_each_layout(bounds, items.iter().copied(), |rect| result.push(rect));
         Ok(())
     }
 }
