@@ -477,9 +477,29 @@ pub fn fill_rects_clipped(target: &mut Framebuffer, rectangles: &[Rect], color: 
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return;
     };
+
+    let framebuffer_width = target.width() as usize;
+    let framebuffer_full_width = target.width();
+    let pixels = target.pixels_mut();
     for rectangle in rectangles {
-        if let Some(rectangle) = rectangle.intersection(clip) {
-            fill_rect(target, rectangle, color);
+        let Some(rectangle) = rectangle.intersection(clip) else {
+            continue;
+        };
+
+        // The intersection is already inside the framebuffer. Write its
+        // packed rows directly instead of sending every item through
+        // fill_rect's second clipping pass.
+        let left = rectangle.x as usize;
+        let top = rectangle.y as usize;
+        let right = left + rectangle.width as usize;
+        let bottom = top + rectangle.height as usize;
+        if left == 0 && right == framebuffer_full_width as usize {
+            pixels[top * framebuffer_width..bottom * framebuffer_width].fill(color);
+        } else {
+            for y in top..bottom {
+                let row_start = y * framebuffer_width;
+                pixels[row_start + left..row_start + right].fill(color);
+            }
         }
     }
 }
@@ -9648,5 +9668,60 @@ mod transformed_conic_gradient_tests {
             target.pixels(),
             &[Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
         );
+    }
+}
+
+
+#[cfg(test)]
+mod clipped_rectangle_batch_tests {
+    use super::{fill_rect, fill_rects_clipped};
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn clipped_batch_matches_individual_fills_with_overlap_and_offscreen_rectangles() {
+        let rectangles = [
+            Rect::new(1, 2, 9, 5),
+            Rect::new(5, 0, 8, 7),
+            Rect::new(0, 0, 20, 2),
+            Rect::new(30, 30, 4, 4),
+            Rect::new(3, 4, 0, 8),
+        ];
+        let clip = Rect::new(3, 1, 8, 6);
+        let initial = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+        let mut expected = initial.clone();
+        let mut actual = initial;
+
+        for rectangle in rectangles {
+            if let Some(clipped) = rectangle.intersection(clip) {
+                fill_rect(&mut expected, clipped, Color::rgba(20, 90, 170, 255));
+            }
+        }
+        fill_rects_clipped(
+            &mut actual,
+            &rectangles,
+            Color::rgba(20, 90, 170, 255),
+            clip,
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn clipped_batch_handles_full_width_and_empty_clips() {
+        let rectangles = [Rect::new(0, 1, 8, 3), Rect::new(2, 2, 4, 2)];
+        let mut expected = Framebuffer::new(8, 6, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+
+        for rectangle in rectangles {
+            if let Some(clipped) = rectangle.intersection(Rect::new(0, 1, 8, 3)) {
+                fill_rect(&mut expected, clipped, Color::WHITE);
+            }
+        }
+        fill_rects_clipped(&mut actual, &rectangles, Color::WHITE, Rect::new(0, 1, 8, 3));
+        assert_eq!(actual, expected);
+
+        let before = actual.clone();
+        fill_rects_clipped(&mut actual, &rectangles, Color::RED, Rect::new(20, 20, 3, 3));
+        assert_eq!(actual, before);
     }
 }
