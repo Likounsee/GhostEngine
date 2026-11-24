@@ -6,7 +6,7 @@
 
 use crate::rasterizer::{
     draw_line_aa, draw_rect, draw_rounded_rect_aa, fill_rect, fill_rect_clipped, fill_rounded_rect,
-    fill_rounded_rect_aa,
+    fill_rounded_rect_aa_parallel,
 };
 use crate::{
     draw_text, draw_text_box_clipped, draw_text_clipped, draw_text_with_fallback_clipped, Color,
@@ -168,7 +168,7 @@ pub fn draw_button_aa(
         Color::WHITE
     };
     let radius = (rect.height / 4).min(10);
-    fill_rounded_rect_aa(target, rect, radius, background);
+    fill_rounded_rect_aa_parallel(target, rect, radius, background);
     let metrics = font.measure(label, pixel_size);
     let x = i64::from(rect.x) + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
     let line_height = font.line_height(pixel_size);
@@ -1479,13 +1479,80 @@ pub fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_checkbox, draw_divider, draw_label_ellipsized, draw_panel, draw_panel_aa,
-        draw_progress_bar, state_for_pointer, ListState, TextInputState, UiTheme, WidgetState,
+        draw_button_aa, draw_checkbox, draw_divider, draw_label_ellipsized, draw_panel,
+        draw_panel_aa, draw_progress_bar, state_for_pointer, ListState, TextInputState, UiTheme,
+        WidgetState,
     };
-    use crate::{Color, Framebuffer, Point, Rect};
+    use crate::{Color, FontFace, Framebuffer, Point, Rect};
 
     fn target() -> Framebuffer {
         Framebuffer::new(32, 24, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn antialiased_button_uses_parallel_fill_without_changing_pixels() {
+        let font = FontFace::from_bytes(include_bytes!(
+            "../tests/fixtures/NotoSansArabic[wdth,wght].ttf"
+        ))
+        .unwrap();
+        let theme = UiTheme::default();
+        let rect = Rect::new(24, 24, 240, 72);
+        let label = "GhostEngine";
+        let pixel_size = 20.0;
+
+        for state in [
+            WidgetState::Normal,
+            WidgetState::Hovered,
+            WidgetState::Pressed,
+            WidgetState::Disabled,
+        ] {
+            let mut actual = Framebuffer::new(320, 120, Color::BLACK).unwrap();
+            let mut expected = Framebuffer::new(320, 120, Color::BLACK).unwrap();
+            draw_button_aa(
+                &mut actual,
+                &font,
+                rect,
+                label,
+                pixel_size,
+                state,
+                &theme,
+            );
+
+            let background = match state {
+                WidgetState::Normal => theme.accent,
+                WidgetState::Hovered => theme.accent_hover,
+                WidgetState::Pressed => theme.accent_pressed,
+                WidgetState::Disabled => theme.disabled,
+            };
+            let foreground = if state == WidgetState::Disabled {
+                Color::rgb(242, 244, 247)
+            } else {
+                Color::WHITE
+            };
+            crate::rasterizer::fill_rounded_rect_aa(
+                &mut expected,
+                rect,
+                (rect.height / 4).min(10),
+                background,
+            );
+            let metrics = font.measure(label, pixel_size);
+            let x = i64::from(rect.x)
+                + (i64::from(rect.width) - metrics.width.round() as i64) / 2;
+            let line_height = font.line_height(pixel_size);
+            let y = i64::from(rect.y)
+                + (i64::from(rect.height) - line_height.round() as i64) / 2
+                + (line_height * 0.78).round() as i64;
+            crate::draw_text_clipped(
+                &mut expected,
+                &font,
+                label,
+                Point::new(x as i32, y as i32),
+                pixel_size,
+                foreground,
+                rect,
+            );
+            assert_eq!(actual.pixels(), expected.pixels(), "state {state:?}");
+        }
     }
 
     #[test]
