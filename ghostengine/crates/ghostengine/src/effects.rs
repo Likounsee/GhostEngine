@@ -56,8 +56,16 @@ pub fn try_apply_box_blur(
     let height = target.height() as usize;
     let radius_x = (radius as usize).min(width.saturating_sub(1));
     let radius_y = (radius as usize).min(height.saturating_sub(1));
-    try_resize_with_default(&mut scratch.source, target.pixels().len(), Color::TRANSPARENT)?;
-    try_resize_with_default(&mut scratch.pixels, target.pixels().len(), Color::TRANSPARENT)?;
+    try_resize_with_default(
+        &mut scratch.source,
+        target.pixels().len(),
+        Color::TRANSPARENT,
+    )?;
+    try_resize_with_default(
+        &mut scratch.pixels,
+        target.pixels().len(),
+        Color::TRANSPARENT,
+    )?;
     scratch.source.copy_from_slice(target.pixels());
 
     for y in 0..height {
@@ -120,10 +128,20 @@ pub fn try_apply_gaussian_blur(
 
     let sigma = (radius as f64 * 0.5).max(0.5);
     let denominator = 2.0 * sigma * sigma;
-    let weight_count = radius.checked_add(1).ok_or(FramebufferError::SizeOverflow)?;
+    let weight_count = radius
+        .checked_add(1)
+        .ok_or(FramebufferError::SizeOverflow)?;
     try_resize_with_default(&mut scratch.weights, weight_count, 0.0)?;
-    try_resize_with_default(&mut scratch.source, target.pixels().len(), Color::TRANSPARENT)?;
-    try_resize_with_default(&mut scratch.pixels, target.pixels().len(), Color::TRANSPARENT)?;
+    try_resize_with_default(
+        &mut scratch.source,
+        target.pixels().len(),
+        Color::TRANSPARENT,
+    )?;
+    try_resize_with_default(
+        &mut scratch.pixels,
+        target.pixels().len(),
+        Color::TRANSPARENT,
+    )?;
     for (distance, weight) in scratch.weights.iter_mut().enumerate() {
         let distance = distance as f64;
         *weight = (-(distance * distance) / denominator).exp();
@@ -172,7 +190,8 @@ fn try_resize_with_default<T: Clone>(
     value: T,
 ) -> Result<(), FramebufferError> {
     if length > buffer.len() {
-        buffer.try_reserve_exact(length - buffer.len())
+        buffer
+            .try_reserve_exact(length - buffer.len())
             .map_err(|_| FramebufferError::AllocationFailed)?;
     }
     buffer.resize(length, value);
