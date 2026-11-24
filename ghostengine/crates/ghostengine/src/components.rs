@@ -1843,7 +1843,7 @@ impl ComponentTree {
     /// is clamped to the new content and follows the retained selection.
     pub fn set_list_view_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
         let selected = self.list_states.get(&id).and_then(|state| state.selected());
-        let Some((row_height, scroll_offset)) =
+        let Some((row_height, current_offset)) =
             self.find_mut(id).and_then(|component| match &mut component.kind {
                 ComponentKind::ListView {
                     items: current_items,
@@ -1851,7 +1851,7 @@ impl ComponentTree {
                     scroll_offset,
                 } => {
                     *current_items = items;
-                    Some((*row_height, scroll_offset))
+                    Some((*row_height, *scroll_offset))
                 }
                 _ => None,
             })
@@ -1871,7 +1871,11 @@ impl ComponentTree {
             .find(|placement| placement.id == id)
             .map_or(0, |placement| placement.bounds.height);
         let content_height = (item_count as u32).saturating_mul(row_height);
-        *scroll_offset = (*scroll_offset).min(content_height.saturating_sub(viewport_height));
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(content_height.saturating_sub(viewport_height));
+        }
 
         if selected.is_some() {
             self.ensure_list_selection_visible(id);
