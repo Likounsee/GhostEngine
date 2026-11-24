@@ -228,6 +228,44 @@ impl Texture {
     }
 }
 
+
+#[cfg(test)]
+mod opaque_identity_copy_tests {
+    use super::{draw_texture_clipped, Texture, TextureFilter};
+    use crate::{Color, Framebuffer, Rect};
+
+    #[test]
+    fn clipped_one_to_one_opaque_copy_matches_reference_rows() {
+        let source_pixels = (0..30)
+            .map(|index| Color::rgba(index * 7, index * 3, 255 - index * 5, 255))
+            .collect::<Vec<_>>();
+        let texture = Texture::new(6, 5, source_pixels).unwrap();
+        let mut expected = Framebuffer::new(9, 8, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let destination = Rect::new(2, 1, 6, 5);
+        let clip = Rect::new(4, 2, 3, 3);
+
+        for y in 0..8 {
+            for x in 0..9 {
+                if x >= 4 && x < 7 && y >= 2 && y < 5 {
+                    let sx = x - destination.x;
+                    let sy = y - destination.y;
+                    expected.set_pixel(x, y, texture.get_pixel(sx, sy).unwrap());
+                }
+            }
+        }
+
+        draw_texture_clipped(
+            &mut actual,
+            &texture,
+            destination,
+            TextureFilter::Nearest,
+            clip,
+        );
+        assert_eq!(actual, expected);
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn sample_pixels_nearest(
     pixels: &[Color],
@@ -1225,13 +1263,14 @@ pub fn draw_texture_clipped_with_scratch(
     {
         let source_x = (first_x - u64::from(destination.x)) as usize;
         let copy_width = (end_x - first_x) as usize;
+        let target_width = target.width() as usize;
+        let destination_x = first_x as usize;
+        let pixels = target.pixels_mut();
         for y in first_y..end_y {
             let source_y = (y - u64::from(destination.y)) as usize;
             let source_offset = source_y * texture.width as usize + source_x;
-            let Some(row) = target.row_mut(y as u32) else {
-                continue;
-            };
-            row[first_x as usize..end_x as usize]
+            let target_offset = y as usize * target_width + destination_x;
+            pixels[target_offset..target_offset + copy_width]
                 .copy_from_slice(&texture.pixels[source_offset..source_offset + copy_width]);
         }
         return;
