@@ -1816,11 +1816,7 @@ impl ComponentTree {
     ///
     /// Passing None clears the selection. An out-of-range row index is
     /// rejected without changing the current selection.
-    pub fn set_list_view_selected(
-        &mut self,
-        id: ComponentId,
-        selected: Option<usize>,
-    ) -> bool {
+    pub fn set_list_view_selected(&mut self, id: ComponentId, selected: Option<usize>) -> bool {
         let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
             ComponentKind::ListView { items, .. } => Some(items.len()),
             _ => None,
@@ -3779,14 +3775,20 @@ mod tests {
         assert_eq!(tree.list_view_selected(id), Some(2));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 16, .. }
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
         ));
 
         tree.handle_key(bounds, ComponentKey::PageDown, false);
         assert_eq!(tree.list_view_selected(id), Some(4));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
-            ComponentKind::ListView { scroll_offset: 48, .. }
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
         ));
 
         tree.handle_key(bounds, ComponentKey::PageUp, false);
