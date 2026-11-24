@@ -2120,20 +2120,23 @@ impl ComponentTree {
     /// height that is already in use.
     pub fn set_list_view_row_height(&mut self, id: ComponentId, row_height: u32) -> bool {
         let row_height = row_height.max(1);
-        let Some(changed) = self.find_mut(id).and_then(|component| match &mut component.kind {
-            ComponentKind::ListView {
-                row_height: current,
-                ..
-            } => {
-                if *current == row_height {
-                    Some(false)
-                } else {
-                    *current = row_height;
-                    Some(true)
+        let Some(changed) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
+                ComponentKind::ListView {
+                    row_height: current,
+                    ..
+                } => {
+                    if *current == row_height {
+                        Some(false)
+                    } else {
+                        *current = row_height;
+                        Some(true)
+                    }
                 }
-            }
-            _ => None,
-        }) else {
+                _ => None,
+            })
+        else {
             return false;
         };
         if !changed {
