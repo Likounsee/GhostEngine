@@ -245,3 +245,56 @@ fn public_application_workflow_routes_ui_input_renders_text_and_presents_frame()
         "keyboard activation should target the focused application control"
     );
 }
+
+
+#[test]
+fn repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent() {
+    let mut host = HeadlessHost::new(HostWindowConfig::new("lifecycle stress", 8, 6)).unwrap();
+    let mut events = Vec::new();
+
+    for cycle in 0..1_000u32 {
+        let width = 1 + (cycle.wrapping_mul(17) % 64);
+        let height = 1 + (cycle.wrapping_mul(29) % 48);
+
+        host.resize(width, height).unwrap();
+        assert_eq!(host.drawable_size(), (width, height));
+        let frame = Framebuffer::new(width, height, Color::rgba(cycle as u8, 31, 63, 255))
+            .unwrap();
+        host.present(&frame).unwrap();
+
+        let presented = host
+            .take_presented_frame()
+            .expect("each successful presentation must be retrievable");
+        assert_eq!((presented.width(), presented.height()), (width, height));
+        assert_eq!(presented.pixels(), frame.pixels());
+
+        // Both zero-sized forms occur in real native minimize/restore paths.
+        if cycle % 2 == 0 {
+            host.resize(0, height).unwrap();
+        } else {
+            host.resize(width, 0).unwrap();
+        }
+        assert!(matches!(
+            host.present(&frame),
+            Err(ghostengine::HeadlessHostError::DrawableUnavailable)
+        ));
+        host.resize(width, height).unwrap();
+
+        host.poll_events(&mut events);
+        assert!(events.iter().all(|event| matches!(
+            event,
+            HostEvent::Resized { .. }
+        )));
+        events.clear();
+    }
+
+    host.close();
+    assert!(!host.is_open());
+    assert_eq!(
+        host.present(&Framebuffer::new(1, 1, Color::BLACK).unwrap()),
+        Err(ghostengine::HeadlessHostError::Closed)
+    );
+    assert_eq!(host.resize(8, 6), Err(ghostengine::HeadlessHostError::Closed));
+    host.poll_events(&mut events);
+    assert_eq!(events, [HostEvent::CloseRequested]);
+}
