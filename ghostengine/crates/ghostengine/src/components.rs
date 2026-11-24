@@ -1936,6 +1936,40 @@ impl ComponentTree {
         true
     }
 
+    /// Changes the fixed row height of a retained list view.
+    ///
+    /// The current scroll position is clamped to the resized content and the
+    /// selected row remains visible whenever the list has a laid-out viewport.
+    /// Returns false for an unknown component, a non-list component, or a
+    /// height that is already in use.
+    pub fn set_list_view_row_height(&mut self, id: ComponentId, row_height: u32) -> bool {
+        let row_height = row_height.max(1);
+        let Some(changed) = self.find_mut(id).and_then(|component| match &mut component.kind {
+            ComponentKind::ListView {
+                row_height: current,
+                ..
+            } => {
+                if *current == row_height {
+                    Some(false)
+                } else {
+                    *current = row_height;
+                    Some(true)
+                }
+            }
+            _ => None,
+        }) else {
+            return false;
+        };
+        if !changed {
+            return false;
+        }
+
+        let offset = self.list_view_scroll_offset(id).unwrap_or(0);
+        self.set_list_view_scroll(id, offset);
+        self.ensure_list_selection_visible(id);
+        true
+    }
+
     /// Moves the viewport when keyboard navigation selects an off-screen row.
     fn ensure_list_selection_visible(&mut self, id: ComponentId) {
         let Some(selected) = self.list_states.get(&id).and_then(|state| state.selected()) else {
@@ -3831,6 +3865,34 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn retained_list_view_row_height_resizes_and_clamps_scroll() {
+        let id = ComponentId(143);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..8).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(48))]);
+        tree.layout(Rect::new(0, 0, 100, 48));
+        assert!(tree.set_list_view_scroll(id, 64));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(64));
+
+        assert!(tree.set_list_view_row_height(id, 8));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(16));
+        assert!(!tree.set_list_view_row_height(id, 8));
+        assert!(!tree.set_list_view_row_height(ComponentId(999), 12));
+        assert!(tree.set_list_view_row_height(id, 0));
+        assert_eq!(
+            tree.find(id).map(|component| component.kind()),
+            Some(&ComponentKind::ListView {
+                items: (0..8).map(|index| format!("Row {index}")).collect(),
+                row_height: 1,
+                scroll_offset: 0,
+            })
+        );
     }
 
     #[test]
