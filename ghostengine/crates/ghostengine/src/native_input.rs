@@ -929,4 +929,29 @@ mod tests {
         assert_eq!(clamp_coordinate(f64::NAN), 0);
         assert_eq!(clamp_coordinate(f64::MAX), i32::MAX);
     }
+
+    #[test]
+    fn losing_focus_discards_accumulated_horizontal_and_vertical_wheel_deltas() {
+        use winit::{
+            dpi::PhysicalPosition,
+            event::{DeviceId, MouseScrollDelta, WindowEvent},
+        };
+
+        let mut adapter = NativeInputAdapter::new();
+        let device_id = DeviceId::dummy();
+        adapter.process_window_event(&WindowEvent::MouseWheel {
+            device_id,
+            delta: MouseScrollDelta::PixelDelta(PhysicalPosition::new(24.0, -36.0)),
+            phase: winit::event::TouchPhase::Moved,
+        });
+        assert_eq!(adapter.frame.scroll_delta_x, -24);
+        assert_eq!(adapter.frame.scroll_delta_y, 36);
+
+        adapter.process_window_event(&WindowEvent::Focused(false));
+        let frame = adapter.take_frame();
+
+        assert_eq!(frame.scroll_delta_x, 0);
+        assert_eq!(frame.scroll_delta_y, 0);
+    }
+
 }
