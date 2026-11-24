@@ -2703,12 +2703,8 @@ mod tests {
         let initial = Color::rgb(18, 24, 32);
         let mut actual = Framebuffer::new(660, 380, initial).unwrap();
         let mut scratch = LayerGroupScratch::with_capacity(2);
-        compose_layer_groups_with_scratch(
-            &mut actual,
-            std::slice::from_ref(&outer),
-            &mut scratch,
-        )
-        .unwrap();
+        compose_layer_groups_with_scratch(&mut actual, std::slice::from_ref(&outer), &mut scratch)
+            .unwrap();
 
         let mut inner_surface =
             Framebuffer::new(inner.width, inner.height, Color::TRANSPARENT).unwrap();
