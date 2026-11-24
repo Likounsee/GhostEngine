@@ -1346,11 +1346,14 @@ pub fn draw_texture_clipped_with_scratch(
     } else {
         false
     };
+    // Keep one mutable borrow of the packed framebuffer and derive each
+    // destination row by offset. Clipping above guarantees every row range.
+    let target_width = target.width() as usize;
+    let target_pixels = target.pixels_mut();
     for y in first_y..end_y {
         let source_y = (y as f32 + 0.5 - destination.y as f32) * source_y_scale;
-        let Some(row) = target.row_mut(y as u32) else {
-            continue;
-        };
+        let row_start = y as usize * target_width;
+        let row = &mut target_pixels[row_start..row_start + target_width];
 
         if filter == TextureFilter::Nearest {
             // The destination clipping guarantees that samples lie inside the
