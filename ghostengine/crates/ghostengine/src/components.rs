@@ -4437,12 +4437,9 @@ mod tests {
                 let items = (0..item_count)
                     .map(|index| format!("Row {index}"))
                     .collect();
-                let mut tree = ComponentTree::new(vec![UiComponent::list_view(
-                    id,
-                    items,
-                    row_height,
-                )
-                .with_layout_item(LayoutItem::fixed(viewport_height))]);
+                let mut tree =
+                    ComponentTree::new(vec![UiComponent::list_view(id, items, row_height)
+                        .with_layout_item(LayoutItem::fixed(viewport_height))]);
                 tree.layout(bounds);
                 tree.focus_next(bounds, false);
 
