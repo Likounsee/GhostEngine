@@ -195,28 +195,32 @@ impl Path {
                 }
                 Command::LineTo(p) => {
                     validate(p)?;
-                    let index = current.or_else(|| {
-                        let start = closed_start.take()?;
-                        result.subpaths.push(FlattenedSubpath {
-                            points: vec![start],
-                            closed: false,
-                        });
-                        Some(result.subpaths.len() - 1)
-                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    let index = current
+                        .or_else(|| {
+                            let start = closed_start.take()?;
+                            result.subpaths.push(FlattenedSubpath {
+                                points: vec![start],
+                                closed: false,
+                            });
+                            Some(result.subpaths.len() - 1)
+                        })
+                        .ok_or(PathError::MissingCurrentPoint)?;
                     current = Some(index);
                     result.subpaths[index].points.push(p);
                 }
                 Command::QuadTo(control, end) => {
                     validate(control)?;
                     validate(end)?;
-                    let index = current.or_else(|| {
-                        let start = closed_start.take()?;
-                        result.subpaths.push(FlattenedSubpath {
-                            points: vec![start],
-                            closed: false,
-                        });
-                        Some(result.subpaths.len() - 1)
-                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    let index = current
+                        .or_else(|| {
+                            let start = closed_start.take()?;
+                            result.subpaths.push(FlattenedSubpath {
+                                points: vec![start],
+                                closed: false,
+                            });
+                            Some(result.subpaths.len() - 1)
+                        })
+                        .ok_or(PathError::MissingCurrentPoint)?;
                     current = Some(index);
                     let contour = &mut result.subpaths[index];
                     let start = *contour
@@ -236,14 +240,16 @@ impl Path {
                     validate(c1)?;
                     validate(c2)?;
                     validate(end)?;
-                    let index = current.or_else(|| {
-                        let start = closed_start.take()?;
-                        result.subpaths.push(FlattenedSubpath {
-                            points: vec![start],
-                            closed: false,
-                        });
-                        Some(result.subpaths.len() - 1)
-                    }).ok_or(PathError::MissingCurrentPoint)?;
+                    let index = current
+                        .or_else(|| {
+                            let start = closed_start.take()?;
+                            result.subpaths.push(FlattenedSubpath {
+                                points: vec![start],
+                                closed: false,
+                            });
+                            Some(result.subpaths.len() - 1)
+                        })
+                        .ok_or(PathError::MissingCurrentPoint)?;
                     current = Some(index);
                     let contour = &mut result.subpaths[index];
                     let start = *contour
