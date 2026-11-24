@@ -1911,6 +1911,118 @@ impl ComponentTree {
         true
     }
 
+    /// Inserts a row at the given index in a retained list view.
+    ///
+    /// Existing selection follows its row when insertion happens before it.
+    /// The index may equal the current row count to append an item.
+    pub fn insert_list_view_item(
+        &mut self,
+        id: ComponentId,
+        index: usize,
+        item: impl Into<String>,
+    ) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, current_offset)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if index <= items.len() => {
+                        items.insert(index, item.into());
+                        Some((*row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+
+        let next_selected = selected.map(|selected| {
+            if index <= selected {
+                selected + 1
+            } else {
+                selected
+            }
+        });
+        let item_count = self.list_view_items(id).map_or(0, <[String]>::len);
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
+    /// Removes and returns the row at the given index.
+    ///
+    /// Selection follows its original row when possible. Removing the selected
+    /// row selects the row now occupying that index, or the preceding final row.
+    pub fn remove_list_view_item(&mut self, id: ComponentId, index: usize) -> Option<String> {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let (removed, row_height, current_offset) =
+            self.find_mut(id).and_then(|component| match &mut component.kind {
+                ComponentKind::ListView {
+                    items,
+                    row_height,
+                    scroll_offset,
+                } if index < items.len() => {
+                    Some((items.remove(index), *row_height, *scroll_offset))
+                }
+                _ => None,
+            })?;
+
+        let item_count = self.list_view_items(id).map_or(0, <[String]>::len);
+        let next_selected = selected.and_then(|selected| {
+            if item_count == 0 {
+                None
+            } else if selected > index {
+                Some(selected - 1)
+            } else if selected == index {
+                Some(index.min(item_count - 1))
+            } else {
+                Some(selected)
+            }
+        });
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        Some(removed)
+    }
+
     /// Updates the pixel scroll offset of a retained list view.
     pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
         let viewport_height = self
@@ -3865,6 +3977,35 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn retained_list_view_inserts_and_removes_rows_without_losing_selection() {
+        let id = ComponentId(144);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+        assert!(tree.set_list_view_selected(id, Some(1)));
+
+        assert!(tree.insert_list_view_item(id, 0, "Start"));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["Start", "A", "B", "C"]);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(!tree.insert_list_view_item(id, 99, "Invalid"));
+
+        assert_eq!(tree.remove_list_view_item(id, 2).as_deref(), Some("B"));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["Start", "A", "C"]);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert_eq!(tree.remove_list_view_item(id, 99), None);
+        assert_eq!(tree.remove_list_view_item(id, 2).as_deref(), Some("C"));
+        assert_eq!(tree.list_view_selected(id), Some(1));
+        assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("Start"));
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("A"));
+        assert_eq!(tree.list_view_selected(id), None);
     }
 
     #[test]
