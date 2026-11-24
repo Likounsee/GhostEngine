@@ -5,8 +5,7 @@ fn reference_source_over(source: Color, destination: Color) -> Color {
     let source_alpha = u128::from(source.a);
     let destination_alpha = u128::from(destination.a);
     let inverse_source_alpha = 255 - source_alpha;
-    let alpha_numerator =
-        source_alpha * 255 + destination_alpha * inverse_source_alpha;
+    let alpha_numerator = source_alpha * 255 + destination_alpha * inverse_source_alpha;
 
     if alpha_numerator == 0 {
         return Color::TRANSPARENT;
@@ -14,9 +13,7 @@ fn reference_source_over(source: Color, destination: Color) -> Color {
 
     let channel = |source_channel: u8, destination_channel: u8| {
         let numerator = u128::from(source_channel) * source_alpha * 255
-            + u128::from(destination_channel)
-                * destination_alpha
-                * inverse_source_alpha;
+            + u128::from(destination_channel) * destination_alpha * inverse_source_alpha;
         ((numerator + alpha_numerator / 2) / alpha_numerator) as u8
     };
 
@@ -40,12 +37,7 @@ fn source_over_matches_reference_for_every_alpha_pair() {
     for source_alpha in 0..=u8::MAX {
         for destination_alpha in 0..=u8::MAX {
             for (source_rgb, destination_rgb) in channel_pairs {
-                let source = Color::rgba(
-                    source_rgb[0],
-                    source_rgb[1],
-                    source_rgb[2],
-                    source_alpha,
-                );
+                let source = Color::rgba(source_rgb[0], source_rgb[1], source_rgb[2], source_alpha);
                 let destination = Color::rgba(
                     destination_rgb[0],
                     destination_rgb[1],
