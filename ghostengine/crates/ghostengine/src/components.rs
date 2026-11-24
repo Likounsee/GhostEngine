@@ -1837,7 +1837,7 @@ impl ComponentTree {
 
     /// Moves the viewport when keyboard navigation selects an off-screen row.
     fn ensure_list_selection_visible(&mut self, id: ComponentId) {
-        let Some(selected) = self.list_states.get(&id).and_then(ListState::selected) else {
+        let Some(selected) = self.list_states.get(&id).and_then(|state| state.selected()) else {
             return;
         };
         let Some((row_height, current_offset, viewport_height)) = self
@@ -3603,6 +3603,13 @@ mod tests {
 
         assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
         tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 0, .. }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
         assert!(matches!(
             tree.find(id).unwrap().kind(),
             ComponentKind::ListView { scroll_offset: 0, .. }
