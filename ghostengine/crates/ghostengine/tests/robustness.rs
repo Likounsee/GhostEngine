@@ -408,7 +408,6 @@ fn display_list_fallible_capacity_apis_report_overflow_without_mutating_state() 
     assert!(reserved.command_capacity() >= 64);
 }
 
-
 #[test]
 fn unified_cache_lifecycle_stays_bounded_under_repeated_churn() {
     let mut texture_cache = TextureCache::new(256);
