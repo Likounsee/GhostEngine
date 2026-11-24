@@ -390,10 +390,7 @@ impl DisplayList {
     ///
     /// Invalid transforms and allocation failures leave the active stack
     /// unchanged.
-    pub fn try_push_transform(
-        &mut self,
-        transform: Transform2D,
-    ) -> Result<(), DisplayListError> {
+    pub fn try_push_transform(&mut self, transform: Transform2D) -> Result<(), DisplayListError> {
         if !transform.is_finite() {
             return Err(DisplayListError::InvalidTransform);
         }
@@ -1813,9 +1810,7 @@ mod tests {
             .unwrap();
         let before = list.transform_stack_capacity();
         assert_eq!(
-            list.try_push_transform(Transform2D::new(
-                f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0
-            )),
+            list.try_push_transform(Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0)),
             Err(super::DisplayListError::InvalidTransform)
         );
         assert_eq!(list.transform_stack_capacity(), before);
