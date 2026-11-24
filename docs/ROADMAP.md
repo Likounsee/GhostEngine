@@ -128,7 +128,7 @@ This checklist tracks implementation separately from release validation. A check
 - [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `45261600749`; its virtual runner results are not substitutes for reference desktop measurements.
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
-- [ ] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` has been added; await green CI).
+- [x] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` passes the Windows/Linux/macOS CI matrix).
 - [x] Stress-test repeated headless resize, zero-sized minimize/restore, frame presentation and host shutdown (`repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent`, 1,000 cycles). Native desktop lifecycle stress remains part of the per-OS manual validation gate.
 - [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
 
@@ -147,6 +147,7 @@ This checklist tracks implementation separately from release validation. A check
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
 - Historical robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`). Later commits require their own green matrix.
+- The unified cache lifecycle stress test and randomized damage-region pixel-reference test pass on Windows, Linux and macOS in CI run `45495108223` for commit `3782c8a3149413876db524567f8eb2293426add3`.
 - Automated compilation/tests of native adapters do not prove real desktop behavior. Interactive validation on each target OS remains outstanding until evidence is recorded.
 - GPU acceleration, 3D rendering and secure-display support are intentionally outside the 2D V1 scope.
 
