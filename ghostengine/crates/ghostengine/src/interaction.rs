@@ -451,9 +451,18 @@ mod tests {
     fn home_and_end_navigation_select_first_and_last_enabled_widgets() {
         let mut ui = UiInteraction::new();
 
-        assert_eq!(ui.focus_first(&[false, true, false, true]).focus_changed, Some(1));
-        assert_eq!(ui.focus_last(&[false, true, false, true]).focus_changed, Some(3));
-        assert_eq!(ui.focus_first(&[false, true, false, true]).focus_changed, Some(1));
+        assert_eq!(
+            ui.focus_first(&[false, true, false, true]).focus_changed,
+            Some(1)
+        );
+        assert_eq!(
+            ui.focus_last(&[false, true, false, true]).focus_changed,
+            Some(3)
+        );
+        assert_eq!(
+            ui.focus_first(&[false, true, false, true]).focus_changed,
+            Some(1)
+        );
     }
 
     #[test]
