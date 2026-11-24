@@ -1861,7 +1861,9 @@ impl ComponentTree {
         let row_top = (selected as u32).saturating_mul(row_height);
         let row_bottom = row_top.saturating_add(row_height);
         let viewport_bottom = current_offset.saturating_add(viewport_height);
-        let next_offset = if row_top < current_offset {
+        // A row taller than the viewport cannot fit completely. Keep its top
+        // edge anchored instead of alternating between top and bottom offsets.
+        let next_offset = if row_height >= viewport_height || row_top < current_offset {
             row_top
         } else if row_bottom > viewport_bottom {
             row_bottom.saturating_sub(viewport_height)
@@ -3638,6 +3640,50 @@ mod tests {
             tree.find(id).unwrap().kind(),
             ComponentKind::ListView {
                 scroll_offset: 48,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_keeps_tall_selected_rows_stably_top_aligned() {
+        let id = ComponentId(138);
+        let bounds = Rect::new(0, 0, 100, 8);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..3).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(8))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
                 ..
             }
         ));
