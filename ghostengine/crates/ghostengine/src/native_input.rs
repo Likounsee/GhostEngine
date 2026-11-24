@@ -827,17 +827,17 @@ mod tests {
         let device_id = DeviceId::dummy();
         adapter.process_window_event(&WindowEvent::MouseWheel {
             device_id,
-            delta: MouseScrollDelta::LineDelta(0.0, 1.0),
+            delta: MouseScrollDelta::LineDelta(1.0, 1.0),
             phase: winit::event::TouchPhase::Moved,
         });
         adapter.process_window_event(&WindowEvent::MouseWheel {
             device_id,
-            delta: MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 12.0)),
+            delta: MouseScrollDelta::PixelDelta(PhysicalPosition::new(12.0, 12.0)),
             phase: winit::event::TouchPhase::Moved,
         });
 
         let frame = adapter.take_frame();
-        assert_eq!(frame.scroll_delta_x, 0);
+        assert_eq!(frame.scroll_delta_x, -60);
         assert_eq!(frame.scroll_delta_y, -60);
         let next_frame = adapter.take_frame();
         assert_eq!(next_frame.scroll_delta_x, 0);
