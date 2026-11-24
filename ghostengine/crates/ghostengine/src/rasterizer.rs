@@ -493,6 +493,17 @@ pub fn fill_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
     if left >= right || top >= bottom {
         return;
     }
+
+    let framebuffer_width = target.width() as usize;
+    if left == 0 && right == u64::from(target.width()) {
+        // Full-width rectangles occupy one contiguous range in row-major
+        // storage. Fill it in one operation instead of visiting each row.
+        let start = top as usize * framebuffer_width;
+        let end = bottom as usize * framebuffer_width;
+        target.pixels_mut()[start..end].fill(color);
+        return;
+    }
+
     for y in top..bottom {
         if let Some(row) = target.row_mut(y as u32) {
             row[left as usize..right as usize].fill(color);
