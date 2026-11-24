@@ -287,7 +287,7 @@ impl TextureAtlasBuilder {
                 return Err(TextureAtlasError::AtlasFull);
             }
             if x.checked_add(padded_width)
-                .map_or(true, |right| right > self.width)
+                .is_none_or(|right| right > self.width)
             {
                 x = 0;
                 y = y
@@ -296,7 +296,7 @@ impl TextureAtlasBuilder {
                 shelf_height = 0;
             }
             if y.checked_add(padded_height)
-                .map_or(true, |bottom| bottom > self.height)
+                .is_none_or(|bottom| bottom > self.height)
             {
                 return Err(TextureAtlasError::AtlasFull);
             }

@@ -427,7 +427,7 @@ where
         if self
             .window
             .as_ref()
-            .map_or(true, |window| window.id() != window_id)
+            .is_none_or(|window| window.id() != window_id)
         {
             return;
         }
