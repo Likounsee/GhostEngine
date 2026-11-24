@@ -151,10 +151,13 @@ impl StackLayout {
 
         let gaps = self.gap.saturating_mul(item_count.saturating_sub(1) as u32);
         let available = main_available.saturating_sub(gaps);
-        let fixed_total = items.clone().fold(0_u32, |sum, item| {
-            sum.saturating_add(item.main_size.unwrap_or(0))
-        });
-        let flexible_count = items.clone().filter(|item| item.main_size.is_none()).count() as u32;
+        let (fixed_total, flexible_count) =
+            items.clone().fold((0_u32, 0_u32), |(fixed, flexible), item| {
+                match item.main_size {
+                    Some(size) => (fixed.saturating_add(size), flexible),
+                    None => (fixed, flexible.saturating_add(1)),
+                }
+            });
         let remaining = available.saturating_sub(fixed_total);
         let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
         let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
