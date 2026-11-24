@@ -120,6 +120,80 @@ impl StackLayout {
         result
     }
 
+    /// Visits child rectangles in input order without allocating an output vector.
+    ///
+    /// The iterator is traversed more than once, so it must be cloneable. This
+    /// is useful for retained UI trees that already own their component nodes.
+    pub fn for_each_layout<I, F>(self, bounds: Rect, items: I, mut visit: F)
+    where
+        I: Iterator<Item = LayoutItem> + Clone,
+        F: FnMut(Rect),
+    {
+        let item_count = items.clone().count();
+        if item_count == 0 {
+            return;
+        }
+
+        let (origin_x, origin_y, main_available, cross_available) = match self.direction {
+            LayoutDirection::Vertical => (
+                bounds.x.saturating_add(self.padding.left),
+                bounds.y.saturating_add(self.padding.top),
+                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+            ),
+            LayoutDirection::Horizontal => (
+                bounds.x.saturating_add(self.padding.left),
+                bounds.y.saturating_add(self.padding.top),
+                bounds.width.saturating_sub(self.padding.left.saturating_add(self.padding.right)),
+                bounds.height.saturating_sub(self.padding.top.saturating_add(self.padding.bottom)),
+            ),
+        };
+
+        let gaps = self.gap.saturating_mul(item_count.saturating_sub(1) as u32);
+        let available = main_available.saturating_sub(gaps);
+        let fixed_total = items.clone().fold(0_u32, |sum, item| {
+            sum.saturating_add(item.main_size.unwrap_or(0))
+        });
+        let flexible_count = items.clone().filter(|item| item.main_size.is_none()).count() as u32;
+        let remaining = available.saturating_sub(fixed_total);
+        let flexible_base = remaining.checked_div(flexible_count).unwrap_or_default();
+        let mut remainder = remaining.checked_rem(flexible_count).unwrap_or_default();
+        let mut consumed = 0_u32;
+
+        for (index, item) in items.enumerate() {
+            let requested = match item.main_size {
+                Some(size) => size,
+                None => {
+                    let extra = u32::from(remainder > 0);
+                    remainder = remainder.saturating_sub(extra);
+                    flexible_base.saturating_add(extra)
+                }
+            };
+            let gaps_after = self.gap.saturating_mul(item_count.saturating_sub(index + 1) as u32);
+            let maximum = main_available.saturating_sub(consumed.saturating_add(gaps_after));
+            let main_size = requested.min(maximum);
+            let rect = match self.direction {
+                LayoutDirection::Vertical => Rect::new(
+                    origin_x,
+                    origin_y.saturating_add(consumed),
+                    cross_available,
+                    main_size,
+                ),
+                LayoutDirection::Horizontal => Rect::new(
+                    origin_x.saturating_add(consumed),
+                    origin_y,
+                    main_size,
+                    cross_available,
+                ),
+            };
+            visit(rect);
+            consumed = consumed.saturating_add(main_size);
+            if index + 1 < item_count {
+                consumed = consumed.saturating_add(self.gap);
+            }
+        }
+    }
+
     /// Computes child rectangles into caller-owned storage.
     ///
     /// Existing capacity is reused across frames. The vector is reserved before
@@ -412,6 +486,27 @@ mod tests {
         assert_eq!(viewport.offset(), i32::MAX as u32);
         viewport.scroll_by(i32::MIN);
         assert_eq!(viewport.offset(), 0);
+    }
+
+    #[test]
+    fn iterator_layout_matches_allocating_layout_for_both_directions() {
+        let bounds = Rect::new(7, 11, 101, 83);
+        let items = [
+            LayoutItem::fixed(13),
+            LayoutItem::flexible(),
+            LayoutItem::fixed(17),
+            LayoutItem::flexible(),
+        ];
+
+        for direction in [LayoutDirection::Vertical, LayoutDirection::Horizontal] {
+            let layout = StackLayout::new(direction)
+                .with_padding(Insets::symmetric(3, 5))
+                .with_gap(4);
+            let expected = layout.layout(bounds, &items);
+            let mut actual = Vec::new();
+            layout.for_each_layout(bounds, items.iter().copied(), |rect| actual.push(rect));
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test]
