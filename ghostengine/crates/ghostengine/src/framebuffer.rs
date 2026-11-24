@@ -433,6 +433,48 @@ mod tests {
     }
 
     #[test]
+    fn repeated_resize_cycles_preserve_overlap_and_clear_exposed_pixels() {
+        let clear = Color::rgba(13, 27, 41, 59);
+        let mut framebuffer = Framebuffer::new(3, 5, clear).unwrap();
+        let mut reference = vec![clear; 15];
+        let mut old_width = 3_usize;
+        let mut old_height = 5_usize;
+
+        for step in 0..2_048_usize {
+            let new_width = (step.wrapping_mul(17) % 19) + 1;
+            let new_height = (step.wrapping_mul(29) % 17) + 1;
+            let mut expected = vec![clear; new_width * new_height];
+
+            for y in 0..old_height.min(new_height) {
+                for x in 0..old_width.min(new_width) {
+                    expected[y * new_width + x] = reference[y * old_width + x];
+                }
+            }
+
+            framebuffer
+                .resize_preserving(new_width as u32, new_height as u32, clear)
+                .unwrap();
+            assert_eq!(framebuffer.pixels(), expected);
+            assert_eq!(framebuffer.width(), new_width as u32);
+            assert_eq!(framebuffer.height(), new_height as u32);
+
+            // Mutate the complete image between resizes so stale rows and
+            // accidental overlap corruption cannot hide behind uniform pixels.
+            for (index, pixel) in framebuffer.pixels_mut().iter_mut().enumerate() {
+                *pixel = Color::rgba(
+                    (step.wrapping_add(index * 3) & 0xff) as u8,
+                    (step.wrapping_mul(7).wrapping_add(index * 5) & 0xff) as u8,
+                    (step.wrapping_mul(11).wrapping_add(index * 13) & 0xff) as u8,
+                    255,
+                );
+            }
+            reference = framebuffer.pixels().to_vec();
+            old_width = new_width;
+            old_height = new_height;
+        }
+    }
+
+    #[test]
     fn try_clone_copies_pixels_into_independent_storage() {
         let mut original = Framebuffer::new(2, 2, Color::BLACK).unwrap();
         original.pixels_mut().copy_from_slice(&[
