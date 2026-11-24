@@ -163,6 +163,10 @@ impl TextureAtlasBuilder {
     /// Use `add_owned` when the caller no longer needs the source texture;
     /// transferring ownership avoids a full pixel-buffer copy.
     pub fn add(&mut self, id: u64, texture: &Texture) -> Result<(), TextureAtlasError> {
+        // Reject duplicates before cloning potentially large pixel buffers.
+        if self.ids.contains(&id) {
+            return Err(TextureAtlasError::DuplicateId);
+        }
         let texture = texture.try_clone().map_err(TextureAtlasError::Texture)?;
         self.add_owned(id, texture)
     }
