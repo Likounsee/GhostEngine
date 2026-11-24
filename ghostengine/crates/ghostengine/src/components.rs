@@ -2041,16 +2041,17 @@ impl ComponentTree {
     pub fn remove_list_view_item(&mut self, id: ComponentId, index: usize) -> Option<String> {
         let selected = self.list_states.get(&id).and_then(|state| state.selected());
         let (removed, row_height, current_offset) =
-            self.find_mut(id).and_then(|component| match &mut component.kind {
-                ComponentKind::ListView {
-                    items,
-                    row_height,
-                    scroll_offset,
-                } if index < items.len() => {
-                    Some((items.remove(index), *row_height, *scroll_offset))
-                }
-                _ => None,
-            })?;
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if index < items.len() => {
+                        Some((items.remove(index), *row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })?;
 
         let item_count = self.list_view_items(id).map_or(0, <[String]>::len);
         let next_selected = selected.and_then(|selected| {
@@ -2251,11 +2252,7 @@ impl ComponentTree {
     /// Sets the selected combo box entry, or clears the selection with None.
     ///
     /// Invalid indices are rejected without changing the current selection.
-    pub fn set_combo_box_selected(
-        &mut self,
-        id: ComponentId,
-        selected: Option<usize>,
-    ) -> bool {
+    pub fn set_combo_box_selected(&mut self, id: ComponentId, selected: Option<usize>) -> bool {
         let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
             ComponentKind::ComboBox { items } => Some(items.len()),
             _ => None,
