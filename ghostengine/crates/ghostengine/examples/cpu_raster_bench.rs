@@ -9,9 +9,9 @@ use ghostengine::{
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_options,
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
-    fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, stroke_path, stroke_path_aa,
-    stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
-    fill_rounded_rect_aa, fill_rounded_rect_aa_parallel, Layer, MipmapChain, NineSliceMargins,
+    fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, fill_rounded_rect_aa,
+    fill_rounded_rect_aa_parallel, stroke_path, stroke_path_aa, stroke_path_aa_parallel_with_threads,
+    Color, FontFace, Framebuffer, Gradient, GradientStop, Layer, MipmapChain, NineSliceMargins,
     Path, Point, RasterizerScratch, Rect, RenderOptions,
     StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch, TextureFilter,
     Transform2D, UiTheme, Vector, WidgetState,
@@ -886,19 +886,33 @@ fn main() {
         measure("Rounded rectangle AA (serial)", iterations, |target| {
             fill_rounded_rect_aa(
                 target,
-                Rect::new(110 * SCALE_U32, 100 * SCALE_U32, 260 * SCALE_U32, 64 * SCALE_U32),
+                Rect::new(
+                    110 * SCALE_U32,
+                    100 * SCALE_U32,
+                    260 * SCALE_U32,
+                    64 * SCALE_U32,
+                ),
                 10,
                 theme.accent_hover,
             );
         }),
-        measure("Rounded rectangle AA (automatic parallel)", iterations, |target| {
-            fill_rounded_rect_aa_parallel(
-                target,
-                Rect::new(110 * SCALE_U32, 100 * SCALE_U32, 260 * SCALE_U32, 64 * SCALE_U32),
-                10,
-                theme.accent_hover,
-            );
-        }),
+        measure(
+            "Rounded rectangle AA (automatic parallel)",
+            iterations,
+            |target| {
+                fill_rounded_rect_aa_parallel(
+                    target,
+                    Rect::new(
+                        110 * SCALE_U32,
+                        100 * SCALE_U32,
+                        260 * SCALE_U32,
+                        64 * SCALE_U32,
+                    ),
+                    10,
+                    theme.accent_hover,
+                );
+            },
+        ),
         measure("UI button + text", iterations, |target| {
             ghostengine::draw_button(
                 target,
@@ -999,7 +1013,12 @@ fn main() {
                     Point::new(80 * SCALE, 255 * SCALE),
                     22.0 * SCALE_F32,
                     Color::WHITE,
-                    Rect::new(80 * SCALE_U32, 230 * SCALE_U32, 360 * SCALE_U32, 35 * SCALE_U32),
+                    Rect::new(
+                        80 * SCALE_U32,
+                        230 * SCALE_U32,
+                        360 * SCALE_U32,
+                        35 * SCALE_U32,
+                    ),
                 );
             },
         ),
