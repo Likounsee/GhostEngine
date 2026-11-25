@@ -1149,6 +1149,109 @@ mod tests {
     }
 
     #[test]
+    fn parallel_stroke_matches_sequential_for_every_cap_and_join_combination() {
+        use super::{stroke_path_aa, stroke_path_aa_parallel_with_threads};
+
+        let mut path = Path::new();
+        path.move_to(Vector::new(24.25, 72.5))
+            .line_to(Vector::new(180.75, 72.5))
+            .line_to(Vector::new(220.5, 132.25))
+            .quadratic_to(Vector::new(270.0, 190.0), Vector::new(320.25, 112.75))
+            .cubic_to(
+                Vector::new(350.0, 42.0),
+                Vector::new(420.0, 180.0),
+                Vector::new(590.5, 96.25),
+            );
+        let caps = [StrokeCap::Butt, StrokeCap::Square, StrokeCap::Round];
+        let joins = [StrokeJoin::Round, StrokeJoin::Bevel, StrokeJoin::Miter];
+
+        for cap in caps {
+            for join in joins {
+                let style = StrokeStyle::new(13.5)
+                    .with_cap(cap)
+                    .with_join(join)
+                    .with_miter_limit(5.0);
+                let mut sequential =
+                    Framebuffer::new(640, 320, Color::rgba(17, 31, 47, 255)).unwrap();
+                let mut parallel = sequential.clone();
+
+                stroke_path_aa(
+                    &mut sequential,
+                    &path,
+                    Transform2D::IDENTITY,
+                    style,
+                    Color::rgba(240, 80, 30, 191),
+                    0.15,
+                )
+                .unwrap();
+                stroke_path_aa_parallel_with_threads(
+                    &mut parallel,
+                    &path,
+                    Transform2D::IDENTITY,
+                    style,
+                    Color::rgba(240, 80, 30, 191),
+                    0.15,
+                    4,
+                )
+                .unwrap();
+
+                assert_eq!(
+                    parallel.pixels(),
+                    sequential.pixels(),
+                    "parallel mismatch for cap {cap:?} and join {join:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_stroke_inputs_leave_the_framebuffer_unchanged() {
+        let mut target = Framebuffer::new(24, 24, Color::rgba(9, 17, 25, 255)).unwrap();
+        let original = target.pixels().to_vec();
+
+        assert_eq!(
+            super::stroke_path(
+                &mut target,
+                &line(),
+                Transform2D::IDENTITY,
+                StrokeStyle::new(0.0),
+                Color::WHITE,
+                0.2,
+            ),
+            Err(StrokeError::InvalidWidth)
+        );
+        assert_eq!(target.pixels(), original);
+
+        assert_eq!(
+            super::stroke_path(
+                &mut target,
+                &line(),
+                Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0),
+                StrokeStyle::new(2.0),
+                Color::WHITE,
+                0.2,
+            ),
+            Err(StrokeError::InvalidTransform)
+        );
+        assert_eq!(target.pixels(), original);
+
+        let mut invalid_path = Path::new();
+        invalid_path.move_to(Vector::new(f32::INFINITY, 1.0));
+        assert!(matches!(
+            super::stroke_path(
+                &mut target,
+                &invalid_path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(2.0),
+                Color::WHITE,
+                0.2,
+            ),
+            Err(StrokeError::Path(crate::PathError::NonFiniteCoordinate))
+        ));
+        assert_eq!(target.pixels(), original);
+    }
+
+    #[test]
     fn parallel_antialiased_stroke_matches_sequential_pixels() {
         use super::stroke_path_aa_parallel_with_threads;
 
