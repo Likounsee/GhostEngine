@@ -157,6 +157,7 @@ pub use texture::{
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_nine_slice_clipped_with_scratch, draw_texture_region_clipped,
     draw_texture_region_clipped_with_scratch, draw_texture_transformed_clipped,
+    try_draw_texture_transformed_clipped,
     draw_texture_transformed_clipped_parallel_with_threads,
     try_draw_texture_clipped_parallel_with_threads, try_draw_texture_clipped_with_scratch,
     try_draw_texture_transformed_clipped_parallel_with_threads, NineSliceMargins, Texture,

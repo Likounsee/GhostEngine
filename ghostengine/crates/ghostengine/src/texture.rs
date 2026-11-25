@@ -2013,14 +2013,14 @@ pub fn try_draw_texture_transformed_clipped_parallel_with_threads(
         return Ok(false);
     }
     if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
-        return Ok(draw_texture_transformed_clipped(
+        return try_draw_texture_transformed_clipped(
             target,
             texture,
             destination,
             transform,
             filter,
             clip,
-        ));
+        );
     }
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
         return Ok(false);
@@ -2282,11 +2282,27 @@ pub fn draw_texture_transformed_clipped(
     filter: TextureFilter,
     clip: Rect,
 ) -> bool {
+    try_draw_texture_transformed_clipped(target, texture, destination, transform, filter, clip)
+        .expect("transformed texture drawing failed")
+}
+
+/// Fallibly draws a texture through an affine transform while preserving source sampling.
+///
+/// Required horizontal lookup storage is reserved before framebuffer pixels are changed.
+/// Allocation failure leaves the destination unchanged and is reported to the caller.
+pub fn try_draw_texture_transformed_clipped(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    transform: Transform2D,
+    filter: TextureFilter,
+    clip: Rect,
+) -> Result<bool, TextureDrawError> {
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
-        return false;
+        return Ok(false);
     }
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
-        return false;
+        return Ok(false);
     };
 
     // Identity is the common case for display-list texture commands. Route it
@@ -2294,17 +2310,25 @@ pub fn draw_texture_transformed_clipped(
     // inversion, corner transforms, or per-pixel inverse mapping.
     if transform == Transform2D::IDENTITY {
         let Some(visible) = destination.intersection(clip) else {
-            return false;
+            return Ok(false);
         };
         if visible.width == 0 || visible.height == 0 {
-            return false;
+            return Ok(false);
         }
-        draw_texture_clipped(target, texture, destination, filter, clip);
-        return true;
+        let mut scratch = TextureDrawScratch::default();
+        try_draw_texture_clipped_with_scratch(
+            target,
+            texture,
+            destination,
+            filter,
+            clip,
+            &mut scratch,
+        )?;
+        return Ok(true);
     }
 
     let Some(inverse) = transform.inverse() else {
-        return false;
+        return Ok(false);
     };
     let reciprocal_m11 = if inverse.m11 == 0.0 {
         0.0
@@ -2331,7 +2355,7 @@ pub fn draw_texture_transformed_clipped(
         .iter()
         .any(|point| !point.x.is_finite() || !point.y.is_finite())
     {
-        return false;
+        return Ok(false);
     }
     let min_x = corners
         .iter()
@@ -2356,7 +2380,7 @@ pub fn draw_texture_transformed_clipped(
     let end_x = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
     let end_y = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
     if first_x >= end_x || first_y >= end_y {
-        return false;
+        return Ok(false);
     }
 
     let local_left = destination.x as f32;
@@ -2382,12 +2406,16 @@ pub fn draw_texture_transformed_clipped(
     // The inverse affine transform separates into horizontal and vertical
     // contributions. Cache the X terms once for the whole draw, preserving
     // the original left-to-right floating-point addition order per pixel.
-    let horizontal_terms: Vec<(f32, f32)> = (first_x..end_x)
-        .map(|x| {
-            let pixel_center_x = x as f32 + 0.5;
-            (inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x)
-        })
-        .collect();
+    let sample_count = usize::try_from(end_x - first_x)
+        .map_err(|_| TextureDrawError::AllocationFailed)?;
+    let mut horizontal_terms = Vec::new();
+    horizontal_terms
+        .try_reserve_exact(sample_count)
+        .map_err(|_| TextureDrawError::AllocationFailed)?;
+    for x in first_x..end_x {
+        let pixel_center_x = x as f32 + 0.5;
+        horizontal_terms.push((inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x));
+    }
     for y in first_y..end_y {
         let pixel_center_y = y as f32 + 0.5;
         let Some((row_first_x, row_end_x)) =
@@ -2467,14 +2495,14 @@ pub fn draw_texture_transformed_clipped(
             }
         }
     }
-    visible
+    Ok(visible)
 }
-
 #[cfg(test)]
 mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
-        draw_texture_transformed_clipped, sample_bilinear_prepared, BilinearCoordinates, Texture,
+        draw_texture_transformed_clipped, try_draw_texture_transformed_clipped,
+        sample_bilinear_prepared, BilinearCoordinates, Texture,
         TextureError, TextureFilter,
     };
     use crate::{
@@ -3047,6 +3075,7 @@ mod tests {
         for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
             let mut expected = Framebuffer::new(7, 5, Color::rgb(12, 24, 36)).unwrap();
             let mut actual = expected.clone();
+            let mut fallible = expected.clone();
             draw_texture_clipped(&mut expected, &texture, destination, filter, clip);
             assert!(draw_texture_transformed_clipped(
                 &mut actual,
@@ -3057,6 +3086,16 @@ mod tests {
                 clip,
             ));
             assert_eq!(actual.pixels(), expected.pixels());
+            assert!(try_draw_texture_transformed_clipped(
+                &mut fallible,
+                &texture,
+                destination,
+                crate::Transform2D::IDENTITY,
+                filter,
+                clip,
+            )
+            .unwrap());
+            assert_eq!(fallible.pixels(), expected.pixels());
         }
     }
 
@@ -3166,6 +3205,7 @@ mod tests {
     fn parallel_transformed_texture_matches_sequential_for_both_filters() {
         use super::{
             draw_texture_transformed_clipped_parallel_with_threads,
+            try_draw_texture_transformed_clipped,
             try_draw_texture_transformed_clipped_parallel_with_threads,
         };
 
@@ -3191,6 +3231,8 @@ mod tests {
             let mut sequential = Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
             let mut parallel = sequential.clone();
             let mut fallible_parallel = sequential.clone();
+            let mut fallible_sequential = sequential.clone();
+            let mut fallible_single_thread = sequential.clone();
             let destination = Rect::new(10, 12, 400, 350);
             let clip = Rect::new(5, 7, 620, 460);
             let expected_visible = draw_texture_transformed_clipped(
@@ -3212,6 +3254,32 @@ mod tests {
             );
             assert_eq!(actual_visible, expected_visible);
             assert_eq!(parallel.pixels(), sequential.pixels());
+
+            let fallible_sequential_visible = try_draw_texture_transformed_clipped(
+                &mut fallible_sequential,
+                &texture,
+                destination,
+                transform,
+                filter,
+                clip,
+            )
+            .unwrap();
+            assert_eq!(fallible_sequential_visible, expected_visible);
+            assert_eq!(fallible_sequential.pixels(), sequential.pixels());
+
+            let fallible_single_thread_visible =
+                try_draw_texture_transformed_clipped_parallel_with_threads(
+                    &mut fallible_single_thread,
+                    &texture,
+                    destination,
+                    transform,
+                    filter,
+                    clip,
+                    1,
+                )
+                .unwrap();
+            assert_eq!(fallible_single_thread_visible, expected_visible);
+            assert_eq!(fallible_single_thread.pixels(), sequential.pixels());
 
             let fallible_visible = try_draw_texture_transformed_clipped_parallel_with_threads(
                 &mut fallible_parallel,
