@@ -139,6 +139,7 @@ pub enum PathError {
     InvalidTolerance,
     NonFiniteCoordinate,
     InvalidTransform,
+    AllocationFailed,
 }
 
 impl Path {
@@ -149,25 +150,82 @@ impl Path {
         }
     }
 
-    pub fn move_to(&mut self, point: Vector) -> &mut Self {
+    /// Reserves capacity for additional path commands without changing the path.
+    pub fn try_reserve_commands(&mut self, additional: usize) -> Result<(), PathError> {
+        self.commands
+            .try_reserve(additional)
+            .map_err(|_| PathError::AllocationFailed)
+    }
+
+    /// Appends a move command, returning an error if storage cannot be reserved.
+    pub fn try_move_to(&mut self, point: Vector) -> Result<&mut Self, PathError> {
+        self.try_reserve_commands(1)?;
         self.commands.push(Command::MoveTo(point));
-        self
+        Ok(self)
     }
-    pub fn line_to(&mut self, point: Vector) -> &mut Self {
+
+    /// Appends a line command, returning an error if storage cannot be reserved.
+    pub fn try_line_to(&mut self, point: Vector) -> Result<&mut Self, PathError> {
+        self.try_reserve_commands(1)?;
         self.commands.push(Command::LineTo(point));
-        self
+        Ok(self)
     }
-    pub fn quadratic_to(&mut self, control: Vector, end: Vector) -> &mut Self {
+
+    /// Appends a quadratic Bézier command with fallible storage reservation.
+    pub fn try_quadratic_to(
+        &mut self,
+        control: Vector,
+        end: Vector,
+    ) -> Result<&mut Self, PathError> {
+        self.try_reserve_commands(1)?;
         self.commands.push(Command::QuadTo(control, end));
-        self
+        Ok(self)
     }
-    pub fn cubic_to(&mut self, c1: Vector, c2: Vector, end: Vector) -> &mut Self {
+
+    /// Appends a cubic Bézier command with fallible storage reservation.
+    pub fn try_cubic_to(
+        &mut self,
+        c1: Vector,
+        c2: Vector,
+        end: Vector,
+    ) -> Result<&mut Self, PathError> {
+        self.try_reserve_commands(1)?;
         self.commands.push(Command::CubicTo(c1, c2, end));
-        self
+        Ok(self)
     }
-    pub fn close(&mut self) -> &mut Self {
+
+    /// Appends a close command, returning an error if storage cannot be reserved.
+    pub fn try_close(&mut self) -> Result<&mut Self, PathError> {
+        self.try_reserve_commands(1)?;
         self.commands.push(Command::Close);
-        self
+        Ok(self)
+    }
+
+    /// Appends a move command. Panics only if command storage cannot be allocated.
+    pub fn move_to(&mut self, point: Vector) -> &mut Self {
+        self.try_move_to(point).expect("path command allocation failed")
+    }
+
+    /// Appends a line command. Panics only if command storage cannot be allocated.
+    pub fn line_to(&mut self, point: Vector) -> &mut Self {
+        self.try_line_to(point).expect("path command allocation failed")
+    }
+
+    /// Appends a quadratic Bézier command.
+    pub fn quadratic_to(&mut self, control: Vector, end: Vector) -> &mut Self {
+        self.try_quadratic_to(control, end)
+            .expect("path command allocation failed")
+    }
+
+    /// Appends a cubic Bézier command.
+    pub fn cubic_to(&mut self, c1: Vector, c2: Vector, end: Vector) -> &mut Self {
+        self.try_cubic_to(c1, c2, end)
+            .expect("path command allocation failed")
+    }
+
+    /// Closes the current contour.
+    pub fn close(&mut self) -> &mut Self {
+        self.try_close().expect("path command allocation failed")
     }
 
     /// Flattens curves until their control points are within tolerance of the chord.
@@ -360,18 +418,42 @@ fn flatten_cubic(
 
 /// Transforms flattened geometry without changing the source path.
 impl FlattenedPath {
-    pub fn transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
+    /// Transforms flattened geometry while reporting allocation failures.
+    pub fn try_transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
         if !transform.is_finite() {
             return Err(PathError::InvalidTransform);
         }
-        let mut result = self.clone();
-        for subpath in &mut result.subpaths {
-            for point in &mut subpath.points {
-                *point = transform.transform_point(*point);
-                validate(*point)?;
+
+        let mut result = FlattenedPath::default();
+        result
+            .subpaths
+            .try_reserve_exact(self.subpaths.len())
+            .map_err(|_| PathError::AllocationFailed)?;
+
+        for subpath in &self.subpaths {
+            let mut points = Vec::new();
+            points
+                .try_reserve_exact(subpath.points.len())
+                .map_err(|_| PathError::AllocationFailed)?;
+            for &point in &subpath.points {
+                let transformed = transform.transform_point(point);
+                validate(transformed)?;
+                points.push(transformed);
             }
+            result.subpaths.push(FlattenedSubpath {
+                points,
+                closed: subpath.closed,
+            });
         }
         Ok(result)
+    }
+
+    /// Transforms flattened geometry without changing the source path.
+    ///
+    /// Use try_transformed when allocation errors must be handled.
+    pub fn transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
+        self.try_transformed(transform)
+            .expect("transformed path allocation failed")
     }
 }
 
@@ -1507,6 +1589,80 @@ mod tests {
         p.move_to(Vector::new(f32::NAN, 0.0));
         assert_eq!(p.flatten(0.1), Err(PathError::NonFiniteCoordinate));
         assert_eq!(Path::new().flatten(0.0), Err(PathError::InvalidTolerance));
+    }
+
+    #[test]
+    fn fallible_path_builders_match_the_convenience_builders() {
+        let start = Vector::new(1.0, 2.0);
+        let mut fallible = Path::new();
+        fallible.try_reserve_commands(8).unwrap();
+        fallible
+            .try_move_to(start)
+            .unwrap()
+            .try_line_to(Vector::new(5.0, 2.0))
+            .unwrap()
+            .try_quadratic_to(Vector::new(6.0, 4.0), Vector::new(5.0, 6.0))
+            .unwrap()
+            .try_cubic_to(
+                Vector::new(4.0, 7.0),
+                Vector::new(2.0, 7.0),
+                Vector::new(1.0, 6.0),
+            )
+            .unwrap()
+            .try_close()
+            .unwrap();
+
+        let mut convenience = Path::new();
+        convenience
+            .move_to(start)
+            .line_to(Vector::new(5.0, 2.0))
+            .quadratic_to(Vector::new(6.0, 4.0), Vector::new(5.0, 6.0))
+            .cubic_to(
+                Vector::new(4.0, 7.0),
+                Vector::new(2.0, 7.0),
+                Vector::new(1.0, 6.0),
+            )
+            .close();
+
+        assert_eq!(fallible.flatten(0.1), convenience.flatten(0.1));
+    }
+
+    #[test]
+    fn fallible_transformed_path_matches_convenience_transform_and_preserves_source() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .line_to(Vector::new(3.0, 0.0))
+            .line_to(Vector::new(3.0, 2.0))
+            .close();
+        let flattened = path.flatten(0.2).unwrap();
+        let original = flattened.clone();
+        let transform = Transform2D::scale(2.0, 3.0)
+            .then(Transform2D::translation(4.0, 5.0));
+
+        let fallible = flattened.try_transformed(transform).unwrap();
+        let convenience = flattened.transformed(transform).unwrap();
+
+        assert_eq!(fallible, convenience);
+        assert_eq!(flattened, original);
+        assert_eq!(fallible.subpaths[0].points[0], Vector::new(4.0, 5.0));
+        assert!(fallible.subpaths[0].closed);
+    }
+
+    #[test]
+    fn fallible_transform_rejects_non_finite_output_without_mutating_source() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.0, 1.0))
+            .line_to(Vector::new(2.0, 1.0))
+            .close();
+        let flattened = path.flatten(0.2).unwrap();
+        let original = flattened.clone();
+        let invalid = Transform2D::new(f32::INFINITY, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+        assert_eq!(
+            flattened.try_transformed(invalid),
+            Err(PathError::InvalidTransform)
+        );
+        assert_eq!(flattened, original);
     }
 
     #[test]
