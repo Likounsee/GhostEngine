@@ -3456,7 +3456,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(actual.pixels(), expected.pixels());
-        assert_eq!(scratch.region_horizontal_cache.len(), 4 * 8);
+        assert_eq!(scratch.region_horizontal_cache.len(), 2 * 8);
     }
 
     #[test]
