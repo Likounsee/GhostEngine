@@ -2,7 +2,35 @@
 
 use crate::{Color, DamageRegion, DamageRegionError, Framebuffer, FramebufferError, Rect};
 
-/// Errors returned while creating or invalidating a cached layer.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum CachedLayerError {\n    Framebuffer(FramebufferError),\n    DamageRegion(DamageRegionError),\n}\n\nimpl core::fmt::Display for CachedLayerError {\n    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n        match self {\n            Self::Framebuffer(error) => error.fmt(formatter),\n            Self::DamageRegion(error) => error.fmt(formatter),\n        }\n    }\n}\n\nimpl std::error::Error for CachedLayerError {}\n\nimpl From<FramebufferError> for CachedLayerError {\n    fn from(error: FramebufferError) -> Self { Self::Framebuffer(error) }\n}\n\nimpl From<DamageRegionError> for CachedLayerError {\n    fn from(error: DamageRegionError) -> Self { Self::DamageRegion(error) }\n}
+/// Errors returned while creating or invalidating a cached layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CachedLayerError {
+    Framebuffer(FramebufferError),
+    DamageRegion(DamageRegionError),
+}
+
+impl core::fmt::Display for CachedLayerError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Framebuffer(error) => core::fmt::Display::fmt(error, formatter),
+            Self::DamageRegion(error) => core::fmt::Display::fmt(error, formatter),
+        }
+    }
+}
+
+impl std::error::Error for CachedLayerError {}
+
+impl From<FramebufferError> for CachedLayerError {
+    fn from(error: FramebufferError) -> Self {
+        Self::Framebuffer(error)
+    }
+}
+
+impl From<DamageRegionError> for CachedLayerError {
+    fn from(error: DamageRegionError) -> Self {
+        Self::DamageRegion(error)
+    }
+}
 
 /// A reusable framebuffer whose pixels are recomputed only in marked regions.
 ///
@@ -30,7 +58,11 @@ impl CachedLayer {
         let framebuffer = Framebuffer::new(width, height, clear)?;
         let mut damage = DamageRegion::new(width, height);
         damage.try_add(Rect::new(0, 0, width, height))?;
-        Ok(Self { framebuffer, damage, rendered_frames: 0 })
+        Ok(Self {
+            framebuffer,
+            damage,
+            rendered_frames: 0,
+        })
     }
 
     #[must_use]
@@ -54,7 +86,8 @@ impl CachedLayer {
 
     /// Marks a changed rectangle for recomputation on the next render call.
     pub fn mark_dirty(&mut self, rectangle: Rect) {
-        self.try_mark_dirty(rectangle).expect("failed to allocate cached-layer damage");
+        self.try_mark_dirty(rectangle)
+            .expect("failed to allocate cached-layer damage");
     }
 
     /// Marks a changed rectangle without panicking if damage storage cannot grow.
@@ -64,7 +97,8 @@ impl CachedLayer {
 
     /// Invalidates every pixel, for example after a theme or global style change.
     pub fn mark_dirty_all(&mut self) {
-        self.try_mark_dirty_all().expect("failed to allocate cached-layer damage");
+        self.try_mark_dirty_all()
+            .expect("failed to allocate cached-layer damage");
     }
 
     /// Invalidates every pixel while reporting allocation failure.
@@ -73,7 +107,12 @@ impl CachedLayer {
     }
 
     /// Resizes the cache transactionally, including its initial full-frame damage.
-    pub fn try_resize(&mut self, width: u32, height: u32, clear: Color) -> Result<(), CachedLayerError> {
+    pub fn try_resize(
+        &mut self,
+        width: u32,
+        height: u32,
+        clear: Color,
+    ) -> Result<(), CachedLayerError> {
         let mut replacement_damage = DamageRegion::new(width, height);
         replacement_damage.try_add(Rect::new(0, 0, width, height))?;
         self.framebuffer.resize_and_clear(width, height, clear)?;
@@ -211,7 +250,10 @@ mod tests {
         cache.render_if_dirty(|_, _| {});
         cache.try_mark_dirty(Rect::new(1, 1, 1, 1)).unwrap();
         cache.try_resize(7, 4, Color::BLUE).unwrap();
-        assert_eq!((cache.framebuffer().width(), cache.framebuffer().height()), (7, 4));
+        assert_eq!(
+            (cache.framebuffer().width(), cache.framebuffer().height()),
+            (7, 4)
+        );
         assert_eq!(cache.damage().area(), 28);
         assert!(cache.damage().covers_entire_target());
         assert_eq!(cache.framebuffer().get_pixel(6, 3), Some(Color::BLUE));
@@ -224,7 +266,10 @@ mod tests {
         cache.try_mark_dirty(Rect::new(1, 0, 1, 1)).unwrap();
         let framebuffer = cache.framebuffer().clone();
         let damage = cache.damage().clone();
-        assert_eq!(cache.try_resize(0, 4, Color::BLUE), Err(CachedLayerError::Framebuffer(FramebufferError::ZeroDimension)));
+        assert_eq!(
+            cache.try_resize(0, 4, Color::BLUE),
+            Err(CachedLayerError::Framebuffer(FramebufferError::ZeroDimension))
+        );
         assert_eq!(cache.framebuffer(), &framebuffer);
         assert_eq!(cache.damage(), &damage);
     }
