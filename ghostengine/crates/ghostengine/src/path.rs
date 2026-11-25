@@ -203,12 +203,14 @@ impl Path {
 
     /// Appends a move command. Panics only if command storage cannot be allocated.
     pub fn move_to(&mut self, point: Vector) -> &mut Self {
-        self.try_move_to(point).expect("path command allocation failed")
+        self.try_move_to(point)
+            .expect("path command allocation failed")
     }
 
     /// Appends a line command. Panics only if command storage cannot be allocated.
     pub fn line_to(&mut self, point: Vector) -> &mut Self {
-        self.try_line_to(point).expect("path command allocation failed")
+        self.try_line_to(point)
+            .expect("path command allocation failed")
     }
 
     /// Appends a quadratic Bézier command.
@@ -1640,8 +1642,7 @@ mod tests {
             .close();
         let flattened = path.flatten(0.2).unwrap();
         let original = flattened.clone();
-        let transform = Transform2D::scale(2.0, 3.0)
-            .then(Transform2D::translation(4.0, 5.0));
+        let transform = Transform2D::scale(2.0, 3.0).then(Transform2D::translation(4.0, 5.0));
 
         let fallible = flattened.try_transformed(transform).unwrap();
         let convenience = flattened.transformed(transform).unwrap();
