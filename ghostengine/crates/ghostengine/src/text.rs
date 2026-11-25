@@ -215,7 +215,23 @@ struct CachedGlyph {
 
 impl FontFace {
     /// Loads a font from in-memory TTF/OTF bytes.
+    ///
+    /// Each of the character and shaped-glyph raster caches receives the
+    /// default per-cache bitmap budget.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
+        Self::from_bytes_with_glyph_cache_budget(bytes, MAX_CACHED_GLYPH_BYTES_PER_FONT)
+    }
+
+    /// Loads a font with a configurable bitmap budget for each glyph cache.
+    ///
+    /// The character cache and glyph-index cache are independent, so the
+    /// combined retained bitmap budget is at most twice `budget_bytes`.
+    /// A zero budget disables retention while still allowing glyphs to be
+    /// rasterized and used by the current draw operation.
+    pub fn from_bytes_with_glyph_cache_budget(
+        bytes: &[u8],
+        budget_bytes: usize,
+    ) -> Result<Self, &'static str> {
         let font = Font::from_bytes(bytes, fontdue::FontSettings::default())
             .map_err(|_| "invalid font data")?;
         let shaper =
@@ -223,8 +239,8 @@ impl FontFace {
         Ok(Self {
             font,
             shaper,
-            glyph_cache: Mutex::new(GlyphCache::new()),
-            indexed_glyph_cache: Mutex::new(GlyphCache::new()),
+            glyph_cache: Mutex::new(GlyphCache::with_budget(budget_bytes)),
+            indexed_glyph_cache: Mutex::new(GlyphCache::with_budget(budget_bytes)),
         })
     }
 
@@ -3148,6 +3164,44 @@ mod tests {
         cache.clear();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.used_bytes, 0);
+    }
+
+    #[test]
+    fn configurable_glyph_cache_budget_can_disable_retention() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes_with_glyph_cache_budget(bytes, 0)
+            .expect("Hebrew font should load with a zero cache budget");
+        let glyph_index = font.font.lookup_glyph_index('ש');
+        assert_ne!(glyph_index, 0);
+
+        // Glyphs remain available to callers even when no bitmap may be retained.
+        assert!(!font.glyph('ש', 24.0).bitmap.is_empty());
+        assert!(!font.glyph_index(glyph_index, 24.0).bitmap.is_empty());
+        let stats = font.glyph_cache_stats();
+        assert_eq!(stats.entries, 0);
+        assert_eq!(stats.used_bytes, 0);
+        assert_eq!(stats.budget_bytes, 0);
+    }
+
+    #[test]
+    fn configurable_glyph_cache_budget_is_reported_and_enforced() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes_with_glyph_cache_budget(bytes, 64)
+            .expect("Hebrew font should load with a custom cache budget");
+        let glyph_index = font.font.lookup_glyph_index('ש');
+        assert_ne!(glyph_index, 0);
+
+        for character in ['ש', 'ל', 'ו', 'ם'] {
+            let _ = font.glyph(character, 48.0);
+        }
+        for size in [24.0, 32.0, 40.0, 48.0] {
+            let _ = font.glyph_index(glyph_index, size);
+        }
+
+        let stats = font.glyph_cache_stats();
+        assert_eq!(stats.budget_bytes, 128);
+        assert!(stats.used_bytes <= stats.budget_bytes);
+        assert!(stats.entries <= 8);
     }
 
     #[test]
