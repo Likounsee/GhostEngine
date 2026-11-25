@@ -595,7 +595,7 @@ pub fn fill_transformed_path_even_odd_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), PathError> {
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
@@ -725,7 +725,7 @@ pub fn fill_transformed_path_non_zero_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), PathError> {
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
@@ -872,7 +872,7 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
@@ -1024,7 +1024,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), PathError> {
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
