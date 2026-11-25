@@ -2481,8 +2481,7 @@ fn render_layer_group_partial_into(
     damage: &DamageRegion,
 ) -> Result<(), FramebufferError> {
     let needs_full_initialization = scratch.layers.get(depth).is_none_or(|layer| {
-        layer.framebuffer().width() != group.width
-            || layer.framebuffer().height() != group.height
+        layer.framebuffer().width() != group.width || layer.framebuffer().height() != group.height
     });
     scratch.ensure_surface(depth, group.width, group.height)?;
 
