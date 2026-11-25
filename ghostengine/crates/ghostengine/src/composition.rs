@@ -88,13 +88,24 @@ impl DamageRegion {
     }
 
     /// Creates an empty damage region with storage reserved for the requested number of rectangles.
+    /// Creates a damage region with reserved storage, reporting allocation failure.
+    pub fn try_with_capacity(
+        width: u32,
+        height: u32,
+        capacity: usize,
+    ) -> Result<Self, DamageRegionError> {
+        let mut rectangles = Vec::new();
+        rectangles
+            .try_reserve_exact(capacity)
+            .map_err(|_| DamageRegionError::AllocationFailed)?;
+        Ok(Self { width, height, rectangles })
+    }
+
+    /// Creates a damage region with reserved storage.
     #[must_use]
     pub fn with_capacity(width: u32, height: u32, capacity: usize) -> Self {
-        Self {
-            width,
-            height,
-            rectangles: Vec::with_capacity(capacity),
-        }
+        Self::try_with_capacity(width, height, capacity)
+            .expect("failed to allocate damage-region storage")
     }
 
     /// Reserves additional storage without panicking on allocation failure.
@@ -1487,19 +1498,39 @@ impl LayerGroup {
     }
 
     /// Creates an isolated group surface with capacity reserved for its children.
-    pub fn with_capacity(
+    pub fn try_with_capacity(
         width: u32,
         height: u32,
         child_capacity: usize,
     ) -> Result<Self, FramebufferError> {
         let mut group = Self::new(width, height)?;
-        group.children.reserve(child_capacity);
+        group
+            .children
+            .try_reserve_exact(child_capacity)
+            .map_err(|_| FramebufferError::AllocationFailed)?;
         Ok(group)
+    }
+
+    /// Creates an isolated group surface with capacity reserved for its children.
+    pub fn with_capacity(
+        width: u32,
+        height: u32,
+        child_capacity: usize,
+    ) -> Result<Self, FramebufferError> {
+        Self::try_with_capacity(width, height, child_capacity)
+    }
+
+    /// Fallibly reserves space for additional child layers or nested groups.
+    pub fn try_reserve_children(&mut self, additional: usize) -> Result<(), FramebufferError> {
+        self.children
+            .try_reserve(additional)
+            .map_err(|_| FramebufferError::AllocationFailed)
     }
 
     /// Reserves space for additional child layers or nested groups.
     pub fn reserve_children(&mut self, additional: usize) {
-        self.children.reserve(additional);
+        self.try_reserve_children(additional)
+            .expect("failed to reserve layer-group children");
     }
 
     /// Returns the number of children currently stored in this group.
@@ -1514,14 +1545,34 @@ impl LayerGroup {
         self.children.capacity()
     }
 
+    /// Fallibly adds a framebuffer-backed child layer, preserving insertion order.
+    pub fn try_add_layer(&mut self, layer: Layer) -> Result<(), FramebufferError> {
+        self.children
+            .try_reserve(1)
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+        self.children.push(LayerGroupChild::Layer(layer));
+        Ok(())
+    }
+
     /// Adds a framebuffer-backed child layer, preserving insertion order.
     pub fn add_layer(&mut self, layer: Layer) {
-        self.children.push(LayerGroupChild::Layer(layer));
+        self.try_add_layer(layer)
+            .expect("failed to allocate layer-group child storage");
+    }
+
+    /// Fallibly adds a nested group, preserving insertion order.
+    pub fn try_add_group(&mut self, group: LayerGroup) -> Result<(), FramebufferError> {
+        self.children
+            .try_reserve(1)
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+        self.children.push(LayerGroupChild::Group(group));
+        Ok(())
     }
 
     /// Adds a nested group, preserving insertion order.
     pub fn add_group(&mut self, group: LayerGroup) {
-        self.children.push(LayerGroupChild::Group(group));
+        self.try_add_group(group)
+            .expect("failed to allocate layer-group child storage");
     }
 
     /// Returns the children in back-to-front composition order.
@@ -1602,16 +1653,32 @@ pub struct LayerGroupScratch {
 
 impl LayerGroupScratch {
     /// Creates reusable group surfaces with room for the requested nesting depth.
+    pub fn try_with_capacity(surface_capacity: usize) -> Result<Self, FramebufferError> {
+        let mut layers = Vec::new();
+        layers
+            .try_reserve_exact(surface_capacity)
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+        Ok(Self { layers })
+    }
+
+    /// Creates reusable group surfaces with room for the requested nesting depth.
     #[must_use]
     pub fn with_capacity(surface_capacity: usize) -> Self {
-        Self {
-            layers: Vec::with_capacity(surface_capacity),
-        }
+        Self::try_with_capacity(surface_capacity)
+            .expect("failed to allocate layer-group scratch storage")
+    }
+
+    /// Fallibly reserves reusable surfaces before entering a real-time render loop.
+    pub fn try_reserve_surfaces(&mut self, additional: usize) -> Result<(), FramebufferError> {
+        self.layers
+            .try_reserve(additional)
+            .map_err(|_| FramebufferError::AllocationFailed)
     }
 
     /// Reserves reusable surfaces before entering a real-time render loop.
     pub fn reserve_surfaces(&mut self, additional: usize) {
-        self.layers.reserve(additional);
+        self.try_reserve_surfaces(additional)
+            .expect("failed to reserve layer-group scratch storage");
     }
 
     /// Returns the number of reusable surface slots that fit without reallocating.
