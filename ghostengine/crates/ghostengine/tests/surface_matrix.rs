@@ -208,7 +208,10 @@ fn linear_srgb_transfer_matches_reference_values_and_round_trips_all_channels() 
     assert_eq!(&linear[255 * 4..255 * 4 + 4], &[255, 255, 255, 255]);
 
     for pair in linear.chunks_exact(4).collect::<Vec<_>>().windows(2) {
-        assert!(pair[0][0] <= pair[1][0], "linear transfer must be monotonic");
+        assert!(
+            pair[0][0] <= pair[1][0],
+            "linear transfer must be monotonic"
+        );
     }
 
     let mut restored = Framebuffer::new(256, 1, Color::MAGENTA).unwrap();
