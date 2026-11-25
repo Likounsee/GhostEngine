@@ -1687,19 +1687,132 @@ impl LayerGroup {
 ///
 /// Keep one scratch value alongside a scene and pass it to
 /// `compose_layer_groups_with_scratch` on every frame to retain allocations.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LayerGroupScratch {
     layers: Vec<Layer>,
+    budget_bytes: usize,
+}
+
+impl Default for LayerGroupScratch {
+    fn default() -> Self {
+        Self {
+            layers: Vec::new(),
+            budget_bytes: usize::MAX,
+        }
+    }
 }
 
 impl LayerGroupScratch {
     /// Creates reusable group surfaces with room for the requested nesting depth.
     pub fn try_with_capacity(surface_capacity: usize) -> Result<Self, FramebufferError> {
+        Self::try_with_budget_and_capacity(usize::MAX, surface_capacity)
+    }
+
+    /// Creates reusable group surfaces constrained by a pixel-buffer memory budget.
+    #[must_use]
+    pub fn with_budget_bytes(budget_bytes: usize) -> Self {
+        Self {
+            layers: Vec::new(),
+            budget_bytes,
+        }
+    }
+
+    /// Creates a budgeted scratch pool and fallibly reserves its surface slots.
+    pub fn try_with_budget_and_capacity(
+        budget_bytes: usize,
+        surface_capacity: usize,
+    ) -> Result<Self, FramebufferError> {
         let mut layers = Vec::new();
         layers
             .try_reserve_exact(surface_capacity)
             .map_err(|_| FramebufferError::AllocationFailed)?;
-        Ok(Self { layers })
+        Ok(Self {
+            layers,
+            budget_bytes,
+        })
+    }
+
+    /// Returns the maximum pixel-buffer memory retained by this scratch pool.
+    #[must_use]
+    pub const fn budget_bytes(&self) -> usize {
+        self.budget_bytes
+    }
+
+    /// Changes the memory budget, releasing deepest surfaces first.
+    ///
+    /// The pool keeps the shallowest surfaces for the most common composition
+    /// path. A zero budget releases every framebuffer while retaining vector capacity.
+    pub fn set_budget_bytes(&mut self, budget_bytes: usize) {
+        self.budget_bytes = budget_bytes;
+        while self.allocated_pixel_bytes() > budget_bytes {
+            if self.layers.pop().is_none() {
+                break;
+            }
+        }
+    }
+
+    /// Ensures a depth slot has the requested framebuffer without exceeding the budget.
+    ///
+    /// Active ancestors are never evicted. If a deeper allocation must be
+    /// reclaimed, the deepest reusable surfaces are dropped first. The new
+    /// framebuffer is allocated before the existing pool is modified.
+    fn ensure_surface(
+        &mut self,
+        depth: usize,
+        width: u32,
+        height: u32,
+    ) -> Result<(), FramebufferError> {
+        if depth > self.layers.len() {
+            return Err(FramebufferError::AllocationFailed);
+        }
+        if self.layers.get(depth).is_some_and(|layer| {
+            layer.framebuffer().width() == width && layer.framebuffer().height() == height
+        }) {
+            return Ok(());
+        }
+
+        let framebuffer = Framebuffer::new(width, height, Color::TRANSPARENT)?;
+        let new_bytes = framebuffer
+            .pixels()
+            .len()
+            .checked_mul(std::mem::size_of::<Color>())
+            .ok_or(FramebufferError::SizeOverflow)?;
+        let old_bytes = self.layers.get(depth).map_or(0, |layer| {
+            layer.framebuffer().pixels().len() * std::mem::size_of::<Color>()
+        });
+        let mut projected_bytes = self
+            .allocated_pixel_bytes()
+            .saturating_sub(old_bytes)
+            .checked_add(new_bytes)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        let mut evict_count = 0usize;
+        for layer in self.layers.iter().skip(depth + 1).rev() {
+            if projected_bytes <= self.budget_bytes {
+                break;
+            }
+            let bytes = layer.framebuffer().pixels().len() * std::mem::size_of::<Color>();
+            projected_bytes = projected_bytes.saturating_sub(bytes);
+            evict_count += 1;
+        }
+        if projected_bytes > self.budget_bytes {
+            return Err(FramebufferError::AllocationFailed);
+        }
+
+        if depth == self.layers.len() {
+            self.layers
+                .try_reserve(1)
+                .map_err(|_| FramebufferError::AllocationFailed)?;
+        }
+        if evict_count != 0 {
+            self.layers.truncate(self.layers.len() - evict_count);
+        }
+        let layer = Layer::from_framebuffer(framebuffer);
+        if depth == self.layers.len() {
+            self.layers.push(layer);
+        } else {
+            self.layers[depth] = layer;
+        }
+        Ok(())
     }
 
     /// Creates reusable group surfaces with room for the requested nesting depth.
@@ -2028,7 +2141,6 @@ impl LayerGroupCache {
     pub fn render_count(&self, id: LayerGroupId) -> Option<u64> {
         self.entries.get(&id).map(|entry| entry.render_count)
     }
-
 }
 
 /// Composites groups using persistent surfaces keyed by stable identity.
@@ -2364,20 +2476,11 @@ fn render_layer_group_partial_into(
     depth: usize,
     damage: &DamageRegion,
 ) -> Result<(), FramebufferError> {
-    let needs_full_initialization = if scratch.layers.len() <= depth {
-        scratch
-            .layers
-            .push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
-        true
-    } else {
-        let surface = scratch.layers[depth].framebuffer_mut();
-        if surface.width() != group.width || surface.height() != group.height {
-            surface.resize_and_clear(group.width, group.height, Color::TRANSPARENT)?;
-            true
-        } else {
-            false
-        }
-    };
+    let needs_full_initialization = scratch.layers.get(depth).is_none_or(|layer| {
+        layer.framebuffer().width() != group.width
+            || layer.framebuffer().height() != group.height
+    });
+    scratch.ensure_surface(depth, group.width, group.height)?;
 
     let mut effective_damage;
     let damage = if needs_full_initialization {
@@ -2453,18 +2556,10 @@ fn render_layer_group_into(
     scratch: &mut LayerGroupScratch,
     depth: usize,
 ) -> Result<(), FramebufferError> {
-    if scratch.layers.len() <= depth {
-        scratch
-            .layers
-            .push(Layer::new(group.width, group.height, Color::TRANSPARENT)?);
-    } else {
-        let surface = scratch.layers[depth].framebuffer_mut();
-        if surface.width() != group.width || surface.height() != group.height {
-            surface.resize_and_clear(group.width, group.height, Color::TRANSPARENT)?;
-        } else {
-            surface.clear(Color::TRANSPARENT);
-        }
-    }
+    scratch.ensure_surface(depth, group.width, group.height)?;
+    scratch.layers[depth]
+        .framebuffer_mut()
+        .clear(Color::TRANSPARENT);
 
     for child in &group.children {
         match child {
@@ -3007,6 +3102,78 @@ mod tests {
             scratch.allocated_pixel_bytes(),
             20 * std::mem::size_of::<Color>()
         );
+    }
+
+    #[test]
+    fn group_scratch_budget_accounts_for_nested_framebuffers() {
+        let mut nested = LayerGroup::new(2, 2).unwrap();
+        nested.add_layer(Layer::new(2, 2, Color::GREEN).unwrap());
+        let mut outer = LayerGroup::new(4, 4).unwrap();
+        outer.add_group(nested);
+        let required = 20 * std::mem::size_of::<Color>();
+        let mut scratch = LayerGroupScratch::with_budget_bytes(required);
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
+
+        assert_eq!(scratch.budget_bytes(), required);
+        assert_eq!(scratch.allocated_pixel_bytes(), required);
+        assert_eq!(scratch.surface_count(), 2);
+        assert_eq!(target.get_pixel(0, 0), Some(Color::GREEN));
+    }
+
+    #[test]
+    fn group_scratch_budget_rejects_nested_growth_without_touching_target() {
+        let mut nested = LayerGroup::new(2, 2).unwrap();
+        nested.add_layer(Layer::new(2, 2, Color::GREEN).unwrap());
+        let mut outer = LayerGroup::new(4, 4).unwrap();
+        outer.add_group(nested);
+        let budget = 19 * std::mem::size_of::<Color>();
+        let mut scratch = LayerGroupScratch::with_budget_bytes(budget);
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        let before = target.clone();
+
+        assert_eq!(
+            compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch),
+            Err(FramebufferError::AllocationFailed)
+        );
+
+        assert_eq!(target, before);
+        assert!(scratch.allocated_pixel_bytes() <= budget);
+    }
+
+    #[test]
+    fn lowering_group_scratch_budget_evicts_deepest_surfaces_first() {
+        let mut nested = LayerGroup::new(2, 2).unwrap();
+        nested.add_layer(Layer::new(2, 2, Color::GREEN).unwrap());
+        let mut outer = LayerGroup::new(4, 4).unwrap();
+        outer.add_group(nested);
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+        compose_layer_groups_with_scratch(&mut target, &[outer], &mut scratch).unwrap();
+        assert_eq!(scratch.surface_count(), 2);
+
+        let outer_bytes = 16 * std::mem::size_of::<Color>();
+        scratch.set_budget_bytes(outer_bytes);
+
+        assert_eq!(scratch.allocated_pixel_bytes(), outer_bytes);
+        assert_eq!(scratch.surface_count(), 1);
+        assert_eq!(scratch.budget_bytes(), outer_bytes);
+    }
+
+    #[test]
+    fn group_scratch_zero_budget_releases_all_pixel_surfaces() {
+        let mut scratch = LayerGroupScratch::with_budget_bytes(0);
+        let mut group = LayerGroup::new(2, 2).unwrap();
+        group.add_layer(Layer::new(2, 2, Color::RED).unwrap());
+        let mut target = Framebuffer::new(2, 2, Color::BLACK).unwrap();
+
+        assert_eq!(
+            compose_layer_groups_with_scratch(&mut target, &[group], &mut scratch),
+            Err(FramebufferError::AllocationFailed)
+        );
+        assert_eq!(scratch.surface_count(), 0);
+        assert_eq!(scratch.allocated_pixel_bytes(), 0);
     }
 
     #[test]
