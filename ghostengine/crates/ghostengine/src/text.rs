@@ -42,7 +42,7 @@ struct GlyphCache<K> {
     clock: u64,
 }
 
-impl<K: Eq + Hash> GlyphCache<K> {
+impl<K: Eq + Hash + Clone> GlyphCache<K> {
     fn new() -> Self {
         Self {
             entries: HashMap::new(),
@@ -74,9 +74,9 @@ impl<K: Eq + Hash> GlyphCache<K> {
                 .entries
                 .iter()
                 .max_by_key(|(_, entry)| now.wrapping_sub(entry.last_used))
-                .map(|(key, _)| key)
+                .map(|(key, _)| key.clone())
             {
-                self.entries.remove(oldest);
+                self.entries.remove(&oldest);
             }
         }
 
