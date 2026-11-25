@@ -196,10 +196,20 @@ impl HostBackend for HeadlessHost {
         if (framebuffer.width(), framebuffer.height()) != (width, height) {
             return Err(HeadlessHostError::DimensionMismatch);
         }
-        if let Some(presented) = self.presented_frame.as_mut() {
-            presented.copy_pixels_from(framebuffer.pixels())?;
-        } else {
+        let presented_dimensions = self
+            .presented_frame
+            .as_ref()
+            .map(|presented| (presented.width(), presented.height()));
+
+        if presented_dimensions != Some((width, height)) {
+            // A drawable resize invalidates the dimensions of the retained
+            // presentation buffer. Replace it only after the new frame has
+            // been cloned successfully, so allocation failure preserves the
+            // last successfully presented frame.
             self.presented_frame = Some(framebuffer.try_clone()?);
+        } else if let Some(presented) = self.presented_frame.as_mut() {
+            // Reuse the allocation when the drawable size is unchanged.
+            presented.copy_pixels_from(framebuffer.pixels())?;
         }
         Ok(())
     }
@@ -483,5 +493,60 @@ mod tests {
         assert!(!host.capabilities().windowing);
         assert!(!host.capabilities().clipboard);
         assert_eq!(host.scale_factor(), 1.0);
+    }
+    #[test]
+    fn presentation_after_resize_replaces_the_old_sized_framebuffer() {
+        let mut host =
+            HeadlessHost::new(HostWindowConfig::new("resize presentation", 2, 1)).unwrap();
+        let initial = Framebuffer::new(2, 1, Color::RED).unwrap();
+        host.present(&initial).unwrap();
+
+        host.resize(3, 2).unwrap();
+        let resized = Framebuffer::new(3, 2, Color::BLUE).unwrap();
+        host.present(&resized).unwrap();
+
+        let presented = host.take_presented_frame().unwrap();
+        assert_eq!((presented.width(), presented.height()), (3, 2));
+        assert_eq!(presented.pixels(), resized.pixels());
+    }
+
+    #[test]
+    fn presentation_after_minimize_and_restore_uses_restored_dimensions() {
+        let mut host = HeadlessHost::new(HostWindowConfig::new("minimize restore", 2, 2)).unwrap();
+        let initial = Framebuffer::new(2, 2, Color::RED).unwrap();
+        host.present(&initial).unwrap();
+
+        host.resize(0, 0).unwrap();
+        assert_eq!(
+            host.present(&initial),
+            Err(HeadlessHostError::DrawableUnavailable)
+        );
+
+        host.resize(4, 3).unwrap();
+        let restored = Framebuffer::new(4, 3, Color::GREEN).unwrap();
+        host.present(&restored).unwrap();
+
+        let presented = host.take_presented_frame().unwrap();
+        assert_eq!((presented.width(), presented.height()), (4, 3));
+        assert_eq!(presented.pixels(), restored.pixels());
+    }
+
+    #[test]
+    fn failed_presentation_after_resize_keeps_last_successful_frame() {
+        let mut host =
+            HeadlessHost::new(HostWindowConfig::new("failed resize presentation", 2, 1)).unwrap();
+        let initial = Framebuffer::new(2, 1, Color::RED).unwrap();
+        host.present(&initial).unwrap();
+
+        host.resize(3, 1).unwrap();
+        let wrong_size = Framebuffer::new(2, 1, Color::BLUE).unwrap();
+        assert_eq!(
+            host.present(&wrong_size),
+            Err(HeadlessHostError::DimensionMismatch)
+        );
+
+        let last_presented = host.presented_frame.as_ref().unwrap();
+        assert_eq!((last_presented.width(), last_presented.height()), (2, 1));
+        assert_eq!(last_presented.pixels(), initial.pixels());
     }
 }
