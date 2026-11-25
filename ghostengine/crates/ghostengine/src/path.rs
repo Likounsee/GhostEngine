@@ -114,7 +114,6 @@ fn accumulate_horizontal_coverage(
     }
 }
 
-
 /// Collects closed contours with fallible allocation before rasterization.
 fn try_collect_contours(flattened: &FlattenedPath) -> Result<Vec<&[Vector]>, PathError> {
     let count = flattened

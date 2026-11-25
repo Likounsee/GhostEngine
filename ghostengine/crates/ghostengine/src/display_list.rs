@@ -442,9 +442,15 @@ impl DisplayList {
         self.commands.push(Command::Clear(color));
     }
 
+    /// Fallibly records a filled rectangle as a vector contour.
+    pub fn try_fill_rect(&mut self, rect: Rect, color: Color) -> Result<(), PathError> {
+        self.fill_path(rectangle_path(rect), Transform2D::IDENTITY, color, 0.25)
+    }
+
     /// Records a filled rectangle as a transformed vector contour.
+    /// Prefer try_fill_rect when allocation failures must be handled.
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
-        let _ = self.fill_path(rectangle_path(rect), Transform2D::IDENTITY, color, 0.25);
+        let _ = self.try_fill_rect(rect, color);
     }
 
     /// Records multiple same-color rectangles as one batch command.
@@ -499,19 +505,25 @@ impl DisplayList {
         Ok(())
     }
 
-    /// Records a one-pixel rectangle outline using the active affine transform.
-    pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
+    /// Fallibly records a one-pixel rectangle outline using the active transform.
+    pub fn try_stroke_rect(&mut self, rect: Rect, color: Color) -> Result<(), StrokeError> {
         if rect.width == 0 || rect.height == 0 {
-            return;
+            return Ok(());
         }
-        if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::StrokeRect {
-                path: stroke_rectangle_path(rect),
-                transform: self.active_transform(),
-                color,
-                clip,
-            });
-        }
+        self.record_stroke_path(
+            stroke_rectangle_path(rect),
+            Transform2D::IDENTITY,
+            StrokeStyle::default(),
+            color,
+            0.25,
+            false,
+        )
+    }
+
+    /// Records a one-pixel rectangle outline using the active affine transform.
+    /// Prefer try_stroke_rect when allocation failures must be handled.
+    pub fn stroke_rect(&mut self, rect: Rect, color: Color) {
+        let _ = self.try_stroke_rect(rect, color);
     }
 
     /// Records a filled triangle using the active transform and clip stack.
@@ -1249,52 +1261,48 @@ impl DisplayList {
         destination: Rect,
         filter: TextureFilter,
     ) {
-        if let Some(clip) = self.active_clip() {
-            self.commands.push(Command::DrawTexture {
-                texture,
-                destination,
-                transform: self.active_transform(),
-                filter,
-                clip,
-            });
-        }
+        let _ = self.try_draw_shared_texture(texture, destination, filter);
+    }
+
+    /// Fallibly records an image command using shared texture storage.
+    pub fn try_draw_shared_texture(
+        &mut self,
+        texture: Arc<Texture>,
+        destination: Rect,
+        filter: TextureFilter,
+    ) -> Result<(), DisplayListError> {
+        let Some(clip) = self.active_clip() else { return Ok(()); };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::DrawTexture {
+            texture, destination, transform: self.active_transform(), filter, clip,
+        });
+        Ok(())
     }
 
     /// Records a clipped atlas-region texture draw.
-    ///
-    /// Atlas-region commands are axis-aligned. An active affine transform is
-    /// rejected rather than silently sampling the wrong source region.
     /// Returns false for invalid source bounds, empty destinations, or transforms.
     pub fn draw_texture_region(
-        &mut self,
-        texture: Arc<Texture>,
-        source: Rect,
-        destination: Rect,
-        filter: TextureFilter,
+        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect, filter: TextureFilter,
     ) -> bool {
+        self.try_draw_texture_region(texture, source, destination, filter).unwrap_or(false)
+    }
+
+    /// Fallibly records a clipped atlas-region texture draw.
+    pub fn try_draw_texture_region(
+        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect, filter: TextureFilter,
+    ) -> Result<bool, DisplayListError> {
         if self.active_transform() != Transform2D::IDENTITY
-            || source.width == 0
-            || source.height == 0
-            || destination.width == 0
-            || destination.height == 0
+            || source.width == 0 || source.height == 0
+            || destination.width == 0 || destination.height == 0
             || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
             || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
             || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
             || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
-        {
-            return false;
-        }
-        let Some(clip) = self.active_clip() else {
-            return false;
-        };
-        self.commands.push(Command::DrawTextureRegion {
-            texture,
-            source,
-            destination,
-            filter,
-            clip,
-        });
-        true
+        { return Ok(false); }
+        let Some(clip) = self.active_clip() else { return Ok(false); };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::DrawTextureRegion { texture, source, destination, filter, clip });
+        Ok(true)
     }
 
     /// Records a nine-slice texture for resizable UI panels.
@@ -1304,28 +1312,22 @@ impl DisplayList {
     /// silently producing incorrectly scaled borders. Returns false when a
     /// non-identity transform is active or no visible clip exists.
     pub fn draw_nine_slice_texture(
-        &mut self,
-        texture: Arc<Texture>,
-        source: Rect,
-        destination: Rect,
-        margins: NineSliceMargins,
-        filter: TextureFilter,
+        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect,
+        margins: NineSliceMargins, filter: TextureFilter,
     ) -> bool {
-        if self.active_transform() != Transform2D::IDENTITY {
-            return false;
-        }
-        let Some(clip) = self.active_clip() else {
-            return false;
-        };
-        self.commands.push(Command::DrawNineSliceTexture {
-            texture,
-            source,
-            destination,
-            margins,
-            filter,
-            clip,
-        });
-        true
+        self.try_draw_nine_slice_texture(texture, source, destination, margins, filter).unwrap_or(false)
+    }
+
+    /// Fallibly records a nine-slice texture for resizable UI panels.
+    pub fn try_draw_nine_slice_texture(
+        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect,
+        margins: NineSliceMargins, filter: TextureFilter,
+    ) -> Result<bool, DisplayListError> {
+        if self.active_transform() != Transform2D::IDENTITY { return Ok(false); }
+        let Some(clip) = self.active_clip() else { return Ok(false); };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::DrawNineSliceTexture { texture, source, destination, margins, filter, clip });
+        Ok(true)
     }
 
     /// Fallibly records a linear-gradient rectangle.
@@ -1925,6 +1927,24 @@ fn rounded_rect_path(rect: Rect, radius: u32) -> Path {
 mod tests {
     use super::DisplayList;
     use crate::{Color, Framebuffer, Point, Rect, StrokeStyle, Transform2D};
+
+    #[test]
+    fn fallible_rect_and_texture_recording_preserves_order_and_rejects_invalid_regions() {
+        use crate::{Texture, TextureFilter};
+        use std::sync::Arc;
+        let mut list = DisplayList::try_with_capacity(4).unwrap();
+        list.try_fill_rect(Rect::new(1, 1, 3, 3), Color::RED).unwrap();
+        list.try_stroke_rect(Rect::new(0, 0, 6, 6), Color::WHITE).unwrap();
+        let texture = Arc::new(Texture::try_from_pixels(2, 2, &[Color::BLUE; 4]).unwrap());
+        assert!(list.try_draw_texture_region(Arc::clone(&texture), Rect::new(0,0,2,2), Rect::new(4,4,2,2), TextureFilter::Nearest).unwrap());
+        assert!(!list.try_draw_texture_region(Arc::clone(&texture), Rect::new(1,1,2,2), Rect::new(4,4,2,2), TextureFilter::Nearest).unwrap());
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 3);
+        assert_eq!(stats.commands_executed, 3);
+        assert_eq!(target.get_pixel(2, 2), Some(Color::RED));
+        assert_eq!(target.get_pixel(4, 4), Some(Color::BLUE));
+    }
 
     #[test]
     fn display_list_capacity_is_reused_between_frames() {
