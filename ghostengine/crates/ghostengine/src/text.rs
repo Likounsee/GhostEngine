@@ -84,8 +84,37 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
         }
     }
 
+    /// Advances recency while preserving ordering across the u64 boundary.
+    ///
+    /// The rebase is extremely rare (once per 2^64 cache operations). If its
+    /// temporary ordering buffer cannot be allocated, dropping cached glyphs
+    /// is preferable to allowing wrapped timestamps to corrupt LRU decisions.
     fn tick(&mut self) -> u64 {
-        self.clock = self.clock.wrapping_add(1);
+        if self.clock == u64::MAX {
+            let mut ordered = Vec::new();
+            if ordered.try_reserve_exact(self.entries.len()).is_err() {
+                let removed = self.entries.len() as u64;
+                self.entries.clear();
+                self.used_bytes = 0;
+                self.evictions = self.evictions.saturating_add(removed);
+                self.clock = 0;
+            } else {
+                ordered.extend(
+                    self.entries
+                        .iter()
+                        .map(|(key, entry)| (entry.last_used, key.clone())),
+                );
+                ordered.sort_unstable_by_key(|(last_used, _)| *last_used);
+
+                for (index, (_, key)) in ordered.into_iter().enumerate() {
+                    if let Some(entry) = self.entries.get_mut(&key) {
+                        entry.last_used = index as u64 + 1;
+                    }
+                }
+                self.clock = self.entries.len() as u64;
+            }
+        }
+        self.clock += 1;
         self.clock
     }
 
@@ -290,10 +319,14 @@ impl FontFace {
     /// Returns a combined snapshot of the character and shaped-glyph raster caches.
     #[must_use]
     pub fn glyph_cache_stats(&self) -> GlyphCacheStats {
-        let character = self.glyph_cache.lock()
+        let character = self
+            .glyph_cache
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .stats();
-        let indexed = self.indexed_glyph_cache.lock()
+        let indexed = self
+            .indexed_glyph_cache
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .stats();
         GlyphCacheStats {
@@ -322,10 +355,12 @@ impl FontFace {
 
     /// Resets cache lookup and eviction counters without discarding glyphs.
     pub fn reset_glyph_cache_stats(&self) {
-        self.glyph_cache.lock()
+        self.glyph_cache
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .reset_stats();
-        self.indexed_glyph_cache.lock()
+        self.indexed_glyph_cache
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .reset_stats();
     }
@@ -3113,6 +3148,47 @@ mod tests {
         cache.clear();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.used_bytes, 0);
+    }
+
+    #[test]
+    fn glyph_cache_clock_rebases_without_changing_lru_eviction_order() {
+        use super::{CachedGlyph, GlyphCache};
+        use std::sync::Arc;
+
+        let mut cache = GlyphCache::<u8>::with_budget(3);
+        let glyph = || {
+            Arc::new(CachedGlyph {
+                xmin: 0,
+                ymin: 0,
+                width: 1,
+                height: 1,
+                advance_width: 1.0,
+                bitmap: Arc::from([255_u8]),
+            })
+        };
+
+        cache.insert(1, glyph());
+        cache.insert(2, glyph());
+        cache.insert(3, glyph());
+
+        // Arrange a non-insertion ordering and force the overflow path.
+        cache.entries.get_mut(&1).unwrap().last_used = 20;
+        cache.entries.get_mut(&2).unwrap().last_used = 10;
+        cache.entries.get_mut(&3).unwrap().last_used = 30;
+        cache.clock = u64::MAX;
+
+        assert!(cache.get(&1).is_some());
+        assert_eq!(cache.entries[&2].last_used, 1);
+        assert_eq!(cache.entries[&3].last_used, 3);
+        assert_eq!(cache.entries[&1].last_used, 4);
+
+        cache.insert(4, glyph());
+        assert!(!cache.entries.contains_key(&2));
+        assert!(cache.entries.contains_key(&1));
+        assert!(cache.entries.contains_key(&3));
+        assert!(cache.entries.contains_key(&4));
+        assert_eq!(cache.used_bytes, 3);
+        assert_eq!(cache.stats().evictions, 1);
     }
 
     #[test]
