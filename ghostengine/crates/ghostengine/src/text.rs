@@ -3089,17 +3089,21 @@ mod tests {
         // A hit refreshes recency: the first entry must survive the next insert,
         // while the untouched second entry is evicted instead of clearing the cache.
         let _ = font.glyph(first_character, 1.0);
-        let newest_character = char::from_u32(
-            0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32,
-        )
-        .expect("newest test codepoint should be valid");
+        let newest_character = char::from_u32(0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32)
+            .expect("newest test codepoint should be valid");
         let _ = font.glyph(newest_character, 1.0);
         {
             let cache = font.glyph_cache.lock().unwrap();
             assert_eq!(cache.len(), MAX_CACHED_GLYPHS_PER_FONT);
-            assert!(cache.entries.contains_key(&(1.0_f32.to_bits(), first_character)));
-            assert!(!cache.entries.contains_key(&(1.0_f32.to_bits(), second_character)));
-            assert!(cache.entries.contains_key(&(1.0_f32.to_bits(), newest_character)));
+            assert!(cache
+                .entries
+                .contains_key(&(1.0_f32.to_bits(), first_character)));
+            assert!(!cache
+                .entries
+                .contains_key(&(1.0_f32.to_bits(), second_character)));
+            assert!(cache
+                .entries
+                .contains_key(&(1.0_f32.to_bits(), newest_character)));
         }
 
         let valid_glyph_index = font.font.lookup_glyph_index('ש');
@@ -3116,9 +3120,15 @@ mod tests {
         {
             let cache = font.indexed_glyph_cache.lock().unwrap();
             assert_eq!(cache.len(), MAX_CACHED_GLYPHS_PER_FONT);
-            assert!(cache.entries.contains_key(&(first_size.to_bits(), valid_glyph_index)));
-            assert!(!cache.entries.contains_key(&(second_size.to_bits(), valid_glyph_index)));
-            assert!(cache.entries.contains_key(&(newest_size.to_bits(), valid_glyph_index)));
+            assert!(cache
+                .entries
+                .contains_key(&(first_size.to_bits(), valid_glyph_index)));
+            assert!(!cache
+                .entries
+                .contains_key(&(second_size.to_bits(), valid_glyph_index)));
+            assert!(cache
+                .entries
+                .contains_key(&(newest_size.to_bits(), valid_glyph_index)));
         }
         assert_eq!(font.cached_glyph_count(), MAX_CACHED_GLYPHS_PER_FONT * 2);
         assert!(
