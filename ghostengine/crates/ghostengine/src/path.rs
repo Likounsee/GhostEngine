@@ -276,7 +276,8 @@ impl Path {
                 }
                 Command::LineTo(point) => {
                     validate(point)?;
-                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
+                    let index =
+                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
                     push_point(&mut result.subpaths[index].points, point)?;
                 }
                 Command::QuadTo(control, end) => {
@@ -288,7 +289,14 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_quad(start, control, end, tolerance_squared, 0, &mut contour.points)?;
+                    flatten_quad(
+                        start,
+                        control,
+                        end,
+                        tolerance_squared,
+                        0,
+                        &mut contour.points,
+                    )?;
                 }
                 Command::CubicTo(c1, c2, end) => {
                     validate(c1)?;
@@ -300,7 +308,15 @@ impl Path {
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_cubic(start, c1, c2, end, tolerance_squared, 0, &mut contour.points)?;
+                    flatten_cubic(
+                        start,
+                        c1,
+                        c2,
+                        end,
+                        tolerance_squared,
+                        0,
+                        &mut contour.points,
+                    )?;
                 }
                 Command::Close => {
                     let index = current.ok_or(PathError::MissingCurrentPoint)?;
@@ -1349,10 +1365,7 @@ mod tests {
             let start = Vector::new(x, 1.0);
             path.move_to(start)
                 .line_to(Vector::new(x + 4.0, 1.0))
-                .quadratic_to(
-                    Vector::new(x + 6.0, 8.0),
-                    Vector::new(x + 8.0, 1.0),
-                )
+                .quadratic_to(Vector::new(x + 6.0, 8.0), Vector::new(x + 8.0, 1.0))
                 .cubic_to(
                     Vector::new(x + 9.0, -4.0),
                     Vector::new(x + 11.0, 6.0),
