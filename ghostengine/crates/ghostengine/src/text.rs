@@ -820,35 +820,35 @@ fn fallback_face_for_cluster(
     cluster: &str,
     primary: &Arc<FontFace>,
 ) -> Arc<FontFace> {
-    let characters = cluster.chars().collect::<Vec<_>>();
-    let base = characters
-        .iter()
-        .copied()
+    let base = cluster
+        .chars()
         .find(|character| !is_combining_mark(*character) && !is_shaping_control(*character));
     // Shaping controls affect cluster presentation but are not independently
-    // rendered glyphs. All other scalars should be covered by one face.
-    let required = characters
-        .iter()
-        .copied()
-        .filter(|character| !is_shaping_control(*character))
-        .collect::<Vec<_>>();
+    // rendered glyphs. Check coverage directly to avoid allocating two
+    // temporary vectors for every grapheme cluster.
+    let covers_required = |face: &FontFace| {
+        cluster
+            .chars()
+            .filter(|character| !is_shaping_control(*character))
+            .all(|character| face.has_glyph(character))
+    };
     if let Some(base) = base {
         family
             .faces
             .iter()
-            .find(|face| required.iter().all(|character| face.has_glyph(*character)))
+            .find(|face| covers_required(face))
             .or_else(|| family.faces.iter().find(|face| face.has_glyph(base)))
             .cloned()
             .unwrap_or_else(|| Arc::clone(primary))
     } else {
         current_face
-            .filter(|face| required.iter().all(|character| face.has_glyph(*character)))
+            .filter(|face| covers_required(face))
             .cloned()
             .or_else(|| {
                 family
                     .faces
                     .iter()
-                    .find(|face| required.iter().all(|character| face.has_glyph(*character)))
+                    .find(|face| covers_required(face))
                     .cloned()
             })
             .or_else(|| current_face.cloned())
