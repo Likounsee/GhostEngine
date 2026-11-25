@@ -422,7 +422,22 @@ impl DisplayList {
             .unwrap_or(Transform2D::IDENTITY)
     }
 
-    /// Records a full-framebuffer clear. Clear deliberately ignores clip state.
+    fn try_reserve_command_slot(&mut self) -> Result<(), DisplayListError> {
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| DisplayListError::AllocationFailed)
+    }
+
+    /// Fallibly records a full-framebuffer clear, ignoring the active clip.
+    ///
+    /// The display list is unchanged if command storage cannot be reserved.
+    pub fn try_clear_color(&mut self, color: Color) -> Result<(), DisplayListError> {
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::Clear(color));
+        Ok(())
+    }
+
+    /// Records a full-framebuffer clear. Clear deliberately ignores clip state. Clear deliberately ignores clip state.
     pub fn clear_color(&mut self, color: Color) {
         self.commands.push(Command::Clear(color));
     }
@@ -555,6 +570,53 @@ impl DisplayList {
             color,
             0.25,
         )
+    }
+
+    /// Fallibly records a one-pixel line. Its endpoints are transformed when recorded.
+    ///
+    /// The display list is unchanged if command storage cannot be reserved.
+    pub fn try_line(
+        &mut self,
+        start: Point,
+        end: Point,
+        color: Color,
+    ) -> Result<(), DisplayListError> {
+        self.try_record_line(start, end, color, false)
+    }
+
+    /// Fallibly records a 4x supersampled antialiased line.
+    pub fn try_line_aa(
+        &mut self,
+        start: Point,
+        end: Point,
+        color: Color,
+    ) -> Result<(), DisplayListError> {
+        self.try_record_line(start, end, color, true)
+    }
+
+    fn try_record_line(
+        &mut self,
+        start: Point,
+        end: Point,
+        color: Color,
+        antialias: bool,
+    ) -> Result<(), DisplayListError> {
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+        self.try_reserve_command_slot()?;
+        let transform = self.active_transform();
+        let start =
+            transform.transform_point(crate::Vector::new(start.x as f32, start.y as f32));
+        let end = transform.transform_point(crate::Vector::new(end.x as f32, end.y as f32));
+        self.commands.push(Command::Line {
+            start: Point::new(start.x.round() as i32, start.y.round() as i32),
+            end: Point::new(end.x.round() as i32, end.y.round() as i32),
+            color,
+            antialias,
+            clip,
+        });
+        Ok(())
     }
 
     /// Records a one-pixel line. Its endpoints are transformed when recorded.
@@ -1267,6 +1329,77 @@ impl DisplayList {
         true
     }
 
+    /// Fallibly records a linear-gradient rectangle.
+    ///
+    /// The display list is unchanged if command storage cannot be reserved.
+    pub fn try_fill_linear_gradient(
+        &mut self,
+        rect: Rect,
+        start: crate::Vector,
+        end: crate::Vector,
+        gradient: Gradient,
+    ) -> Result<(), DisplayListError> {
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::LinearGradient {
+            rect,
+            start,
+            end,
+            transform: self.active_transform(),
+            gradient,
+            clip,
+        });
+        Ok(())
+    }
+
+    /// Fallibly records a radial-gradient rectangle.
+    pub fn try_fill_radial_gradient(
+        &mut self,
+        rect: Rect,
+        center: crate::Vector,
+        radius: f32,
+        gradient: Gradient,
+    ) -> Result<(), DisplayListError> {
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::RadialGradient {
+            rect,
+            center,
+            radius,
+            transform: self.active_transform(),
+            gradient,
+            clip,
+        });
+        Ok(())
+    }
+
+    /// Fallibly records a conic-gradient rectangle.
+    pub fn try_fill_conic_gradient(
+        &mut self,
+        rect: Rect,
+        center: crate::Vector,
+        start_angle: f32,
+        gradient: Gradient,
+    ) -> Result<(), DisplayListError> {
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+        self.try_reserve_command_slot()?;
+        self.commands.push(Command::ConicGradient {
+            rect,
+            center,
+            start_angle,
+            transform: self.active_transform(),
+            gradient,
+            clip,
+        });
+        Ok(())
+    }
+
     /// Records a linear-gradient rectangle. The rectangle and gradient coordinates
     /// are local to the active affine transform; clipping does not alter sampling.
     pub fn fill_linear_gradient(
@@ -1919,6 +2052,102 @@ mod tests {
 
         assert_eq!(result, Err(super::StrokeError::InvalidWidth));
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn fallible_clear_and_line_commands_reuse_reserved_storage_and_replay() {
+        let mut list = DisplayList::try_with_capacity(3).unwrap();
+        let capacity = list.command_capacity();
+
+        list.try_clear_color(Color::BLACK).unwrap();
+        list.try_line(Point::new(1, 1), Point::new(6, 1), Color::RED)
+            .unwrap();
+        list.try_line_aa(Point::new(1, 3), Point::new(6, 3), Color::WHITE)
+            .unwrap();
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.command_capacity(), capacity);
+
+        let mut target = Framebuffer::new(8, 6, Color::GREEN).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 3);
+        assert_eq!(stats.commands_executed, 3);
+        assert_eq!(target.get_pixel(3, 1), Some(Color::RED));
+        assert_eq!(target.get_pixel(3, 3), Some(Color::WHITE));
+        assert_eq!(target.get_pixel(0, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn fallible_gradient_commands_record_all_gradient_kinds_in_order() {
+        use crate::{Gradient, GradientStop, Vector};
+
+        let gradient = || {
+            Gradient::new(vec![
+                GradientStop {
+                    position: 0.0,
+                    color: Color::RED,
+                },
+                GradientStop {
+                    position: 1.0,
+                    color: Color::BLUE,
+                },
+            ])
+            .unwrap()
+        };
+        let mut list = DisplayList::try_with_capacity(3).unwrap();
+        let capacity = list.command_capacity();
+        let rect = Rect::new(0, 0, 8, 8);
+
+        list.try_fill_linear_gradient(
+            rect,
+            Vector::new(0.0, 0.0),
+            Vector::new(8.0, 0.0),
+            gradient(),
+        )
+        .unwrap();
+        list.try_fill_radial_gradient(rect, Vector::new(4.0, 4.0), 4.0, gradient())
+            .unwrap();
+        list.try_fill_conic_gradient(rect, Vector::new(4.0, 4.0), 0.0, gradient())
+            .unwrap();
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.command_capacity(), capacity);
+
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 3);
+        assert_eq!(stats.commands_executed, 3);
+        assert_ne!(target.get_pixel(4, 4), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn fallible_recording_is_a_no_op_without_an_active_clip() {
+        let mut list = DisplayList::new();
+
+        list.try_line(Point::new(0, 0), Point::new(4, 4), Color::RED)
+            .unwrap();
+        list.try_line_aa(Point::new(0, 0), Point::new(4, 4), Color::RED)
+            .unwrap();
+        list.try_fill_linear_gradient(
+            Rect::new(0, 0, 4, 4),
+            crate::Vector::new(0.0, 0.0),
+            crate::Vector::new(4.0, 0.0),
+            crate::Gradient::new(vec![
+                crate::GradientStop {
+                    position: 0.0,
+                    color: Color::RED,
+                },
+                crate::GradientStop {
+                    position: 1.0,
+                    color: Color::BLUE,
+                },
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+        list.try_clear_color(Color::BLACK).unwrap();
+
+        assert_eq!(list.len(), 1, "clear is not affected by clip state");
     }
 
     #[test]
