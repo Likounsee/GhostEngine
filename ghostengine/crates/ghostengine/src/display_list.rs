@@ -1895,7 +1895,8 @@ mod tests {
     #[test]
     fn fallible_path_recording_rejects_invalid_geometry_without_partial_command() {
         let mut list = DisplayList::new();
-        let invalid = crate::Path::new()
+        let mut invalid = crate::Path::new();
+        invalid
             .move_to(crate::Vector::new(f32::NAN, 0.0))
             .line_to(crate::Vector::new(4.0, 4.0));
 
