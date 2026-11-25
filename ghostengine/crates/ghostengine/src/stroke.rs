@@ -397,56 +397,74 @@ fn stroke_path_impl_rows(
         };
         // Prepare segment vectors and cap projections once per contour instead
         // of rebuilding them for every pixel and every antialiasing sample.
-        let segments = (0..segment_count)
-            .map(|i| {
-                let first = !contour.closed && i == 0;
-                let last = !contour.closed && i + 1 == segment_count;
-                let cap = if first || last {
-                    style.cap
-                } else {
-                    StrokeCap::Butt
-                };
-                StrokeSegment::new(
-                    contour.points[i],
-                    contour.points[(i + 1) % contour.points.len()],
-                    first,
-                    last,
-                    cap,
-                    radius,
-                )
-            })
-            .collect::<Vec<_>>();
-        let joins = (0..join_count(&contour.points, contour.closed))
-            .filter_map(|index| {
-                let (previous, vertex, next) = join_points(&contour.points, contour.closed, index);
-                PreparedJoin::new(
-                    previous,
-                    vertex,
-                    next,
-                    style.join,
-                    radius,
-                    style.miter_limit,
-                )
-            })
-            .collect::<Vec<_>>();
-        // Sort geometry once so each scanline only visits segments and joins
-        // whose vertical bounds are currently active, rather than rescanning
-        // the complete contour for every row.
-        let mut segments = segments;
-        segments.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
-        let mut joins = joins;
-        joins.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
+        let mut segments = Vec::new();
+        segments
+            .try_reserve_exact(segment_count)
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        for i in 0..segment_count {
+            let first = !contour.closed && i == 0;
+            let last = !contour.closed && i + 1 == segment_count;
+            let cap = if first || last {
+                style.cap
+            } else {
+                StrokeCap::Butt
+            };
+            segments.push(StrokeSegment::new(
+                contour.points[i],
+                contour.points[(i + 1) % contour.points.len()],
+                first,
+                last,
+                cap,
+                radius,
+            ));
+        }
+
+        let join_capacity = join_count(&contour.points, contour.closed);
+        let mut joins = Vec::new();
+        joins
+            .try_reserve_exact(join_capacity)
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        for index in 0..join_capacity {
+            let (previous, vertex, next) = join_points(&contour.points, contour.closed, index);
+            if let Some(join) = PreparedJoin::new(
+                previous,
+                vertex,
+                next,
+                style.join,
+                radius,
+                style.miter_limit,
+            ) {
+                joins.push(join);
+            }
+        }
+
+        // Unstable sorting is allocation-free; ordering ties are irrelevant
+        // because coverage is a set union, not an order-dependent blend.
+        segments.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
+        joins.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
         let radius_squared = radius * radius;
         const SAMPLE_OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
-        // Keep active geometry in horizontal order as scanlines advance.
-        // Each segment/join is inserted once and removed once; sorting a copied
-        // active list on every row is unnecessary work for tall paths.
-        let mut row_segments_x: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
-        let mut row_joins_x: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
+        // Reserve all active/pixel candidate buffers up front. Their lengths can
+        // never exceed the total prepared geometry, so scan conversion does not
+        // allocate while walking rows or pixels.
+        let mut row_segments_x = Vec::new();
+        row_segments_x
+            .try_reserve_exact(segments.len())
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        let mut row_joins_x = Vec::new();
+        row_joins_x
+            .try_reserve_exact(joins.len())
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        let mut pixel_segments = Vec::new();
+        pixel_segments
+            .try_reserve_exact(segments.len())
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        let mut pixel_joins = Vec::new();
+        pixel_joins
+            .try_reserve_exact(joins.len())
+            .map_err(|_| StrokeError::AllocationFailed)?;
         let mut next_segment = 0;
         let mut next_join = 0;
-        let mut pixel_segments: Vec<StrokeSegment> = Vec::with_capacity(segments.len());
-        let mut pixel_joins: Vec<PreparedJoin> = Vec::with_capacity(joins.len());
         for y in top.max(row_origin)..bottom.min(row_end) {
             // A segment whose vertical bounds do not overlap this pixel row
             // cannot contribute to any of its 4x4 coverage samples.
