@@ -510,14 +510,19 @@ impl DisplayList {
         if rect.width == 0 || rect.height == 0 {
             return Ok(());
         }
-        self.record_stroke_path(
-            stroke_rectangle_path(rect),
-            Transform2D::IDENTITY,
-            StrokeStyle::default(),
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| StrokeError::AllocationFailed)?;
+        self.commands.push(Command::StrokeRect {
+            path: stroke_rectangle_path(rect),
+            transform: self.active_transform(),
             color,
-            0.25,
-            false,
-        )
+            clip,
+        });
+        Ok(())
     }
 
     /// Records a one-pixel rectangle outline using the active affine transform.
