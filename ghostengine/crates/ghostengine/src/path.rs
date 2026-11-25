@@ -927,7 +927,10 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     active_edges
         .try_reserve_exact(edges.len())
         .map_err(|_| PathError::AllocationFailed)?;
-    let mut intersections: Vec<(f32, i32)> = Vec::with_capacity(edges.len());
+    let mut intersections: Vec<(f32, i32)> = Vec::new();
+    intersections
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     let mut coverage = try_zeroed_coverage((max_x - min_x) as usize)?;
     let mut next_edge = 0_usize;
 
@@ -1033,14 +1036,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
         return Ok(());
     }
 
-    let edges = contours
-        .iter()
-        .flat_map(|contour| {
-            (0..contour.len()).filter_map(move |index| {
-                FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
-            })
-        })
-        .collect::<Vec<_>>();
+    let edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
     }
@@ -1106,7 +1102,10 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     // edges that can still intersect the current subpixel scanline.
     let mut edges = edges;
     edges.sort_by(|left, right| left.min_y.total_cmp(&right.min_y));
-    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut active_edges = Vec::new();
+    active_edges
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     let mut next_edge = 0;
 
     for y in min_y..max_y {
