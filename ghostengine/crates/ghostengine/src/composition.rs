@@ -312,6 +312,32 @@ impl DamageRegion {
             && self.area() == u64::from(self.width) * u64::from(self.height)
     }
 
+    /// Replaces the current damage set with the complete framebuffer bounds.
+    ///
+    /// Storage is reserved before existing rectangles are discarded, so an
+    /// allocation failure preserves the previous damage set. This also
+    /// collapses fragmented damage into one rectangle without temporary storage.
+    pub fn try_set_full(&mut self) -> Result<(), DamageRegionError> {
+        if self.width == 0 || self.height == 0 {
+            self.rectangles.clear();
+            return Ok(());
+        }
+        self.rectangles
+            .try_reserve(1usize.saturating_sub(self.rectangles.len()))
+            .map_err(|_| DamageRegionError::AllocationFailed)?;
+        self.rectangles.clear();
+        self.rectangles.push(Rect::new(0, 0, self.width, self.height));
+        Ok(())
+    }
+
+    /// Replaces the current damage set with the complete framebuffer bounds.
+    ///
+    /// This convenience method may panic if storage cannot be reserved.
+    pub fn set_full(&mut self) {
+        self.try_set_full()
+            .expect("failed to allocate full damage-region storage");
+    }
+
     /// Removes all accumulated damage rectangles.
     pub fn clear(&mut self) {
         self.rectangles.clear();
@@ -1744,40 +1770,65 @@ struct LayerGroupCacheEntry {
 }
 
 impl LayerGroupCache {
+    /// Fallibly marks a local-space rectangle dirty for the next cached composition.
+    ///
+    /// Returns false when the identity is not cached. Allocation failure leaves
+    /// that group's existing damage unchanged.
+    pub fn try_mark_dirty(
+        &mut self,
+        id: LayerGroupId,
+        rectangle: Rect,
+    ) -> Result<bool, DamageRegionError> {
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return Ok(false);
+        };
+        entry.damage.try_add(rectangle)?;
+        Ok(true)
+    }
+
     /// Marks a local-space rectangle dirty for the next cached composition.
     /// Returns false when the identity has not been cached yet.
     pub fn mark_dirty(&mut self, id: LayerGroupId, rectangle: Rect) -> bool {
+        self.try_mark_dirty(id, rectangle)
+            .expect("failed to allocate cached layer damage")
+    }
+
+    /// Fallibly invalidates the complete cached surface for one group.
+    ///
+    /// Replaces any fragmented local damage with one full-surface rectangle.
+    pub fn try_invalidate(&mut self, id: LayerGroupId) -> Result<bool, DamageRegionError> {
         let Some(entry) = self.entries.get_mut(&id) else {
-            return false;
+            return Ok(false);
         };
-        entry.damage.add(rectangle);
-        true
+        entry.damage.try_set_full()?;
+        Ok(true)
     }
 
     /// Invalidates the complete cached surface for a group.
     pub fn invalidate(&mut self, id: LayerGroupId) -> bool {
-        let Some(entry) = self.entries.get_mut(&id) else {
-            return false;
-        };
-        entry.damage.add(Rect::new(
-            0,
-            0,
-            entry.layer.framebuffer().width(),
-            entry.layer.framebuffer().height(),
-        ));
-        true
+        self.try_invalidate(id)
+            .expect("failed to allocate full cached layer damage")
+    }
+
+    /// Fallibly invalidates every cached group without releasing pixel allocations.
+    ///
+    /// All required reservations are completed before any group's damage is
+    /// replaced, so a reservation failure leaves every group's logical damage
+    /// unchanged. Fragmented damage is collapsed to one full-surface rectangle.
+    pub fn try_invalidate_all(&mut self) -> Result<(), DamageRegionError> {
+        for entry in self.entries.values_mut() {
+            entry.damage.try_reserve(1)?;
+        }
+        for entry in self.entries.values_mut() {
+            entry.damage.try_set_full()?;
+        }
+        Ok(())
     }
 
     /// Invalidates every cached group without releasing its pixel allocations.
     pub fn invalidate_all(&mut self) {
-        for entry in self.entries.values_mut() {
-            entry.damage.add(Rect::new(
-                0,
-                0,
-                entry.layer.framebuffer().width(),
-                entry.layer.framebuffer().height(),
-            ));
-        }
+        self.try_invalidate_all()
+            .expect("failed to allocate full cached layer damage");
     }
 
     /// Removes a cached group and releases its off-screen surface.
@@ -2294,6 +2345,54 @@ mod tests {
         LayerGroupScratch,
     };
     use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+
+    #[test]
+    fn full_damage_replaces_fragmented_regions_with_one_rectangle() {
+        let mut damage = DamageRegion::new(32, 24);
+        damage.add(Rect::new(1, 1, 3, 3));
+        damage.add(Rect::new(20, 15, 4, 4));
+        assert!(damage.rectangles().len() > 1);
+
+        damage.try_set_full().unwrap();
+
+        assert_eq!(damage.rectangles(), &[Rect::new(0, 0, 32, 24)]);
+        assert_eq!(damage.area(), 32 * 24);
+        assert!(damage.covers_entire_target());
+    }
+
+    #[test]
+    fn cached_group_fallible_invalidation_collapses_damage_and_handles_missing_ids() {
+        let group = LayerGroup::new(12, 9).unwrap();
+        let mut target = Framebuffer::new(16, 12, Color::BLACK).unwrap();
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        compose_layer_groups_cached(&mut target, &[(5, &group)], &mut cache, &mut scratch)
+            .unwrap();
+
+        assert!(!cache.try_mark_dirty(99, Rect::new(0, 0, 1, 1)).unwrap());
+        assert!(!cache.try_invalidate(99).unwrap());
+        assert!(cache
+            .try_mark_dirty(5, Rect::new(1, 1, 2, 2))
+            .unwrap());
+        assert!(cache
+            .try_mark_dirty(5, Rect::new(8, 5, 2, 2))
+            .unwrap());
+        assert!(cache.entries[&5].damage.rectangles().len() > 1);
+
+        assert!(cache.try_invalidate(5).unwrap());
+        assert_eq!(
+            cache.entries[&5].damage.rectangles(),
+            &[Rect::new(0, 0, 12, 9)]
+        );
+        assert_eq!(cache.render_count(5), Some(1));
+
+        cache.try_mark_dirty(5, Rect::new(2, 2, 1, 1)).unwrap();
+        cache.try_invalidate_all().unwrap();
+        assert_eq!(
+            cache.entries[&5].damage.rectangles(),
+            &[Rect::new(0, 0, 12, 9)]
+        );
+    }
 
     #[test]
     fn cached_group_surfaces_survive_reordering_without_rerendering() {

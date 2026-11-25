@@ -3407,7 +3407,11 @@ mod tests {
                 "concurrent misses should return the single cached glyph allocation"
             );
             assert_eq!(font.cached_glyph_count(), 1);
-            assert_eq!(font.glyph_cache_stats().misses, workers as u64);
+            let stats = font.glyph_cache_stats();
+            // Threads that arrive after the first insertion are legitimate
+            // cache hits; scheduling does not guarantee eight simultaneous misses.
+            assert!((1..=workers as u64).contains(&stats.misses));
+            assert_eq!(stats.hits + stats.misses, workers as u64);
         }
     }
 
