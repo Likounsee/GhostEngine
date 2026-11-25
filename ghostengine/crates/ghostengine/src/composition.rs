@@ -1771,10 +1771,10 @@ impl LayerGroupScratch {
             return Ok(());
         }
 
-        let framebuffer = Framebuffer::new(width, height, Color::TRANSPARENT)?;
-        let new_bytes = framebuffer
-            .pixels()
-            .len()
+        let pixel_count = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(FramebufferError::SizeOverflow)?;
+        let new_bytes = pixel_count
             .checked_mul(std::mem::size_of::<Color>())
             .ok_or(FramebufferError::SizeOverflow)?;
         let old_bytes = self.layers.get(depth).map_or(0, |layer| {
@@ -1797,6 +1797,10 @@ impl LayerGroupScratch {
         if projected_bytes > self.budget_bytes {
             return Err(FramebufferError::AllocationFailed);
         }
+
+        // Reject over-budget dimensions before asking the allocator for pixels.
+        let framebuffer = Framebuffer::new(width, height, Color::TRANSPARENT)?;
+        debug_assert_eq!(framebuffer.pixels().len(), pixel_count);
 
         if depth == self.layers.len() {
             self.layers
