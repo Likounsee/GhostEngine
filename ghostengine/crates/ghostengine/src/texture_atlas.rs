@@ -177,10 +177,7 @@ impl TextureAtlasBuilder {
     }
 
     /// Reserves metadata for additional sprites before loading their pixels.
-    pub fn try_reserve_sprites(
-        &mut self,
-        additional: usize,
-    ) -> Result<(), TextureAtlasError> {
+    pub fn try_reserve_sprites(&mut self, additional: usize) -> Result<(), TextureAtlasError> {
         self.items
             .try_reserve(additional)
             .map_err(|_| TextureAtlasError::AllocationFailed)?;

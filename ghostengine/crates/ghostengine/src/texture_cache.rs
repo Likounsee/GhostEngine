@@ -83,8 +83,7 @@ impl TextureCache {
     /// the first frame does not need to grow the hash table.
     #[must_use]
     pub fn new(budget_bytes: usize) -> Self {
-        Self::try_with_capacity(budget_bytes, 0)
-            .expect("failed to allocate texture cache storage")
+        Self::try_with_capacity(budget_bytes, 0).expect("failed to allocate texture cache storage")
     }
 
     /// Creates a cache and fallibly reserves storage for the expected entries.
@@ -369,7 +368,10 @@ mod tests {
         let handle = cache.insert(texture(Color::RED, 2)).unwrap();
         cache.try_reserve_entries(16).unwrap();
         assert_eq!(cache.len(), 1);
-        assert_eq!(cache.peek(handle).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(
+            cache.peek(handle).unwrap().get_pixel(0, 0),
+            Some(Color::RED)
+        );
         assert_eq!(cache.stats().used_bytes, 8);
     }
 

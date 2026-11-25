@@ -323,7 +323,10 @@ mod tests {
     #[test]
     fn fallible_bidi_resolution_preserves_visual_run_results() {
         let text = "abc אבג 123";
-        assert_eq!(super::try_resolve_bidi_runs(text).unwrap(), super::resolve_bidi_runs(text));
+        assert_eq!(
+            super::try_resolve_bidi_runs(text).unwrap(),
+            super::resolve_bidi_runs(text)
+        );
         assert!(super::try_resolve_bidi_runs("").unwrap().is_empty());
     }
 

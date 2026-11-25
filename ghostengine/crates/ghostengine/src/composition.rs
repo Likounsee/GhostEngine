@@ -172,6 +172,16 @@ impl DamageRegion {
             return Ok(());
         };
 
+        // The common first-damage case needs no temporary vector. Reserve the
+        // destination first so allocation failure leaves the region untouched.
+        if self.rectangles.is_empty() {
+            self.rectangles
+                .try_reserve(1)
+                .map_err(|_| DamageRegionError::AllocationFailed)?;
+            self.rectangles.push(clipped);
+            return Ok(());
+        }
+
         let mut pending = Vec::new();
         pending
             .try_reserve_exact(1)
