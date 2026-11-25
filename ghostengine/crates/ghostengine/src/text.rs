@@ -13,6 +13,8 @@ use crate::{
 use fontdue::Font;
 
 const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
+/// Bounds retained bitmap memory independently of the number of glyph variants.
+const MAX_CACHED_GLYPH_BYTES_PER_FONT: usize = 16 * 1024 * 1024;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
@@ -28,6 +30,7 @@ pub struct FontFace {
 #[derive(Debug)]
 struct GlyphCacheEntry {
     glyph: Arc<CachedGlyph>,
+    bytes: usize,
     last_used: u64,
 }
 
@@ -40,13 +43,21 @@ struct GlyphCacheEntry {
 struct GlyphCache<K> {
     entries: HashMap<K, GlyphCacheEntry>,
     clock: u64,
+    budget_bytes: usize,
+    used_bytes: usize,
 }
 
 impl<K: Eq + Hash + Clone> GlyphCache<K> {
     fn new() -> Self {
+        Self::with_budget(MAX_CACHED_GLYPH_BYTES_PER_FONT)
+    }
+
+    fn with_budget(budget_bytes: usize) -> Self {
         Self {
             entries: HashMap::new(),
             clock: 0,
+            budget_bytes,
+            used_bytes: 0,
         }
     }
 
@@ -69,14 +80,26 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
             return Arc::clone(&entry.glyph);
         }
 
-        if self.entries.len() >= MAX_CACHED_GLYPHS_PER_FONT {
-            if let Some(oldest) = self
+        let bytes = glyph.bitmap.len();
+        // Keep oversized glyphs usable by the current draw, but do not retain
+        // them: one pathological font size must not defeat the cache budget.
+        if bytes > self.budget_bytes {
+            return glyph;
+        }
+
+        while self.entries.len() >= MAX_CACHED_GLYPHS_PER_FONT
+            || self.used_bytes > self.budget_bytes - bytes
+        {
+            let Some(oldest) = self
                 .entries
                 .iter()
                 .max_by_key(|(_, entry)| now.wrapping_sub(entry.last_used))
                 .map(|(key, _)| key.clone())
-            {
-                self.entries.remove(&oldest);
+            else {
+                break;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.used_bytes -= removed.bytes;
             }
         }
 
@@ -84,9 +107,11 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
             key,
             GlyphCacheEntry {
                 glyph: Arc::clone(&glyph),
+                bytes,
                 last_used: now,
             },
         );
+        self.used_bytes += bytes;
         glyph
     }
 
@@ -96,6 +121,7 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
 
     fn clear(&mut self) {
         self.entries.clear();
+        self.used_bytes = 0;
     }
 }
 
@@ -226,6 +252,24 @@ impl FontFace {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len();
         character_count + indexed_count
+    }
+
+    /// Returns the bitmap bytes currently retained by both glyph caches.
+    ///
+    /// This excludes temporary glyph references held by active draw calls.
+    #[must_use]
+    pub fn cached_glyph_bytes(&self) -> usize {
+        let character_bytes = self
+            .glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .used_bytes;
+        let indexed_bytes = self
+            .indexed_glyph_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .used_bytes;
+        character_bytes.saturating_add(indexed_bytes)
     }
 
     /// Releases both character and shaped-glyph bitmaps. They are regenerated on demand.
@@ -2974,6 +3018,42 @@ mod tests {
     }
 
     #[test]
+    fn glyph_cache_enforces_byte_budget_and_releases_accounting_on_clear() {
+        use super::{CachedGlyph, GlyphCache};
+        use std::sync::Arc;
+
+        let mut cache = GlyphCache::<u8>::with_budget(8);
+        let glyph = |size| {
+            Arc::new(CachedGlyph {
+                xmin: 0,
+                ymin: 0,
+                width: size,
+                height: 1,
+                advance_width: size as f32,
+                bitmap: Arc::from(vec![255_u8; size]),
+            })
+        };
+
+        cache.insert(1, glyph(5));
+        cache.insert(2, glyph(5));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.used_bytes, 5);
+        assert!(cache.entries.contains_key(&2));
+        assert!(!cache.entries.contains_key(&1));
+
+        let oversized = glyph(9);
+        let returned = cache.insert(3, Arc::clone(&oversized));
+        assert!(Arc::ptr_eq(&returned, &oversized));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.used_bytes, 5);
+        assert!(!cache.entries.contains_key(&3));
+
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.used_bytes, 0);
+    }
+
+    #[test]
     fn line_height_rejects_non_finite_and_non_positive_sizes() {
         let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
@@ -3041,6 +3121,12 @@ mod tests {
             assert!(cache.entries.contains_key(&(newest_size.to_bits(), valid_glyph_index)));
         }
         assert_eq!(font.cached_glyph_count(), MAX_CACHED_GLYPHS_PER_FONT * 2);
+        assert!(
+            font.cached_glyph_bytes() <= 2 * MAX_CACHED_GLYPH_BYTES_PER_FONT,
+            "character and indexed glyph caches must respect their independent byte budgets"
+        );
+        font.clear_glyph_cache();
+        assert_eq!(font.cached_glyph_bytes(), 0);
     }
 
     #[test]
