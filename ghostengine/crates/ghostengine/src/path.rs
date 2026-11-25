@@ -532,12 +532,7 @@ impl FlattenedPath {
     ///
     /// Use try_transformed when allocation errors must be handled.
     pub fn transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
-        match self.try_transformed(transform) {
-            Err(PathError::AllocationFailed) => {
-                panic!("transformed path allocation failed");
-            }
-            result => result,
-        }
+        self.try_transformed(transform)
     }
 }
 
