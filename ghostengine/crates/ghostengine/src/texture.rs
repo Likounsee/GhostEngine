@@ -730,7 +730,13 @@ pub fn try_draw_texture_region_clipped_with_scratch(
     // All scratch growth needed by the implementation below has already been
     // reserved, so this call cannot allocate while modifying the framebuffer.
     draw_texture_region_clipped_with_scratch(
-        target, texture, source, destination, filter, clip, scratch,
+        target,
+        texture,
+        source,
+        destination,
+        filter,
+        clip,
+        scratch,
     );
     Ok(())
 }
@@ -2577,8 +2583,7 @@ mod tests {
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
         draw_texture_transformed_clipped, sample_bilinear_prepared,
         try_draw_texture_region_clipped_with_scratch, try_draw_texture_transformed_clipped,
-        BilinearCoordinates, Texture, TextureError,
-        TextureFilter,
+        BilinearCoordinates, Texture, TextureError, TextureFilter,
     };
     use crate::{
         draw_texture_clipped_with_scratch, draw_texture_region_clipped_with_scratch, Color,

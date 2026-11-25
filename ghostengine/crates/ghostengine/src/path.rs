@@ -139,7 +139,9 @@ fn try_collect_contours(flattened: &FlattenedPath) -> Result<Vec<&[Vector]>, Pat
 /// Builds scan-conversion edges without infallible Vec growth.
 fn try_collect_fill_edges(contours: &[&[Vector]]) -> Result<Vec<FillEdge>, PathError> {
     let capacity = contours.iter().try_fold(0_usize, |total, contour| {
-        total.checked_add(contour.len()).ok_or(PathError::AllocationFailed)
+        total
+            .checked_add(contour.len())
+            .ok_or(PathError::AllocationFailed)
     })?;
     let mut edges = Vec::new();
     edges
@@ -147,7 +149,8 @@ fn try_collect_fill_edges(contours: &[&[Vector]]) -> Result<Vec<FillEdge>, PathE
         .map_err(|_| PathError::AllocationFailed)?;
     for contour in contours {
         for index in 0..contour.len() {
-            if let Some(edge) = FillEdge::new(contour[index], contour[(index + 1) % contour.len()]) {
+            if let Some(edge) = FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
+            {
                 edges.push(edge);
             }
         }

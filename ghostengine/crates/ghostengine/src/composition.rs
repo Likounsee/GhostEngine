@@ -98,7 +98,11 @@ impl DamageRegion {
         rectangles
             .try_reserve_exact(capacity)
             .map_err(|_| DamageRegionError::AllocationFailed)?;
-        Ok(Self { width, height, rectangles })
+        Ok(Self {
+            width,
+            height,
+            rectangles,
+        })
     }
 
     /// Creates a damage region with reserved storage.
