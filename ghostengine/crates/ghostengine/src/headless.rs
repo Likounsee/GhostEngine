@@ -496,7 +496,8 @@ mod tests {
     }
     #[test]
     fn presentation_after_resize_replaces_the_old_sized_framebuffer() {
-        let mut host = HeadlessHost::new(HostWindowConfig::new("resize presentation", 2, 1)).unwrap();
+        let mut host =
+            HeadlessHost::new(HostWindowConfig::new("resize presentation", 2, 1)).unwrap();
         let initial = Framebuffer::new(2, 1, Color::RED).unwrap();
         host.present(&initial).unwrap();
 
@@ -532,7 +533,8 @@ mod tests {
 
     #[test]
     fn failed_presentation_after_resize_keeps_last_successful_frame() {
-        let mut host = HeadlessHost::new(HostWindowConfig::new("failed resize presentation", 2, 1)).unwrap();
+        let mut host =
+            HeadlessHost::new(HostWindowConfig::new("failed resize presentation", 2, 1)).unwrap();
         let initial = Framebuffer::new(2, 1, Color::RED).unwrap();
         host.present(&initial).unwrap();
 
