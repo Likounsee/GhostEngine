@@ -2141,13 +2141,13 @@ pub fn try_draw_texture_transformed_clipped_parallel_with_threads(
         let pixel_center_x = x as f32 + 0.5;
         horizontal_terms.push((inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x));
     }
-    let mut handles = Vec::new();
-    handles
-        .try_reserve_exact(worker_count)
-        .map_err(|_| TextureDrawError::AllocationFailed)?;
-    let mut any_visible = false;
-
     std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        handles
+            .try_reserve_exact(worker_count)
+            .map_err(|_| TextureDrawError::AllocationFailed)?;
+        let mut any_visible = false;
+
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
             let row_end = (row_start + pixels.len() / width).min(height);
@@ -2265,8 +2265,7 @@ pub fn try_draw_texture_transformed_clipped_parallel_with_threads(
         } else {
             Ok(any_visible)
         }
-    })?;
-    Ok(any_visible)
+    })
 }
 
 /// Draws a texture through an affine transform while preserving source sampling.
