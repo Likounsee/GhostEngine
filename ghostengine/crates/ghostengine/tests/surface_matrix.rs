@@ -269,18 +269,9 @@ fn premultiplied_export_respects_alpha_bounds_for_every_alpha_value() {
                 PixelFormat::Rgb8 | PixelFormat::Bgr8 => unreachable!(),
             };
             assert_eq!(actual_alpha, alpha as u8);
-            assert!(
-                red <= actual_alpha,
-                "red exceeds alpha at {alpha}"
-            );
-            assert!(
-                green <= actual_alpha,
-                "green exceeds alpha at {alpha}"
-            );
-            assert!(
-                blue <= actual_alpha,
-                "blue exceeds alpha at {alpha}"
-            );
+            assert!(red <= actual_alpha, "red exceeds alpha at {alpha}");
+            assert!(green <= actual_alpha, "green exceeds alpha at {alpha}");
+            assert!(blue <= actual_alpha, "blue exceeds alpha at {alpha}");
         }
     }
 }
