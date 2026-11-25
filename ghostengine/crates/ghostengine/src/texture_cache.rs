@@ -78,10 +78,26 @@ pub struct TextureCache {
 
 impl TextureCache {
     /// Creates an empty cache with a maximum pixel-storage budget.
+    ///
+    /// Use try_with_capacity when the expected number of entries is known so
+    /// the first frame does not need to grow the hash table.
     #[must_use]
     pub fn new(budget_bytes: usize) -> Self {
-        Self {
-            entries: HashMap::new(),
+        Self::try_with_capacity(budget_bytes, 0)
+            .expect("failed to allocate texture cache storage")
+    }
+
+    /// Creates a cache and fallibly reserves storage for the expected entries.
+    pub fn try_with_capacity(
+        budget_bytes: usize,
+        entry_capacity: usize,
+    ) -> Result<Self, TextureCacheError> {
+        let mut entries = HashMap::new();
+        entries
+            .try_reserve(entry_capacity)
+            .map_err(|_| TextureCacheError::AllocationFailed)?;
+        Ok(Self {
+            entries,
             budget_bytes,
             used_bytes: 0,
             next_handle: 1,
@@ -89,7 +105,14 @@ impl TextureCache {
             hits: 0,
             misses: 0,
             evictions: 0,
-        }
+        })
+    }
+
+    /// Reserves hash-table capacity without changing cache contents or budget.
+    pub fn try_reserve_entries(&mut self, additional: usize) -> Result<(), TextureCacheError> {
+        self.entries
+            .try_reserve(additional)
+            .map_err(|_| TextureCacheError::AllocationFailed)
     }
 
     /// Inserts a texture, evicting least-recently-used entries if necessary.
@@ -338,6 +361,16 @@ mod tests {
 
     fn texture(color: Color, pixels: usize) -> Texture {
         Texture::new(pixels as u32, 1, vec![color; pixels]).unwrap()
+    }
+
+    #[test]
+    fn fallible_capacity_constructor_and_reservation_preserve_cache_state() {
+        let mut cache = TextureCache::try_with_capacity(128, 8).unwrap();
+        let handle = cache.insert(texture(Color::RED, 2)).unwrap();
+        cache.try_reserve_entries(16).unwrap();
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.peek(handle).unwrap().get_pixel(0, 0), Some(Color::RED));
+        assert_eq!(cache.stats().used_bytes, 8);
     }
 
     #[test]

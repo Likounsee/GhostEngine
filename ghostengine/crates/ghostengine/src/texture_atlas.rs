@@ -149,13 +149,44 @@ pub struct TextureAtlasBuilder {
 impl TextureAtlasBuilder {
     #[must_use]
     pub fn new(width: u32, height: u32, padding: u32) -> Self {
-        Self {
+        Self::try_with_capacity(width, height, padding, 0)
+            .expect("failed to allocate texture atlas builder")
+    }
+
+    /// Creates an atlas builder with preallocated sprite metadata.
+    pub fn try_with_capacity(
+        width: u32,
+        height: u32,
+        padding: u32,
+        sprite_capacity: usize,
+    ) -> Result<Self, TextureAtlasError> {
+        let mut items = Vec::new();
+        items
+            .try_reserve_exact(sprite_capacity)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        let mut ids = HashSet::new();
+        ids.try_reserve(sprite_capacity)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        Ok(Self {
             width,
             height,
             padding,
-            items: Vec::new(),
-            ids: HashSet::new(),
-        }
+            items,
+            ids,
+        })
+    }
+
+    /// Reserves metadata for additional sprites before loading their pixels.
+    pub fn try_reserve_sprites(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), TextureAtlasError> {
+        self.items
+            .try_reserve(additional)
+            .map_err(|_| TextureAtlasError::AllocationFailed)?;
+        self.ids
+            .try_reserve(additional)
+            .map_err(|_| TextureAtlasError::AllocationFailed)
     }
 
     /// Adds a texture by cloning its pixel storage.
@@ -562,6 +593,16 @@ mod tests {
             TextureFilter::Nearest,
             Rect::new(0, 0, 4, 4),
         ));
+    }
+
+    #[test]
+    fn fallible_builder_capacity_reserves_sprite_metadata() {
+        let texture = Texture::new(1, 1, vec![Color::RED]).unwrap();
+        let mut builder = TextureAtlasBuilder::try_with_capacity(8, 8, 1, 4).unwrap();
+        builder.try_reserve_sprites(8).unwrap();
+        builder.add(7, &texture).unwrap();
+        let atlas = builder.build_atlas().unwrap();
+        assert_eq!(atlas.region(7).unwrap().rect.width, 1);
     }
 
     #[test]

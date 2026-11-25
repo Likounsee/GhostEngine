@@ -54,8 +54,19 @@ pub struct BidiRun {
 /// reverse UTF-8 bytes or characters; each range must be shaped independently
 /// with its returned direction.
 pub fn resolve_bidi_runs(text: &str) -> Vec<BidiRun> {
+    try_resolve_bidi_runs(text).unwrap_or_default()
+}
+
+/// Resolves visual bidi runs while reserving output storage fallibly.
+///
+/// The Unicode bidi algorithm may still allocate internally; this API makes
+/// GhostEngine's own run-vector allocation explicit and recoverable.
+pub fn try_resolve_bidi_runs(text: &str) -> Result<Vec<BidiRun>, ShapingError> {
     let bidi = unicode_bidi::BidiInfo::new(text, None);
     let mut output = Vec::new();
+    output
+        .try_reserve_exact(text.len())
+        .map_err(|_| ShapingError::AllocationFailed)?;
     for paragraph in &bidi.paragraphs {
         let (_, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
         for range in runs {
@@ -74,7 +85,7 @@ pub fn resolve_bidi_runs(text: &str) -> Vec<BidiRun> {
             });
         }
     }
-    output
+    Ok(output)
 }
 
 /// Errors returned while shaping text.
@@ -82,6 +93,7 @@ pub fn resolve_bidi_runs(text: &str) -> Vec<BidiRun> {
 pub enum ShapingError {
     InvalidFont,
     InvalidPixelSize,
+    AllocationFailed,
 }
 
 impl OpenTypeShaper {
@@ -145,19 +157,22 @@ impl OpenTypeShaper {
         });
         let shaped = rustybuzz::shape(&face, &[], buffer);
 
-        let glyphs = shaped
-            .glyph_infos()
-            .iter()
-            .zip(shaped.glyph_positions())
-            .map(|(info, position)| ShapedGlyph {
+        let infos = shaped.glyph_infos();
+        let positions = shaped.glyph_positions();
+        let mut glyphs = Vec::new();
+        glyphs
+            .try_reserve_exact(infos.len())
+            .map_err(|_| ShapingError::AllocationFailed)?;
+        for (info, position) in infos.iter().zip(positions) {
+            glyphs.push(ShapedGlyph {
                 glyph_id: info.glyph_id,
                 cluster: info.cluster,
                 x_advance: position.x_advance as f32 * scale,
                 y_advance: position.y_advance as f32 * scale,
                 x_offset: position.x_offset as f32 * scale,
                 y_offset: position.y_offset as f32 * scale,
-            })
-            .collect::<Vec<_>>();
+            });
+        }
 
         // A finite input size can still overflow when multiplied by unusually
         // large font-unit positions. Never expose infinities or NaNs to layout
@@ -298,6 +313,13 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].direction, TextDirection::RightToLeft);
         assert_eq!(text.get(runs[0].byte_range.clone()), Some(text));
+    }
+
+    #[test]
+    fn fallible_bidi_resolution_preserves_visual_run_results() {
+        let text = "abc אבג 123";
+        assert_eq!(super::try_resolve_bidi_runs(text).unwrap(), super::resolve_bidi_runs(text));
+        assert!(super::try_resolve_bidi_runs("").unwrap().is_empty());
     }
 
     #[test]
