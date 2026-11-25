@@ -663,6 +663,9 @@ impl DisplayList {
         let transform = transform.then(self.active_transform());
         path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
+            self.commands
+                .try_reserve(1)
+                .map_err(|_| PathError::AllocationFailed)?;
             self.commands.push(Command::FillPath {
                 path,
                 transform,
@@ -926,6 +929,9 @@ impl DisplayList {
         }
         path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
+            self.commands
+                .try_reserve(1)
+                .map_err(|_| StrokeError::AllocationFailed)?;
             self.commands.push(Command::StrokePath {
                 path,
                 transform,
@@ -1852,6 +1858,66 @@ mod tests {
         assert!(list.pop_clip());
         assert!(list.pop_clip());
         assert!(!list.pop_clip());
+    }
+
+    #[test]
+    fn fallible_path_and_stroke_recording_reuse_reserved_command_storage() {
+        let mut list = DisplayList::try_with_capacity(2).unwrap();
+        let initial_capacity = list.command_capacity();
+
+        list.fill_triangle(
+            Point::new(1, 1),
+            Point::new(7, 1),
+            Point::new(4, 7),
+            Color::RED,
+        )
+        .unwrap();
+        list.stroke_triangle(
+            Point::new(1, 1),
+            Point::new(7, 1),
+            Point::new(4, 7),
+            StrokeStyle::new(1.5),
+            Color::WHITE,
+        )
+        .unwrap();
+
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.command_capacity(), initial_capacity);
+
+        let mut target = Framebuffer::new(9, 9, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 2);
+        assert_eq!(stats.commands_executed, 2);
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::RED));
+        assert!(target.pixels().iter().any(|pixel| *pixel == Color::WHITE));
+    }
+
+    #[test]
+    fn fallible_path_recording_rejects_invalid_geometry_without_partial_command() {
+        let mut list = DisplayList::new();
+        let invalid = crate::Path::new()
+            .move_to(crate::Vector::new(f32::NAN, 0.0))
+            .line_to(crate::Vector::new(4.0, 4.0));
+
+        assert!(list
+            .fill_path(invalid, Transform2D::IDENTITY, Color::RED, 0.25)
+            .is_err());
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn fallible_stroke_recording_rejects_invalid_style_without_partial_command() {
+        let mut list = DisplayList::new();
+        let result = list.stroke_triangle(
+            Point::new(1, 1),
+            Point::new(7, 1),
+            Point::new(4, 7),
+            StrokeStyle::new(f32::NAN),
+            Color::WHITE,
+        );
+
+        assert_eq!(result, Err(super::StrokeError::InvalidWidth));
+        assert!(list.is_empty());
     }
 
     #[test]
