@@ -14,14 +14,89 @@ use fontdue::Font;
 
 const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
 /// A loaded TrueType/OpenType font backed by the fontdue parser and rasterizer.
 pub struct FontFace {
     font: Font,
     shaper: OpenTypeShaper,
-    glyph_cache: Mutex<HashMap<(u32, char), Arc<CachedGlyph>>>,
-    indexed_glyph_cache: Mutex<HashMap<(u32, u16), Arc<CachedGlyph>>>,
+    glyph_cache: Mutex<GlyphCache<(u32, char)>>,
+    indexed_glyph_cache: Mutex<GlyphCache<(u32, u16)>>,
+}
+
+#[derive(Debug)]
+struct GlyphCacheEntry {
+    glyph: Arc<CachedGlyph>,
+    last_used: u64,
+}
+
+/// Small, bounded LRU used by both character and shaped-glyph raster caches.
+///
+/// Recency uses wrapping arithmetic. Because the cache is bounded, an entry
+/// cannot remain resident for anything close to half the u64 clock range, so
+/// wrapping subtraction preserves the ordering of all live entries.
+#[derive(Debug)]
+struct GlyphCache<K> {
+    entries: HashMap<K, GlyphCacheEntry>,
+    clock: u64,
+}
+
+impl<K: Eq + Hash> GlyphCache<K> {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            clock: 0,
+        }
+    }
+
+    fn tick(&mut self) -> u64 {
+        self.clock = self.clock.wrapping_add(1);
+        self.clock
+    }
+
+    fn get(&mut self, key: &K) -> Option<Arc<CachedGlyph>> {
+        let now = self.tick();
+        let entry = self.entries.get_mut(key)?;
+        entry.last_used = now;
+        Some(Arc::clone(&entry.glyph))
+    }
+
+    fn insert(&mut self, key: K, glyph: Arc<CachedGlyph>) -> Arc<CachedGlyph> {
+        let now = self.tick();
+        if let Some(entry) = self.entries.get_mut(&key) {
+            entry.last_used = now;
+            return Arc::clone(&entry.glyph);
+        }
+
+        if self.entries.len() >= MAX_CACHED_GLYPHS_PER_FONT {
+            if let Some(oldest) = self
+                .entries
+                .iter()
+                .max_by_key(|(_, entry)| now.wrapping_sub(entry.last_used))
+                .map(|(key, _)| key)
+            {
+                self.entries.remove(oldest);
+            }
+        }
+
+        self.entries.insert(
+            key,
+            GlyphCacheEntry {
+                glyph: Arc::clone(&glyph),
+                last_used: now,
+            },
+        );
+        glyph
+    }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 #[derive(Debug)]
@@ -44,8 +119,8 @@ impl FontFace {
         Ok(Self {
             font,
             shaper,
-            glyph_cache: Mutex::new(HashMap::new()),
-            indexed_glyph_cache: Mutex::new(HashMap::new()),
+            glyph_cache: Mutex::new(GlyphCache::new()),
+            indexed_glyph_cache: Mutex::new(GlyphCache::new()),
         })
     }
 
@@ -68,12 +143,12 @@ impl FontFace {
     fn glyph_index(&self, glyph_index: u16, pixel_size: f32) -> Arc<CachedGlyph> {
         let key = (pixel_size.to_bits(), glyph_index);
         {
-            let cache = self
+            let mut cache = self
                 .indexed_glyph_cache
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(glyph) = cache.get(&key) {
-                return Arc::clone(glyph);
+                return glyph;
             }
         }
 
@@ -92,14 +167,7 @@ impl FontFace {
             .indexed_glyph_cache
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(existing) = cache.get(&key) {
-            return Arc::clone(existing);
-        }
-        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
-            cache.clear();
-        }
-        cache.insert(key, Arc::clone(&glyph));
-        glyph
+        cache.insert(key, glyph)
     }
 
     /// Returns whether this face contains a glyph for the character.
@@ -175,12 +243,12 @@ impl FontFace {
     fn glyph(&self, character: char, pixel_size: f32) -> Arc<CachedGlyph> {
         let key = (pixel_size.to_bits(), character);
         {
-            let cache = self
+            let mut cache = self
                 .glyph_cache
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(glyph) = cache.get(&key) {
-                return Arc::clone(glyph);
+                return glyph;
             }
         }
 
@@ -199,15 +267,7 @@ impl FontFace {
             .glyph_cache
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(existing) = cache.get(&key) {
-            return Arc::clone(existing);
-        }
-        if cache.len() >= MAX_CACHED_GLYPHS_PER_FONT {
-            // Bound memory when applications animate font sizes or render arbitrary text.
-            cache.clear();
-        }
-        cache.insert(key, Arc::clone(&glyph));
-        glyph
+        cache.insert(key, glyph)
     }
 }
 
@@ -2940,20 +3000,47 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
         let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
 
-        for codepoint in 0x1000..(0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32 + 1) {
+        let first_character = char::from_u32(0x1000).expect("test codepoint should be valid");
+        let second_character = char::from_u32(0x1001).expect("test codepoint should be valid");
+        for codepoint in 0x1000..(0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32) {
             let character = char::from_u32(codepoint).expect("test codepoint should be valid");
             let _ = font.glyph(character, 1.0);
         }
-        assert_eq!(font.glyph_cache.lock().unwrap().len(), 1);
+        // A hit refreshes recency: the first entry must survive the next insert,
+        // while the untouched second entry is evicted instead of clearing the cache.
+        let _ = font.glyph(first_character, 1.0);
+        let newest_character = char::from_u32(
+            0x1000 + MAX_CACHED_GLYPHS_PER_FONT as u32,
+        )
+        .expect("newest test codepoint should be valid");
+        let _ = font.glyph(newest_character, 1.0);
+        {
+            let cache = font.glyph_cache.lock().unwrap();
+            assert_eq!(cache.len(), MAX_CACHED_GLYPHS_PER_FONT);
+            assert!(cache.entries.contains_key(&(1.0_f32.to_bits(), first_character)));
+            assert!(!cache.entries.contains_key(&(1.0_f32.to_bits(), second_character)));
+            assert!(cache.entries.contains_key(&(1.0_f32.to_bits(), newest_character)));
+        }
 
         let valid_glyph_index = font.font.lookup_glyph_index('ש');
         assert_ne!(valid_glyph_index, 0);
-        for index in 0..=MAX_CACHED_GLYPHS_PER_FONT {
+        for index in 0..MAX_CACHED_GLYPHS_PER_FONT {
             let pixel_size = 1.0 + index as f32 / MAX_CACHED_GLYPHS_PER_FONT as f32;
             let _ = font.glyph_index(valid_glyph_index, pixel_size);
         }
-        assert_eq!(font.indexed_glyph_cache.lock().unwrap().len(), 1);
-        assert_eq!(font.cached_glyph_count(), 2);
+        let first_size = 1.0_f32;
+        let second_size = 1.0 + 1.0 / MAX_CACHED_GLYPHS_PER_FONT as f32;
+        let _ = font.glyph_index(valid_glyph_index, first_size);
+        let newest_size = 2.0;
+        let _ = font.glyph_index(valid_glyph_index, newest_size);
+        {
+            let cache = font.indexed_glyph_cache.lock().unwrap();
+            assert_eq!(cache.len(), MAX_CACHED_GLYPHS_PER_FONT);
+            assert!(cache.entries.contains_key(&(first_size.to_bits(), valid_glyph_index)));
+            assert!(!cache.entries.contains_key(&(second_size.to_bits(), valid_glyph_index)));
+            assert!(cache.entries.contains_key(&(newest_size.to_bits(), valid_glyph_index)));
+        }
+        assert_eq!(font.cached_glyph_count(), MAX_CACHED_GLYPHS_PER_FONT * 2);
     }
 
     #[test]
