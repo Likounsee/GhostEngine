@@ -397,7 +397,7 @@ fn stroke_path_impl_rows(
         };
         // Prepare segment vectors and cap projections once per contour instead
         // of rebuilding them for every pixel and every antialiasing sample.
-        let mut segments = Vec::new();
+        let mut segments: Vec<StrokeSegment> = Vec::new();
         segments
             .try_reserve_exact(segment_count)
             .map_err(|_| StrokeError::AllocationFailed)?;
@@ -420,7 +420,7 @@ fn stroke_path_impl_rows(
         }
 
         let join_capacity = join_count(&contour.points, contour.closed);
-        let mut joins = Vec::new();
+        let mut joins: Vec<PreparedJoin> = Vec::new();
         joins
             .try_reserve_exact(join_capacity)
             .map_err(|_| StrokeError::AllocationFailed)?;
@@ -447,19 +447,19 @@ fn stroke_path_impl_rows(
         // Reserve all active/pixel candidate buffers up front. Their lengths can
         // never exceed the total prepared geometry, so scan conversion does not
         // allocate while walking rows or pixels.
-        let mut row_segments_x = Vec::new();
+        let mut row_segments_x: Vec<StrokeSegment> = Vec::new();
         row_segments_x
             .try_reserve_exact(segments.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut row_joins_x = Vec::new();
+        let mut row_joins_x: Vec<PreparedJoin> = Vec::new();
         row_joins_x
             .try_reserve_exact(joins.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut pixel_segments = Vec::new();
+        let mut pixel_segments: Vec<StrokeSegment> = Vec::new();
         pixel_segments
             .try_reserve_exact(segments.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut pixel_joins = Vec::new();
+        let mut pixel_joins: Vec<PreparedJoin> = Vec::new();
         pixel_joins
             .try_reserve_exact(joins.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
