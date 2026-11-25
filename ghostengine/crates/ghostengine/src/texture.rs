@@ -2576,7 +2576,8 @@ mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
         draw_texture_transformed_clipped, sample_bilinear_prepared,
-        try_draw_texture_transformed_clipped, BilinearCoordinates, Texture, TextureError,
+        try_draw_texture_region_clipped_with_scratch, try_draw_texture_transformed_clipped,
+        BilinearCoordinates, Texture, TextureError,
         TextureFilter,
     };
     use crate::{
@@ -3417,6 +3418,45 @@ mod tests {
             Rect::new(8, 8, 2, 2),
         );
         assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
+    }
+
+    #[test]
+    fn fallible_atlas_region_draw_matches_infallible_reference() {
+        let texture = Texture::new(
+            2,
+            2,
+            vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE],
+        )
+        .unwrap();
+        let mut expected = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+        let mut actual = expected.clone();
+        let source = Rect::new(0, 0, 2, 2);
+        let destination = Rect::new(0, 0, 8, 8);
+        let clip = Rect::new(0, 0, 8, 8);
+
+        draw_texture_region_clipped_with_scratch(
+            &mut expected,
+            &texture,
+            source,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut TextureDrawScratch::default(),
+        );
+        let mut scratch = TextureDrawScratch::default();
+        try_draw_texture_region_clipped_with_scratch(
+            &mut actual,
+            &texture,
+            source,
+            destination,
+            TextureFilter::Bilinear,
+            clip,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(scratch.region_horizontal_cache.len(), 4 * 8);
     }
 
     #[test]
