@@ -184,3 +184,59 @@ fn every_validation_failure_is_transactional_for_import_and_export() {
     );
     assert_eq!(frame, before);
 }
+
+#[test]
+fn linear_srgb_transfer_matches_reference_values_and_round_trips_all_channels() {
+    let mut frame = Framebuffer::new(256, 1, Color::BLACK).unwrap();
+    for (channel, pixel) in frame.pixels_mut().iter_mut().enumerate() {
+        let value = channel as u8;
+        *pixel = Color::rgba(value, value, value, 255);
+    }
+
+    let descriptor = SurfaceDescriptor::tightly_packed(
+        256,
+        1,
+        PixelFormat::Rgba8,
+        AlphaMode::Opaque,
+        ColorSpace::LinearSrgb,
+    );
+    let mut linear = vec![0; descriptor.required_buffer_len().unwrap()];
+    frame.write_to_surface(&mut linear, descriptor).unwrap();
+
+    assert_eq!(&linear[0..4], &[0, 0, 0, 255]);
+    assert_eq!(&linear[128 * 4..128 * 4 + 4], &[55, 55, 55, 255]);
+    assert_eq!(&linear[255 * 4..255 * 4 + 4], &[255, 255, 255, 255]);
+
+    for pair in linear.chunks_exact(4).collect::<Vec<_>>().windows(2) {
+        assert!(pair[0][0] <= pair[1][0], "linear transfer must be monotonic");
+    }
+
+    let mut restored = Framebuffer::new(256, 1, Color::MAGENTA).unwrap();
+    restored.read_from_surface(&linear, descriptor).unwrap();
+    for (channel, pixel) in restored.pixels().iter().enumerate() {
+        let expected = channel as i16;
+        for actual in [pixel.r, pixel.g, pixel.b] {
+            assert!(
+                (i16::from(actual) - expected).abs() <= 6,
+                "sRGB channel {channel} round-tripped to {actual}"
+            );
+        }
+        assert_eq!(pixel.a, 255);
+    }
+
+    let linear_midpoint = [128, 128, 128, 255];
+    let mut midpoint = Framebuffer::new(1, 1, Color::BLACK).unwrap();
+    midpoint
+        .read_from_surface(
+            &linear_midpoint,
+            SurfaceDescriptor::tightly_packed(
+                1,
+                1,
+                PixelFormat::Rgba8,
+                AlphaMode::Opaque,
+                ColorSpace::LinearSrgb,
+            ),
+        )
+        .unwrap();
+    assert_eq!(midpoint.get_pixel(0, 0), Some(Color::rgb(188, 188, 188)));
+}
