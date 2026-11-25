@@ -1099,6 +1099,8 @@ pub fn draw_texture_nine_slice_clipped_with_scratch(
 pub enum TextureDrawError {
     /// Temporary sampling storage could not be allocated.
     AllocationFailed,
+    /// A scoped rendering worker panicked.
+    WorkerPanicked,
 }
 
 /// Reusable temporary storage for repeated texture draws.
@@ -1971,10 +1973,8 @@ fn transformed_scanline_x_range(
 
 /// Draws an affine-transformed texture using independent destination row bands.
 ///
-/// This is the parallel counterpart of draw_texture_transformed_clipped.
-/// It preserves the inverse-mapped pixel-center sampling and blends each pixel
-/// exactly once. Workers own disjoint framebuffer slices; the source texture and
-/// transform are shared read-only.
+/// This compatibility wrapper preserves the boolean API and panics only if
+/// temporary sampling storage cannot be allocated or a worker fails.
 pub fn draw_texture_transformed_clipped_parallel_with_threads(
     target: &mut Framebuffer,
     texture: &Texture,
@@ -1984,41 +1984,69 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     clip: Rect,
     threads: usize,
 ) -> bool {
+    try_draw_texture_transformed_clipped_parallel_with_threads(
+        target,
+        texture,
+        destination,
+        transform,
+        filter,
+        clip,
+        threads,
+    )
+    .expect("parallel transformed texture drawing failed")
+}
+
+/// Fallibly draws an affine-transformed texture using independent destination row bands.
+///
+/// Horizontal lookup storage and worker handles are reserved before framebuffer
+/// pixels are changed. Allocation failures are reported to the caller.
+pub fn try_draw_texture_transformed_clipped_parallel_with_threads(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    destination: Rect,
+    transform: Transform2D,
+    filter: TextureFilter,
+    clip: Rect,
+    threads: usize,
+) -> Result<bool, TextureDrawError> {
+    if target.width() == 0 || target.height() == 0 {
+        return Ok(false);
+    }
     if threads <= 1 || destination.width.saturating_mul(destination.height) < 131_072 {
-        return draw_texture_transformed_clipped(
+        return Ok(draw_texture_transformed_clipped(
             target,
             texture,
             destination,
             transform,
             filter,
             clip,
-        );
+        ));
     }
     if destination.width == 0 || destination.height == 0 || !transform.is_finite() {
-        return false;
+        return Ok(false);
     }
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
-        return false;
+        return Ok(false);
     };
     if transform == Transform2D::IDENTITY {
         let Some(visible) = destination.intersection(clip) else {
-            return false;
+            return Ok(false);
         };
         if visible.width == 0 || visible.height == 0 {
-            return false;
+            return Ok(false);
         }
-        draw_texture_clipped_parallel_with_threads(
+        try_draw_texture_clipped_parallel_with_threads(
             target,
             texture,
             destination,
             filter,
             clip,
             threads,
-        );
-        return true;
+        )?;
+        return Ok(true);
     }
     let Some(inverse) = transform.inverse() else {
-        return false;
+        return Ok(false);
     };
     let reciprocal_m11 = if inverse.m11 == 0.0 {
         0.0
@@ -2045,7 +2073,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
         .iter()
         .any(|point| !point.x.is_finite() || !point.y.is_finite())
     {
-        return false;
+        return Ok(false);
     }
     let min_x = corners
         .iter()
@@ -2070,7 +2098,7 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     let end_x = max_x.ceil().max(clip.x as f32).min(clip_right as f32) as u32;
     let end_y = max_y.ceil().max(clip.y as f32).min(clip_bottom as f32) as u32;
     if first_x >= end_x || first_y >= end_y {
-        return false;
+        return Ok(false);
     }
 
     let local_left = destination.x as f32;
@@ -2103,16 +2131,23 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
     // the two X multiplications and pixel-center conversion on every row.
     // Keeping the same multiplication and addition order preserves the
     // previous per-pixel coordinates exactly.
-    let horizontal_terms: Vec<(f32, f32)> = (first_x..end_x)
-        .map(|x| {
-            let pixel_center_x = x as f32 + 0.5;
-            (inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x)
-        })
-        .collect();
+    let sample_count =
+        usize::try_from(end_x - first_x).map_err(|_| TextureDrawError::AllocationFailed)?;
+    let mut horizontal_terms = Vec::new();
+    horizontal_terms
+        .try_reserve_exact(sample_count)
+        .map_err(|_| TextureDrawError::AllocationFailed)?;
+    for x in first_x..end_x {
+        let pixel_center_x = x as f32 + 0.5;
+        horizontal_terms.push((inverse.m11 * pixel_center_x, inverse.m21 * pixel_center_x));
+    }
+    let mut handles = Vec::new();
+    handles
+        .try_reserve_exact(worker_count)
+        .map_err(|_| TextureDrawError::AllocationFailed)?;
     let mut any_visible = false;
 
     std::thread::scope(|scope| {
-        let mut handles = Vec::new();
         for (worker_index, pixels) in target.pixels_mut().chunks_mut(chunk_len).enumerate() {
             let row_start = worker_index * rows_per_worker;
             let row_end = (row_start + pixels.len() / width).min(height);
@@ -2218,11 +2253,20 @@ pub fn draw_texture_transformed_clipped_parallel_with_threads(
                 worker_visible
             }));
         }
+        let mut worker_panicked = false;
         for handle in handles {
-            any_visible |= handle.join().unwrap_or(false);
+            match handle.join() {
+                Ok(visible) => any_visible |= visible,
+                Err(_) => worker_panicked = true,
+            }
         }
-    });
-    any_visible
+        if worker_panicked {
+            Err(TextureDrawError::WorkerPanicked)
+        } else {
+            Ok(any_visible)
+        }
+    })?;
+    Ok(any_visible)
 }
 
 /// Draws a texture through an affine transform while preserving source sampling.
@@ -3121,7 +3165,10 @@ mod tests {
 
     #[test]
     fn parallel_transformed_texture_matches_sequential_for_both_filters() {
-        use super::draw_texture_transformed_clipped_parallel_with_threads;
+        use super::{
+            draw_texture_transformed_clipped_parallel_with_threads,
+            try_draw_texture_transformed_clipped_parallel_with_threads,
+        };
 
         let texture = Texture::new(
             256,
@@ -3144,6 +3191,7 @@ mod tests {
         for filter in [TextureFilter::Nearest, TextureFilter::Bilinear] {
             let mut sequential = Framebuffer::new(640, 480, Color::rgba(21, 43, 65, 177)).unwrap();
             let mut parallel = sequential.clone();
+            let mut fallible_parallel = sequential.clone();
             let destination = Rect::new(10, 12, 400, 350);
             let clip = Rect::new(5, 7, 620, 460);
             let expected_visible = draw_texture_transformed_clipped(
@@ -3165,6 +3213,19 @@ mod tests {
             );
             assert_eq!(actual_visible, expected_visible);
             assert_eq!(parallel.pixels(), sequential.pixels());
+
+            let fallible_visible = try_draw_texture_transformed_clipped_parallel_with_threads(
+                &mut fallible_parallel,
+                &texture,
+                destination,
+                transform,
+                filter,
+                clip,
+                4,
+            )
+            .unwrap();
+            assert_eq!(fallible_visible, expected_visible);
+            assert_eq!(fallible_parallel.pixels(), sequential.pixels());
         }
     }
 
