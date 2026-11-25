@@ -132,10 +132,11 @@ impl CachedLayer {
         height: u32,
         clear: Color,
     ) -> Result<(), FramebufferError> {
-        self.framebuffer.resize_and_clear(width, height, clear)?;
-        self.damage.reset(width, height);
-        self.mark_dirty_all();
-        Ok(())
+        self.try_resize(width, height, clear)
+            .map_err(|error| match error {
+                CachedLayerError::Framebuffer(error) => error,
+                CachedLayerError::DamageRegion(_) => FramebufferError::AllocationFailed,
+            })
     }
 
     /// Composites the retained pixels at a new position without rerendering.
@@ -322,6 +323,24 @@ mod tests {
         assert_eq!(target.get_pixel(0, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(3, 0), Some(Color::RED));
         assert_eq!(target.get_pixel(2, 0), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn infallible_resize_matches_fallible_transactional_resize() {
+        let mut convenience = CachedLayer::new(3, 2, Color::BLACK).unwrap();
+        let mut fallible = CachedLayer::try_new(3, 2, Color::BLACK).unwrap();
+
+        convenience.render_if_dirty(|target, _| target.clear(Color::RED));
+        fallible.render_if_dirty(|target, _| target.clear(Color::RED));
+        convenience.mark_dirty(Rect::new(1, 0, 1, 1));
+        fallible.try_mark_dirty(Rect::new(1, 0, 1, 1)).unwrap();
+
+        convenience.resize(7, 4, Color::BLUE).unwrap();
+        fallible.try_resize(7, 4, Color::BLUE).unwrap();
+
+        assert_eq!(convenience, fallible);
+        assert!(convenience.damage().covers_entire_target());
+        assert_eq!(convenience.rendered_frames(), 1);
     }
 
     #[test]

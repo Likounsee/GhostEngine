@@ -326,7 +326,8 @@ impl DamageRegion {
             .try_reserve(1usize.saturating_sub(self.rectangles.len()))
             .map_err(|_| DamageRegionError::AllocationFailed)?;
         self.rectangles.clear();
-        self.rectangles.push(Rect::new(0, 0, self.width, self.height));
+        self.rectangles
+            .push(Rect::new(0, 0, self.width, self.height));
         Ok(())
     }
 
@@ -2366,17 +2367,12 @@ mod tests {
         let mut target = Framebuffer::new(16, 12, Color::BLACK).unwrap();
         let mut cache = LayerGroupCache::default();
         let mut scratch = LayerGroupScratch::default();
-        compose_layer_groups_cached(&mut target, &[(5, &group)], &mut cache, &mut scratch)
-            .unwrap();
+        compose_layer_groups_cached(&mut target, &[(5, &group)], &mut cache, &mut scratch).unwrap();
 
         assert!(!cache.try_mark_dirty(99, Rect::new(0, 0, 1, 1)).unwrap());
         assert!(!cache.try_invalidate(99).unwrap());
-        assert!(cache
-            .try_mark_dirty(5, Rect::new(1, 1, 2, 2))
-            .unwrap());
-        assert!(cache
-            .try_mark_dirty(5, Rect::new(8, 5, 2, 2))
-            .unwrap());
+        assert!(cache.try_mark_dirty(5, Rect::new(1, 1, 2, 2)).unwrap());
+        assert!(cache.try_mark_dirty(5, Rect::new(8, 5, 2, 2)).unwrap());
         assert!(cache.entries[&5].damage.rectangles().len() > 1);
 
         assert!(cache.try_invalidate(5).unwrap());
