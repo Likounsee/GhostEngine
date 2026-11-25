@@ -68,10 +68,6 @@ struct GlyphCache<K> {
 }
 
 impl<K: Eq + Hash + Clone> GlyphCache<K> {
-    fn new() -> Self {
-        Self::with_budget(MAX_CACHED_GLYPH_BYTES_PER_FONT)
-    }
-
     fn with_budget(budget_bytes: usize) -> Self {
         Self {
             entries: HashMap::new(),
@@ -147,6 +143,16 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
             return glyph;
         }
 
+        let needs_eviction = self.entries.len() >= MAX_CACHED_GLYPHS_PER_FONT
+            || self.used_bytes > self.budget_bytes - bytes;
+        // A cache is an optimization: if growing its hash table fails, keep
+        // the freshly rasterized glyph usable and leave retained entries intact.
+        // When eviction is already required, removing an entry creates the
+        // slot without growing the table.
+        if !needs_eviction && self.entries.try_reserve(1).is_err() {
+            return glyph;
+        }
+
         while self.entries.len() >= MAX_CACHED_GLYPHS_PER_FONT
             || self.used_bytes > self.budget_bytes - bytes
         {
@@ -174,10 +180,6 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
         );
         self.used_bytes += bytes;
         glyph
-    }
-
-    fn len(&self) -> usize {
-        self.entries.len()
     }
 
     fn stats(&self) -> GlyphCacheStats {
@@ -3164,6 +3166,36 @@ mod tests {
         cache.clear();
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.used_bytes, 0);
+    }
+
+    #[test]
+    fn duplicate_cache_insert_keeps_one_bitmap_and_one_accounting_record() {
+        use super::{CachedGlyph, GlyphCache};
+        use std::sync::Arc;
+
+        let mut cache = GlyphCache::<u8>::with_budget(16);
+        let make_glyph = |value| {
+            Arc::new(CachedGlyph {
+                xmin: 0,
+                ymin: 0,
+                width: 2,
+                height: 2,
+                advance_width: 2.0,
+                bitmap: Arc::from([value; 4]),
+            })
+        };
+
+        let first = make_glyph(10);
+        let concurrent = make_glyph(20);
+        let retained = cache.insert(7, Arc::clone(&first));
+        let duplicate = cache.insert(7, Arc::clone(&concurrent));
+
+        assert!(Arc::ptr_eq(&retained, &first));
+        assert!(Arc::ptr_eq(&duplicate, &first));
+        assert_eq!(cache.entries.len(), 1);
+        assert_eq!(cache.used_bytes, 4);
+        assert_eq!(cache.stats().entries, 1);
+        assert_eq!(cache.stats().used_bytes, 4);
     }
 
     #[test]
