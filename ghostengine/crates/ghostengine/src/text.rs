@@ -182,6 +182,11 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
         glyph
     }
 
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     fn stats(&self) -> GlyphCacheStats {
         GlyphCacheStats {
             entries: self.entries.len(),
