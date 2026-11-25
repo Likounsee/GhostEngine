@@ -15,6 +15,23 @@ use fontdue::Font;
 const MAX_CACHED_GLYPHS_PER_FONT: usize = 4096;
 /// Bounds retained bitmap memory independently of the number of glyph variants.
 const MAX_CACHED_GLYPH_BYTES_PER_FONT: usize = 16 * 1024 * 1024;
+
+/// Snapshot of the two raster caches owned by a font face.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GlyphCacheStats {
+    /// Number of retained character and shaped-glyph entries.
+    pub entries: usize,
+    /// Bitmap bytes currently retained by both caches.
+    pub used_bytes: usize,
+    /// Combined bitmap budget of both caches.
+    pub budget_bytes: usize,
+    /// Successful cache lookups.
+    pub hits: u64,
+    /// Lookups that required rasterization.
+    pub misses: u64,
+    /// Entries removed to keep either cache within its limits.
+    pub evictions: u64,
+}
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
@@ -45,6 +62,9 @@ struct GlyphCache<K> {
     clock: u64,
     budget_bytes: usize,
     used_bytes: usize,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
 }
 
 impl<K: Eq + Hash + Clone> GlyphCache<K> {
@@ -58,6 +78,9 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
             clock: 0,
             budget_bytes,
             used_bytes: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
         }
     }
 
@@ -68,9 +91,17 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
 
     fn get(&mut self, key: &K) -> Option<Arc<CachedGlyph>> {
         let now = self.tick();
-        let entry = self.entries.get_mut(key)?;
-        entry.last_used = now;
-        Some(Arc::clone(&entry.glyph))
+        match self.entries.get_mut(key) {
+            Some(entry) => {
+                entry.last_used = now;
+                self.hits = self.hits.saturating_add(1);
+                Some(Arc::clone(&entry.glyph))
+            }
+            None => {
+                self.misses = self.misses.saturating_add(1);
+                None
+            }
+        }
     }
 
     fn insert(&mut self, key: K, glyph: Arc<CachedGlyph>) -> Arc<CachedGlyph> {
@@ -100,6 +131,7 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
             };
             if let Some(removed) = self.entries.remove(&oldest) {
                 self.used_bytes -= removed.bytes;
+                self.evictions = self.evictions.saturating_add(1);
             }
         }
 
@@ -117,6 +149,23 @@ impl<K: Eq + Hash + Clone> GlyphCache<K> {
 
     fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    fn stats(&self) -> GlyphCacheStats {
+        GlyphCacheStats {
+            entries: self.entries.len(),
+            used_bytes: self.used_bytes,
+            budget_bytes: self.budget_bytes,
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+        }
+    }
+
+    fn reset_stats(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+        self.evictions = 0;
     }
 
     fn clear(&mut self) {
@@ -238,20 +287,29 @@ impl FontFace {
         layout_metrics(self, text, pixel_size)
     }
 
+    /// Returns a combined snapshot of the character and shaped-glyph raster caches.
+    #[must_use]
+    pub fn glyph_cache_stats(&self) -> GlyphCacheStats {
+        let character = self.glyph_cache.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stats();
+        let indexed = self.indexed_glyph_cache.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stats();
+        GlyphCacheStats {
+            entries: character.entries.saturating_add(indexed.entries),
+            used_bytes: character.used_bytes.saturating_add(indexed.used_bytes),
+            budget_bytes: character.budget_bytes.saturating_add(indexed.budget_bytes),
+            hits: character.hits.saturating_add(indexed.hits),
+            misses: character.misses.saturating_add(indexed.misses),
+            evictions: character.evictions.saturating_add(indexed.evictions),
+        }
+    }
+
     /// Number of distinct character- and glyph-ID/size pairs retained by this font.
     #[must_use]
     pub fn cached_glyph_count(&self) -> usize {
-        let character_count = self
-            .glyph_cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len();
-        let indexed_count = self
-            .indexed_glyph_cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len();
-        character_count + indexed_count
+        self.glyph_cache_stats().entries
     }
 
     /// Returns the bitmap bytes currently retained by both glyph caches.
@@ -259,17 +317,17 @@ impl FontFace {
     /// This excludes temporary glyph references held by active draw calls.
     #[must_use]
     pub fn cached_glyph_bytes(&self) -> usize {
-        let character_bytes = self
-            .glyph_cache
-            .lock()
+        self.glyph_cache_stats().used_bytes
+    }
+
+    /// Resets cache lookup and eviction counters without discarding glyphs.
+    pub fn reset_glyph_cache_stats(&self) {
+        self.glyph_cache.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .used_bytes;
-        let indexed_bytes = self
-            .indexed_glyph_cache
-            .lock()
+            .reset_stats();
+        self.indexed_glyph_cache.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .used_bytes;
-        character_bytes.saturating_add(indexed_bytes)
+            .reset_stats();
     }
 
     /// Releases both character and shaped-glyph bitmaps. They are regenerated on demand.
@@ -2995,7 +3053,7 @@ fn layout_metrics(font: &FontFace, text: &str, pixel_size: f32) -> TextMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::{FontFace, MAX_CACHED_GLYPHS_PER_FONT, MAX_CACHED_GLYPH_BYTES_PER_FONT};
+    use super::{FontFace, GlyphCacheStats, MAX_CACHED_GLYPHS_PER_FONT, MAX_CACHED_GLYPH_BYTES_PER_FONT};
 
     #[test]
     fn clearing_glyph_cache_releases_character_and_indexed_entries() {
@@ -3009,6 +3067,8 @@ mod tests {
         assert!(!character_glyph.bitmap.is_empty());
         assert!(!indexed_glyph.bitmap.is_empty());
         assert_eq!(font.cached_glyph_count(), 2);
+        assert_eq!(font.glyph_cache_stats().entries, 2);
+        assert_eq!(font.glyph_cache_stats().misses, 2);
 
         font.clear_glyph_cache();
         assert_eq!(font.cached_glyph_count(), 0);
@@ -3037,6 +3097,8 @@ mod tests {
         cache.insert(1, glyph(5));
         cache.insert(2, glyph(5));
         assert_eq!(cache.len(), 1);
+        assert_eq!(cache.stats().evictions, 1);
+        assert_eq!(cache.stats().used_bytes, 5);
         assert_eq!(cache.used_bytes, 5);
         assert!(cache.entries.contains_key(&2));
         assert!(!cache.entries.contains_key(&1));
@@ -3178,7 +3240,32 @@ mod tests {
                 "concurrent misses should return the single cached glyph allocation"
             );
             assert_eq!(font.cached_glyph_count(), 1);
+            assert_eq!(font.glyph_cache_stats().misses, workers as u64);
         }
+    }
+
+    #[test]
+    fn glyph_cache_stats_reset_without_discarding_cached_bitmaps() {
+        let bytes = include_bytes!("../tests/fixtures/NotoSansHebrew[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).expect("Hebrew font should load");
+        let _ = font.glyph('ש', 18.0);
+        let _ = font.glyph('ש', 18.0);
+        let before = font.glyph_cache_stats();
+        assert_eq!(before.entries, 1);
+        assert_eq!(before.misses, 1);
+        assert_eq!(before.hits, 1);
+        assert!(before.budget_bytes >= before.used_bytes);
+
+        font.reset_glyph_cache_stats();
+        let reset = font.glyph_cache_stats();
+        assert_eq!(reset.entries, before.entries);
+        assert_eq!(reset.used_bytes, before.used_bytes);
+        assert_eq!(reset.hits, 0);
+        assert_eq!(reset.misses, 0);
+        assert_eq!(reset.evictions, 0);
+
+        let _ = font.glyph('ש', 18.0);
+        assert_eq!(font.glyph_cache_stats().hits, 1);
     }
 
     #[test]
