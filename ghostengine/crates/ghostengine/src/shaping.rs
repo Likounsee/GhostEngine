@@ -65,7 +65,7 @@ pub fn try_resolve_bidi_runs(text: &str) -> Result<Vec<BidiRun>, ShapingError> {
     let bidi = unicode_bidi::BidiInfo::new(text, None);
     let mut output = Vec::new();
     output
-        .try_reserve_exact(text.len())
+        .try_reserve_exact(bidi.paragraphs.len())
         .map_err(|_| ShapingError::AllocationFailed)?;
     for paragraph in &bidi.paragraphs {
         let (_, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
@@ -79,6 +79,11 @@ pub fn try_resolve_bidi_runs(text: &str) -> Result<Vec<BidiRun>, ShapingError> {
             } else {
                 TextDirection::LeftToRight
             };
+            if output.len() == output.capacity() {
+                output
+                    .try_reserve(1)
+                    .map_err(|_| ShapingError::AllocationFailed)?;
+            }
             output.push(BidiRun {
                 byte_range: range,
                 direction,

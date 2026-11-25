@@ -1276,10 +1276,16 @@ impl DisplayList {
         destination: Rect,
         filter: TextureFilter,
     ) -> Result<(), DisplayListError> {
-        let Some(clip) = self.active_clip() else { return Ok(()); };
+        let Some(clip) = self.active_clip() else {
+            return Ok(());
+        };
         self.try_reserve_command_slot()?;
         self.commands.push(Command::DrawTexture {
-            texture, destination, transform: self.active_transform(), filter, clip,
+            texture,
+            destination,
+            transform: self.active_transform(),
+            filter,
+            clip,
         });
         Ok(())
     }
@@ -1287,26 +1293,47 @@ impl DisplayList {
     /// Records a clipped atlas-region texture draw.
     /// Returns false for invalid source bounds, empty destinations, or transforms.
     pub fn draw_texture_region(
-        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect, filter: TextureFilter,
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        filter: TextureFilter,
     ) -> bool {
-        self.try_draw_texture_region(texture, source, destination, filter).unwrap_or(false)
+        self.try_draw_texture_region(texture, source, destination, filter)
+            .unwrap_or(false)
     }
 
     /// Fallibly records a clipped atlas-region texture draw.
     pub fn try_draw_texture_region(
-        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect, filter: TextureFilter,
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        filter: TextureFilter,
     ) -> Result<bool, DisplayListError> {
         if self.active_transform() != Transform2D::IDENTITY
-            || source.width == 0 || source.height == 0
-            || destination.width == 0 || destination.height == 0
+            || source.width == 0
+            || source.height == 0
+            || destination.width == 0
+            || destination.height == 0
             || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
             || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
             || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
             || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
-        { return Ok(false); }
-        let Some(clip) = self.active_clip() else { return Ok(false); };
+        {
+            return Ok(false);
+        }
+        let Some(clip) = self.active_clip() else {
+            return Ok(false);
+        };
         self.try_reserve_command_slot()?;
-        self.commands.push(Command::DrawTextureRegion { texture, source, destination, filter, clip });
+        self.commands.push(Command::DrawTextureRegion {
+            texture,
+            source,
+            destination,
+            filter,
+            clip,
+        });
         Ok(true)
     }
 
@@ -1317,21 +1344,41 @@ impl DisplayList {
     /// silently producing incorrectly scaled borders. Returns false when a
     /// non-identity transform is active or no visible clip exists.
     pub fn draw_nine_slice_texture(
-        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect,
-        margins: NineSliceMargins, filter: TextureFilter,
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        margins: NineSliceMargins,
+        filter: TextureFilter,
     ) -> bool {
-        self.try_draw_nine_slice_texture(texture, source, destination, margins, filter).unwrap_or(false)
+        self.try_draw_nine_slice_texture(texture, source, destination, margins, filter)
+            .unwrap_or(false)
     }
 
     /// Fallibly records a nine-slice texture for resizable UI panels.
     pub fn try_draw_nine_slice_texture(
-        &mut self, texture: Arc<Texture>, source: Rect, destination: Rect,
-        margins: NineSliceMargins, filter: TextureFilter,
+        &mut self,
+        texture: Arc<Texture>,
+        source: Rect,
+        destination: Rect,
+        margins: NineSliceMargins,
+        filter: TextureFilter,
     ) -> Result<bool, DisplayListError> {
-        if self.active_transform() != Transform2D::IDENTITY { return Ok(false); }
-        let Some(clip) = self.active_clip() else { return Ok(false); };
+        if self.active_transform() != Transform2D::IDENTITY {
+            return Ok(false);
+        }
+        let Some(clip) = self.active_clip() else {
+            return Ok(false);
+        };
         self.try_reserve_command_slot()?;
-        self.commands.push(Command::DrawNineSliceTexture { texture, source, destination, margins, filter, clip });
+        self.commands.push(Command::DrawNineSliceTexture {
+            texture,
+            source,
+            destination,
+            margins,
+            filter,
+            clip,
+        });
         Ok(true)
     }
 
@@ -1938,11 +1985,27 @@ mod tests {
         use crate::{Texture, TextureFilter};
         use std::sync::Arc;
         let mut list = DisplayList::try_with_capacity(4).unwrap();
-        list.try_fill_rect(Rect::new(1, 1, 3, 3), Color::RED).unwrap();
-        list.try_stroke_rect(Rect::new(0, 0, 6, 6), Color::WHITE).unwrap();
+        list.try_fill_rect(Rect::new(1, 1, 3, 3), Color::RED)
+            .unwrap();
+        list.try_stroke_rect(Rect::new(0, 0, 6, 6), Color::WHITE)
+            .unwrap();
         let texture = Arc::new(Texture::try_from_pixels(2, 2, &[Color::BLUE; 4]).unwrap());
-        assert!(list.try_draw_texture_region(Arc::clone(&texture), Rect::new(0,0,2,2), Rect::new(4,4,2,2), TextureFilter::Nearest).unwrap());
-        assert!(!list.try_draw_texture_region(Arc::clone(&texture), Rect::new(1,1,2,2), Rect::new(4,4,2,2), TextureFilter::Nearest).unwrap());
+        assert!(list
+            .try_draw_texture_region(
+                Arc::clone(&texture),
+                Rect::new(0, 0, 2, 2),
+                Rect::new(4, 4, 2, 2),
+                TextureFilter::Nearest
+            )
+            .unwrap());
+        assert!(!list
+            .try_draw_texture_region(
+                Arc::clone(&texture),
+                Rect::new(1, 1, 2, 2),
+                Rect::new(4, 4, 2, 2),
+                TextureFilter::Nearest
+            )
+            .unwrap());
         let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
         let stats = list.replay(&mut target);
         assert_eq!(stats.commands_submitted, 3);
