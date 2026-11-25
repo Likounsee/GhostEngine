@@ -243,3 +243,57 @@ fn linear_srgb_transfer_matches_reference_values_and_round_trips_all_channels() 
         .unwrap();
     assert_eq!(midpoint.get_pixel(0, 0), Some(Color::rgb(188, 188, 188)));
 }
+
+#[test]
+fn premultiplied_export_respects_alpha_bounds_for_every_alpha_value() {
+    let mut frame = Framebuffer::new(256, 1, Color::TRANSPARENT).unwrap();
+    for (alpha, pixel) in frame.pixels_mut().iter_mut().enumerate() {
+        *pixel = Color::rgba(255, 127, 1, alpha as u8);
+    }
+
+    for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+        let descriptor = SurfaceDescriptor::tightly_packed(
+            256,
+            1,
+            format,
+            AlphaMode::Premultiplied,
+            ColorSpace::Srgb,
+        );
+        let mut bytes = vec![0; descriptor.required_buffer_len().unwrap()];
+        frame.write_to_surface(&mut bytes, descriptor).unwrap();
+
+        for (alpha, pixel) in bytes.chunks_exact(4).enumerate() {
+            let (red, green, blue, actual_alpha) = match format {
+                PixelFormat::Rgba8 => (pixel[0], pixel[1], pixel[2], pixel[3]),
+                PixelFormat::Bgra8 => (pixel[2], pixel[1], pixel[0], pixel[3]),
+                PixelFormat::Rgb8 | PixelFormat::Bgr8 => unreachable!(),
+            };
+            assert_eq!(actual_alpha, alpha as u8);
+            assert!(red <= actual_alpha, "red exceeds alpha at {alpha}");
+            assert!(green <= actual_alpha, "green exceeds alpha at {alpha}");
+            assert!(blue <= actual_alpha, "blue exceeds alpha at {alpha}");
+        }
+    }
+}
+
+#[test]
+fn surface_buffer_length_does_not_require_padding_after_the_final_row() {
+    let descriptor = SurfaceDescriptor {
+        width: 2,
+        height: 3,
+        row_stride: 16,
+        pixel_format: PixelFormat::Rgba8,
+        alpha_mode: AlphaMode::Straight,
+        color_space: ColorSpace::Srgb,
+    };
+    assert_eq!(descriptor.required_buffer_len().unwrap(), 40);
+
+    let frame = Framebuffer::new(2, 3, Color::rgba(9, 8, 7, 6)).unwrap();
+    let mut exact = vec![0xCC; 40];
+    frame.write_to_surface(&mut exact, descriptor).unwrap();
+    assert_eq!(&exact[32..40], &[9, 8, 7, 6, 9, 8, 7, 6]);
+
+    let mut restored = Framebuffer::new(2, 3, Color::BLACK).unwrap();
+    restored.read_from_surface(&exact, descriptor).unwrap();
+    assert_eq!(restored, frame);
+}
