@@ -114,6 +114,56 @@ fn accumulate_horizontal_coverage(
     }
 }
 
+
+/// Collects closed contours with fallible allocation before rasterization.
+fn try_collect_contours(flattened: &FlattenedPath) -> Result<Vec<&[Vector]>, PathError> {
+    let count = flattened
+        .subpaths
+        .iter()
+        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+        .count();
+    let mut contours = Vec::new();
+    contours
+        .try_reserve_exact(count)
+        .map_err(|_| PathError::AllocationFailed)?;
+    contours.extend(
+        flattened
+            .subpaths
+            .iter()
+            .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
+            .map(|subpath| subpath.points.as_slice()),
+    );
+    Ok(contours)
+}
+
+/// Builds scan-conversion edges without infallible Vec growth.
+fn try_collect_fill_edges(contours: &[&[Vector]]) -> Result<Vec<FillEdge>, PathError> {
+    let capacity = contours.iter().try_fold(0_usize, |total, contour| {
+        total.checked_add(contour.len()).ok_or(PathError::AllocationFailed)
+    })?;
+    let mut edges = Vec::new();
+    edges
+        .try_reserve_exact(capacity)
+        .map_err(|_| PathError::AllocationFailed)?;
+    for contour in contours {
+        for index in 0..contour.len() {
+            if let Some(edge) = FillEdge::new(contour[index], contour[(index + 1) % contour.len()]) {
+                edges.push(edge);
+            }
+        }
+    }
+    Ok(edges)
+}
+
+fn try_zeroed_coverage(width: usize) -> Result<Vec<u8>, PathError> {
+    let mut coverage = Vec::new();
+    coverage
+        .try_reserve_exact(width)
+        .map_err(|_| PathError::AllocationFailed)?;
+    coverage.resize(width, 0);
+    Ok(coverage)
+}
+
 /// A vector path made of line, quadratic Bézier and cubic Bézier segments.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Path {
@@ -554,24 +604,12 @@ pub fn fill_transformed_path_even_odd_clipped(
     }
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let contours: Vec<&[Vector]> = flattened
-        .subpaths
-        .iter()
-        .filter(|s| s.closed && s.points.len() >= 3)
-        .map(|s| s.points.as_slice())
-        .collect();
+    let contours = try_collect_contours(&flattened)?;
     if contours.is_empty() {
         return Ok(());
     }
 
-    let edges = contours
-        .iter()
-        .flat_map(|contour| {
-            (0..contour.len()).filter_map(move |index| {
-                FillEdge::new(contour[index], contour[(index + 1) % contour.len()])
-            })
-        })
-        .collect::<Vec<_>>();
+    let edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
     }
@@ -594,9 +632,15 @@ pub fn fill_transformed_path_even_odd_clipped(
     // their lower endpoint avoids revisiting every edge on sparse rows.
     let mut edges = edges;
     edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
-    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut active_edges = Vec::new();
+    active_edges
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     let mut next_edge = 0;
-    let mut intersections = Vec::with_capacity(edges.len());
+    let mut intersections = Vec::new();
+    intersections
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     for y in min_y..max_y {
         intersections.clear();
         let scan = y as f32 + 0.5;
@@ -691,19 +735,8 @@ pub fn fill_transformed_path_non_zero_clipped(
 
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let mut edges = flattened
-        .subpaths
-        .iter()
-        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
-        .flat_map(|contour| {
-            (0..contour.points.len()).filter_map(move |index| {
-                FillEdge::new(
-                    contour.points[index],
-                    contour.points[(index + 1) % contour.points.len()],
-                )
-            })
-        })
-        .collect::<Vec<_>>();
+    let contours = try_collect_contours(&flattened)?;
+    let mut edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
     }
@@ -724,8 +757,14 @@ pub fn fill_transformed_path_non_zero_clipped(
         .min(clip_bottom as f32) as u32;
     edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
 
-    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
-    let mut intersections: Vec<(f32, i32)> = Vec::with_capacity(edges.len());
+    let mut active_edges = Vec::new();
+    active_edges
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
+    let mut intersections: Vec<(f32, i32)> = Vec::new();
+    intersections
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     let mut next_edge = 0;
     for y in min_y..max_y {
         let scan = y as f32 + 0.5;
@@ -842,19 +881,8 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     };
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let mut edges = flattened
-        .subpaths
-        .iter()
-        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
-        .flat_map(|subpath| {
-            (0..subpath.points.len()).filter_map(move |index| {
-                FillEdge::new(
-                    subpath.points[index],
-                    subpath.points[(index + 1) % subpath.points.len()],
-                )
-            })
-        })
-        .collect::<Vec<_>>();
+    let contours = try_collect_contours(&flattened)?;
+    let mut edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
     }
@@ -895,9 +923,12 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     }
 
     edges.sort_unstable_by(|left, right| left.min_y.total_cmp(&right.min_y));
-    let mut active_edges: Vec<FillEdge> = Vec::with_capacity(edges.len());
+    let mut active_edges = Vec::new();
+    active_edges
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     let mut intersections: Vec<(f32, i32)> = Vec::with_capacity(edges.len());
-    let mut coverage = vec![0_u8; (max_x - min_x) as usize];
+    let mut coverage = try_zeroed_coverage((max_x - min_x) as usize)?;
     let mut next_edge = 0_usize;
 
     for y in min_y..max_y {
@@ -997,12 +1028,7 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
-    let contours: Vec<&[Vector]> = flattened
-        .subpaths
-        .iter()
-        .filter(|subpath| subpath.closed && subpath.points.len() >= 3)
-        .map(|subpath| subpath.points.as_slice())
-        .collect();
+    let contours = try_collect_contours(&flattened)?;
     if contours.is_empty() {
         return Ok(());
     }
@@ -1071,8 +1097,11 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     }
 
     let width = (max_x - min_x) as usize;
-    let mut coverage = vec![0_u8; width];
-    let mut intersections = Vec::with_capacity(edges.len());
+    let mut coverage = try_zeroed_coverage(width)?;
+    let mut intersections = Vec::new();
+    intersections
+        .try_reserve_exact(edges.len())
+        .map_err(|_| PathError::AllocationFailed)?;
     // Samples advance monotonically from top to bottom, so retain only
     // edges that can still intersect the current subpixel scanline.
     let mut edges = edges;
