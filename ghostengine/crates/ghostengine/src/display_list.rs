@@ -2123,6 +2123,7 @@ mod tests {
     #[test]
     fn fallible_recording_is_a_no_op_without_an_active_clip() {
         let mut list = DisplayList::new();
+        list.try_push_clip(Rect::new(0, 0, 0, 0)).unwrap();
 
         list.try_line(Point::new(0, 0), Point::new(4, 4), Color::RED)
             .unwrap();
