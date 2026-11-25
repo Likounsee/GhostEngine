@@ -103,7 +103,12 @@ impl CachedLayer {
 
     /// Invalidates every pixel while reporting allocation failure.
     pub fn try_mark_dirty_all(&mut self) -> Result<(), DamageRegionError> {
-        self.try_mark_dirty(Rect::new(0, 0, self.framebuffer.width(), self.framebuffer.height()))
+        self.try_mark_dirty(Rect::new(
+            0,
+            0,
+            self.framebuffer.width(),
+            self.framebuffer.height(),
+        ))
     }
 
     /// Resizes the cache transactionally, including its initial full-frame damage.
@@ -268,7 +273,9 @@ mod tests {
         let damage = cache.damage().clone();
         assert_eq!(
             cache.try_resize(0, 4, Color::BLUE),
-            Err(CachedLayerError::Framebuffer(FramebufferError::ZeroDimension))
+            Err(CachedLayerError::Framebuffer(
+                FramebufferError::ZeroDimension
+            ))
         );
         assert_eq!(cache.framebuffer(), &framebuffer);
         assert_eq!(cache.damage(), &damage);
