@@ -661,6 +661,80 @@ pub fn draw_texture_region_clipped(
     );
 }
 
+/// Fallibly draws a clipped texture region while reusing sampling storage.
+pub fn try_draw_texture_region_clipped_with_scratch(
+    target: &mut Framebuffer,
+    texture: &Texture,
+    source: Rect,
+    destination: Rect,
+    filter: TextureFilter,
+    clip: Rect,
+    scratch: &mut TextureDrawScratch,
+) -> Result<(), TextureDrawError> {
+    if source.width == 0
+        || source.height == 0
+        || destination.width == 0
+        || destination.height == 0
+        || u64::from(destination.x) + u64::from(destination.width) > u64::from(u32::MAX)
+        || u64::from(destination.y) + u64::from(destination.height) > u64::from(u32::MAX)
+        || u64::from(source.x) + u64::from(source.width) > u64::from(texture.width())
+        || u64::from(source.y) + u64::from(source.height) > u64::from(texture.height())
+    {
+        return Ok(());
+    }
+    let Some(clip) = clip
+        .intersection(Rect::new(0, 0, target.width(), target.height()))
+        .and_then(|framebuffer_clip| framebuffer_clip.intersection(destination))
+    else {
+        return Ok(());
+    };
+
+    if filter == TextureFilter::Bilinear {
+        let visible_width = clip.width as usize;
+        if scratch.horizontal_samples.capacity() < visible_width {
+            scratch
+                .horizontal_samples
+                .try_reserve_exact(visible_width.saturating_sub(scratch.horizontal_samples.len()))
+                .map_err(|_| TextureDrawError::AllocationFailed)?;
+        }
+
+        let cache_len = (source.height as usize).checked_mul(visible_width);
+        let cache_bytes =
+            cache_len.and_then(|len| len.checked_mul(core::mem::size_of::<[f32; 4]>()));
+        let should_cache = clip.height >= source.height.saturating_mul(2)
+            && cache_bytes.is_some_and(|bytes| bytes <= 64 * 1024 * 1024);
+        let cache_key = RegionBilinearCacheKey {
+            texture_id: texture.id,
+            source,
+            destination_x: destination.x,
+            destination_width: destination.width,
+            clip_x: clip.x,
+            clip_width: clip.width,
+        };
+        if should_cache
+            && (scratch.cached_region_bilinear_key != Some(cache_key)
+                || scratch.region_horizontal_cache.len() != cache_len.unwrap_or(usize::MAX))
+        {
+            let required = cache_len.ok_or(TextureDrawError::AllocationFailed)?;
+            if scratch.region_horizontal_cache.capacity() < required {
+                scratch
+                    .region_horizontal_cache
+                    .try_reserve_exact(
+                        required.saturating_sub(scratch.region_horizontal_cache.len()),
+                    )
+                    .map_err(|_| TextureDrawError::AllocationFailed)?;
+            }
+        }
+    }
+
+    // All scratch growth needed by the implementation below has already been
+    // reserved, so this call cannot allocate while modifying the framebuffer.
+    draw_texture_region_clipped_with_scratch(
+        target, texture, source, destination, filter, clip, scratch,
+    );
+    Ok(())
+}
+
 /// Draws a texture region while reusing horizontal bilinear samples across scanlines.
 ///
 /// Keep the scratch value between frames to avoid repeating allocations for atlas sprites.
