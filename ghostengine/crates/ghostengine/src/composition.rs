@@ -1,6 +1,6 @@
 //! Ordered CPU layer composition with offsets, visibility, and opacity.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::texture::sample_pixels_bilinear;
 use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D, Vector};
@@ -1782,8 +1782,11 @@ impl LayerGroupCache {
     /// release surfaces that can no longer be reused. Hidden groups remain
     /// cached as long as their identities are supplied.
     pub fn retain_groups(&mut self, groups: &[(LayerGroupId, &LayerGroup)]) {
-        let live_ids: BTreeSet<_> = groups.iter().map(|(id, _)| *id).collect();
-        self.entries.retain(|id, _| live_ids.contains(id));
+        // Avoid allocating a temporary set during scene maintenance. This
+        // operation is not on the pixel hot path and the caller already owns
+        // the compact group slice.
+        self.entries
+            .retain(|id, _| groups.iter().any(|(live_id, _)| live_id == id));
     }
 
     /// Returns the number of persistent group surfaces.
