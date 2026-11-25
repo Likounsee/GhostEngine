@@ -232,99 +232,75 @@ impl Path {
 
     /// Flattens curves until their control points are within tolerance of the chord.
     /// Tolerance is measured in the path's local coordinate space.
+    ///
+    /// All geometry allocations are fallible and reported as PathError::AllocationFailed.
     pub fn flatten(&self, tolerance: f32) -> Result<FlattenedPath, PathError> {
+        self.try_flatten(tolerance)
+    }
+
+    /// Fallibly flattens this path without panicking on geometry allocation failure.
+    pub fn try_flatten(&self, tolerance: f32) -> Result<FlattenedPath, PathError> {
         if !tolerance.is_finite() || tolerance <= 0.0 {
             return Err(PathError::InvalidTolerance);
         }
         let tolerance_squared = f64::from(tolerance) * f64::from(tolerance);
         let mut result = FlattenedPath::default();
+        result
+            .subpaths
+            .try_reserve(self.commands.len().min(16))
+            .map_err(|_| PathError::AllocationFailed)?;
         let mut current: Option<usize> = None;
         // After Close, the next drawing command starts a new contour at the
         // closed contour's initial point, matching conventional path semantics.
         let mut closed_start: Option<Vector> = None;
+
         for command in &self.commands {
             match *command {
-                Command::MoveTo(p) => {
-                    validate(p)?;
+                Command::MoveTo(point) => {
+                    validate(point)?;
+                    let mut points = Vec::new();
+                    points
+                        .try_reserve_exact(1)
+                        .map_err(|_| PathError::AllocationFailed)?;
+                    points.push(point);
+                    result
+                        .subpaths
+                        .try_reserve(1)
+                        .map_err(|_| PathError::AllocationFailed)?;
                     result.subpaths.push(FlattenedSubpath {
-                        points: vec![p],
+                        points,
                         closed: false,
                     });
                     current = Some(result.subpaths.len() - 1);
                     closed_start = None;
                 }
-                Command::LineTo(p) => {
-                    validate(p)?;
-                    let index = current
-                        .or_else(|| {
-                            let start = closed_start.take()?;
-                            result.subpaths.push(FlattenedSubpath {
-                                points: vec![start],
-                                closed: false,
-                            });
-                            Some(result.subpaths.len() - 1)
-                        })
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    current = Some(index);
-                    result.subpaths[index].points.push(p);
+                Command::LineTo(point) => {
+                    validate(point)?;
+                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
+                    push_point(&mut result.subpaths[index].points, point)?;
                 }
                 Command::QuadTo(control, end) => {
                     validate(control)?;
                     validate(end)?;
-                    let index = current
-                        .or_else(|| {
-                            let start = closed_start.take()?;
-                            result.subpaths.push(FlattenedSubpath {
-                                points: vec![start],
-                                closed: false,
-                            });
-                            Some(result.subpaths.len() - 1)
-                        })
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    current = Some(index);
+                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
                     let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_quad(
-                        start,
-                        control,
-                        end,
-                        tolerance_squared,
-                        0,
-                        &mut contour.points,
-                    );
+                    flatten_quad(start, control, end, tolerance_squared, 0, &mut contour.points)?;
                 }
                 Command::CubicTo(c1, c2, end) => {
                     validate(c1)?;
                     validate(c2)?;
                     validate(end)?;
-                    let index = current
-                        .or_else(|| {
-                            let start = closed_start.take()?;
-                            result.subpaths.push(FlattenedSubpath {
-                                points: vec![start],
-                                closed: false,
-                            });
-                            Some(result.subpaths.len() - 1)
-                        })
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    current = Some(index);
+                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
                     let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
                         .last()
                         .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_cubic(
-                        start,
-                        c1,
-                        c2,
-                        end,
-                        tolerance_squared,
-                        0,
-                        &mut contour.points,
-                    );
+                    flatten_cubic(start, c1, c2, end, tolerance_squared, 0, &mut contour.points)?;
                 }
                 Command::Close => {
                     let index = current.ok_or(PathError::MissingCurrentPoint)?;
@@ -374,6 +350,41 @@ fn midpoint(a: Vector, b: Vector) -> Vector {
     )
 }
 
+fn ensure_current_subpath(
+    result: &mut FlattenedPath,
+    current: &mut Option<usize>,
+    closed_start: &mut Option<Vector>,
+) -> Result<usize, PathError> {
+    if let Some(index) = *current {
+        return Ok(index);
+    }
+
+    let start = closed_start.take().ok_or(PathError::MissingCurrentPoint)?;
+    let mut points = Vec::new();
+    points
+        .try_reserve_exact(1)
+        .map_err(|_| PathError::AllocationFailed)?;
+    points.push(start);
+    result
+        .subpaths
+        .try_reserve(1)
+        .map_err(|_| PathError::AllocationFailed)?;
+    result.subpaths.push(FlattenedSubpath {
+        points,
+        closed: false,
+    });
+    let index = result.subpaths.len() - 1;
+    *current = Some(index);
+    Ok(index)
+}
+
+fn push_point(out: &mut Vec<Vector>, point: Vector) -> Result<(), PathError> {
+    out.try_reserve(1)
+        .map_err(|_| PathError::AllocationFailed)?;
+    out.push(point);
+    Ok(())
+}
+
 fn flatten_quad(
     a: Vector,
     c: Vector,
@@ -381,17 +392,17 @@ fn flatten_quad(
     tolerance_squared: f64,
     depth: u8,
     out: &mut Vec<Vector>,
-) {
+) -> Result<(), PathError> {
     if depth >= 16 || distance_to_segment_squared(c, a, b) <= tolerance_squared {
-        out.push(b);
-        return;
+        return push_point(out, b);
     }
     let ac = midpoint(a, c);
     let cb = midpoint(c, b);
     let m = midpoint(ac, cb);
-    flatten_quad(a, ac, m, tolerance_squared, depth + 1, out);
-    flatten_quad(m, cb, b, tolerance_squared, depth + 1, out);
+    flatten_quad(a, ac, m, tolerance_squared, depth + 1, out)?;
+    flatten_quad(m, cb, b, tolerance_squared, depth + 1, out)
 }
+
 fn flatten_cubic(
     a: Vector,
     c1: Vector,
@@ -400,13 +411,12 @@ fn flatten_cubic(
     tolerance_squared: f64,
     depth: u8,
     out: &mut Vec<Vector>,
-) {
+) -> Result<(), PathError> {
     if depth >= 16
         || distance_to_segment_squared(c1, a, b).max(distance_to_segment_squared(c2, a, b))
             <= tolerance_squared
     {
-        out.push(b);
-        return;
+        return push_point(out, b);
     }
     let a1 = midpoint(a, c1);
     let c = midpoint(c1, c2);
@@ -414,8 +424,8 @@ fn flatten_cubic(
     let a2 = midpoint(a1, c);
     let b1 = midpoint(c, b2);
     let m = midpoint(a2, b1);
-    flatten_cubic(a, a1, a2, m, tolerance_squared, depth + 1, out);
-    flatten_cubic(m, b1, b2, b, tolerance_squared, depth + 1, out);
+    flatten_cubic(a, a1, a2, m, tolerance_squared, depth + 1, out)?;
+    flatten_cubic(m, b1, b2, b, tolerance_squared, depth + 1, out)
 }
 
 /// Transforms flattened geometry without changing the source path.
