@@ -2871,6 +2871,35 @@ mod tests {
     }
 
     #[test]
+    fn fallible_composition_storage_apis_reserve_and_report_capacity_errors() {
+        let damage = DamageRegion::try_with_capacity(16, 12, 4).unwrap();
+        assert!(damage.capacity() >= 4);
+        assert_eq!(
+            DamageRegion::try_with_capacity(16, 12, usize::MAX),
+            Err(super::DamageRegionError::AllocationFailed)
+        );
+
+        let mut group = LayerGroup::try_with_capacity(8, 8, 2).unwrap();
+        assert!(group.child_capacity() >= 2);
+        assert_eq!(
+            group.try_reserve_children(usize::MAX),
+            Err(crate::FramebufferError::AllocationFailed)
+        );
+        group
+            .try_add_layer(Layer::new(1, 1, Color::RED).unwrap())
+            .unwrap();
+        assert_eq!(group.child_count(), 1);
+
+        let scratch = LayerGroupScratch::try_with_capacity(3).unwrap();
+        assert!(scratch.surface_capacity() >= 3);
+        let mut scratch = scratch;
+        assert_eq!(
+            scratch.try_reserve_surfaces(usize::MAX),
+            Err(crate::FramebufferError::AllocationFailed)
+        );
+    }
+
+    #[test]
     fn fallible_damage_region_updates_preserve_exact_coverage() {
         let mut damage = DamageRegion::new(8, 6);
         damage.try_add(Rect::new(0, 0, 4, 4)).unwrap();
