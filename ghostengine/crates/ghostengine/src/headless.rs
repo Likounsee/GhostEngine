@@ -549,5 +549,4 @@ mod tests {
         assert_eq!((last_presented.width(), last_presented.height()), (2, 1));
         assert_eq!(last_presented.pixels(), initial.pixels());
     }
-
 }
