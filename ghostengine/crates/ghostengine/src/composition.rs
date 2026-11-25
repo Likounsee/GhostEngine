@@ -1757,9 +1757,11 @@ impl LayerGroupScratch {
  * changing local group content. Position, opacity, blend mode, and transform
  * are refreshed automatically and do not require rerendering local pixels.
  */
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LayerGroupCache {
     entries: BTreeMap<LayerGroupId, LayerGroupCacheEntry>,
+    budget_bytes: usize,
+    clock: u64,
 }
 
 #[derive(Debug)]
@@ -1768,9 +1770,157 @@ struct LayerGroupCacheEntry {
     damage: DamageRegion,
     initialized: bool,
     render_count: u64,
+    last_used: u64,
+}
+
+impl Default for LayerGroupCache {
+    fn default() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            budget_bytes: usize::MAX,
+            clock: 0,
+        }
+    }
 }
 
 impl LayerGroupCache {
+    /// Creates an empty cache with a maximum retained pixel-buffer budget.
+    ///
+    /// The default cache is unbounded for backwards compatibility. The budget
+    /// counts framebuffer pixel storage, not allocator or map metadata.
+    #[must_use]
+    pub fn with_budget_bytes(budget_bytes: usize) -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            budget_bytes,
+            clock: 0,
+        }
+    }
+
+    /// Returns the configured pixel-storage budget.
+    #[must_use]
+    pub const fn budget_bytes(&self) -> usize {
+        self.budget_bytes
+    }
+
+    /// Returns the pixel-buffer bytes currently retained by cached groups.
+    #[must_use]
+    pub fn allocated_pixel_bytes(&self) -> usize {
+        self.entries.values().fold(0usize, |total, entry| {
+            total.saturating_add(
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Color>()),
+            )
+        })
+    }
+
+    /// Changes the budget, evicting least-recently-used surfaces when possible.
+    ///
+    /// The cache remains unchanged if the requested budget cannot be satisfied.
+    pub fn set_budget_bytes(&mut self, budget_bytes: usize) -> Result<(), FramebufferError> {
+        let reclaimable = self
+            .entries
+            .values()
+            .filter(|entry| {
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Color>())
+                    > 0
+            })
+            .map(|entry| {
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Color>())
+            })
+            .fold(0usize, usize::saturating_add);
+        let required = self.allocated_pixel_bytes().saturating_sub(budget_bytes);
+        if reclaimable < required {
+            return Err(FramebufferError::AllocationFailed);
+        }
+        while self.allocated_pixel_bytes() > budget_bytes {
+            let oldest = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| *id);
+            let Some(oldest) = oldest else { break };
+            self.entries.remove(&oldest);
+        }
+        self.budget_bytes = budget_bytes;
+        Ok(())
+    }
+
+    fn ensure_budget_for(
+        &mut self,
+        protected_id: LayerGroupId,
+        incoming_bytes: usize,
+    ) -> Result<(), FramebufferError> {
+        if incoming_bytes > self.budget_bytes {
+            return Err(FramebufferError::AllocationFailed);
+        }
+        let used_without_protected = self
+            .entries
+            .iter()
+            .filter(|(id, _)| **id != protected_id)
+            .map(|(_, entry)| {
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Color>())
+            })
+            .fold(0usize, usize::saturating_add);
+        let required = used_without_protected.saturating_sub(self.budget_bytes - incoming_bytes);
+        let reclaimable = self
+            .entries
+            .iter()
+            .filter(|(id, _)| **id != protected_id)
+            .map(|(_, entry)| {
+                entry
+                    .layer
+                    .framebuffer()
+                    .pixels()
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Color>())
+            })
+            .fold(0usize, usize::saturating_add);
+        if reclaimable < required {
+            return Err(FramebufferError::AllocationFailed);
+        }
+        let mut used = used_without_protected;
+        while used > self.budget_bytes - incoming_bytes {
+            let oldest = self
+                .entries
+                .iter()
+                .filter(|(id, _)| **id != protected_id)
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| *id)
+                .ok_or(FramebufferError::AllocationFailed)?;
+            if let Some(entry) = self.entries.remove(&oldest) {
+                used = used.saturating_sub(
+                    entry
+                        .layer
+                        .framebuffer()
+                        .pixels()
+                        .len()
+                        .saturating_mul(std::mem::size_of::<Color>()),
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Fallibly marks a local-space rectangle dirty for the next cached composition.
     ///
     /// Returns false when the identity is not cached. Allocation failure leaves
@@ -1879,20 +2029,6 @@ impl LayerGroupCache {
         self.entries.get(&id).map(|entry| entry.render_count)
     }
 
-    /// Returns the pixel-buffer memory retained by all cached groups.
-    #[must_use]
-    pub fn allocated_pixel_bytes(&self) -> usize {
-        self.entries.values().fold(0usize, |total, entry| {
-            total.saturating_add(
-                entry
-                    .layer
-                    .framebuffer()
-                    .pixels()
-                    .len()
-                    .saturating_mul(std::mem::size_of::<Color>()),
-            )
-        })
-    }
 }
 
 /// Composites groups using persistent surfaces keyed by stable identity.
@@ -1936,32 +2072,58 @@ fn compose_layer_groups_cached_internal(
         if !group.visible || group.opacity == 0 {
             continue;
         }
-        let entry = match cache.entries.entry(id) {
-            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::btree_map::Entry::Vacant(slot) => {
-                let layer = Layer::new(group.width, group.height, Color::TRANSPARENT)?;
-                let mut damage = DamageRegion::new(group.width, group.height);
-                damage.add(Rect::new(0, 0, group.width, group.height));
-                slot.insert(LayerGroupCacheEntry {
+
+        if !cache.entries.contains_key(&id) {
+            let layer = Layer::new(group.width, group.height, Color::TRANSPARENT)?;
+            let incoming_bytes = layer
+                .framebuffer()
+                .pixels()
+                .len()
+                .checked_mul(std::mem::size_of::<Color>())
+                .ok_or(FramebufferError::SizeOverflow)?;
+            let mut damage = DamageRegion::new(group.width, group.height);
+            damage
+                .try_add(Rect::new(0, 0, group.width, group.height))
+                .map_err(|_| FramebufferError::AllocationFailed)?;
+            cache.ensure_budget_for(id, incoming_bytes)?;
+            cache.clock = cache.clock.saturating_add(1);
+            cache.entries.insert(
+                id,
+                LayerGroupCacheEntry {
                     layer,
                     damage,
                     initialized: false,
                     render_count: 0,
-                })
+                    last_used: cache.clock,
+                },
+            );
+        } else {
+            let dimensions_changed = cache.entries.get(&id).is_some_and(|entry| {
+                entry.layer.framebuffer().width() != group.width
+                    || entry.layer.framebuffer().height() != group.height
+            });
+            if dimensions_changed {
+                let replacement = Framebuffer::new(group.width, group.height, Color::TRANSPARENT)?;
+                let incoming_bytes = replacement
+                    .pixels()
+                    .len()
+                    .checked_mul(std::mem::size_of::<Color>())
+                    .ok_or(FramebufferError::SizeOverflow)?;
+                let mut replacement_damage = DamageRegion::new(group.width, group.height);
+                replacement_damage
+                    .try_add(Rect::new(0, 0, group.width, group.height))
+                    .map_err(|_| FramebufferError::AllocationFailed)?;
+                cache.ensure_budget_for(id, incoming_bytes)?;
+                let entry = cache.entries.get_mut(&id).expect("entry checked above");
+                entry.layer = Layer::from_framebuffer(replacement);
+                entry.damage = replacement_damage;
+                entry.initialized = false;
             }
-        };
-        if entry.layer.framebuffer().width() != group.width
-            || entry.layer.framebuffer().height() != group.height
-        {
-            entry.layer.framebuffer_mut().resize_and_clear(
-                group.width,
-                group.height,
-                Color::TRANSPARENT,
-            )?;
-            entry.damage.reset(group.width, group.height);
-            entry.damage.add(Rect::new(0, 0, group.width, group.height));
-            entry.initialized = false;
         }
+
+        cache.clock = cache.clock.saturating_add(1);
+        let entry = cache.entries.get_mut(&id).expect("entry inserted above");
+        entry.last_used = cache.clock;
 
         if !entry.damage.is_empty() {
             let dirty = entry.damage.clone();
@@ -2345,7 +2507,7 @@ mod tests {
         BlendMode, DamageRegion, Layer, LayerGroup, LayerGroupCache, LayerGroupChild,
         LayerGroupScratch,
     };
-    use crate::{Color, Framebuffer, Rect, TextureFilter, Transform2D};
+    use crate::{Color, Framebuffer, FramebufferError, Rect, TextureFilter, Transform2D};
 
     #[test]
     fn full_damage_replaces_fragmented_regions_with_one_rectangle() {
@@ -2388,6 +2550,91 @@ mod tests {
             cache.entries[&5].damage.rectangles(),
             &[Rect::new(0, 0, 12, 9)]
         );
+    }
+
+    #[test]
+    fn cached_group_budget_evicts_least_recently_used_surfaces() {
+        let small = LayerGroup::new(4, 4).unwrap();
+        let medium = LayerGroup::new(4, 4).unwrap();
+        let large = LayerGroup::new(4, 4).unwrap();
+        let mut cache = LayerGroupCache::with_budget_bytes(2 * 16 * 4);
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        compose_layer_groups_cached(
+            &mut target,
+            &[(1, &small), (2, &medium)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(cache.allocated_pixel_bytes(), 2 * 16 * 4);
+
+        // Reverse traversal so group 1 is newer than group 2.
+        compose_layer_groups_cached(
+            &mut target,
+            &[(2, &medium), (1, &small)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+        compose_layer_groups_cached(
+            &mut target,
+            &[(2, &medium), (1, &small), (3, &large)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert!(cache.framebuffer(1).is_some());
+        assert!(cache.framebuffer(2).is_none());
+        assert!(cache.framebuffer(3).is_some());
+        assert_eq!(cache.allocated_pixel_bytes(), 2 * 16 * 4);
+        assert!(cache.allocated_pixel_bytes() <= cache.budget_bytes());
+    }
+
+    #[test]
+    fn cached_group_budget_rejects_oversized_surface_without_disturbing_cache() {
+        let existing = LayerGroup::new(2, 2).unwrap();
+        let oversized = LayerGroup::new(8, 8).unwrap();
+        let mut cache = LayerGroupCache::with_budget_bytes(4 * 4 * 4);
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(8, 8, Color::BLACK).unwrap();
+
+        compose_layer_groups_cached(&mut target, &[(1, &existing)], &mut cache, &mut scratch)
+            .unwrap();
+        let before = cache.allocated_pixel_bytes();
+        let error = compose_layer_groups_cached(
+            &mut target,
+            &[(1, &existing), (2, &oversized)],
+            &mut cache,
+            &mut scratch,
+        );
+
+        assert_eq!(error, Err(FramebufferError::AllocationFailed));
+        assert_eq!(cache.allocated_pixel_bytes(), before);
+        assert!(cache.framebuffer(1).is_some());
+        assert!(cache.framebuffer(2).is_none());
+    }
+
+    #[test]
+    fn lowering_cached_group_budget_evicts_oldest_entries_transactionally() {
+        let a = LayerGroup::new(4, 4).unwrap();
+        let b = LayerGroup::new(4, 4).unwrap();
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        compose_layer_groups_cached(&mut target, &[(1, &a), (2, &b)], &mut cache, &mut scratch)
+            .unwrap();
+        compose_layer_groups_cached(&mut target, &[(2, &b), (1, &a)], &mut cache, &mut scratch)
+            .unwrap();
+
+        cache.set_budget_bytes(16 * 4).unwrap();
+        assert!(cache.framebuffer(1).is_some());
+        assert!(cache.framebuffer(2).is_none());
+        assert_eq!(cache.allocated_pixel_bytes(), 16 * 4);
+        assert_eq!(cache.budget_bytes(), 16 * 4);
     }
 
     #[test]
