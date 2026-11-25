@@ -2406,8 +2406,8 @@ pub fn try_draw_texture_transformed_clipped(
     // The inverse affine transform separates into horizontal and vertical
     // contributions. Cache the X terms once for the whole draw, preserving
     // the original left-to-right floating-point addition order per pixel.
-    let sample_count = usize::try_from(end_x - first_x)
-        .map_err(|_| TextureDrawError::AllocationFailed)?;
+    let sample_count =
+        usize::try_from(end_x - first_x).map_err(|_| TextureDrawError::AllocationFailed)?;
     let mut horizontal_terms = Vec::new();
     horizontal_terms
         .try_reserve_exact(sample_count)
@@ -2501,9 +2501,9 @@ pub fn try_draw_texture_transformed_clipped(
 mod tests {
     use super::{
         blend_cached_bilinear_over_opaque, draw_texture, draw_texture_clipped,
-        draw_texture_transformed_clipped, try_draw_texture_transformed_clipped,
-        sample_bilinear_prepared, BilinearCoordinates, Texture,
-        TextureError, TextureFilter,
+        draw_texture_transformed_clipped, sample_bilinear_prepared,
+        try_draw_texture_transformed_clipped, BilinearCoordinates, Texture, TextureError,
+        TextureFilter,
     };
     use crate::{
         draw_texture_clipped_with_scratch, draw_texture_region_clipped_with_scratch, Color,
