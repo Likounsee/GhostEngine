@@ -283,7 +283,8 @@ impl Path {
                 Command::QuadTo(control, end) => {
                     validate(control)?;
                     validate(end)?;
-                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
+                    let index =
+                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
                     let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
@@ -302,7 +303,8 @@ impl Path {
                     validate(c1)?;
                     validate(c2)?;
                     validate(end)?;
-                    let index = ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
+                    let index =
+                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
                     let contour = &mut result.subpaths[index];
                     let start = *contour
                         .points
