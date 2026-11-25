@@ -1342,6 +1342,87 @@ mod tests {
     }
 
     #[test]
+    fn fallible_flatten_handles_many_mixed_contours_and_preserves_path_semantics() {
+        let mut path = Path::new();
+        for index in 0..64 {
+            let x = index as f32 * 12.0;
+            let start = Vector::new(x, 1.0);
+            path.move_to(start)
+                .line_to(Vector::new(x + 4.0, 1.0))
+                .quadratic_to(
+                    Vector::new(x + 6.0, 8.0),
+                    Vector::new(x + 8.0, 1.0),
+                )
+                .cubic_to(
+                    Vector::new(x + 9.0, -4.0),
+                    Vector::new(x + 11.0, 6.0),
+                    Vector::new(x + 12.0, 1.0),
+                )
+                .close()
+                .line_to(Vector::new(x + 13.0, 2.0));
+        }
+
+        let flattened = path.try_flatten(0.05).unwrap();
+        assert_eq!(flattened.subpaths.len(), 128);
+
+        for pair in flattened.subpaths.chunks_exact(2) {
+            assert!(pair[0].closed);
+            assert!(!pair[1].closed);
+            assert_eq!(pair[1].points.len(), 2);
+            assert_eq!(pair[1].points[0], pair[0].points[0]);
+            assert!(pair
+                .iter()
+                .flat_map(|subpath| &subpath.points)
+                .all(|point| point.x.is_finite() && point.y.is_finite()));
+        }
+    }
+
+    #[test]
+    fn fallible_flatten_reports_invalid_input_without_partial_geometry() {
+        let mut missing_start = Path::new();
+        missing_start.try_line_to(Vector::new(1.0, 1.0)).unwrap();
+        assert_eq!(
+            missing_start.try_flatten(0.1),
+            Err(PathError::MissingCurrentPoint)
+        );
+
+        let mut non_finite = Path::new();
+        non_finite.try_move_to(Vector::new(f32::NAN, 0.0)).unwrap();
+        assert_eq!(
+            non_finite.try_flatten(0.1),
+            Err(PathError::NonFiniteCoordinate)
+        );
+
+        let valid = Path::new();
+        assert_eq!(
+            valid.try_flatten(f32::INFINITY),
+            Err(PathError::InvalidTolerance)
+        );
+        assert_eq!(valid.try_flatten(0.0), Err(PathError::InvalidTolerance));
+    }
+
+    #[test]
+    fn fallible_flatten_bounds_subdivision_for_extreme_curve_tolerances() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(0.0, 0.0))
+            .quadratic_to(Vector::new(0.0, 1.0e6), Vector::new(1.0, 0.0))
+            .cubic_to(
+                Vector::new(1.0e6, -1.0e6),
+                Vector::new(-1.0e6, 1.0e6),
+                Vector::new(2.0, 0.0),
+            );
+
+        let flattened = path.try_flatten(1.0e-6).unwrap();
+        let points = &flattened.subpaths[0].points;
+        assert!(points.len() > 4);
+        assert!(points.len() <= 2 * (1 << 16) + 1);
+        assert_eq!(points.last(), Some(&Vector::new(2.0, 0.0)));
+        assert!(points
+            .iter()
+            .all(|point| point.x.is_finite() && point.y.is_finite()));
+    }
+
+    #[test]
     fn collinear_quadratic_control_point_beyond_chord_is_not_flattened_away() {
         let mut path = Path::new();
         path.move_to(Vector::new(0.0, 0.0))
