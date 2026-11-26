@@ -2569,6 +2569,8 @@ pub struct RasterizerScratch {
     ellipse_aa_coverage: Vec<u8>,
     arc_aa_sources: Vec<Color>,
     ellipse_aa_sources: Vec<Color>,
+    parallel_edges: Vec<PolygonScanEdge>,
+    parallel_intersections: Vec<Vec<f64>>,
 }
 impl RasterizerScratch {
     /// Returns the logical heap capacity retained by all scratch buffers.
@@ -2633,6 +2635,22 @@ impl RasterizerScratch {
                     .capacity()
                     .saturating_mul(core::mem::size_of::<Color>()),
             )
+            .saturating_add(
+                self.parallel_edges
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<PolygonScanEdge>()),
+            )
+            .saturating_add(
+                self.parallel_intersections
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<Vec<f64>>()),
+            )
+            .saturating_add(
+                self.parallel_intersections
+                    .iter()
+                    .map(|buffer| buffer.capacity().saturating_mul(core::mem::size_of::<f64>()))
+                    .fold(0usize, usize::saturating_add),
+            )
     }
     /// Clears all scratch buffers while retaining their allocations for reuse.
     pub fn clear(&mut self) {
@@ -2648,6 +2666,10 @@ impl RasterizerScratch {
         self.ellipse_aa_coverage.clear();
         self.arc_aa_sources.clear();
         self.ellipse_aa_sources.clear();
+        self.parallel_edges.clear();
+        for intersections in &mut self.parallel_intersections {
+            intersections.clear();
+        }
     }
 
     /// Releases all retained scratch allocations.
@@ -2665,6 +2687,11 @@ impl RasterizerScratch {
         self.ellipse_aa_coverage.shrink_to_fit();
         self.arc_aa_sources.shrink_to_fit();
         self.ellipse_aa_sources.shrink_to_fit();
+        self.parallel_edges.shrink_to_fit();
+        for intersections in &mut self.parallel_intersections {
+            intersections.shrink_to_fit();
+        }
+        self.parallel_intersections.shrink_to_fit();
     }
 
     /// Releases all scratch allocations when retained capacity exceeds the budget.
@@ -2709,6 +2736,22 @@ pub fn try_fill_polygon_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) -> Result<(), RasterizerError> {
+    let mut scratch = RasterizerScratch::default();
+    try_fill_polygon_parallel_with_scratch(target, vertices, color, thread_count, &mut scratch)
+}
+
+/// Fallibly fills a polygon using caller-owned reusable parallel scratch storage.
+///
+/// Edge data and every worker's intersection buffer are reserved before the
+/// framebuffer is borrowed mutably. Reusing the scratch value avoids repeated
+/// heap allocations when the same renderer draws polygons over many frames.
+pub fn try_fill_polygon_parallel_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
@@ -2723,10 +2766,16 @@ pub fn try_fill_polygon_parallel_with_threads(
         return Ok(());
     }
 
-    let mut edges = Vec::new();
+    let RasterizerScratch {
+        parallel_edges: edges,
+        parallel_intersections: worker_intersections,
+        ..
+    } = scratch;
+
     edges
-        .try_reserve_exact(vertices.len())
+        .try_reserve(vertices.len())
         .map_err(|_| RasterizerError::AllocationFailed)?;
+    edges.clear();
     for index in 0..vertices.len() {
         let a = vertices[index];
         let b = vertices[(index + 1) % vertices.len()];
@@ -2746,16 +2795,19 @@ pub fn try_fill_polygon_parallel_with_threads(
 
     let row_count = max_y - min_y + 1;
     let worker_count = thread_count.max(1).min(row_count);
-    let mut worker_intersections = Vec::new();
-    worker_intersections
-        .try_reserve_exact(worker_count)
-        .map_err(|_| RasterizerError::AllocationFailed)?;
-    for _ in 0..worker_count {
-        let mut intersections = Vec::new();
-        intersections
-            .try_reserve_exact(edges.len())
+    if worker_intersections.len() < worker_count {
+        worker_intersections
+            .try_reserve(worker_count - worker_intersections.len())
             .map_err(|_| RasterizerError::AllocationFailed)?;
-        worker_intersections.push(intersections);
+        while worker_intersections.len() < worker_count {
+            worker_intersections.push(Vec::new());
+        }
+    }
+    for intersections in worker_intersections.iter_mut().take(worker_count) {
+        intersections
+            .try_reserve(edges.len())
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        intersections.clear();
     }
 
     let row_width = target.width() as usize;
@@ -2766,13 +2818,13 @@ pub fn try_fill_polygon_parallel_with_threads(
     let pixels_per_worker = rows_per_worker * row_width;
 
     std::thread::scope(|scope| {
-        for (chunk_index, (chunk, mut intersections)) in rows
+        for (chunk_index, (chunk, intersections)) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_intersections)
+            .zip(worker_intersections.iter_mut().take(worker_count))
             .enumerate()
         {
             let first_y = min_y + chunk_index * rows_per_worker;
-            let edges = &edges;
+            let edges = &*edges;
             scope.spawn(move || {
                 for (row_offset, row) in chunk.chunks_mut(row_width).enumerate() {
                     let scan_y = (first_y + row_offset) as f64 + 0.5;
@@ -2798,7 +2850,6 @@ pub fn try_fill_polygon_parallel_with_threads(
     });
     Ok(())
 }
-
 /// Automatically selects a worker count for polygon filling.
 pub fn fill_polygon_parallel(target: &mut Framebuffer, vertices: &[Point], color: Color) {
     let area = target.width() as u64 * target.height() as u64;
@@ -9892,6 +9943,90 @@ mod rasterizer_scratch_lifecycle_tests {
         let within_budget = scratch.allocated_bytes();
         scratch.trim_to_budget(within_budget);
         assert_eq!(scratch.allocated_bytes(), within_budget);
+    }
+
+    #[test]
+    fn parallel_polygon_scratch_matches_serial_and_reuses_worker_buffers() {
+        let vertices = [
+            Point::new(2, 1),
+            Point::new(34, 4),
+            Point::new(27, 31),
+            Point::new(15, 20),
+            Point::new(3, 29),
+        ];
+        let mut serial = Framebuffer::new(40, 36, Color::BLACK).unwrap();
+        let mut parallel = serial.clone();
+        let mut scratch = RasterizerScratch::default();
+
+        try_fill_polygon_with_scratch(&mut serial, &vertices, Color::WHITE, &mut scratch)
+            .unwrap();
+        try_fill_polygon_parallel_with_scratch(
+            &mut parallel,
+            &vertices,
+            Color::WHITE,
+            4,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(parallel, serial);
+
+        let retained = scratch.allocated_bytes();
+        assert!(retained > 0);
+        let mut second_serial = Framebuffer::new(40, 36, Color::BLACK).unwrap();
+        let mut second_parallel = second_serial.clone();
+        try_fill_polygon_with_scratch(
+            &mut second_serial,
+            &vertices,
+            Color::rgba(30, 120, 210, 255),
+            &mut scratch,
+        )
+        .unwrap();
+        try_fill_polygon_parallel_with_scratch(
+            &mut second_parallel,
+            &vertices,
+            Color::rgba(30, 120, 210, 255),
+            4,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(second_parallel, second_serial);
+        assert_eq!(scratch.allocated_bytes(), retained);
+    }
+
+    #[test]
+    fn parallel_polygon_scratch_can_grow_worker_count_and_release_memory() {
+        let vertices = [
+            Point::new(1, 1),
+            Point::new(62, 3),
+            Point::new(58, 60),
+            Point::new(4, 57),
+        ];
+        let mut target = Framebuffer::new(64, 64, Color::BLACK).unwrap();
+        let mut scratch = RasterizerScratch::default();
+
+        try_fill_polygon_parallel_with_scratch(
+            &mut target,
+            &vertices,
+            Color::WHITE,
+            2,
+            &mut scratch,
+        )
+        .unwrap();
+        let two_workers_bytes = scratch.allocated_bytes();
+        try_fill_polygon_parallel_with_scratch(
+            &mut target,
+            &vertices,
+            Color::RED,
+            6,
+            &mut scratch,
+        )
+        .unwrap();
+        assert!(scratch.allocated_bytes() >= two_workers_bytes);
+        scratch.clear();
+        let retained = scratch.allocated_bytes();
+        assert!(retained > 0);
+        scratch.release();
+        assert_eq!(scratch.allocated_bytes(), 0);
     }
 
     #[test]
