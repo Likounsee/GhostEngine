@@ -382,11 +382,6 @@ impl DamageRegion {
             .expect("failed to allocate full damage-region storage");
     }
 
-    /// Removes all accumulated damage rectangles.
-    pub fn clear(&mut self) {
-        self.rectangles.clear();
-    }
-
     /// Resets the tracked framebuffer bounds and clears pending damage.
     ///
     /// The rectangle allocation is retained, making this suitable for reusing
