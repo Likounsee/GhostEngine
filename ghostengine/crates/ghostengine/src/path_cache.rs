@@ -22,6 +22,8 @@ pub enum PathGeometryCacheError {
 pub struct PathGeometryCacheStats {
     pub entries: usize,
     pub capacity: usize,
+    /// Estimated bytes held by the cache's entry and geometry vector capacities.
+    pub allocated_bytes: usize,
     pub hits: u64,
     pub misses: u64,
 }
@@ -92,6 +94,7 @@ impl PathGeometryCache {
         PathGeometryCacheStats {
             entries: self.entries.len(),
             capacity: self.capacity,
+            allocated_bytes: self.allocated_bytes(),
             hits: self.hits,
             misses: self.misses,
         }
@@ -101,6 +104,49 @@ impl PathGeometryCache {
     pub fn reset_stats(&mut self) {
         self.hits = 0;
         self.misses = 0;
+    }
+
+    /// Estimates memory retained by the cache's vector capacities.
+    ///
+    /// This includes the entry vector and each flattened geometry's subpath
+    /// and point vectors. It excludes allocator metadata and unrelated memory.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        let entries_bytes = self
+            .entries
+            .capacity()
+            .saturating_mul(core::mem::size_of::<Entry>());
+        self.entries.iter().fold(entries_bytes, |total, entry| {
+            let subpaths_bytes = entry
+                .geometry
+                .subpaths
+                .capacity()
+                .saturating_mul(core::mem::size_of::<crate::FlattenedSubpath>());
+            let points_bytes = entry.geometry.subpaths.iter().fold(0usize, |bytes, subpath| {
+                bytes.saturating_add(
+                    subpath
+                        .points
+                        .capacity()
+                        .saturating_mul(core::mem::size_of::<crate::Vector>()),
+                )
+            });
+            total
+                .saturating_add(subpaths_bytes)
+                .saturating_add(points_bytes)
+        })
+    }
+
+    /// Drops cached geometries while retaining the entry vector for reuse.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Drops cached geometries and releases the cache's retained entry storage.
+    ///
+    /// Lookup counters and the configured entry limit are preserved.
+    pub fn release(&mut self) {
+        self.entries.clear();
+        self.entries.shrink_to_fit();
     }
 
     fn advance_clock(&mut self) {
@@ -158,10 +204,6 @@ impl PathGeometryCache {
 
     pub fn invalidate(&mut self, key: u64) {
         self.entries.retain(|entry| entry.key != key);
-    }
-
-    pub fn clear(&mut self) {
-        self.entries.clear();
     }
 
     #[must_use]
@@ -237,6 +279,29 @@ mod tests {
     }
 
     #[test]
+    fn memory_accounting_tracks_geometry_clear_and_release() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(4);
+        assert_eq!(cache.allocated_bytes(), 4 * core::mem::size_of::<Entry>());
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        let populated = cache.allocated_bytes();
+        assert!(populated > 4 * core::mem::size_of::<Entry>());
+        assert_eq!(cache.stats().allocated_bytes, populated);
+
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.allocated_bytes(), 4 * core::mem::size_of::<Entry>());
+
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        assert!(cache.allocated_bytes() > 4 * core::mem::size_of::<Entry>());
+        cache.release();
+        assert_eq!(cache.allocated_bytes(), 0);
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().capacity, 4);
+    }
+
+    #[test]
     fn resizing_cache_evicts_oldest_entries_and_preserves_recent_geometry() {
         let path = triangle();
         let mut cache = PathGeometryCache::new(3);
@@ -282,6 +347,7 @@ mod tests {
             PathGeometryCacheStats {
                 entries: 1,
                 capacity: 2,
+                allocated_bytes: cache.allocated_bytes(),
                 hits: 0,
                 misses: 0,
             }
