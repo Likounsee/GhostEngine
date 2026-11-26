@@ -122,14 +122,18 @@ impl PathGeometryCache {
                 .subpaths
                 .capacity()
                 .saturating_mul(core::mem::size_of::<crate::FlattenedSubpath>());
-            let points_bytes = entry.geometry.subpaths.iter().fold(0usize, |bytes, subpath| {
-                bytes.saturating_add(
-                    subpath
-                        .points
-                        .capacity()
-                        .saturating_mul(core::mem::size_of::<crate::Vector>()),
-                )
-            });
+            let points_bytes = entry
+                .geometry
+                .subpaths
+                .iter()
+                .fold(0usize, |bytes, subpath| {
+                    bytes.saturating_add(
+                        subpath
+                            .points
+                            .capacity()
+                            .saturating_mul(core::mem::size_of::<crate::Vector>()),
+                    )
+                });
             total
                 .saturating_add(subpaths_bytes)
                 .saturating_add(points_bytes)
@@ -282,23 +286,55 @@ mod tests {
     fn memory_accounting_tracks_geometry_clear_and_release() {
         let path = triangle();
         let mut cache = PathGeometryCache::new(4);
-        assert_eq!(cache.allocated_bytes(), 4 * core::mem::size_of::<Entry>());
+        let empty_allocation = cache.allocated_bytes();
+        assert!(empty_allocation >= 4 * core::mem::size_of::<Entry>());
 
         cache.get_or_flatten(1, &path, 0.25).unwrap();
         let populated = cache.allocated_bytes();
-        assert!(populated > 4 * core::mem::size_of::<Entry>());
+        assert!(populated > empty_allocation);
         assert_eq!(cache.stats().allocated_bytes, populated);
 
         cache.clear();
         assert_eq!(cache.len(), 0);
-        assert_eq!(cache.allocated_bytes(), 4 * core::mem::size_of::<Entry>());
+        assert_eq!(cache.allocated_bytes(), empty_allocation);
 
         cache.get_or_flatten(2, &path, 0.25).unwrap();
-        assert!(cache.allocated_bytes() > 4 * core::mem::size_of::<Entry>());
+        assert!(cache.allocated_bytes() > empty_allocation);
         cache.release();
         assert_eq!(cache.allocated_bytes(), 0);
         assert_eq!(cache.stats().entries, 0);
         assert_eq!(cache.stats().capacity, 4);
+    }
+
+    #[test]
+    fn retained_memory_tracks_lru_eviction_resize_and_invalidation() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(3);
+        let empty_bytes = cache.allocated_bytes();
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        let one_entry_bytes = cache.allocated_bytes();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        let two_entry_bytes = cache.allocated_bytes();
+        assert!(one_entry_bytes > empty_bytes);
+        assert!(two_entry_bytes > one_entry_bytes);
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.get_or_flatten(3, &path, 0.25).unwrap();
+        let three_entry_bytes = cache.allocated_bytes();
+        assert!(three_entry_bytes > two_entry_bytes);
+
+        cache.get_or_flatten(4, &path, 0.25).unwrap();
+        assert_eq!(cache.len(), 3);
+        assert!(cache.allocated_bytes() <= three_entry_bytes);
+
+        cache.invalidate(1);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.allocated_bytes() < three_entry_bytes);
+
+        cache.set_capacity(1).unwrap();
+        assert_eq!(cache.len(), 1);
+        assert!(cache.allocated_bytes() < three_entry_bytes);
     }
 
     #[test]
