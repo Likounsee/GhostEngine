@@ -451,11 +451,12 @@ mod tests {
     fn geometry_budget_zero_disables_retention_and_clear_drops_transient_geometry() {
         let path = triangle();
         let mut cache = PathGeometryCache::with_budget(2, 0);
+        let empty_bytes = cache.allocated_bytes();
         cache.get_or_flatten(1, &path, 0.25).unwrap();
         assert!(cache.is_empty());
-        assert!(cache.allocated_bytes() > 0);
+        assert!(cache.allocated_bytes() > empty_bytes);
         cache.clear();
-        assert_eq!(cache.allocated_bytes(), 2 * core::mem::size_of::<Entry>());
+        assert_eq!(cache.allocated_bytes(), empty_bytes);
         assert_eq!(cache.cached_geometry_bytes(), 0);
     }
 
