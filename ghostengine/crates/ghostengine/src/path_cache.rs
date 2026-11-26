@@ -184,6 +184,9 @@ impl PathGeometryCache {
     /// Changes the maximum cached geometry payload and evicts least-recently
     /// used entries immediately until the new budget is satisfied.
     pub fn set_budget_bytes(&mut self, budget_bytes: usize) {
+        // A transient oversized result is no longer needed once the caller
+        // changes cache policy, so do not retain it across the budget change.
+        self.uncached_geometry = None;
         self.budget_bytes = budget_bytes;
         while self.cached_geometry_bytes() > budget_bytes {
             let oldest = self
@@ -446,6 +449,22 @@ mod tests {
         assert_eq!(second, &first);
         assert_eq!(bounded.stats().misses, 2);
         assert_eq!(bounded.stats().entries, 0);
+    }
+
+    #[test]
+    fn changing_budget_releases_previous_uncached_result() {
+        let path = triangle();
+        let mut unlimited = PathGeometryCache::new(2);
+        unlimited.get_or_flatten(1, &path, 0.25).unwrap();
+        let geometry_bytes = unlimited.cached_geometry_bytes();
+        let mut cache = PathGeometryCache::with_budget(2, geometry_bytes - 1);
+        let empty_bytes = cache.allocated_bytes();
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        assert!(cache.allocated_bytes() > empty_bytes);
+        cache.set_budget_bytes(0);
+        assert_eq!(cache.allocated_bytes(), empty_bytes);
+        assert_eq!(cache.cached_geometry_bytes(), 0);
     }
 
     #[test]
