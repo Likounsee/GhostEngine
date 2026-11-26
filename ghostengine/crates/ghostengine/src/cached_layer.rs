@@ -84,6 +84,29 @@ impl CachedLayer {
         self.rendered_frames
     }
 
+    /// Returns logical bytes retained by the framebuffer and damage tracker.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.framebuffer.allocated_bytes().saturating_add(self.damage.allocated_bytes())
+    }
+
+    /// Shrinks excess framebuffer capacity and releases damage scratch storage
+    /// when the retained allocation exceeds the supplied budget.
+    ///
+    /// The framebuffer's live pixels cannot be discarded, so a budget smaller
+    /// than the required pixel storage is a best-effort limit.
+    /// Returns the number of logical bytes released.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        let before = self.allocated_bytes();
+        if before <= budget_bytes {
+            return 0;
+        }
+        self.framebuffer.shrink_to_fit();
+        let pixel_bytes = self.framebuffer.allocated_bytes();
+        self.damage.trim_to_budget(budget_bytes.saturating_sub(pixel_bytes));
+        before.saturating_sub(self.allocated_bytes())
+    }
+
     /// Marks a changed rectangle for recomputation on the next render call.
     pub fn mark_dirty(&mut self, rectangle: Rect) {
         self.try_mark_dirty(rectangle)
@@ -231,6 +254,33 @@ impl CachedLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_accounting_and_budget_trim_preserve_cached_pixels_and_damage() {
+        let mut pixels = Vec::new();
+        pixels.reserve_exact(128);
+        pixels.extend([Color::rgba(10, 20, 30, 255); 16]);
+        let framebuffer = Framebuffer::from_pixels(4, 4, pixels).unwrap();
+        let mut cache = CachedLayer {
+            framebuffer,
+            damage: crate::DamageRegion::new(4, 4),
+            rendered_frames: 7,
+        };
+        cache.mark_dirty(Rect::new(1, 1, 2, 2));
+        let original_pixels = cache.framebuffer().pixels().to_vec();
+        let before = cache.allocated_bytes();
+        assert!(before > original_pixels.len() * core::mem::size_of::<Color>());
+
+        let released = cache.trim_to_budget(0);
+
+        assert!(released > 0);
+        assert_eq!(cache.framebuffer().pixels(), original_pixels);
+        assert_eq!(cache.damage().area(), 4);
+        assert_eq!(cache.rendered_frames(), 7);
+        assert_eq!(cache.allocated_bytes(), cache.framebuffer().allocated_bytes()
+            + cache.damage().allocated_bytes());
+        assert!(cache.framebuffer().pixel_capacity() >= 16);
+    }
 
     #[test]
     fn fallible_constructor_starts_fully_invalidated() {

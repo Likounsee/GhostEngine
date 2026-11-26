@@ -113,6 +113,29 @@ impl Framebuffer {
         &self.pixels
     }
 
+    /// Returns the number of pixels that fit in the backing allocation.
+    #[must_use]
+    pub fn pixel_capacity(&self) -> usize {
+        self.pixels.capacity()
+    }
+
+    /// Returns logical bytes held by the framebuffer's pixel allocation.
+    ///
+    /// Allocator metadata and process-wide resident memory are not included.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.pixels.capacity().saturating_mul(core::mem::size_of::<Color>())
+    }
+
+    /// Releases excess pixel capacity without changing dimensions or contents.
+    ///
+    /// Returns the number of logical bytes released from the pixel allocation.
+    pub fn shrink_to_fit(&mut self) -> usize {
+        let before = self.allocated_bytes();
+        self.pixels.shrink_to_fit();
+        before.saturating_sub(self.allocated_bytes())
+    }
+
     /// Copies a complete row-major image into this framebuffer without reallocating.
     ///
     /// The source must contain exactly width() * height() pixels. On a size
@@ -323,6 +346,29 @@ impl Framebuffer {
     }
 }
 
+#[cfg(test)]
+mod allocation_lifecycle_tests {
+    use super::*;
+    
+    #[test]
+    fn shrink_to_fit_releases_only_excess_capacity_and_preserves_pixels() {
+        let mut pixels = Vec::new();
+        pixels.reserve_exact(64);
+        pixels.extend([Color::RED; 12]);
+        let mut framebuffer = Framebuffer::from_pixels(4, 3, pixels).unwrap();
+        let before = framebuffer.allocated_bytes();
+        assert!(framebuffer.pixel_capacity() >= 12);
+        assert!(before >= 12 * core::mem::size_of::<Color>());
+        let expected = framebuffer.pixels().to_vec();
+
+        let released = framebuffer.shrink_to_fit();
+
+        assert_eq!(framebuffer.pixels(), expected);
+        assert_eq!(framebuffer.pixel_capacity(), framebuffer.pixels().len());
+        assert_eq!(released, before - framebuffer.allocated_bytes());
+        assert_eq!(framebuffer.allocated_bytes(), 12 * core::mem::size_of::<Color>());
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::{Framebuffer, FramebufferError};
