@@ -124,7 +124,9 @@ impl Framebuffer {
     /// Allocator metadata and process-wide resident memory are not included.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.pixels.capacity().saturating_mul(core::mem::size_of::<Color>())
+        self.pixels
+            .capacity()
+            .saturating_mul(core::mem::size_of::<Color>())
     }
 
     /// Releases excess pixel capacity without changing dimensions or contents.
@@ -349,7 +351,6 @@ impl Framebuffer {
 #[cfg(test)]
 mod allocation_lifecycle_tests {
     use super::*;
-    
     #[test]
     fn shrink_to_fit_releases_only_excess_capacity_and_preserves_pixels() {
         let mut pixels = Vec::new();
@@ -366,7 +367,10 @@ mod allocation_lifecycle_tests {
         assert_eq!(framebuffer.pixels(), expected);
         assert_eq!(framebuffer.pixel_capacity(), framebuffer.pixels().len());
         assert_eq!(released, before - framebuffer.allocated_bytes());
-        assert_eq!(framebuffer.allocated_bytes(), 12 * core::mem::size_of::<Color>());
+        assert_eq!(
+            framebuffer.allocated_bytes(),
+            12 * core::mem::size_of::<Color>()
+        );
     }
 }
 #[cfg(test)]

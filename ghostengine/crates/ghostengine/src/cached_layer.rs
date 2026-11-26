@@ -87,7 +87,9 @@ impl CachedLayer {
     /// Returns logical bytes retained by the framebuffer and damage tracker.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.framebuffer.allocated_bytes().saturating_add(self.damage.allocated_bytes())
+        self.framebuffer
+            .allocated_bytes()
+            .saturating_add(self.damage.allocated_bytes())
     }
 
     /// Shrinks excess framebuffer capacity and releases damage scratch storage
@@ -103,7 +105,8 @@ impl CachedLayer {
         }
         self.framebuffer.shrink_to_fit();
         let pixel_bytes = self.framebuffer.allocated_bytes();
-        self.damage.trim_to_budget(budget_bytes.saturating_sub(pixel_bytes));
+        self.damage
+            .trim_to_budget(budget_bytes.saturating_sub(pixel_bytes));
         before.saturating_sub(self.allocated_bytes())
     }
 
@@ -277,8 +280,10 @@ mod tests {
         assert_eq!(cache.framebuffer().pixels(), original_pixels);
         assert_eq!(cache.damage().area(), 4);
         assert_eq!(cache.rendered_frames(), 7);
-        assert_eq!(cache.allocated_bytes(), cache.framebuffer().allocated_bytes()
-            + cache.damage().allocated_bytes());
+        assert_eq!(
+            cache.allocated_bytes(),
+            cache.framebuffer().allocated_bytes() + cache.damage().allocated_bytes()
+        );
         assert!(cache.framebuffer().pixel_capacity() >= 16);
     }
 

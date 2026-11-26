@@ -2648,7 +2648,11 @@ impl RasterizerScratch {
             .saturating_add(
                 self.parallel_intersections
                     .iter()
-                    .map(|buffer| buffer.capacity().saturating_mul(core::mem::size_of::<f64>()))
+                    .map(|buffer| {
+                        buffer
+                            .capacity()
+                            .saturating_mul(core::mem::size_of::<f64>())
+                    })
                     .fold(0usize, usize::saturating_add),
             )
     }
@@ -9958,8 +9962,7 @@ mod rasterizer_scratch_lifecycle_tests {
         let mut parallel = serial.clone();
         let mut scratch = RasterizerScratch::default();
 
-        try_fill_polygon_with_scratch(&mut serial, &vertices, Color::WHITE, &mut scratch)
-            .unwrap();
+        try_fill_polygon_with_scratch(&mut serial, &vertices, Color::WHITE, &mut scratch).unwrap();
         try_fill_polygon_parallel_with_scratch(
             &mut parallel,
             &vertices,
@@ -10013,14 +10016,8 @@ mod rasterizer_scratch_lifecycle_tests {
         )
         .unwrap();
         let two_workers_bytes = scratch.allocated_bytes();
-        try_fill_polygon_parallel_with_scratch(
-            &mut target,
-            &vertices,
-            Color::RED,
-            6,
-            &mut scratch,
-        )
-        .unwrap();
+        try_fill_polygon_parallel_with_scratch(&mut target, &vertices, Color::RED, 6, &mut scratch)
+            .unwrap();
         assert!(scratch.allocated_bytes() >= two_workers_bytes);
         scratch.clear();
         let retained = scratch.allocated_bytes();

@@ -319,7 +319,9 @@ impl TextureCache {
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
         self.used_bytes.saturating_add(
-            self.entries.capacity().saturating_mul(core::mem::size_of::<(TextureHandle, Entry)>()),
+            self.entries
+                .capacity()
+                .saturating_mul(core::mem::size_of::<(TextureHandle, Entry)>()),
         )
     }
 
@@ -637,7 +639,10 @@ mod tests {
         assert_eq!(cache.stats().evictions, before_stats.evictions);
         let next = cache.insert(texture(Color::GREEN, 1)).unwrap();
         assert!(next.id() > first.id());
-        assert_eq!(cache.peek(next).unwrap().get_pixel(0, 0), Some(Color::GREEN));
+        assert_eq!(
+            cache.peek(next).unwrap().get_pixel(0, 0),
+            Some(Color::GREEN)
+        );
     }
 
     #[test]
