@@ -3380,6 +3380,7 @@ mod tests {
 
         for indexed in [false, true] {
             font.clear_glyph_cache();
+            font.reset_glyph_cache_stats();
             let workers = 8;
             let barrier = Arc::new(Barrier::new(workers));
             let handles = (0..workers)
