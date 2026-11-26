@@ -139,8 +139,10 @@ pub use shaping::{
     TextDirection,
 };
 pub use stroke::{
-    stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_aa_parallel_with_threads,
-    stroke_path_clipped, StrokeCap, StrokeError, StrokeJoin, StrokeStyle,
+    stroke_path, stroke_path_aa, stroke_path_aa_clipped, stroke_path_aa_clipped_with_scratch,
+    stroke_path_aa_parallel_with_threads, stroke_path_aa_with_scratch, stroke_path_clipped,
+    stroke_path_clipped_with_scratch, stroke_path_with_scratch, StrokeCap, StrokeError,
+    StrokeJoin, StrokeScratch, StrokeStyle,
 };
 pub use surface::{AlphaMode, ColorSpace, PixelFormat, SurfaceDescriptor, SurfaceError};
 pub use text::{
