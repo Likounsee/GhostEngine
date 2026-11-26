@@ -1186,12 +1186,35 @@ pub enum TextureDrawError {
 /// Reusable temporary storage for repeated texture draws.
 #[derive(Debug, Default)]
 pub struct TextureDrawScratch {
-    nearest_columns: Vec<usize>,
-    horizontal_samples: Vec<(usize, usize, f32)>,
-    horizontal_cache: Vec<[f32; 4]>,
-    region_horizontal_cache: Vec<[f32; 4]>,
-    cached_bilinear_key: Option<BilinearCacheKey>,
-    cached_region_bilinear_key: Option<RegionBilinearCacheKey>,
+    nearest_columns: Vec<usize>, horizontal_samples: Vec<(usize, usize, f32)>,
+    horizontal_cache: Vec<[f32; 4]>, region_horizontal_cache: Vec<[f32; 4]>,
+    cached_bilinear_key: Option<BilinearCacheKey>, cached_region_bilinear_key: Option<RegionBilinearCacheKey>,
+}
+
+impl TextureDrawScratch {
+    /// Returns logical bytes held by reusable texture-sampling buffers.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.nearest_columns.capacity().saturating_mul(core::mem::size_of::<usize>())
+            .saturating_add(self.horizontal_samples.capacity().saturating_mul(core::mem::size_of::<(usize, usize, f32)>()))
+            .saturating_add(self.horizontal_cache.capacity().saturating_mul(core::mem::size_of::<[f32; 4]>()))
+            .saturating_add(self.region_horizontal_cache.capacity().saturating_mul(core::mem::size_of::<[f32; 4]>()))
+    }
+    /// Clears cached sampling data while retaining reusable allocations.
+    pub fn clear(&mut self) {
+        self.nearest_columns.clear(); self.horizontal_samples.clear(); self.horizontal_cache.clear(); self.region_horizontal_cache.clear();
+        self.cached_bilinear_key = None; self.cached_region_bilinear_key = None;
+    }
+    /// Drops all retained texture-sampling allocations and cache keys.
+    pub fn release(&mut self) {
+        self.clear(); self.nearest_columns.shrink_to_fit(); self.horizontal_samples.shrink_to_fit();
+        self.horizontal_cache.shrink_to_fit(); self.region_horizontal_cache.shrink_to_fit();
+    }
+    /// Releases scratch allocations when their logical footprint exceeds budget.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        let before = self.allocated_bytes(); if before <= budget_bytes { return 0; }
+        self.release(); before.saturating_sub(self.allocated_bytes())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3973,4 +3996,34 @@ mod render_options_tests {
             }
         }
     }
+
+    #[test]
+    fn texture_draw_scratch_memory_lifecycle_is_reusable_and_budgeted() {
+        let mut scratch = TextureDrawScratch::default();
+        scratch.nearest_columns.reserve(64);
+        scratch.horizontal_samples.reserve(32);
+        scratch.horizontal_cache.reserve(16);
+        scratch.region_horizontal_cache.reserve(8);
+        scratch.cached_bilinear_key = Some(super::BilinearCacheKey {
+            texture_id: 1, texture_width: 4, texture_height: 4,
+            destination_x: 0, destination_width: 4, first_x: 0, end_x: 4,
+        });
+        let allocated = scratch.allocated_bytes();
+        assert!(allocated > 0);
+        scratch.clear();
+        assert_eq!(scratch.allocated_bytes(), allocated);
+        assert!(scratch.nearest_columns.is_empty());
+        assert!(scratch.horizontal_samples.is_empty());
+        assert!(scratch.horizontal_cache.is_empty());
+        assert!(scratch.region_horizontal_cache.is_empty());
+        assert!(scratch.cached_bilinear_key.is_none());
+        assert_eq!(scratch.trim_to_budget(allocated), 0);
+        assert!(scratch.trim_to_budget(0) > 0);
+        assert_eq!(scratch.allocated_bytes(), 0);
+        scratch.nearest_columns.reserve(4);
+        assert!(scratch.allocated_bytes() > 0);
+        scratch.release();
+        assert_eq!(scratch.allocated_bytes(), 0);
+    }
+
 }

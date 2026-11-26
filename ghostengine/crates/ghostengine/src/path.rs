@@ -196,10 +196,28 @@ pub enum PathError {
 
 impl Path {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            commands: Vec::new(),
-        }
+    pub const fn new() -> Self { Self { commands: Vec::new() } }
+
+    /// Returns the number of path commands that fit without growing storage.
+    #[must_use]
+    pub fn command_capacity(&self) -> usize { self.commands.capacity() }
+
+    /// Returns logical bytes held by the path command buffer.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize { self.commands.capacity().saturating_mul(core::mem::size_of::<Command>()) }
+
+    /// Removes all path commands while retaining their backing allocation.
+    pub fn clear(&mut self) { self.commands.clear(); }
+
+    /// Drops the path command allocation.
+    pub fn release(&mut self) { self.clear(); self.commands.shrink_to_fit(); }
+
+    /// Releases path command storage when it exceeds the budget.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        let before = self.allocated_bytes();
+        if before <= budget_bytes { return 0; }
+        self.release();
+        before.saturating_sub(self.allocated_bytes())
     }
 
     /// Reserves capacity for additional path commands without changing the path.
@@ -2060,4 +2078,27 @@ mod tests {
         assert_eq!(points.first(), Some(&Vector::new(-extent, 0.0)));
         assert_eq!(points.last(), Some(&Vector::new(extent, 0.0)));
     }
+
+    #[test]
+    fn path_command_storage_can_be_reused_trimmed_and_released() {
+        let mut path = Path::new();
+        path.try_reserve_commands(16).unwrap();
+        let capacity = path.command_capacity();
+        path.move_to(Vector::new(1.0, 2.0)).line_to(Vector::new(3.0, 4.0)).close();
+        let allocated = path.allocated_bytes();
+        assert!(allocated >= 16 * core::mem::size_of::<super::Command>());
+        assert!(capacity >= 16);
+        path.clear();
+        assert_eq!(path.command_capacity(), capacity);
+        assert_eq!(path.allocated_bytes(), allocated);
+        assert_eq!(path.trim_to_budget(allocated), 0);
+        assert!(path.trim_to_budget(0) > 0);
+        assert_eq!(path.command_capacity(), 0);
+        assert_eq!(path.allocated_bytes(), 0);
+        path.move_to(Vector::new(5.0, 6.0));
+        assert_eq!(path.flatten(0.25).unwrap().subpaths.len(), 1);
+        path.release();
+        assert_eq!(path.allocated_bytes(), 0);
+    }
+
 }
