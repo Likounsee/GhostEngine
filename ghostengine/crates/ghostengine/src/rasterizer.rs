@@ -2570,6 +2570,69 @@ pub struct RasterizerScratch {
     arc_aa_sources: Vec<Color>,
     ellipse_aa_sources: Vec<Color>,
 }
+impl RasterizerScratch {
+    /// Returns the logical heap capacity retained by all scratch buffers.
+    /// This excludes allocator metadata and process RSS.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.polygon_edges.capacity().saturating_mul(core::mem::size_of::<PolygonScanEdge>())
+            .saturating_add(self.active_edges.capacity().saturating_mul(core::mem::size_of::<usize>()))
+            .saturating_add(self.intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
+            .saturating_add(self.aa_edges.capacity().saturating_mul(core::mem::size_of::<PolygonEdge>()))
+            .saturating_add(self.aa_edge_order.capacity().saturating_mul(core::mem::size_of::<usize>()))
+            .saturating_add(self.aa_active_edges.capacity().saturating_mul(core::mem::size_of::<usize>()))
+            .saturating_add(self.aa_intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
+            .saturating_add(self.aa_coverage.capacity().saturating_mul(core::mem::size_of::<u8>()))
+            .saturating_add(self.aa_outline_segments.capacity().saturating_mul(core::mem::size_of::<AaOutlineSegment>()))
+            .saturating_add(self.ellipse_aa_coverage.capacity().saturating_mul(core::mem::size_of::<u8>()))
+            .saturating_add(self.arc_aa_sources.capacity().saturating_mul(core::mem::size_of::<Color>()))
+            .saturating_add(self.ellipse_aa_sources.capacity().saturating_mul(core::mem::size_of::<Color>()))
+    }
+
+    /// Clears all scratch buffers while retaining their allocations for reuse.
+    pub fn clear(&mut self) {
+        self.polygon_edges.clear();
+        self.active_edges.clear();
+        self.intersections.clear();
+        self.aa_edges.clear();
+        self.aa_edge_order.clear();
+        self.aa_active_edges.clear();
+        self.aa_intersections.clear();
+        self.aa_coverage.clear();
+        self.aa_outline_segments.clear();
+        self.ellipse_aa_coverage.clear();
+        self.arc_aa_sources.clear();
+        self.ellipse_aa_sources.clear();
+    }
+
+    /// Releases all retained scratch allocations.
+    pub fn release(&mut self) {
+        self.clear();
+        self.polygon_edges.shrink_to_fit();
+        self.active_edges.shrink_to_fit();
+        self.intersections.shrink_to_fit();
+        self.aa_edges.shrink_to_fit();
+        self.aa_edge_order.shrink_to_fit();
+        self.aa_active_edges.shrink_to_fit();
+        self.aa_intersections.shrink_to_fit();
+        self.aa_coverage.shrink_to_fit();
+        self.aa_outline_segments.shrink_to_fit();
+        self.ellipse_aa_coverage.shrink_to_fit();
+        self.arc_aa_sources.shrink_to_fit();
+        self.ellipse_aa_sources.shrink_to_fit();
+    }
+
+    /// Releases all scratch allocations when retained capacity exceeds the budget.
+    ///
+    /// This conservative policy bounds memory retained between calls, not
+    /// transient allocations made by an individual draw operation.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) {
+        if self.allocated_bytes() > budget_bytes {
+            self.release();
+        }
+    }
+}
+
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
 pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
@@ -9732,5 +9795,54 @@ mod clipped_rectangle_batch_tests {
             Rect::new(20, 20, 3, 3),
         );
         assert_eq!(actual, before);
+    }
+}
+
+#[cfg(test)]
+mod rasterizer_scratch_lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn scratch_memory_accounting_tracks_reuse_and_release() {
+        let mut scratch = RasterizerScratch::default();
+        assert_eq!(scratch.allocated_bytes(), 0);
+        let vertices = [Point::new(1, 1), Point::new(30, 2), Point::new(24, 28), Point::new(3, 22)];
+        let mut target = Framebuffer::new(40, 40, Color::BLACK).unwrap();
+        try_fill_polygon_aa_with_scratch(&mut target, &vertices, Color::WHITE, &mut scratch).unwrap();
+        let retained = scratch.allocated_bytes();
+        assert!(retained > 0);
+        scratch.clear();
+        assert_eq!(scratch.allocated_bytes(), retained);
+        try_fill_polygon_with_scratch(&mut target, &vertices, Color::RED, &mut scratch).unwrap();
+        assert!(scratch.allocated_bytes() > 0);
+        scratch.release();
+        assert_eq!(scratch.allocated_bytes(), 0);
+    }
+
+    #[test]
+    fn scratch_budget_trims_peak_allocations_and_remains_reusable() {
+        let mut scratch = RasterizerScratch::default();
+        let vertices = [Point::new(0, 0), Point::new(120, 4), Point::new(110, 110), Point::new(4, 120)];
+        let mut target = Framebuffer::new(128, 128, Color::BLACK).unwrap();
+        let color = Color::rgba(40, 80, 120, 180);
+        try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch).unwrap();
+        assert!(scratch.allocated_bytes() > 0);
+        scratch.trim_to_budget(0);
+        assert_eq!(scratch.allocated_bytes(), 0);
+
+        let mut rerendered = Framebuffer::new(128, 128, Color::BLACK).unwrap();
+        try_fill_polygon_aa_with_scratch(&mut rerendered, &vertices, color, &mut scratch).unwrap();
+        assert_eq!(rerendered, target);
+
+        let within_budget = scratch.allocated_bytes();
+        scratch.trim_to_budget(within_budget);
+        assert_eq!(scratch.allocated_bytes(), within_budget);
+    }
+
+    #[test]
+    fn scratch_trim_is_a_noop_when_already_within_budget() {
+        let mut scratch = RasterizerScratch::default();
+        scratch.trim_to_budget(0);
+        assert_eq!(scratch.allocated_bytes(), 0);
     }
 }
