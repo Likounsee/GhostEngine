@@ -738,7 +738,10 @@ mod tests {
             assert_eq!(stats.entries, cache.entries.len());
             assert_eq!(stats.used_bytes, accounted_bytes);
             assert!(stats.used_bytes <= stats.budget_bytes);
-            assert!(cache.entries.keys().all(|handle| handle.id() < cache.next_handle));
+            assert!(cache
+                .entries
+                .keys()
+                .all(|handle| handle.id() < cache.next_handle));
         }
     }
 

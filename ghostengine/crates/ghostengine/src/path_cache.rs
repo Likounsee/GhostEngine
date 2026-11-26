@@ -26,7 +26,8 @@ pub struct PathGeometryCacheStats {
     pub allocated_bytes: usize,
     /// Bytes held by cached flattened geometry, excluding entry-table overhead.
     pub geometry_bytes: usize,
-    /// Maximum cached flattened-geometry bytes. Oversized paths are returned uncached.
+    /// Maximum cached flattened-geometry bytes. Oversized paths are returned
+    /// uncached.
     pub budget_bytes: usize,
     pub hits: u64,
     pub misses: u64,
