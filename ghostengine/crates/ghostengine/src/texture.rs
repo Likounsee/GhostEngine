@@ -3864,7 +3864,7 @@ mod render_options_tests {
     use crate::{
         draw_texture, draw_texture_clipped, draw_texture_clipped_with_options,
         draw_texture_region_clipped, Color, Framebuffer, Rect, RenderOptions, Texture,
-        TextureFilter,
+        TextureDrawScratch, TextureFilter,
     };
 
     #[test]
@@ -4057,6 +4057,4 @@ mod render_options_tests {
         assert!(scratch.allocated_bytes() > 0);
         scratch.release();
         assert_eq!(scratch.allocated_bytes(), 0);
-    }
-
-}
+    }}
