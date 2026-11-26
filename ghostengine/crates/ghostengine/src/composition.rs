@@ -74,6 +74,8 @@ pub struct DamageRegion {
     width: u32,
     height: u32,
     rectangles: Vec<Rect>,
+    pending: Vec<Rect>,
+    remaining: Vec<Rect>,
 }
 
 impl DamageRegion {
@@ -84,6 +86,8 @@ impl DamageRegion {
             width,
             height,
             rectangles: Vec::new(),
+            pending: Vec::new(),
+            remaining: Vec::new(),
         }
     }
 
@@ -102,6 +106,8 @@ impl DamageRegion {
             width,
             height,
             rectangles,
+            pending: Vec::new(),
+            remaining: Vec::new(),
         })
     }
 
@@ -182,34 +188,38 @@ impl DamageRegion {
             return Ok(());
         }
 
-        let mut pending = Vec::new();
-        pending
-            .try_reserve_exact(1)
+        // Keep both work lists on the region itself. Repeated invalidation
+        // updates then reuse their allocations instead of creating two fresh
+        // vectors for every existing rectangle.
+        self.pending.clear();
+        self.pending
+            .try_reserve(1)
             .map_err(|_| DamageRegionError::AllocationFailed)?;
-        pending.push(clipped);
+        self.pending.push(clipped);
 
         for existing in &self.rectangles {
-            let capacity = pending
+            let capacity = self
+                .pending
                 .len()
                 .checked_mul(4)
                 .ok_or(DamageRegionError::AllocationFailed)?;
-            let mut remaining = Vec::new();
-            remaining
-                .try_reserve_exact(capacity)
+            self.remaining.clear();
+            self.remaining
+                .try_reserve(capacity)
                 .map_err(|_| DamageRegionError::AllocationFailed)?;
-            for candidate in pending {
-                subtract_rect(candidate, *existing, &mut remaining);
+            for candidate in self.pending.drain(..) {
+                subtract_rect(candidate, *existing, &mut self.remaining);
             }
-            pending = remaining;
-            if pending.is_empty() {
+            core::mem::swap(&mut self.pending, &mut self.remaining);
+            if self.pending.is_empty() {
                 return Ok(());
             }
         }
 
         self.rectangles
-            .try_reserve(pending.len())
+            .try_reserve(self.pending.len())
             .map_err(|_| DamageRegionError::AllocationFailed)?;
-        self.rectangles.extend(pending);
+        self.rectangles.extend(self.pending.drain(..));
 
         // Coalesce only exact full-edge neighbors. This cannot fill an
         // undamaged gap in an L-shaped or diagonal region.
@@ -252,6 +262,39 @@ impl DamageRegion {
             }
         }
         Ok(())
+    }
+
+    /// Returns the logical heap capacity retained by all damage-region buffers.
+    /// This excludes allocator metadata and process RSS.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.rectangles
+            .capacity()
+            .saturating_add(self.pending.capacity())
+            .saturating_add(self.remaining.capacity())
+            .saturating_mul(core::mem::size_of::<Rect>())
+    }
+
+    /// Clears damage while retaining storage for the next frame.
+    pub fn clear(&mut self) {
+        self.rectangles.clear();
+        self.pending.clear();
+        self.remaining.clear();
+    }
+
+    /// Releases all retained rectangle and work-list allocations.
+    pub fn release(&mut self) {
+        self.clear();
+        self.rectangles.shrink_to_fit();
+        self.pending.shrink_to_fit();
+        self.remaining.shrink_to_fit();
+    }
+
+    /// Releases retained storage when its logical capacity exceeds the budget.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) {
+        if self.allocated_bytes() > budget_bytes {
+            self.release();
+        }
     }
 
     /// Returns the disjoint rectangles currently marked for recomposition.
@@ -4275,5 +4318,49 @@ mod tests {
 
         let expected = Color::rgba(255, 255, 255, 128).blend_over(background);
         assert!(target.pixels().iter().all(|pixel| *pixel == expected));
+    }
+}
+
+#[cfg(test)]
+mod damage_region_memory_lifecycle_tests {
+    use super::DamageRegion;
+    use crate::Rect;
+
+    #[test]
+    fn damage_updates_reuse_work_buffers_and_release_them_on_demand() {
+        let mut damage = DamageRegion::with_capacity(64, 48, 4);
+        assert_eq!(damage.allocated_bytes(), 4 * core::mem::size_of::<Rect>());
+
+        damage.add(Rect::new(1, 1, 8, 8));
+        damage.add(Rect::new(20, 10, 7, 9));
+        damage.add(Rect::new(4, 4, 22, 18));
+        let retained = damage.allocated_bytes();
+        assert!(retained > 0);
+        let expected_area = damage.area();
+        let expected_rectangles = damage.rectangles().to_vec();
+
+        damage.clear();
+        assert!(damage.is_empty());
+        assert_eq!(damage.allocated_bytes(), retained);
+
+        damage.add(Rect::new(1, 1, 8, 8));
+        damage.add(Rect::new(20, 10, 7, 9));
+        damage.add(Rect::new(4, 4, 22, 18));
+        assert_eq!(damage.area(), expected_area);
+        assert_eq!(damage.rectangles(), expected_rectangles);
+        assert_eq!(damage.allocated_bytes(), retained);
+
+        damage.trim_to_budget(retained);
+        assert_eq!(damage.allocated_bytes(), retained);
+        damage.trim_to_budget(0);
+        assert_eq!(damage.allocated_bytes(), 0);
+        assert!(damage.is_empty());
+
+        damage.add(Rect::new(3, 5, 6, 7));
+        assert_eq!(damage.area(), 42);
+        assert!(damage.allocated_bytes() > 0);
+        damage.release();
+        assert_eq!(damage.allocated_bytes(), 0);
+        assert!(damage.is_empty());
     }
 }

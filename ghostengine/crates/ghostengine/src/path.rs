@@ -2118,4 +2118,5 @@ mod tests {
         assert_eq!(path.flatten(0.25).unwrap().subpaths.len(), 1);
         path.release();
         assert_eq!(path.allocated_bytes(), 0);
-    }}
+    }
+}

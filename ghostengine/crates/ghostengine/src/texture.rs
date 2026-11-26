@@ -4057,4 +4057,5 @@ mod render_options_tests {
         assert!(scratch.allocated_bytes() > 0);
         scratch.release();
         assert_eq!(scratch.allocated_bytes(), 0);
-    }}
+    }
+}

@@ -3322,4 +3322,5 @@ mod tests {
         assert_eq!(renderer.allocated_bytes(), 0);
         renderer.release();
         assert_eq!(renderer.trim_to_budget(0), 0);
-    }}
+    }
+}
