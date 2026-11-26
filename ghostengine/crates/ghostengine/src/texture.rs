@@ -1186,34 +1186,62 @@ pub enum TextureDrawError {
 /// Reusable temporary storage for repeated texture draws.
 #[derive(Debug, Default)]
 pub struct TextureDrawScratch {
-    nearest_columns: Vec<usize>, horizontal_samples: Vec<(usize, usize, f32)>,
-    horizontal_cache: Vec<[f32; 4]>, region_horizontal_cache: Vec<[f32; 4]>,
-    cached_bilinear_key: Option<BilinearCacheKey>, cached_region_bilinear_key: Option<RegionBilinearCacheKey>,
+    nearest_columns: Vec<usize>,
+    horizontal_samples: Vec<(usize, usize, f32)>,
+    horizontal_cache: Vec<[f32; 4]>,
+    region_horizontal_cache: Vec<[f32; 4]>,
+    cached_bilinear_key: Option<BilinearCacheKey>,
+    cached_region_bilinear_key: Option<RegionBilinearCacheKey>,
 }
 
 impl TextureDrawScratch {
     /// Returns logical bytes held by reusable texture-sampling buffers.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.nearest_columns.capacity().saturating_mul(core::mem::size_of::<usize>())
-            .saturating_add(self.horizontal_samples.capacity().saturating_mul(core::mem::size_of::<(usize, usize, f32)>()))
-            .saturating_add(self.horizontal_cache.capacity().saturating_mul(core::mem::size_of::<[f32; 4]>()))
-            .saturating_add(self.region_horizontal_cache.capacity().saturating_mul(core::mem::size_of::<[f32; 4]>()))
+        self.nearest_columns
+            .capacity()
+            .saturating_mul(core::mem::size_of::<usize>())
+            .saturating_add(
+                self.horizontal_samples
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<(usize, usize, f32)>()),
+            )
+            .saturating_add(
+                self.horizontal_cache
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<[f32; 4]>()),
+            )
+            .saturating_add(
+                self.region_horizontal_cache
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<[f32; 4]>()),
+            )
     }
     /// Clears cached sampling data while retaining reusable allocations.
     pub fn clear(&mut self) {
-        self.nearest_columns.clear(); self.horizontal_samples.clear(); self.horizontal_cache.clear(); self.region_horizontal_cache.clear();
-        self.cached_bilinear_key = None; self.cached_region_bilinear_key = None;
+        self.nearest_columns.clear();
+        self.horizontal_samples.clear();
+        self.horizontal_cache.clear();
+        self.region_horizontal_cache.clear();
+        self.cached_bilinear_key = None;
+        self.cached_region_bilinear_key = None;
     }
     /// Drops all retained texture-sampling allocations and cache keys.
     pub fn release(&mut self) {
-        self.clear(); self.nearest_columns.shrink_to_fit(); self.horizontal_samples.shrink_to_fit();
-        self.horizontal_cache.shrink_to_fit(); self.region_horizontal_cache.shrink_to_fit();
+        self.clear();
+        self.nearest_columns.shrink_to_fit();
+        self.horizontal_samples.shrink_to_fit();
+        self.horizontal_cache.shrink_to_fit();
+        self.region_horizontal_cache.shrink_to_fit();
     }
     /// Releases scratch allocations when their logical footprint exceeds budget.
     pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
-        let before = self.allocated_bytes(); if before <= budget_bytes { return 0; }
-        self.release(); before.saturating_sub(self.allocated_bytes())
+        let before = self.allocated_bytes();
+        if before <= budget_bytes {
+            return 0;
+        }
+        self.release();
+        before.saturating_sub(self.allocated_bytes())
     }
 }
 
@@ -4005,8 +4033,13 @@ mod render_options_tests {
         scratch.horizontal_cache.reserve(16);
         scratch.region_horizontal_cache.reserve(8);
         scratch.cached_bilinear_key = Some(super::BilinearCacheKey {
-            texture_id: 1, texture_width: 4, texture_height: 4,
-            destination_x: 0, destination_width: 4, first_x: 0, end_x: 4,
+            texture_id: 1,
+            texture_width: 4,
+            texture_height: 4,
+            destination_x: 0,
+            destination_width: 4,
+            first_x: 0,
+            end_x: 4,
         });
         let allocated = scratch.allocated_bytes();
         assert!(allocated > 0);

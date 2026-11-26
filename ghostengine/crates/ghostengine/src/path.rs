@@ -196,26 +196,43 @@ pub enum PathError {
 
 impl Path {
     #[must_use]
-    pub const fn new() -> Self { Self { commands: Vec::new() } }
+    pub const fn new() -> Self {
+        Self {
+            commands: Vec::new(),
+        }
+    }
 
     /// Returns the number of path commands that fit without growing storage.
     #[must_use]
-    pub fn command_capacity(&self) -> usize { self.commands.capacity() }
+    pub fn command_capacity(&self) -> usize {
+        self.commands.capacity()
+    }
 
     /// Returns logical bytes held by the path command buffer.
     #[must_use]
-    pub fn allocated_bytes(&self) -> usize { self.commands.capacity().saturating_mul(core::mem::size_of::<Command>()) }
+    pub fn allocated_bytes(&self) -> usize {
+        self.commands
+            .capacity()
+            .saturating_mul(core::mem::size_of::<Command>())
+    }
 
     /// Removes all path commands while retaining their backing allocation.
-    pub fn clear(&mut self) { self.commands.clear(); }
+    pub fn clear(&mut self) {
+        self.commands.clear();
+    }
 
     /// Drops the path command allocation.
-    pub fn release(&mut self) { self.clear(); self.commands.shrink_to_fit(); }
+    pub fn release(&mut self) {
+        self.clear();
+        self.commands.shrink_to_fit();
+    }
 
     /// Releases path command storage when it exceeds the budget.
     pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
         let before = self.allocated_bytes();
-        if before <= budget_bytes { return 0; }
+        if before <= budget_bytes {
+            return 0;
+        }
         self.release();
         before.saturating_sub(self.allocated_bytes())
     }
@@ -2084,7 +2101,9 @@ mod tests {
         let mut path = Path::new();
         path.try_reserve_commands(16).unwrap();
         let capacity = path.command_capacity();
-        path.move_to(Vector::new(1.0, 2.0)).line_to(Vector::new(3.0, 4.0)).close();
+        path.move_to(Vector::new(1.0, 2.0))
+            .line_to(Vector::new(3.0, 4.0))
+            .close();
         let allocated = path.allocated_bytes();
         assert!(allocated >= 16 * core::mem::size_of::<super::Command>());
         assert!(capacity >= 16);

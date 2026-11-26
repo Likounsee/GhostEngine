@@ -201,17 +201,25 @@ pub struct DisplayListRenderer {
 impl DisplayListRenderer {
     /// Creates a replay context with empty reusable workspace.
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Returns logical bytes held by reusable texture-sampling buffers.
     #[must_use]
-    pub fn allocated_bytes(&self) -> usize { self.texture_scratch.allocated_bytes() }
+    pub fn allocated_bytes(&self) -> usize {
+        self.texture_scratch.allocated_bytes()
+    }
 
     /// Drops retained texture-sampling allocations.
-    pub fn release(&mut self) { self.texture_scratch.release(); }
+    pub fn release(&mut self) {
+        self.texture_scratch.release();
+    }
 
     /// Releases retained sampling allocations when they exceed a budget.
-    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize { self.texture_scratch.trim_to_budget(budget_bytes) }
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        self.texture_scratch.trim_to_budget(budget_bytes)
+    }
 
     /// Replays a display list into a framebuffer, retaining temporary storage.
     pub fn replay(&mut self, list: &DisplayList, target: &mut Framebuffer) -> RenderStats {
@@ -329,23 +337,42 @@ impl DisplayList {
     /// This excludes heap allocations owned by individual commands.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.commands.capacity().saturating_mul(core::mem::size_of::<Command>())
-            .saturating_add(self.clips.capacity().saturating_mul(core::mem::size_of::<Rect>()))
-            .saturating_add(self.transforms.capacity().saturating_mul(core::mem::size_of::<Transform2D>()))
+        self.commands
+            .capacity()
+            .saturating_mul(core::mem::size_of::<Command>())
+            .saturating_add(
+                self.clips
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<Rect>()),
+            )
+            .saturating_add(
+                self.transforms
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<Transform2D>()),
+            )
     }
 
     /// Removes all commands and clip state while retaining allocated capacity.
-    pub fn clear(&mut self) { self.commands.clear(); self.clips.clear(); self.transforms.clear(); }
+    pub fn clear(&mut self) {
+        self.commands.clear();
+        self.clips.clear();
+        self.transforms.clear();
+    }
 
     /// Drops all retained command and stack allocations.
     pub fn release(&mut self) {
-        self.clear(); self.commands.shrink_to_fit(); self.clips.shrink_to_fit(); self.transforms.shrink_to_fit();
+        self.clear();
+        self.commands.shrink_to_fit();
+        self.clips.shrink_to_fit();
+        self.transforms.shrink_to_fit();
     }
 
     /// Releases all display-list backing storage when its logical footprint exceeds budget.
     pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
         let before = self.allocated_bytes();
-        if before <= budget_bytes { return 0; }
+        if before <= budget_bytes {
+            return 0;
+        }
         self.release();
         before.saturating_sub(self.allocated_bytes())
     }
