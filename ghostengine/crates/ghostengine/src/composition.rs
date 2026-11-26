@@ -219,7 +219,7 @@ impl DamageRegion {
         self.rectangles
             .try_reserve(self.pending.len())
             .map_err(|_| DamageRegionError::AllocationFailed)?;
-        self.rectangles.extend(self.pending.drain(..));
+        self.rectangles.append(&mut self.pending);
 
         // Coalesce only exact full-edge neighbors. This cannot fill an
         // undamaged gap in an L-shaped or diagonal region.
