@@ -1778,7 +1778,7 @@ impl LayerGroupScratch {
             .checked_mul(std::mem::size_of::<Color>())
             .ok_or(FramebufferError::SizeOverflow)?;
         let old_bytes = self.layers.get(depth).map_or(0, |layer| {
-            layer.framebuffer().pixels().len() * std::mem::size_of::<Color>()
+            std::mem::size_of_val(layer.framebuffer().pixels())
         });
         let mut projected_bytes = self
             .allocated_pixel_bytes()
@@ -1790,7 +1790,7 @@ impl LayerGroupScratch {
             if projected_bytes <= self.budget_bytes {
                 break;
             }
-            let bytes = layer.framebuffer().pixels().len() * std::mem::size_of::<Color>();
+            let bytes = std::mem::size_of_val(layer.framebuffer().pixels());
             projected_bytes = projected_bytes.saturating_sub(bytes);
             evict_count += 1;
         }
