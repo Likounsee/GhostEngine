@@ -688,6 +688,61 @@ mod tests {
     }
 
     #[test]
+    fn mixed_cache_churn_preserves_memory_lru_and_handle_invariants() {
+        let mut cache = TextureCache::new(256);
+        let mut handles = Vec::new();
+
+        for step in 0..4_096_u64 {
+            match step % 8 {
+                0 | 1 => {
+                    let pixels = (step as usize % 8) + 1;
+                    if let Ok(handle) =
+                        cache.insert(texture(Color::rgba(step as u8, 40, 90, 255), pixels))
+                    {
+                        handles.push(handle);
+                    }
+                }
+                2 if !handles.is_empty() => {
+                    let handle = handles[step as usize % handles.len()];
+                    let _ = cache.get(handle);
+                }
+                3 if !handles.is_empty() => {
+                    let handle = handles[step as usize % handles.len()];
+                    let _ = cache.retain(handle);
+                }
+                4 if !handles.is_empty() => {
+                    let handle = handles[step as usize % handles.len()];
+                    let _ = cache.release(handle);
+                }
+                5 => {
+                    let budget = 64 + (step as usize % 13) * 16;
+                    let before = cache.stats();
+                    if cache.set_budget_bytes(budget).is_err() {
+                        assert_eq!(cache.stats(), before);
+                    }
+                }
+                6 if !handles.is_empty() => {
+                    let handle = handles[step as usize % handles.len()];
+                    let _ = cache.remove(handle);
+                }
+                _ if step % 64 == 7 => cache.clear(),
+                _ => {}
+            }
+
+            let stats = cache.stats();
+            let accounted_bytes = cache
+                .entries
+                .values()
+                .map(|entry| entry.bytes)
+                .fold(0usize, usize::saturating_add);
+            assert_eq!(stats.entries, cache.entries.len());
+            assert_eq!(stats.used_bytes, accounted_bytes);
+            assert!(stats.used_bytes <= stats.budget_bytes);
+            assert!(cache.entries.keys().all(|handle| handle.id() < cache.next_handle));
+        }
+    }
+
+    #[test]
     fn missing_handle_increments_miss_counter() {
         let mut cache = TextureCache::new(16);
         assert!(cache.get(TextureHandle(999)).is_none());
