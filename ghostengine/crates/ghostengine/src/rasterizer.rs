@@ -2575,20 +2575,65 @@ impl RasterizerScratch {
     /// This excludes allocator metadata and process RSS.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.polygon_edges.capacity().saturating_mul(core::mem::size_of::<PolygonScanEdge>())
-            .saturating_add(self.active_edges.capacity().saturating_mul(core::mem::size_of::<usize>()))
-            .saturating_add(self.intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
-            .saturating_add(self.aa_edges.capacity().saturating_mul(core::mem::size_of::<PolygonEdge>()))
-            .saturating_add(self.aa_edge_order.capacity().saturating_mul(core::mem::size_of::<usize>()))
-            .saturating_add(self.aa_active_edges.capacity().saturating_mul(core::mem::size_of::<usize>()))
-            .saturating_add(self.aa_intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
-            .saturating_add(self.aa_coverage.capacity().saturating_mul(core::mem::size_of::<u8>()))
-            .saturating_add(self.aa_outline_segments.capacity().saturating_mul(core::mem::size_of::<AaOutlineSegment>()))
-            .saturating_add(self.ellipse_aa_coverage.capacity().saturating_mul(core::mem::size_of::<u8>()))
-            .saturating_add(self.arc_aa_sources.capacity().saturating_mul(core::mem::size_of::<Color>()))
-            .saturating_add(self.ellipse_aa_sources.capacity().saturating_mul(core::mem::size_of::<Color>()))
+        self.polygon_edges
+            .capacity()
+            .saturating_mul(core::mem::size_of::<PolygonScanEdge>())
+            .saturating_add(
+                self.active_edges
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<usize>()),
+            )
+            .saturating_add(
+                self.intersections
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<f64>()),
+            )
+            .saturating_add(
+                self.aa_edges
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<PolygonEdge>()),
+            )
+            .saturating_add(
+                self.aa_edge_order
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<usize>()),
+            )
+            .saturating_add(
+                self.aa_active_edges
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<usize>()),
+            )
+            .saturating_add(
+                self.aa_intersections
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<f64>()),
+            )
+            .saturating_add(
+                self.aa_coverage
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<u8>()),
+            )
+            .saturating_add(
+                self.aa_outline_segments
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<AaOutlineSegment>()),
+            )
+            .saturating_add(
+                self.ellipse_aa_coverage
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<u8>()),
+            )
+            .saturating_add(
+                self.arc_aa_sources
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<Color>()),
+            )
+            .saturating_add(
+                self.ellipse_aa_sources
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<Color>()),
+            )
     }
-
     /// Clears all scratch buffers while retaining their allocations for reuse.
     pub fn clear(&mut self) {
         self.polygon_edges.clear();
@@ -2632,7 +2677,6 @@ impl RasterizerScratch {
         }
     }
 }
-
 
 /// Fills a polygon using the even-odd scanline rule at pixel centers.
 pub fn fill_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) {
@@ -9806,9 +9850,15 @@ mod rasterizer_scratch_lifecycle_tests {
     fn scratch_memory_accounting_tracks_reuse_and_release() {
         let mut scratch = RasterizerScratch::default();
         assert_eq!(scratch.allocated_bytes(), 0);
-        let vertices = [Point::new(1, 1), Point::new(30, 2), Point::new(24, 28), Point::new(3, 22)];
+        let vertices = [
+            Point::new(1, 1),
+            Point::new(30, 2),
+            Point::new(24, 28),
+            Point::new(3, 22),
+        ];
         let mut target = Framebuffer::new(40, 40, Color::BLACK).unwrap();
-        try_fill_polygon_aa_with_scratch(&mut target, &vertices, Color::WHITE, &mut scratch).unwrap();
+        try_fill_polygon_aa_with_scratch(&mut target, &vertices, Color::WHITE, &mut scratch)
+            .unwrap();
         let retained = scratch.allocated_bytes();
         assert!(retained > 0);
         scratch.clear();
@@ -9822,7 +9872,12 @@ mod rasterizer_scratch_lifecycle_tests {
     #[test]
     fn scratch_budget_trims_peak_allocations_and_remains_reusable() {
         let mut scratch = RasterizerScratch::default();
-        let vertices = [Point::new(0, 0), Point::new(120, 4), Point::new(110, 110), Point::new(4, 120)];
+        let vertices = [
+            Point::new(0, 0),
+            Point::new(120, 4),
+            Point::new(110, 110),
+            Point::new(4, 120),
+        ];
         let mut target = Framebuffer::new(128, 128, Color::BLACK).unwrap();
         let color = Color::rgba(40, 80, 120, 180);
         try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch).unwrap();
