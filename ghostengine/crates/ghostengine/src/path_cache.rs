@@ -24,6 +24,10 @@ pub struct PathGeometryCacheStats {
     pub capacity: usize,
     /// Estimated bytes held by the cache's entry and geometry vector capacities.
     pub allocated_bytes: usize,
+    /// Bytes held by cached flattened geometry, excluding entry-table overhead.
+    pub geometry_bytes: usize,
+    /// Maximum cached flattened-geometry bytes. Oversized paths are returned uncached.
+    pub budget_bytes: usize,
     pub hits: u64,
     pub misses: u64,
 }
@@ -32,10 +36,14 @@ pub struct PathGeometryCacheStats {
 ///
 /// The caller supplies a stable key and must invalidate it when the source path
 /// changes. Tolerance is part of the cache key. The cache has a fixed entry
-/// limit and evicts the least recently used entry when full.
+/// limit and an optional geometry-memory budget. Least-recently-used entries
+/// are evicted when either limit is reached. A single geometry larger than
+/// the memory budget is returned to the caller but is not retained in the cache.
 #[derive(Debug)]
 pub struct PathGeometryCache {
     capacity: usize,
+    budget_bytes: usize,
+    uncached_geometry: Option<FlattenedPath>,
     clock: u64,
     hits: u64,
     misses: u64,
@@ -52,11 +60,32 @@ impl PathGeometryCache {
             .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
         Ok(Self {
             capacity,
+            budget_bytes: usize::MAX,
+            uncached_geometry: None,
             clock: 0,
             hits: 0,
             misses: 0,
             entries,
         })
+    }
+
+    /// Creates a cache with entry-count and geometry-memory limits.
+    ///
+    /// Geometry larger than the budget is returned normally but not retained.
+    pub fn try_with_budget(
+        capacity: usize,
+        budget_bytes: usize,
+    ) -> Result<Self, PathGeometryCacheError> {
+        let mut cache = Self::try_new(capacity)?;
+        cache.budget_bytes = budget_bytes;
+        Ok(cache)
+    }
+
+    /// Creates a cache with entry-count and geometry-memory limits.
+    #[must_use]
+    pub fn with_budget(capacity: usize, budget_bytes: usize) -> Self {
+        Self::try_with_budget(capacity, budget_bytes)
+            .expect("failed to allocate path geometry cache")
     }
 
     /// Creates a cache with preallocated entry storage.
@@ -95,6 +124,8 @@ impl PathGeometryCache {
             entries: self.entries.len(),
             capacity: self.capacity,
             allocated_bytes: self.allocated_bytes(),
+            geometry_bytes: self.cached_geometry_bytes(),
+            budget_bytes: self.budget_bytes,
             hits: self.hits,
             misses: self.misses,
         }
@@ -108,41 +139,69 @@ impl PathGeometryCache {
 
     /// Estimates memory retained by the cache's vector capacities.
     ///
-    /// This includes the entry vector and each flattened geometry's subpath
-    /// and point vectors. It excludes allocator metadata and unrelated memory.
+    /// This includes the entry vector and flattened geometry vectors. It
+    /// excludes allocator metadata and unrelated memory.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        let entries_bytes = self
-            .entries
+        self.entries
             .capacity()
-            .saturating_mul(core::mem::size_of::<Entry>());
-        self.entries.iter().fold(entries_bytes, |total, entry| {
-            let subpaths_bytes = entry
-                .geometry
-                .subpaths
-                .capacity()
-                .saturating_mul(core::mem::size_of::<crate::FlattenedSubpath>());
-            let points_bytes = entry
-                .geometry
-                .subpaths
-                .iter()
-                .fold(0usize, |bytes, subpath| {
-                    bytes.saturating_add(
-                        subpath
-                            .points
-                            .capacity()
-                            .saturating_mul(core::mem::size_of::<crate::Vector>()),
-                    )
-                });
-            total
-                .saturating_add(subpaths_bytes)
-                .saturating_add(points_bytes)
+            .saturating_mul(core::mem::size_of::<Entry>())
+            .saturating_add(self.cached_geometry_bytes())
+            .saturating_add(
+                self.uncached_geometry
+                    .as_ref()
+                    .map_or(0, Self::flattened_geometry_bytes),
+            )
+    }
+
+    /// Returns the geometry payload bytes currently retained in cache entries.
+    #[must_use]
+    pub fn cached_geometry_bytes(&self) -> usize {
+        self.entries.iter().fold(0usize, |total, entry| {
+            total.saturating_add(Self::flattened_geometry_bytes(&entry.geometry))
         })
+    }
+
+    fn flattened_geometry_bytes(geometry: &FlattenedPath) -> usize {
+        let subpaths_bytes = geometry
+            .subpaths
+            .capacity()
+            .saturating_mul(core::mem::size_of::<crate::FlattenedSubpath>());
+        geometry
+            .subpaths
+            .iter()
+            .fold(subpaths_bytes, |bytes, subpath| {
+                bytes.saturating_add(
+                    subpath
+                        .points
+                        .capacity()
+                        .saturating_mul(core::mem::size_of::<crate::Vector>()),
+                )
+            })
+    }
+
+    /// Changes the maximum cached geometry payload and evicts least-recently
+    /// used entries immediately until the new budget is satisfied.
+    pub fn set_budget_bytes(&mut self, budget_bytes: usize) {
+        self.budget_bytes = budget_bytes;
+        while self.cached_geometry_bytes() > budget_bytes {
+            let oldest = self
+                .entries
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(index, _)| index);
+            let Some(oldest) = oldest else {
+                break;
+            };
+            self.entries.swap_remove(oldest);
+        }
     }
 
     /// Drops cached geometries while retaining the entry vector for reuse.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.uncached_geometry = None;
     }
 
     /// Drops cached geometries and releases the cache's retained entry storage.
@@ -151,6 +210,7 @@ impl PathGeometryCache {
     pub fn release(&mut self) {
         self.entries.clear();
         self.entries.shrink_to_fit();
+        self.uncached_geometry = None;
     }
 
     fn advance_clock(&mut self) {
@@ -173,6 +233,8 @@ impl PathGeometryCache {
         path: &Path,
         tolerance: f32,
     ) -> Result<&FlattenedPath, PathError> {
+        // Oversized results live only until the next lookup.
+        self.uncached_geometry = None;
         self.advance_clock();
         let tolerance_bits = tolerance.to_bits();
         if let Some(index) = self
@@ -187,14 +249,24 @@ impl PathGeometryCache {
 
         self.misses = self.misses.saturating_add(1);
         let geometry = path.flatten(tolerance)?;
-        if self.entries.len() == self.capacity {
+        let geometry_bytes = Self::flattened_geometry_bytes(&geometry);
+        if geometry_bytes > self.budget_bytes {
+            self.uncached_geometry = Some(geometry);
+            return Ok(self.uncached_geometry.as_ref().unwrap());
+        }
+
+        while self.entries.len() >= self.capacity
+            || self.cached_geometry_bytes() > self.budget_bytes - geometry_bytes
+        {
             let oldest = self
                 .entries
                 .iter()
                 .enumerate()
                 .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(index, _)| index)
-                .unwrap();
+                .map(|(index, _)| index);
+            let Some(oldest) = oldest else {
+                break;
+            };
             self.entries.swap_remove(oldest);
         }
         self.entries.push(Entry {
@@ -338,6 +410,56 @@ mod tests {
     }
 
     #[test]
+    fn geometry_budget_evicts_lru_entries_and_reports_payload_bytes() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::with_budget(4, usize::MAX);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        let first_bytes = cache.cached_geometry_bytes();
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        assert_eq!(cache.cached_geometry_bytes(), first_bytes * 2);
+
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        cache.set_budget_bytes(first_bytes);
+        assert_eq!(cache.cached_geometry_bytes(), first_bytes);
+        assert!(cache.entries.iter().any(|entry| entry.key == 1));
+        assert!(!cache.entries.iter().any(|entry| entry.key == 2));
+        assert_eq!(cache.stats().geometry_bytes, first_bytes);
+        assert_eq!(cache.stats().budget_bytes, first_bytes);
+    }
+
+    #[test]
+    fn oversized_geometry_is_returned_but_not_retained() {
+        let path = triangle();
+        let mut unlimited = PathGeometryCache::new(2);
+        unlimited.get_or_flatten(1, &path, 0.25).unwrap();
+        let geometry_bytes = unlimited.cached_geometry_bytes();
+        let mut bounded = PathGeometryCache::with_budget(2, geometry_bytes - 1);
+
+        let first = bounded.get_or_flatten(1, &path, 0.25).unwrap().clone();
+        assert_eq!(first, path.flatten(0.25).unwrap());
+        assert!(bounded.is_empty());
+        assert_eq!(bounded.cached_geometry_bytes(), 0);
+        assert!(bounded.allocated_bytes() > 0);
+
+        let second = bounded.get_or_flatten(1, &path, 0.25).unwrap();
+        assert_eq!(second, &first);
+        assert_eq!(bounded.stats().misses, 2);
+        assert_eq!(bounded.stats().entries, 0);
+    }
+
+    #[test]
+    fn geometry_budget_zero_disables_retention_and_clear_drops_transient_geometry() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::with_budget(2, 0);
+        cache.get_or_flatten(1, &path, 0.25).unwrap();
+        assert!(cache.is_empty());
+        assert!(cache.allocated_bytes() > 0);
+        cache.clear();
+        assert_eq!(cache.allocated_bytes(), 2 * core::mem::size_of::<Entry>());
+        assert_eq!(cache.cached_geometry_bytes(), 0);
+    }
+
+    #[test]
     fn resizing_cache_evicts_oldest_entries_and_preserves_recent_geometry() {
         let path = triangle();
         let mut cache = PathGeometryCache::new(3);
@@ -384,6 +506,8 @@ mod tests {
                 entries: 1,
                 capacity: 2,
                 allocated_bytes: cache.allocated_bytes(),
+                geometry_bytes: cache.cached_geometry_bytes(),
+                budget_bytes: cache.budget_bytes,
                 hits: 0,
                 misses: 0,
             }
