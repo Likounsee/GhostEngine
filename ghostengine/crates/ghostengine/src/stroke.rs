@@ -506,7 +506,7 @@ fn stroke_path_impl_rows(
         // Prepare segment vectors and cap projections once per contour instead
         // of rebuilding them for every pixel and every antialiasing sample.
         segments.clear();
-        segments.try_reserve(segment_count.saturating_sub(segments.capacity()))
+        segments.try_reserve(segment_count)
             .map_err(|_| StrokeError::AllocationFailed)?;
         for i in 0..segment_count {
             let first = !contour.closed && i == 0;
@@ -528,7 +528,7 @@ fn stroke_path_impl_rows(
 
         let join_capacity = join_count(&contour.points, contour.closed);
         joins.clear();
-        joins.try_reserve(join_capacity.saturating_sub(joins.capacity()))
+        joins.try_reserve(join_capacity)
             .map_err(|_| StrokeError::AllocationFailed)?;
         for index in 0..join_capacity {
             let (previous, vertex, next) = join_points(&contour.points, contour.closed, index);
@@ -554,16 +554,16 @@ fn stroke_path_impl_rows(
         // never exceed the total prepared geometry, so scan conversion does not
         // allocate while walking rows or pixels.
         row_segments_x.clear();
-        row_segments_x.try_reserve(segments.len().saturating_sub(row_segments_x.capacity()))
+        row_segments_x.try_reserve(segments.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
         row_joins_x.clear();
-        row_joins_x.try_reserve(joins.len().saturating_sub(row_joins_x.capacity()))
+        row_joins_x.try_reserve(joins.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
         pixel_segments.clear();
-        pixel_segments.try_reserve(segments.len().saturating_sub(pixel_segments.capacity()))
+        pixel_segments.try_reserve(segments.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
         pixel_joins.clear();
-        pixel_joins.try_reserve(joins.len().saturating_sub(pixel_joins.capacity()))
+        pixel_joins.try_reserve(joins.len())
             .map_err(|_| StrokeError::AllocationFailed)?;
         let mut next_segment = 0;
         let mut next_join = 0;
