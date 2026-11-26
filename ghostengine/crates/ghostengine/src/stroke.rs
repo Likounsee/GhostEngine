@@ -73,6 +73,64 @@ struct StrokeOptions {
     antialias: bool,
 }
 
+/// Reusable heap storage for repeated path-stroke operations.
+///
+/// The scratch value is caller-owned and may be kept alongside a renderer.
+/// Clearing it preserves vector capacities; release drops retained allocations.
+/// A scratch value must not be used concurrently by multiple rendering calls.
+#[derive(Debug, Default)]
+pub struct StrokeScratch {
+    segments: Vec<StrokeSegment>,
+    joins: Vec<PreparedJoin>,
+    row_segments_x: Vec<StrokeSegment>,
+    row_joins_x: Vec<PreparedJoin>,
+    pixel_segments: Vec<StrokeSegment>,
+    pixel_joins: Vec<PreparedJoin>,
+}
+
+impl StrokeScratch {
+    /// Returns logical capacity retained by all stroke geometry work buffers.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.segments.capacity().saturating_mul(core::mem::size_of::<StrokeSegment>())
+            .saturating_add(self.joins.capacity().saturating_mul(core::mem::size_of::<PreparedJoin>()))
+            .saturating_add(self.row_segments_x.capacity().saturating_mul(core::mem::size_of::<StrokeSegment>()))
+            .saturating_add(self.row_joins_x.capacity().saturating_mul(core::mem::size_of::<PreparedJoin>()))
+            .saturating_add(self.pixel_segments.capacity().saturating_mul(core::mem::size_of::<StrokeSegment>()))
+            .saturating_add(self.pixel_joins.capacity().saturating_mul(core::mem::size_of::<PreparedJoin>()))
+    }
+
+    /// Clears prepared geometry while retaining all backing allocations.
+    pub fn clear(&mut self) {
+        self.segments.clear();
+        self.joins.clear();
+        self.row_segments_x.clear();
+        self.row_joins_x.clear();
+        self.pixel_segments.clear();
+        self.pixel_joins.clear();
+    }
+
+    /// Releases every retained stroke work-buffer allocation.
+    pub fn release(&mut self) {
+        self.clear();
+        self.segments.shrink_to_fit();
+        self.joins.shrink_to_fit();
+        self.row_segments_x.shrink_to_fit();
+        self.row_joins_x.shrink_to_fit();
+        self.pixel_segments.shrink_to_fit();
+        self.pixel_joins.shrink_to_fit();
+    }
+
+    /// Releases retained storage only when it exceeds the supplied byte budget.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        let before = self.allocated_bytes();
+        if before > budget_bytes {
+            self.release();
+        }
+        before.saturating_sub(self.allocated_bytes())
+    }
+}
+
 /// Errors returned by path stroking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StrokeError {
@@ -110,6 +168,22 @@ pub fn stroke_path(
     stroke_path_clipped(target, path, transform, style, color, tolerance, clip)
 }
 
+/// Strokes a path using reusable caller-owned geometry buffers.
+pub fn stroke_path_with_scratch(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    stroke_path_clipped_with_scratch(
+        target, path, transform, style, color, tolerance, clip, scratch,
+    )
+}
+
 /// Strokes a path while restricting pixel writes to a framebuffer-space viewport.
 ///
 /// Geometry and stroke width are evaluated exactly as in the regular stroke API;
@@ -123,17 +197,25 @@ pub fn stroke_path_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), StrokeError> {
+    stroke_path_clipped_with_scratch(
+        target, path, transform, style, color, tolerance, clip, &mut StrokeScratch::default(),
+    )
+}
+
+/// Strokes a clipped path using caller-owned reusable geometry buffers.
+pub fn stroke_path_clipped_with_scratch(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
     stroke_path_impl(
-        target,
-        path,
-        transform,
-        style,
-        color,
-        tolerance,
-        StrokeOptions {
-            clip,
-            antialias: false,
-        },
+        target, path, transform, style, color, tolerance,
+        StrokeOptions { clip, antialias: false }, scratch,
     )
 }
 
@@ -150,6 +232,22 @@ pub fn stroke_path_aa(
     stroke_path_aa_clipped(target, path, transform, style, color, tolerance, clip)
 }
 
+/// Antialiased path stroke using reusable caller-owned geometry buffers.
+pub fn stroke_path_aa_with_scratch(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
+    let clip = Rect::new(0, 0, target.width(), target.height());
+    stroke_path_aa_clipped_with_scratch(
+        target, path, transform, style, color, tolerance, clip, scratch,
+    )
+}
+
 /// Antialiased path stroke restricted to a framebuffer-space viewport.
 pub fn stroke_path_aa_clipped(
     target: &mut Framebuffer,
@@ -160,17 +258,25 @@ pub fn stroke_path_aa_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), StrokeError> {
+    stroke_path_aa_clipped_with_scratch(
+        target, path, transform, style, color, tolerance, clip, &mut StrokeScratch::default(),
+    )
+}
+
+/// Antialiased clipped stroke using caller-owned reusable geometry buffers.
+pub fn stroke_path_aa_clipped_with_scratch(
+    target: &mut Framebuffer,
+    path: &Path,
+    transform: Transform2D,
+    style: StrokeStyle,
+    color: Color,
+    tolerance: f32,
+    clip: Rect,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
     stroke_path_impl(
-        target,
-        path,
-        transform,
-        style,
-        color,
-        tolerance,
-        StrokeOptions {
-            clip,
-            antialias: true,
-        },
+        target, path, transform, style, color, tolerance,
+        StrokeOptions { clip, antialias: true }, scratch,
     )
 }
 
@@ -227,6 +333,7 @@ pub fn stroke_path_aa_parallel_with_threads(
                         clip,
                         antialias: true,
                     },
+                    &mut StrokeScratch::default(),
                 )
             };
             match std::thread::Builder::new().spawn_scoped(scope, worker) {
@@ -267,21 +374,13 @@ fn stroke_path_impl(
     color: Color,
     tolerance: f32,
     options: StrokeOptions,
+    scratch: &mut StrokeScratch,
 ) -> Result<(), StrokeError> {
     let width = target.width();
     let height = target.height();
     stroke_path_impl_rows(
-        target.pixels_mut(),
-        width,
-        height,
-        0,
-        height,
-        path,
-        transform,
-        style,
-        color,
-        tolerance,
-        options,
+        target.pixels_mut(), width, height, 0, height, path, transform,
+        style, color, tolerance, options, scratch,
     )
 }
 
@@ -298,8 +397,17 @@ fn stroke_path_impl_rows(
     color: Color,
     tolerance: f32,
     options: StrokeOptions,
+    scratch: &mut StrokeScratch,
 ) -> Result<(), StrokeError> {
     let StrokeOptions { clip, antialias } = options;
+    let StrokeScratch {
+        segments,
+        joins,
+        row_segments_x,
+        row_joins_x,
+        pixel_segments,
+        pixel_joins,
+    } = scratch;
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
     }
@@ -397,9 +505,8 @@ fn stroke_path_impl_rows(
         };
         // Prepare segment vectors and cap projections once per contour instead
         // of rebuilding them for every pixel and every antialiasing sample.
-        let mut segments: Vec<StrokeSegment> = Vec::new();
-        segments
-            .try_reserve_exact(segment_count)
+        segments.clear();
+        segments.try_reserve(segment_count.saturating_sub(segments.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
         for i in 0..segment_count {
             let first = !contour.closed && i == 0;
@@ -420,9 +527,8 @@ fn stroke_path_impl_rows(
         }
 
         let join_capacity = join_count(&contour.points, contour.closed);
-        let mut joins: Vec<PreparedJoin> = Vec::new();
-        joins
-            .try_reserve_exact(join_capacity)
+        joins.clear();
+        joins.try_reserve(join_capacity.saturating_sub(joins.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
         for index in 0..join_capacity {
             let (previous, vertex, next) = join_points(&contour.points, contour.closed, index);
@@ -447,21 +553,17 @@ fn stroke_path_impl_rows(
         // Reserve all active/pixel candidate buffers up front. Their lengths can
         // never exceed the total prepared geometry, so scan conversion does not
         // allocate while walking rows or pixels.
-        let mut row_segments_x: Vec<StrokeSegment> = Vec::new();
-        row_segments_x
-            .try_reserve_exact(segments.len())
+        row_segments_x.clear();
+        row_segments_x.try_reserve(segments.len().saturating_sub(row_segments_x.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut row_joins_x: Vec<PreparedJoin> = Vec::new();
-        row_joins_x
-            .try_reserve_exact(joins.len())
+        row_joins_x.clear();
+        row_joins_x.try_reserve(joins.len().saturating_sub(row_joins_x.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut pixel_segments: Vec<StrokeSegment> = Vec::new();
-        pixel_segments
-            .try_reserve_exact(segments.len())
+        pixel_segments.clear();
+        pixel_segments.try_reserve(segments.len().saturating_sub(pixel_segments.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
-        let mut pixel_joins: Vec<PreparedJoin> = Vec::new();
-        pixel_joins
-            .try_reserve_exact(joins.len())
+        pixel_joins.clear();
+        pixel_joins.try_reserve(joins.len().saturating_sub(pixel_joins.capacity()))
             .map_err(|_| StrokeError::AllocationFailed)?;
         let mut next_segment = 0;
         let mut next_join = 0;
@@ -1692,6 +1794,44 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn reusable_scratch_matches_regular_strokes_and_retains_capacity() {
+        let path = line();
+        let style = StrokeStyle::new(5.5)
+            .with_cap(StrokeCap::Round)
+            .with_join(StrokeJoin::Miter);
+        let mut scratch = super::StrokeScratch::default();
+        let mut reference = Framebuffer::new(96, 64, Color::BLACK).unwrap();
+        let mut reused = reference.clone();
+
+        super::stroke_path_aa(&mut reference, &path, Transform2D::IDENTITY, style, Color::WHITE, 0.2)
+            .unwrap();
+        super::stroke_path_aa_with_scratch(
+            &mut reused, &path, Transform2D::IDENTITY, style, Color::WHITE, 0.2, &mut scratch,
+        ).unwrap();
+        assert_eq!(reused.pixels(), reference.pixels());
+
+        let retained = scratch.allocated_bytes();
+        assert!(retained > 0);
+        scratch.clear();
+        assert_eq!(scratch.allocated_bytes(), retained);
+
+        let mut second_reference = Framebuffer::new(96, 64, Color::BLACK).unwrap();
+        let mut second_reused = second_reference.clone();
+        let color = Color::rgba(30, 140, 230, 177);
+        super::stroke_path_aa(&mut second_reference, &path, Transform2D::translation(3.0, 2.0), style, color, 0.2)
+            .unwrap();
+        super::stroke_path_aa_with_scratch(
+            &mut second_reused, &path, Transform2D::translation(3.0, 2.0), style, color, 0.2, &mut scratch,
+        ).unwrap();
+        assert_eq!(second_reused.pixels(), second_reference.pixels());
+        assert_eq!(scratch.allocated_bytes(), retained);
+
+        assert_eq!(scratch.trim_to_budget(retained), 0);
+        assert!(scratch.trim_to_budget(0) > 0);
+        assert_eq!(scratch.allocated_bytes(), 0);
     }
 
     #[test]
