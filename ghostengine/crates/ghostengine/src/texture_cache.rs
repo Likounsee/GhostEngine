@@ -312,6 +312,34 @@ impl TextureCache {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+    /// Returns a logical estimate of retained cache storage.
+    ///
+    /// Pixel bytes and hash-table entry capacity are included. Hash-table
+    /// control bytes, allocator metadata and allocator fragmentation are not.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.used_bytes.saturating_add(
+            self.entries.capacity().saturating_mul(core::mem::size_of::<(TextureHandle, Entry)>()),
+        )
+    }
+
+    /// Shrinks hash-table storage while preserving every cached texture and handle.
+    /// Returns the logical number of bytes released from the table allocation.
+    pub fn shrink_storage(&mut self) -> usize {
+        let before = self.allocated_bytes();
+        self.entries.shrink_to_fit();
+        before.saturating_sub(self.allocated_bytes())
+    }
+
+    /// Removes all textures and releases the hash-table allocation.
+    /// Handle IDs, configured budget and access/eviction counters are preserved.
+    pub fn clear_and_release_storage(&mut self) -> usize {
+        let before = self.allocated_bytes();
+        self.entries.clear();
+        self.entries.shrink_to_fit();
+        self.used_bytes = 0;
+        before.saturating_sub(self.allocated_bytes())
+    }
 
     /// Advances the LRU clock, rebasing timestamps before integer overflow.
     fn advance_clock(&mut self) {
@@ -576,6 +604,40 @@ mod tests {
         cache.clear();
         assert!(cache.is_empty());
         assert_eq!(cache.stats().used_bytes, 0);
+    }
+
+    #[test]
+    fn storage_shrink_preserves_entries_handles_and_cache_metrics() {
+        let mut cache = TextureCache::try_with_capacity(256, 64).unwrap();
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 3)).unwrap();
+        assert!(cache.get(first).is_some());
+        let before_stats = cache.stats();
+        let before_bytes = cache.allocated_bytes();
+        let released = cache.shrink_storage();
+        assert!(released > 0);
+        assert!(cache.allocated_bytes() < before_bytes);
+        assert_eq!(cache.peek(first).unwrap().pixels(), &[Color::RED; 2]);
+        assert_eq!(cache.peek(second).unwrap().pixels(), &[Color::BLUE; 3]);
+        assert_eq!(cache.stats(), before_stats);
+    }
+
+    #[test]
+    fn clear_and_release_storage_keeps_handle_sequence_and_counters() {
+        let mut cache = TextureCache::try_with_capacity(256, 32).unwrap();
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        assert!(cache.get(first).is_some());
+        let before_stats = cache.stats();
+        assert!(cache.allocated_bytes() > cache.stats().used_bytes);
+        let released = cache.clear_and_release_storage();
+        assert!(released > 0);
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().used_bytes, 0);
+        assert_eq!(cache.stats().hits, before_stats.hits);
+        assert_eq!(cache.stats().evictions, before_stats.evictions);
+        let next = cache.insert(texture(Color::GREEN, 1)).unwrap();
+        assert!(next.id() > first.id());
+        assert_eq!(cache.peek(next).unwrap().get_pixel(0, 0), Some(Color::GREEN));
     }
 
     #[test]
