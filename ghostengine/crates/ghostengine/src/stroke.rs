@@ -232,6 +232,8 @@ pub fn stroke_path_clipped(
 }
 
 /// Strokes a clipped path using caller-owned reusable geometry buffers.
+// These APIs expose explicit clipping, styling, color and reusable storage.
+#[allow(clippy::too_many_arguments)]
 pub fn stroke_path_clipped_with_scratch(
     target: &mut Framebuffer,
     path: &Path,
@@ -309,6 +311,8 @@ pub fn stroke_path_aa_clipped(
 }
 
 /// Antialiased clipped stroke using caller-owned reusable geometry buffers.
+// These APIs expose explicit clipping, styling, color and reusable storage.
+#[allow(clippy::too_many_arguments)]
 pub fn stroke_path_aa_clipped_with_scratch(
     target: &mut Framebuffer,
     path: &Path,
@@ -420,6 +424,8 @@ pub fn stroke_path_aa_parallel_with_threads(
     })
 }
 
+// These APIs expose explicit clipping, styling, color and reusable storage.
+#[allow(clippy::too_many_arguments)]
 fn stroke_path_impl(
     target: &mut Framebuffer,
     path: &Path,
