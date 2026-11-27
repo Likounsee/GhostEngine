@@ -42,6 +42,12 @@ path. Budget reductions and cache growth use one sorted LRU candidate list rathe
 than rescanning the complete cache to find each next victim. Candidate storage
 and reclaimable capacity are validated before eviction begins, so a failed
 budget change does not partially empty the cache. This keeps large cache trims
+
+The texture cache uses the same batched eviction strategy for both budget
+reductions and insertions that need to reclaim several resources. Retained
+textures are excluded from the candidate list, ties are deterministic by
+handle, and failed budget reductions preserve the previous entries, counters
+and configured budget.
 at O(n log n) ordering cost instead of repeated O(n) minimum searches.
 
 The nested-group result is the clearest optimization signal: rebuilding every

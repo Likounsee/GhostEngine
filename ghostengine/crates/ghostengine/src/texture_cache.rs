@@ -156,26 +156,13 @@ impl TextureCache {
         // used_bytes + bytes can overflow when callers configure a budget
         // near usize::MAX, undercounting required evictions and potentially
         // leaving the eviction loop with no eligible entry.
-        let required_bytes = required_eviction_bytes(self.used_bytes, self.budget_bytes, bytes);
-        let reclaimable_bytes = self
-            .entries
-            .values()
-            .filter(|entry| entry.retain_count == 0)
-            .map(|entry| entry.bytes)
-            .fold(0usize, usize::saturating_add);
-        if reclaimable_bytes < required_bytes {
-            return Err((TextureCacheError::CacheFullyRetained, texture));
-        }
-
         // Reserve before evicting anything so allocation failure leaves the
         // cache and the caller-owned texture unchanged.
         if self.entries.try_reserve(1).is_err() {
             return Err((TextureCacheError::AllocationFailed, texture));
         }
-
-        while self.used_bytes > self.budget_bytes - bytes {
-            let evicted = self.evict_least_recently_used();
-            debug_assert!(evicted, "reclaimable cache capacity was precomputed");
+        if let Err(error) = self.evict_lru_until(self.budget_bytes - bytes) {
+            return Err((error, texture));
         }
 
         self.advance_clock();
@@ -256,22 +243,8 @@ impl TextureCache {
 
     /// Changes the memory budget, immediately evicting entries if required.
     pub fn set_budget_bytes(&mut self, budget_bytes: usize) -> Result<(), TextureCacheError> {
-        let required_bytes = self.used_bytes.saturating_sub(budget_bytes);
-        let reclaimable_bytes = self
-            .entries
-            .values()
-            .filter(|entry| entry.retain_count == 0)
-            .map(|entry| entry.bytes)
-            .fold(0usize, usize::saturating_add);
-        if reclaimable_bytes < required_bytes {
-            return Err(TextureCacheError::CacheFullyRetained);
-        }
-
+        self.evict_lru_until(budget_bytes)?;
         self.budget_bytes = budget_bytes;
-        while self.used_bytes > self.budget_bytes {
-            let evicted = self.evict_least_recently_used();
-            debug_assert!(evicted, "reclaimable cache capacity was precomputed");
-        }
         Ok(())
     }
 
@@ -363,23 +336,46 @@ impl TextureCache {
         self.clock += 1;
     }
 
-    fn evict_least_recently_used(&mut self) -> bool {
-        let candidate = self
-            .entries
-            .iter()
-            .filter(|(_, entry)| entry.retain_count == 0)
-            .min_by_key(|(_, entry)| entry.last_used)
-            .map(|(handle, _)| *handle);
-        let Some(handle) = candidate else {
-            return false;
-        };
-        if let Some(entry) = self.entries.remove(&handle) {
-            self.used_bytes -= entry.bytes;
-            self.evictions = self.evictions.saturating_add(1);
-            true
-        } else {
-            false
+    /// Evicts the oldest unretained textures until the byte target is met.
+    ///
+    /// Candidate allocation and reclaimable capacity are checked before the
+    /// first removal, preserving the cache when a budget cannot be satisfied.
+    /// Sorting once avoids rescanning the hash table for every evicted texture.
+    fn evict_lru_until(&mut self, target_used_bytes: usize) -> Result<(), TextureCacheError> {
+        let required_bytes = self.used_bytes.saturating_sub(target_used_bytes);
+        if required_bytes == 0 {
+            return Ok(());
         }
+
+        let mut candidates = Vec::new();
+        candidates
+            .try_reserve_exact(self.entries.len())
+            .map_err(|_| TextureCacheError::AllocationFailed)?;
+        for (&handle, entry) in &self.entries {
+            if entry.retain_count == 0 && entry.bytes > 0 {
+                candidates.push((entry.last_used, handle, entry.bytes));
+            }
+        }
+        candidates.sort_unstable_by_key(|(last_used, handle, _)| (*last_used, handle.id()));
+
+        let reclaimable_bytes = candidates
+            .iter()
+            .map(|(_, _, bytes)| *bytes)
+            .fold(0usize, usize::saturating_add);
+        if reclaimable_bytes < required_bytes {
+            return Err(TextureCacheError::CacheFullyRetained);
+        }
+
+        for (_, handle, bytes) in candidates {
+            if self.used_bytes <= target_used_bytes {
+                break;
+            }
+            self.entries.remove(&handle);
+            self.used_bytes = self.used_bytes.saturating_sub(bytes);
+            self.evictions = self.evictions.saturating_add(1);
+        }
+        debug_assert!(self.used_bytes <= target_used_bytes);
+        Ok(())
     }
 }
 
@@ -573,6 +569,27 @@ mod tests {
         assert!(cache.peek(second).is_some());
         assert_eq!(cache.stats().used_bytes, 8);
         assert_eq!(cache.stats().budget_bytes, 8);
+    }
+
+    #[test]
+    fn shrinking_budget_batches_multiple_lru_evictions_and_preserves_recent_textures() {
+        let mut cache = TextureCache::new(32);
+        let first = cache.insert(texture(Color::RED, 2)).unwrap();
+        let second = cache.insert(texture(Color::BLUE, 2)).unwrap();
+        let third = cache.insert(texture(Color::GREEN, 2)).unwrap();
+        let fourth = cache.insert(texture(Color::WHITE, 2)).unwrap();
+
+        // Refresh the first and third entries; second and fourth are oldest.
+        assert!(cache.get(first).is_some());
+        assert!(cache.get(third).is_some());
+        cache.set_budget_bytes(16).unwrap();
+
+        assert!(cache.peek(first).is_some());
+        assert!(cache.peek(second).is_none());
+        assert!(cache.peek(third).is_some());
+        assert!(cache.peek(fourth).is_none());
+        assert_eq!(cache.stats().used_bytes, 16);
+        assert_eq!(cache.stats().evictions, 2);
     }
 
     #[test]
