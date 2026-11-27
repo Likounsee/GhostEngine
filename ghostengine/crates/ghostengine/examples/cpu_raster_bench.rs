@@ -824,14 +824,18 @@ fn main() {
                 Rect::new(0, 0, WIDTH, HEIGHT),
             );
         }),
-        measure("Mipmap 4K -> 1440x810 trilinear", full_hd_iterations, |target| {
-            draw_mipmapped_texture_clipped(
-                target,
-                &full_hd_mipmaps,
-                Rect::new(0, 0, WIDTH * 3 / 4, HEIGHT * 3 / 4),
-                Rect::new(0, 0, WIDTH, HEIGHT),
-            );
-        }),
+        measure(
+            "Mipmap 4K -> 1440x810 trilinear",
+            full_hd_iterations,
+            |target| {
+                draw_mipmapped_texture_clipped(
+                    target,
+                    &full_hd_mipmaps,
+                    Rect::new(0, 0, WIDTH * 3 / 4, HEIGHT * 3 / 4),
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                );
+            },
+        ),
         measure("Texture bilinear (parallel)", iterations, |target| {
             draw_texture_clipped_parallel_with_threads(
                 target,

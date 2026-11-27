@@ -517,8 +517,7 @@ mod tests {
         let chain = MipmapChain::new(&base).unwrap();
         let destination = crate::Rect::new(2, 1, 4, 3);
         let clip = crate::Rect::new(3, 2, 2, 2);
-        let mut actual =
-            crate::Framebuffer::new(9, 7, Color::rgba(11, 23, 37, 255)).unwrap();
+        let mut actual = crate::Framebuffer::new(9, 7, Color::rgba(11, 23, 37, 255)).unwrap();
         let mut expected = actual.clone();
 
         draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
