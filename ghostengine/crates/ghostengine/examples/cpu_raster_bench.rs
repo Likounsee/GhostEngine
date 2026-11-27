@@ -489,6 +489,23 @@ fn main() {
                 &mut polygon_scratch,
             );
         }),
+        measure("Polygon fill AA (parallel)", iterations, |target| {
+            ghostengine::rasterizer::fill_polygon_aa_parallel_with_threads(
+                target,
+                &polygon,
+                Color::rgba(40, 170, 245, 210),
+                raster_threads,
+            );
+        }),
+        measure("Polygon fill AA (parallel, reused scratch)", iterations, |target| {
+            ghostengine::rasterizer::fill_polygon_aa_parallel_with_scratch(
+                target,
+                &polygon,
+                Color::rgba(40, 170, 245, 210),
+                raster_threads,
+                &mut polygon_scratch,
+            );
+        }),
         measure("Ellipse fill AA", iterations, |target| {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
