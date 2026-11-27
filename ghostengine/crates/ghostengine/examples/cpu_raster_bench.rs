@@ -14,8 +14,7 @@ use ghostengine::{
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, RenderOptions,
     StrokeScratch, StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch,
-    TextureFilter,
-    Transform2D, UiTheme, Vector, WidgetState,
+    TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
 
 const WIDTH: u32 = 1920;
@@ -557,18 +556,22 @@ fn main() {
             )
             .expect("benchmark stroke should be valid");
         }),
-        measure("Vector path stroke AA (reused scratch)", iterations, |target| {
-            ghostengine::stroke_path_aa_with_scratch(
-                target,
-                &path,
-                Transform2D::IDENTITY,
-                StrokeStyle::new(7.0 * SCALE_F32),
-                Color::rgba(90, 220, 130, 230),
-                0.35 * SCALE_F32,
-                &mut stroke_scratch,
-            )
-            .expect("scratch-backed benchmark stroke should be valid");
-        }),
+        measure(
+            "Vector path stroke AA (reused scratch)",
+            iterations,
+            |target| {
+                ghostengine::stroke_path_aa_with_scratch(
+                    target,
+                    &path,
+                    Transform2D::IDENTITY,
+                    StrokeStyle::new(7.0 * SCALE_F32),
+                    Color::rgba(90, 220, 130, 230),
+                    0.35 * SCALE_F32,
+                    &mut stroke_scratch,
+                )
+                .expect("scratch-backed benchmark stroke should be valid");
+            },
+        ),
         measure("Vector path stroke AA (parallel)", iterations, |target| {
             stroke_path_aa_parallel_with_threads(
                 target,

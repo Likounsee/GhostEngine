@@ -3,7 +3,7 @@
 //! The implementation evaluates stroke coverage at pixel centers and blends each
 //! covered pixel once. This avoids dark seams where adjacent segments overlap.
 
-use crate::{Color, Framebuffer, Path, PathError, Rect, Transform2D, Vector};
+use crate::{Color, FlattenedPath, Framebuffer, Path, PathError, Rect, Transform2D, Vector};
 
 /// Shape used to terminate an open stroked contour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

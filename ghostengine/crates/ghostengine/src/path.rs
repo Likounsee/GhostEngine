@@ -603,13 +603,13 @@ impl FlattenedPath {
                 let index = active_subpaths;
                 if index == output.subpaths.len() {
                     output
-            .subpaths
-            .try_reserve(1)
-            .map_err(|_| PathError::AllocationFailed)?;
+                        .subpaths
+                        .try_reserve(1)
+                        .map_err(|_| PathError::AllocationFailed)?;
                     output.subpaths.push(FlattenedSubpath {
-            points: Vec::new(),
-            closed: false,
-        });
+                        points: Vec::new(),
+                        closed: false,
+                    });
                 }
                 let destination = &mut output.subpaths[index];
                 destination.points.clear();
@@ -1313,7 +1313,7 @@ mod tests {
     use super::{
         fill_path_even_odd, fill_path_even_odd_aa, fill_transformed_path_even_odd, Path, PathError,
     };
-    use crate::{Color, Framebuffer, Rect, Transform2D, Vector};
+    use crate::{Color, FlattenedPath, Framebuffer, Rect, Transform2D, Vector};
 
     #[test]
     fn optimized_horizontal_coverage_matches_sample_by_sample_reference() {
