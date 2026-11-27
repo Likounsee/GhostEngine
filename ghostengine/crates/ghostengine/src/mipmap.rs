@@ -8,6 +8,34 @@ pub struct MipmapChain {
     levels: Vec<Texture>,
 }
 
+#[derive(Clone, Copy)]
+struct PreparedTrilinear {
+    lower: usize,
+    upper: usize,
+    fraction: f32,
+    lower_inverse_scale: f32,
+    upper_inverse_scale: f32,
+}
+
+impl PreparedTrilinear {
+    fn new(level_count: usize, lod: f32) -> Self {
+        let clamped_lod = if lod.is_finite() {
+            lod.clamp(0.0, (level_count - 1) as f32)
+        } else {
+            0.0
+        };
+        let lower = clamped_lod.floor() as usize;
+        let upper = (lower + 1).min(level_count - 1);
+        Self {
+            lower,
+            upper,
+            fraction: clamped_lod - lower as f32,
+            lower_inverse_scale: 2.0_f32.powi(-(lower as i32)),
+            upper_inverse_scale: 2.0_f32.powi(-(upper as i32)),
+        }
+    }
+}
+
 impl MipmapChain {
     pub fn new(base: &Texture) -> Result<Self, TextureError> {
         let mut levels = Vec::new();
@@ -72,24 +100,8 @@ impl MipmapChain {
         if self.levels.is_empty() || !x.is_finite() || !y.is_finite() {
             return Color::TRANSPARENT;
         }
-        let lod = if lod.is_finite() {
-            lod.clamp(0.0, (self.levels.len() - 1) as f32)
-        } else {
-            0.0
-        };
-        let lower = lod.floor() as usize;
-        let upper = (lower + 1).min(self.levels.len() - 1);
-        let fraction = lod - lower as f32;
-        sample_trilinear_prepared(
-            self,
-            x,
-            y,
-            lower,
-            upper,
-            fraction,
-            2.0_f32.powi(-(lower as i32)),
-            2.0_f32.powi(-(upper as i32)),
-        )
+        let prepared = PreparedTrilinear::new(self.levels.len(), lod);
+        sample_trilinear_prepared(self, x, y, prepared)
     }
 }
 
@@ -160,12 +172,7 @@ pub fn draw_mipmapped_texture_clipped(
     let scale_x = base.width() as f32 / destination.width as f32;
     let scale_y = base.height() as f32 / destination.height as f32;
     let lod = scale_x.max(scale_y).log2().max(0.0);
-    let clamped_lod = lod.clamp(0.0, (mipmaps.levels.len() - 1) as f32);
-    let lower_level = clamped_lod.floor() as usize;
-    let upper_level = (lower_level + 1).min(mipmaps.levels.len() - 1);
-    let lod_fraction = clamped_lod - lower_level as f32;
-    let lower_inverse_scale = 2.0_f32.powi(-(lower_level as i32));
-    let upper_inverse_scale = 2.0_f32.powi(-(upper_level as i32));
+    let prepared = PreparedTrilinear::new(mipmaps.levels.len(), lod);
     let target_width = target.width() as usize;
 
     for y in clip.y..clip.y + clip.height {
@@ -178,11 +185,7 @@ pub fn draw_mipmapped_texture_clipped(
                 mipmaps,
                 source_x,
                 source_y,
-                lower_level,
-                upper_level,
-                lod_fraction,
-                lower_inverse_scale,
-                upper_inverse_scale,
+                prepared,
             );
             if source.a == 0 {
                 continue;
@@ -203,23 +206,19 @@ fn sample_trilinear_prepared(
     mipmaps: &MipmapChain,
     x: f32,
     y: f32,
-    lower: usize,
-    upper: usize,
-    fraction: f32,
-    lower_inverse_scale: f32,
-    upper_inverse_scale: f32,
+    prepared: PreparedTrilinear,
 ) -> Color {
-    let lower_x = (x + 0.5) * lower_inverse_scale - 0.5;
-    let lower_y = (y + 0.5) * lower_inverse_scale - 0.5;
-    let a = sample_bilinear(&mipmaps.levels[lower], lower_x, lower_y);
-    if lower == upper || fraction <= 0.0 {
+    let lower_x = (x + 0.5) * prepared.lower_inverse_scale - 0.5;
+    let lower_y = (y + 0.5) * prepared.lower_inverse_scale - 0.5;
+    let a = sample_bilinear(&mipmaps.levels[prepared.lower], lower_x, lower_y);
+    if prepared.lower == prepared.upper || prepared.fraction <= 0.0 {
         return a;
     }
 
-    let upper_x = (x + 0.5) * upper_inverse_scale - 0.5;
-    let upper_y = (y + 0.5) * upper_inverse_scale - 0.5;
-    let b = sample_bilinear(&mipmaps.levels[upper], upper_x, upper_y);
-    interpolate_premultiplied(a, b, fraction)
+    let upper_x = (x + 0.5) * prepared.upper_inverse_scale - 0.5;
+    let upper_y = (y + 0.5) * prepared.upper_inverse_scale - 0.5;
+    let b = sample_bilinear(&mipmaps.levels[prepared.upper], upper_x, upper_y);
+    interpolate_premultiplied(a, b, prepared.fraction)
 }
 
 fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
@@ -485,11 +484,13 @@ mod tests {
                         &chain,
                         x,
                         y,
-                        lower,
-                        upper,
-                        fraction,
-                        2.0_f32.powi(-(lower as i32)),
-                        2.0_f32.powi(-(upper as i32)),
+                        PreparedTrilinear {
+                            lower,
+                            upper,
+                            fraction,
+                            lower_inverse_scale: 2.0_f32.powi(-(lower as i32)),
+                            upper_inverse_scale: 2.0_f32.powi(-(upper as i32)),
+                        },
                     );
                     assert_eq!(prepared, chain.sample_trilinear(x, y, lod));
                 }
