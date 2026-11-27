@@ -87,3 +87,13 @@ GPU acceleration remains deferred until the CPU renderer, public resource model 
 - Use repeated runs; small CPU systems are sensitive to background load and thermal/power limits.
 - Track regressions as well as improvements. A result below 16.67 ms is within the isolated-operation target, not proof that a complete application scene sustains 60 FPS.
 - Keep setup costs (for example mipmap construction) separate from steady-state frame timings and report them explicitly.
+
+## Display-list replay culling
+
+Display-list replay intersects each recorded command clip with the target
+framebuffer before dispatch. Commands whose recorded clip cannot touch the
+target are counted as skipped without entering path flattening, stroke
+construction, text rasterization, gradient evaluation, or texture sampling.
+Full-frame clears remain unconditional because they intentionally ignore clip
+state. Visible commands continue through their existing clipping and pixel
+paths, preserving rendering semantics.

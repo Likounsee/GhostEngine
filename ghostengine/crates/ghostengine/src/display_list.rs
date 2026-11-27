@@ -154,6 +154,27 @@ enum Command {
         gradient: Gradient,
         clip: Rect,
     },
+
+
+impl Command {
+    fn clip(&self) -> Option<Rect> {
+        match self {
+            Self::Clear(_) => None,
+            Self::FillRects { clip, .. }
+            | Self::StrokeRect { clip, .. }
+            | Self::Line { clip, .. }
+            | Self::FillPath { clip, .. }
+            | Self::StrokePath { clip, .. }
+            | Self::DrawText { clip, .. }
+            | Self::DrawShapedText { clip, .. }
+            | Self::DrawTexture { clip, .. }
+            | Self::DrawTextureRegion { clip, .. }
+            | Self::DrawNineSliceTexture { clip, .. }
+            | Self::LinearGradient { clip, .. }
+            | Self::RadialGradient { clip, .. }
+            | Self::ConicGradient { clip, .. } => Some(*clip),
+        }
+    }
 }
 
 /// Errors returned by fallible display-list capacity operations.
@@ -1597,7 +1618,20 @@ impl DisplayList {
             ..RenderStats::default()
         };
 
+        let target_bounds = Rect::new(0, 0, target.width(), target.height());
+
         for command in &self.commands {
+            // Commands retain the clip that was active when they were recorded.
+            // Reject clips outside the destination before dispatching to paths,
+            // strokes, text, gradients or texture samplers.
+            if command
+                .clip()
+                .is_some_and(|clip| clip.intersection(target_bounds).is_none())
+            {
+                stats.commands_skipped += 1;
+                continue;
+            }
+
             let executed = match command {
                 Command::Clear(color) => {
                     target.clear(*color);
@@ -2065,6 +2099,27 @@ mod tests {
         assert_eq!(stats.commands_executed, 3);
         assert_eq!(target.get_pixel(2, 2), Some(Color::RED));
         assert_eq!(target.get_pixel(4, 4), Some(Color::BLUE));
+    }
+
+    #[test]
+    fn replay_skips_commands_whose_recorded_clip_misses_target() {
+        let mut list = DisplayList::new();
+        list.push_clip(Rect::new(100, 100, 20, 20));
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(100.0, 100.0))
+            .line_to(crate::Vector::new(120.0, 100.0))
+            .line_to(crate::Vector::new(120.0, 120.0))
+            .close();
+        list.fill_path(path, Transform2D::IDENTITY, Color::RED, 0.1)
+            .unwrap();
+        list.pop_clip();
+
+        let mut target = Framebuffer::new(16, 16, Color::BLACK).unwrap();
+        let stats = list.replay(&mut target);
+        assert_eq!(stats.commands_submitted, 1);
+        assert_eq!(stats.commands_executed, 0);
+        assert_eq!(stats.commands_skipped, 1);
+        assert!(target.pixels().iter().all(|pixel| *pixel == Color::BLACK));
     }
 
     #[test]
