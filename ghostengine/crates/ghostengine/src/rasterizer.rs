@@ -10336,6 +10336,74 @@ mod rasterizer_scratch_lifecycle_tests {
     }
 
     #[test]
+    fn automatic_parallel_polygon_apis_reuse_scratch_and_match_serial_output() {
+        let vertices = [
+            Point::new(8, 6),
+            Point::new(174, 13),
+            Point::new(158, 111),
+            Point::new(92, 83),
+            Point::new(19, 119),
+        ];
+        let color = Color::rgba(120, 190, 70, 181);
+
+        let mut serial = Framebuffer::new(192, 128, Color::rgba(15, 25, 35, 255)).unwrap();
+        let mut parallel = serial.clone();
+        let mut scratch = RasterizerScratch::default();
+        super::fill_polygon(&mut serial, &vertices, color);
+        super::fill_polygon_parallel_auto_with_scratch(
+            &mut parallel,
+            &vertices,
+            color,
+            &mut scratch,
+        );
+        assert_eq!(parallel, serial);
+        let warmed = scratch.allocated_bytes();
+        assert!(warmed > 0);
+
+        for _ in 0..4 {
+            serial.clear(Color::rgba(15, 25, 35, 255));
+            parallel.clear(Color::rgba(15, 25, 35, 255));
+            super::fill_polygon(&mut serial, &vertices, color);
+            super::fill_polygon_parallel_auto_with_scratch(
+                &mut parallel,
+                &vertices,
+                color,
+                &mut scratch,
+            );
+            assert_eq!(parallel, serial);
+            assert_eq!(scratch.allocated_bytes(), warmed);
+        }
+
+        let mut serial_aa = Framebuffer::new(192, 128, Color::rgba(15, 25, 35, 255)).unwrap();
+        let mut parallel_aa = serial_aa.clone();
+        let mut aa_scratch = RasterizerScratch::default();
+        super::fill_polygon_aa(&mut serial_aa, &vertices, color);
+        super::fill_polygon_aa_parallel_auto_with_scratch(
+            &mut parallel_aa,
+            &vertices,
+            color,
+            &mut aa_scratch,
+        );
+        assert_eq!(parallel_aa, serial_aa);
+        let aa_warmed = aa_scratch.allocated_bytes();
+        assert!(aa_warmed > 0);
+
+        for _ in 0..4 {
+            serial_aa.clear(Color::rgba(15, 25, 35, 255));
+            parallel_aa.clear(Color::rgba(15, 25, 35, 255));
+            super::fill_polygon_aa(&mut serial_aa, &vertices, color);
+            super::fill_polygon_aa_parallel_auto_with_scratch(
+                &mut parallel_aa,
+                &vertices,
+                color,
+                &mut aa_scratch,
+            );
+            assert_eq!(parallel_aa, serial_aa);
+            assert_eq!(aa_scratch.allocated_bytes(), aa_warmed);
+        }
+    }
+
+    #[test]
     fn scratch_trim_is_a_noop_when_already_within_budget() {
         let mut scratch = RasterizerScratch::default();
         scratch.trim_to_budget(0);
