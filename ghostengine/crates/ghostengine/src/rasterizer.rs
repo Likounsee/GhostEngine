@@ -7759,11 +7759,8 @@ mod arc_aa_tests {
 
 #[cfg(test)]
 mod parallel_raster_tests {
-    use super::{
-        try_fill_polygon_aa_parallel_with_scratch, try_fill_polygon_aa_with_scratch,
-        RasterizerScratch,
-    };
-    use crate::{Color, Framebuffer, Point, Rect};
+    use super::try_fill_polygon_aa_with_scratch;
+    use crate::{Color, Framebuffer, Rect};
 
     #[test]
     fn parallel_rectangle_fill_matches_serial_for_clipped_and_empty_regions() {
