@@ -154,7 +154,7 @@ enum Command {
         gradient: Gradient,
         clip: Rect,
     },
-
+}
 
 impl Command {
     fn clip(&self) -> Option<Rect> {
