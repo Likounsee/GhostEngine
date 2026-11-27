@@ -2671,9 +2671,11 @@ impl RasterizerScratch {
                 self.parallel_aa_workers
                     .iter()
                     .map(|(coverage, intersections)| {
-                        coverage
-                            .capacity()
-                            .saturating_add(intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
+                        coverage.capacity().saturating_add(
+                            intersections
+                                .capacity()
+                                .saturating_mul(core::mem::size_of::<f64>()),
+                        )
                     })
                     .fold(0usize, usize::saturating_add),
             )
@@ -10157,9 +10159,8 @@ mod rasterizer_scratch_lifecycle_tests {
         let mut scratch = RasterizerScratch::default();
 
         try_fill_polygon_aa_with_scratch(&mut serial, &vertices, color, &mut scratch).unwrap();
-        try_fill_polygon_aa_parallel_with_scratch(
-            &mut parallel, &vertices, color, 4, &mut scratch,
-        ).unwrap();
+        try_fill_polygon_aa_parallel_with_scratch(&mut parallel, &vertices, color, 4, &mut scratch)
+            .unwrap();
         assert_eq!(parallel, serial);
 
         let warmed = scratch.allocated_bytes();
@@ -10169,8 +10170,13 @@ mod rasterizer_scratch_lifecycle_tests {
             parallel.clear(Color::BLACK);
             try_fill_polygon_aa_with_scratch(&mut serial, &vertices, color, &mut scratch).unwrap();
             try_fill_polygon_aa_parallel_with_scratch(
-                &mut parallel, &vertices, color, 4, &mut scratch,
-            ).unwrap();
+                &mut parallel,
+                &vertices,
+                color,
+                4,
+                &mut scratch,
+            )
+            .unwrap();
             assert_eq!(parallel, serial);
             assert_eq!(
                 scratch.allocated_bytes(),
@@ -10182,6 +10188,100 @@ mod rasterizer_scratch_lifecycle_tests {
         scratch.clear();
         assert_eq!(scratch.allocated_bytes(), warmed);
         scratch.release();
+        assert_eq!(scratch.allocated_bytes(), 0);
+    }
+
+    #[test]
+    fn parallel_antialiased_polygon_scratch_matches_serial_across_worker_counts_and_shapes() {
+        let cases: [(&[Point], Color, Color); 3] = [
+            (
+                &[
+                    Point::new(-4, 3),
+                    Point::new(29, -2),
+                    Point::new(44, 21),
+                    Point::new(18, 38),
+                    Point::new(-3, 25),
+                ],
+                Color::rgba(220, 70, 40, 173),
+                Color::rgba(20, 35, 50, 255),
+            ),
+            (
+                &[
+                    Point::new(7, 5),
+                    Point::new(38, 9),
+                    Point::new(31, 33),
+                    Point::new(13, 27),
+                ],
+                Color::rgba(35, 190, 130, 111),
+                Color::rgba(10, 20, 30, 127),
+            ),
+            (
+                &[
+                    Point::new(1, 1),
+                    Point::new(45, 2),
+                    Point::new(42, 40),
+                    Point::new(3, 43),
+                ],
+                Color::rgba(90, 130, 240, 255),
+                Color::BLACK,
+            ),
+        ];
+
+        let mut scratch = RasterizerScratch::default();
+        for (vertices, color, background) in cases {
+            for workers in [1, 2, 4, 8] {
+                let mut expected = Framebuffer::new(48, 44, background).unwrap();
+                let mut actual = expected.clone();
+                try_fill_polygon_aa_with_scratch(
+                    &mut expected,
+                    vertices,
+                    color,
+                    &mut scratch,
+                )
+                .unwrap();
+                try_fill_polygon_aa_parallel_with_scratch(
+                    &mut actual,
+                    vertices,
+                    color,
+                    workers,
+                    &mut scratch,
+                )
+                .unwrap();
+                assert_eq!(
+                    actual, expected,
+                    "parallel AA differs for {workers} workers and polygon {vertices:?}"
+                );
+            }
+        }
+
+        // After the largest worker/shape combination has warmed every buffer,
+        // smaller shapes and worker counts must not force another allocation.
+        let warmed = scratch.allocated_bytes();
+        assert!(warmed > 0);
+        let vertices = cases[1].0;
+        for _ in 0..5 {
+            let mut expected = Framebuffer::new(48, 44, cases[1].2).unwrap();
+            let mut actual = expected.clone();
+            try_fill_polygon_aa_with_scratch(
+                &mut expected,
+                vertices,
+                cases[1].1,
+                &mut scratch,
+            )
+            .unwrap();
+            try_fill_polygon_aa_parallel_with_scratch(
+                &mut actual,
+                vertices,
+                cases[1].1,
+                2,
+                &mut scratch,
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(scratch.allocated_bytes(), warmed);
+        }
+
+        scratch.trim_to_budget(0);
         assert_eq!(scratch.allocated_bytes(), 0);
     }
 
