@@ -68,8 +68,12 @@ simple correctness/reference path.
 
 Mipmap construction for the 3840x2160 source took 50.7–139.7 ms as one-time
 setup on these runners; steady-state 4K-to-1080p mipmapped drawing measured
-0.18–0.46 ms per frame. Keep these setup and frame costs separate when
-evaluating the workload.
+0.18–0.46 ms per frame. The benchmark now also includes a 4K-to-1440x810
+fractional-LOD workload so the general trilinear sampler is measured separately
+from the exact 2:1 mip-row copy path. The general sampler uses precomputed
+reciprocal mip scales and direct row-major texel indexing after coordinate
+clamping, avoiding repeated scale divisions and checked pixel lookups in the
+inner sampling loop. Keep setup and frame costs separate when evaluating the workload.
 
 ## GPU backend (future work)
 

@@ -43,8 +43,8 @@ impl MipmapChain {
                     let mut sample_count = 0;
                     for sample_y in y0..=y1 {
                         for sample_x in x0..=x1 {
-                            let index = sample_y as usize * previous.width() as usize
-                                + sample_x as usize;
+                            let index =
+                                sample_y as usize * previous.width() as usize + sample_x as usize;
                             samples[sample_count] = previous.pixels()[index];
                             sample_count += 1;
                         }
@@ -87,8 +87,8 @@ impl MipmapChain {
             lower,
             upper,
             fraction,
-            2.0_f32.powi(lower as i32),
-            2.0_f32.powi(upper as i32),
+            2.0_f32.powi(-(lower as i32)),
+            2.0_f32.powi(-(upper as i32)),
         )
     }
 }
@@ -164,8 +164,8 @@ pub fn draw_mipmapped_texture_clipped(
     let lower_level = clamped_lod.floor() as usize;
     let upper_level = (lower_level + 1).min(mipmaps.levels.len() - 1);
     let lod_fraction = clamped_lod - lower_level as f32;
-    let lower_scale = 2.0_f32.powi(lower_level as i32);
-    let upper_scale = 2.0_f32.powi(upper_level as i32);
+    let lower_inverse_scale = 2.0_f32.powi(-(lower_level as i32));
+    let upper_inverse_scale = 2.0_f32.powi(-(upper_level as i32));
     let target_width = target.width() as usize;
 
     for y in clip.y..clip.y + clip.height {
@@ -181,8 +181,8 @@ pub fn draw_mipmapped_texture_clipped(
                 lower_level,
                 upper_level,
                 lod_fraction,
-                lower_scale,
-                upper_scale,
+                lower_inverse_scale,
+                upper_inverse_scale,
             );
             if source.a == 0 {
                 continue;
@@ -206,18 +206,18 @@ fn sample_trilinear_prepared(
     lower: usize,
     upper: usize,
     fraction: f32,
-    lower_scale: f32,
-    upper_scale: f32,
+    lower_inverse_scale: f32,
+    upper_inverse_scale: f32,
 ) -> Color {
-    let lower_x = (x + 0.5) / lower_scale - 0.5;
-    let lower_y = (y + 0.5) / lower_scale - 0.5;
+    let lower_x = (x + 0.5) * lower_inverse_scale - 0.5;
+    let lower_y = (y + 0.5) * lower_inverse_scale - 0.5;
     let a = sample_bilinear(&mipmaps.levels[lower], lower_x, lower_y);
     if lower == upper || fraction <= 0.0 {
         return a;
     }
 
-    let upper_x = (x + 0.5) / upper_scale - 0.5;
-    let upper_y = (y + 0.5) / upper_scale - 0.5;
+    let upper_x = (x + 0.5) * upper_inverse_scale - 0.5;
+    let upper_y = (y + 0.5) * upper_inverse_scale - 0.5;
     let b = sample_bilinear(&mipmaps.levels[upper], upper_x, upper_y);
     interpolate_premultiplied(a, b, fraction)
 }
@@ -230,8 +230,10 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let y = y.clamp(0.0, texture.height() as f32 - 1.0);
     let x0 = x.floor() as u32;
     let y0 = y.floor() as u32;
+    let pixels = texture.pixels();
+    let row_width = texture.width() as usize;
     if x == x0 as f32 && y == y0 as f32 {
-        return texture.get_pixel(x0, y0).unwrap_or(Color::TRANSPARENT);
+        return pixels[y0 as usize * row_width + x0 as usize];
     }
     if texture.is_fully_opaque() {
         return crate::texture::sample_pixels_bilinear_opaque(
@@ -246,14 +248,10 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     let y1 = (y0 + 1).min(texture.height() - 1);
     let tx = x - x0 as f32;
     let ty = y - y0 as f32;
-    let (Some(top_left), Some(top_right), Some(bottom_left), Some(bottom_right)) = (
-        texture.get_pixel(x0, y0),
-        texture.get_pixel(x1, y0),
-        texture.get_pixel(x0, y1),
-        texture.get_pixel(x1, y1),
-    ) else {
-        return Color::TRANSPARENT;
-    };
+    let top_left = pixels[y0 as usize * row_width + x0 as usize];
+    let top_right = pixels[y0 as usize * row_width + x1 as usize];
+    let bottom_left = pixels[y1 as usize * row_width + x0 as usize];
+    let bottom_right = pixels[y1 as usize * row_width + x1 as usize];
     let top = interpolate_premultiplied(top_left, top_right, tx);
     let bottom = interpolate_premultiplied(bottom_left, bottom_right, tx);
     interpolate_premultiplied(top, bottom, ty)
@@ -476,7 +474,7 @@ mod tests {
         .unwrap();
         let chain = MipmapChain::new(&base).unwrap();
 
-        for lod in [0.0, 0.25, 1.0, 1.5, 2.0, 20.0] {
+        for lod in [0.0_f32, 0.25, 1.0, 1.5, 2.0, 20.0] {
             let clamped = lod.clamp(0.0, (chain.levels.len() - 1) as f32);
             let lower = clamped.floor() as usize;
             let upper = (lower + 1).min(chain.levels.len() - 1);
@@ -490,13 +488,65 @@ mod tests {
                         lower,
                         upper,
                         fraction,
-                        2.0_f32.powi(lower as i32),
-                        2.0_f32.powi(upper as i32),
+                        2.0_f32.powi(-(lower as i32)),
+                        2.0_f32.powi(-(upper as i32)),
                     );
                     assert_eq!(prepared, chain.sample_trilinear(x, y, lod));
                 }
             }
         }
+    }
+
+    #[test]
+    fn fractional_lod_draw_matches_per_pixel_reference_with_alpha_and_clip() {
+        let base = Texture::new(
+            9,
+            7,
+            (0..63)
+                .map(|index| {
+                    Color::rgba(
+                        (index * 17 % 256) as u8,
+                        (index * 29 % 256) as u8,
+                        (index * 41 % 256) as u8,
+                        (index * 13 % 256) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        let destination = crate::Rect::new(2, 1, 4, 3);
+        let clip = crate::Rect::new(3, 2, 2, 2);
+        let mut actual =
+            crate::Framebuffer::new(9, 7, Color::rgba(11, 23, 37, 255)).unwrap();
+        let mut expected = actual.clone();
+
+        draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
+
+        let scale_x = base.width() as f32 / destination.width as f32;
+        let scale_y = base.height() as f32 / destination.height as f32;
+        let lod = scale_x.max(scale_y).log2().max(0.0);
+        for y in clip.y..clip.y + clip.height {
+            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+                .clamp(0.0, base.height() as f32 - 1.0);
+            for x in clip.x..clip.x + clip.width {
+                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                    .clamp(0.0, base.width() as f32 - 1.0);
+                let source = chain.sample_trilinear(source_x, source_y, lod);
+                let destination_pixel = expected.get_pixel(x, y).unwrap();
+                expected.set_pixel(
+                    x,
+                    y,
+                    if source.a == 255 {
+                        source
+                    } else {
+                        source.blend_over(destination_pixel)
+                    },
+                );
+            }
+        }
+
+        assert_eq!(actual.pixels(), expected.pixels());
     }
 
     #[test]
