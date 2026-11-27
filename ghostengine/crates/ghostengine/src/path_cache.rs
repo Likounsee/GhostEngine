@@ -1,5 +1,7 @@
 //! Bounded cache for flattened vector path geometry.
 
+use std::collections::HashMap;
+
 use crate::{FlattenedPath, Path, PathError};
 
 #[derive(Debug, Clone)]
@@ -14,7 +16,7 @@ struct Entry {
 /// Errors returned when a path geometry cache cannot be created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathGeometryCacheError {
-    /// The cache could not reserve its initial entry storage.
+    /// The cache could not reserve its initial entry or lookup storage.
     AllocationFailed,
 }
 
@@ -50,6 +52,7 @@ pub struct PathGeometryCache {
     hits: u64,
     misses: u64,
     entries: Vec<Entry>,
+    lookup: HashMap<(u64, u32), usize>,
     geometry_bytes: usize,
 }
 
@@ -61,6 +64,10 @@ impl PathGeometryCache {
         entries
             .try_reserve_exact(capacity)
             .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
+        let mut lookup = HashMap::new();
+        lookup
+            .try_reserve(capacity)
+            .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
         Ok(Self {
             capacity,
             budget_bytes: usize::MAX,
@@ -69,6 +76,7 @@ impl PathGeometryCache {
             hits: 0,
             misses: 0,
             entries,
+            lookup,
             geometry_bytes: 0,
         })
     }
@@ -108,8 +116,12 @@ impl PathGeometryCache {
     pub fn set_capacity(&mut self, capacity: usize) -> Result<(), PathGeometryCacheError> {
         let capacity = capacity.max(1);
         if capacity > self.capacity {
+            let additional = capacity.saturating_sub(self.entries.len());
             self.entries
-                .try_reserve_exact(capacity.saturating_sub(self.entries.len()))
+                .try_reserve_exact(additional)
+                .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
+            self.lookup
+                .try_reserve(additional)
                 .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
         }
         if capacity < self.entries.len() {
@@ -141,13 +153,18 @@ impl PathGeometryCache {
 
     /// Estimates memory retained by the cache's vector capacities.
     ///
-    /// This includes the entry vector and flattened geometry vectors. It
-    /// excludes allocator metadata and unrelated memory.
+    /// This includes the entry vector, key-index table and flattened geometry
+    /// vectors. It excludes allocator metadata and unrelated memory.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
         self.entries
             .capacity()
             .saturating_mul(core::mem::size_of::<Entry>())
+            .saturating_add(
+                self.lookup
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<((u64, u32), usize)>()),
+            )
             .saturating_add(self.cached_geometry_bytes())
             .saturating_add(
                 self.uncached_geometry
@@ -193,6 +210,7 @@ impl PathGeometryCache {
     /// Drops cached geometries while retaining the entry vector for reuse.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.lookup.clear();
         self.geometry_bytes = 0;
         self.uncached_geometry = None;
     }
@@ -202,9 +220,20 @@ impl PathGeometryCache {
     /// Lookup counters and the configured entry limit are preserved.
     pub fn release(&mut self) {
         self.entries.clear();
+        self.lookup.clear();
         self.geometry_bytes = 0;
         self.entries.shrink_to_fit();
+        self.lookup.shrink_to_fit();
         self.uncached_geometry = None;
+    }
+
+    /// Rebuilds the key index after an operation that changes entry positions.
+    fn rebuild_lookup(&mut self) {
+        self.lookup.clear();
+        for (index, entry) in self.entries.iter().enumerate() {
+            self.lookup
+                .insert((entry.key, entry.tolerance_bits), index);
+        }
     }
 
     /// Removes the least-recently-used prefix until both cache limits fit.
@@ -231,6 +260,7 @@ impl PathGeometryCache {
         if remove_count > 0 {
             self.entries.drain(..remove_count);
             self.geometry_bytes = remaining_bytes;
+            self.rebuild_lookup();
         }
         debug_assert!(self.entries.len() <= max_entries);
         debug_assert!(self.geometry_bytes <= max_geometry_bytes);
@@ -244,6 +274,7 @@ impl PathGeometryCache {
             for (index, entry) in self.entries.iter_mut().enumerate() {
                 entry.last_used = index as u64 + 1;
             }
+            self.rebuild_lookup();
             self.clock = self.entries.len() as u64 + 1;
         } else {
             self.clock += 1;
@@ -260,11 +291,7 @@ impl PathGeometryCache {
         self.uncached_geometry = None;
         self.advance_clock();
         let tolerance_bits = tolerance.to_bits();
-        if let Some(index) = self
-            .entries
-            .iter()
-            .position(|entry| entry.key == key && entry.tolerance_bits == tolerance_bits)
-        {
+        if let Some(&index) = self.lookup.get(&(key, tolerance_bits)) {
             self.hits = self.hits.saturating_add(1);
             self.entries[index].last_used = self.clock;
             return Ok(&self.entries[index].geometry);
@@ -278,6 +305,12 @@ impl PathGeometryCache {
             return Ok(self.uncached_geometry.as_ref().unwrap());
         }
 
+        // Reserve the index slot before evicting anything. If the hash table
+        // cannot grow, return this result uncached and preserve existing entries.
+        if self.lookup.try_reserve(1).is_err() {
+            self.uncached_geometry = Some(geometry);
+            return Ok(self.uncached_geometry.as_ref().unwrap());
+        }
         self.evict_oldest_until(
             self.capacity.saturating_sub(1),
             self.budget_bytes - geometry_bytes,
@@ -290,6 +323,8 @@ impl PathGeometryCache {
             geometry,
         });
         self.geometry_bytes = self.geometry_bytes.saturating_add(geometry_bytes);
+        self.lookup
+            .insert((key, tolerance_bits), self.entries.len() - 1);
         Ok(&self.entries.last().unwrap().geometry)
     }
 
@@ -304,6 +339,7 @@ impl PathGeometryCache {
             }
         });
         self.geometry_bytes = self.geometry_bytes.saturating_sub(removed_bytes);
+        self.rebuild_lookup();
     }
 
     #[must_use]
@@ -655,6 +691,13 @@ mod tests {
             assert!(stats.capacity >= 1);
             assert!(stats.entries <= stats.capacity);
             assert_eq!(stats.entries, cache.len());
+            assert_eq!(cache.lookup.len(), cache.entries.len());
+            for (index, entry) in cache.entries.iter().enumerate() {
+                assert_eq!(
+                    cache.lookup.get(&(entry.key, entry.tolerance_bits)),
+                    Some(&index)
+                );
+            }
             assert_eq!(
                 stats.geometry_bytes,
                 cache
