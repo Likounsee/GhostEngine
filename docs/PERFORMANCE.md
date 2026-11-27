@@ -97,3 +97,13 @@ construction, text rasterization, gradient evaluation, or texture sampling.
 Full-frame clears remain unconditional because they intentionally ignore clip
 state. Visible commands continue through their existing clipping and pixel
 paths, preserving rendering semantics.
+
+## Damage-clipped transformed layers
+
+Damage-limited layer composition now clips transformed layer bounds against
+the active damage rectangle during preparation. Layers outside that rectangle
+are rejected before calculating the inverse transform, and intersecting layers
+carry the narrower bounds into the scanline compositor. Full-frame and
+parallel composition retain the original preparation path. Pixel blending and
+sampling are unchanged; the existing transformed-damage parity test covers
+the clipped output.

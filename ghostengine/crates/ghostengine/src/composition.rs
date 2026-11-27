@@ -835,7 +835,7 @@ fn compose_layers_clipped(target: &mut Framebuffer, layers: &[Layer], clip: Opti
         let transformed = if layer.transform == Transform2D::IDENTITY {
             None
         } else {
-            prepare_transformed_layer(target, layer)
+            prepare_transformed_layer_with_clip(target, layer, Some(clip))
         };
         if layer.transform != Transform2D::IDENTITY && transformed.is_none() {
             continue;
@@ -854,10 +854,17 @@ fn prepare_transformed_layer(
     target: &Framebuffer,
     layer: &Layer,
 ) -> Option<PreparedTransformedLayer> {
+    prepare_transformed_layer_with_clip(target, layer, None)
+}
+
+fn prepare_transformed_layer_with_clip(
+    target: &Framebuffer,
+    layer: &Layer,
+    clip: Option<Rect>,
+) -> Option<PreparedTransformedLayer> {
     if target.width() == 0 || target.height() == 0 {
         return None;
     }
-    let inverse = layer.transform.inverse()?;
     let width = layer.framebuffer.width() as f32;
     let height = layer.framebuffer.height() as f32;
     let corners = [
@@ -904,10 +911,16 @@ fn prepare_transformed_layer(
         return None;
     }
 
-    Some(PreparedTransformedLayer {
-        inverse,
-        bounds: Rect::new(left, top, right - left, bottom - top),
-    })
+    let mut bounds = Rect::new(left, top, right - left, bottom - top);
+    if let Some(clip) = clip {
+        bounds = bounds.intersection(clip)?;
+    }
+
+    // Inversion is more expensive than the four forward corner transforms.
+    // Delay it until the transformed bounds are known to overlap the active
+    // clip, so damage-limited composition can reject off-clip layers cheaply.
+    let inverse = layer.transform.inverse()?;
+    Some(PreparedTransformedLayer { inverse, bounds })
 }
 
 fn compose_layer_clipped(
