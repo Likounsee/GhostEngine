@@ -43,10 +43,9 @@ impl MipmapChain {
                     let mut sample_count = 0;
                     for sample_y in y0..=y1 {
                         for sample_x in x0..=x1 {
-                            let Some(sample) = previous.get_pixel(sample_x, sample_y) else {
-                                return Err(TextureError::PixelCountMismatch);
-                            };
-                            samples[sample_count] = sample;
+                            let index = sample_y as usize * previous.width() as usize
+                                + sample_x as usize;
+                            samples[sample_count] = previous.pixels()[index];
                             sample_count += 1;
                         }
                     }
@@ -81,19 +80,16 @@ impl MipmapChain {
         let lower = lod.floor() as usize;
         let upper = (lower + 1).min(self.levels.len() - 1);
         let fraction = lod - lower as f32;
-        let lower_scale = 2.0_f32.powi(lower as i32);
-        let lower_x = (x + 0.5) / lower_scale - 0.5;
-        let lower_y = (y + 0.5) / lower_scale - 0.5;
-        let a = sample_bilinear(&self.levels[lower], lower_x, lower_y);
-        if lower == upper || fraction <= 0.0 {
-            return a;
-        }
-
-        let upper_scale = 2.0_f32.powi(upper as i32);
-        let upper_x = (x + 0.5) / upper_scale - 0.5;
-        let upper_y = (y + 0.5) / upper_scale - 0.5;
-        let b = sample_bilinear(&self.levels[upper], upper_x, upper_y);
-        interpolate_premultiplied(a, b, fraction)
+        sample_trilinear_prepared(
+            self,
+            x,
+            y,
+            lower,
+            upper,
+            fraction,
+            2.0_f32.powi(lower as i32),
+            2.0_f32.powi(upper as i32),
+        )
     }
 }
 
@@ -164,6 +160,12 @@ pub fn draw_mipmapped_texture_clipped(
     let scale_x = base.width() as f32 / destination.width as f32;
     let scale_y = base.height() as f32 / destination.height as f32;
     let lod = scale_x.max(scale_y).log2().max(0.0);
+    let clamped_lod = lod.clamp(0.0, (mipmaps.levels.len() - 1) as f32);
+    let lower_level = clamped_lod.floor() as usize;
+    let upper_level = (lower_level + 1).min(mipmaps.levels.len() - 1);
+    let lod_fraction = clamped_lod - lower_level as f32;
+    let lower_scale = 2.0_f32.powi(lower_level as i32);
+    let upper_scale = 2.0_f32.powi(upper_level as i32);
     let target_width = target.width() as usize;
 
     for y in clip.y..clip.y + clip.height {
@@ -172,7 +174,16 @@ pub fn draw_mipmapped_texture_clipped(
         for x in clip.x..clip.x + clip.width {
             let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
                 .clamp(0.0, base.width() as f32 - 1.0);
-            let source = mipmaps.sample_trilinear(source_x, source_y, lod);
+            let source = sample_trilinear_prepared(
+                mipmaps,
+                source_x,
+                source_y,
+                lower_level,
+                upper_level,
+                lod_fraction,
+                lower_scale,
+                upper_scale,
+            );
             if source.a == 0 {
                 continue;
             }
@@ -185,6 +196,30 @@ pub fn draw_mipmapped_texture_clipped(
             };
         }
     }
+}
+
+#[inline]
+fn sample_trilinear_prepared(
+    mipmaps: &MipmapChain,
+    x: f32,
+    y: f32,
+    lower: usize,
+    upper: usize,
+    fraction: f32,
+    lower_scale: f32,
+    upper_scale: f32,
+) -> Color {
+    let lower_x = (x + 0.5) / lower_scale - 0.5;
+    let lower_y = (y + 0.5) / lower_scale - 0.5;
+    let a = sample_bilinear(&mipmaps.levels[lower], lower_x, lower_y);
+    if lower == upper || fraction <= 0.0 {
+        return a;
+    }
+
+    let upper_x = (x + 0.5) / upper_scale - 0.5;
+    let upper_y = (y + 0.5) / upper_scale - 0.5;
+    let b = sample_bilinear(&mipmaps.levels[upper], upper_x, upper_y);
+    interpolate_premultiplied(a, b, fraction)
 }
 
 fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
@@ -224,27 +259,33 @@ fn sample_bilinear(texture: &Texture, x: f32, y: f32) -> Color {
     interpolate_premultiplied(top, bottom, ty)
 }
 
+#[inline]
 fn average_premultiplied(colors: &[Color]) -> Color {
     debug_assert!(!colors.is_empty());
-    let weight = 1.0 / colors.len() as f32;
-    let alpha = colors.iter().map(|color| f32::from(color.a)).sum::<f32>() * weight;
-    if alpha <= f32::EPSILON {
+    let mut alpha_sum = 0u32;
+    let mut red_sum = 0u32;
+    let mut green_sum = 0u32;
+    let mut blue_sum = 0u32;
+
+    for color in colors {
+        let alpha = u32::from(color.a);
+        alpha_sum += alpha;
+        red_sum += u32::from(color.r) * alpha;
+        green_sum += u32::from(color.g) * alpha;
+        blue_sum += u32::from(color.b) * alpha;
+    }
+
+    if alpha_sum == 0 {
         return Color::TRANSPARENT;
     }
 
-    let channel = |select: fn(Color) -> u8| {
-        let premultiplied = colors
-            .iter()
-            .map(|color| f32::from(select(*color)) * f32::from(color.a))
-            .sum::<f32>()
-            * weight;
-        (premultiplied / alpha).round().clamp(0.0, 255.0) as u8
-    };
+    let channel = |sum: u32| ((sum + alpha_sum / 2) / alpha_sum).min(255) as u8;
+    let alpha = ((alpha_sum + colors.len() as u32 / 2) / colors.len() as u32).min(255) as u8;
     Color::rgba(
-        channel(|color| color.r),
-        channel(|color| color.g),
-        channel(|color| color.b),
-        alpha.round().clamp(0.0, 255.0) as u8,
+        channel(red_sum),
+        channel(green_sum),
+        channel(blue_sum),
+        alpha,
     )
 }
 
@@ -413,6 +454,49 @@ mod tests {
         expected.set_pixel(0, 0, source.blend_over(Color::BLUE));
 
         assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
+    fn prepared_trilinear_sampling_matches_public_sampling_across_lods() {
+        let base = Texture::new(
+            7,
+            5,
+            (0..35)
+                .map(|index| {
+                    let alpha = (index * 37 % 256) as u8;
+                    Color::rgba(
+                        (index * 11 % 256) as u8,
+                        (index * 19 % 256) as u8,
+                        (index * 23 % 256) as u8,
+                        alpha,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+
+        for lod in [0.0, 0.25, 1.0, 1.5, 2.0, 20.0] {
+            let clamped = lod.clamp(0.0, (chain.levels.len() - 1) as f32);
+            let lower = clamped.floor() as usize;
+            let upper = (lower + 1).min(chain.levels.len() - 1);
+            let fraction = clamped - lower as f32;
+            for y in [0.0, 1.25, 3.75, 4.0] {
+                for x in [0.0, 0.5, 2.25, 6.0] {
+                    let prepared = sample_trilinear_prepared(
+                        &chain,
+                        x,
+                        y,
+                        lower,
+                        upper,
+                        fraction,
+                        2.0_f32.powi(lower as i32),
+                        2.0_f32.powi(upper as i32),
+                    );
+                    assert_eq!(prepared, chain.sample_trilinear(x, y, lod));
+                }
+            }
+        }
     }
 
     #[test]
