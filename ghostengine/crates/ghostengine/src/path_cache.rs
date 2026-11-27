@@ -7,6 +7,7 @@ struct Entry {
     key: u64,
     tolerance_bits: u32,
     last_used: u64,
+    geometry_bytes: usize,
     geometry: FlattenedPath,
 }
 
@@ -49,6 +50,7 @@ pub struct PathGeometryCache {
     hits: u64,
     misses: u64,
     entries: Vec<Entry>,
+    geometry_bytes: usize,
 }
 
 impl PathGeometryCache {
@@ -67,6 +69,7 @@ impl PathGeometryCache {
             hits: 0,
             misses: 0,
             entries,
+            geometry_bytes: 0,
         })
     }
 
@@ -110,9 +113,7 @@ impl PathGeometryCache {
                 .map_err(|_| PathGeometryCacheError::AllocationFailed)?;
         }
         if capacity < self.entries.len() {
-            self.entries.sort_unstable_by_key(|entry| entry.last_used);
-            let remove_count = self.entries.len() - capacity;
-            self.entries.drain(..remove_count);
+            self.evict_oldest_until(capacity, usize::MAX);
         }
         self.capacity = capacity;
         Ok(())
@@ -158,9 +159,7 @@ impl PathGeometryCache {
     /// Returns the geometry payload bytes currently retained in cache entries.
     #[must_use]
     pub fn cached_geometry_bytes(&self) -> usize {
-        self.entries.iter().fold(0usize, |total, entry| {
-            total.saturating_add(Self::flattened_geometry_bytes(&entry.geometry))
-        })
+        self.geometry_bytes
     }
 
     fn flattened_geometry_bytes(geometry: &FlattenedPath) -> usize {
@@ -188,23 +187,13 @@ impl PathGeometryCache {
         // changes cache policy, so do not retain it across the budget change.
         self.uncached_geometry = None;
         self.budget_bytes = budget_bytes;
-        while self.cached_geometry_bytes() > budget_bytes {
-            let oldest = self
-                .entries
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(index, _)| index);
-            let Some(oldest) = oldest else {
-                break;
-            };
-            self.entries.swap_remove(oldest);
-        }
+        self.evict_oldest_until(self.capacity, budget_bytes);
     }
 
     /// Drops cached geometries while retaining the entry vector for reuse.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.geometry_bytes = 0;
         self.uncached_geometry = None;
     }
 
@@ -213,8 +202,38 @@ impl PathGeometryCache {
     /// Lookup counters and the configured entry limit are preserved.
     pub fn release(&mut self) {
         self.entries.clear();
+        self.geometry_bytes = 0;
         self.entries.shrink_to_fit();
         self.uncached_geometry = None;
+    }
+
+    /// Removes the least-recently-used prefix until both cache limits fit.
+    ///
+    /// Entries are ordered once per trimming operation. This avoids repeatedly
+    /// searching for the minimum timestamp and recomputing the full geometry
+    /// payload after every eviction.
+    fn evict_oldest_until(&mut self, max_entries: usize, max_geometry_bytes: usize) {
+        if self.entries.len() <= max_entries && self.geometry_bytes <= max_geometry_bytes {
+            return;
+        }
+
+        self.entries.sort_unstable_by_key(|entry| entry.last_used);
+        let mut remove_count = 0usize;
+        let mut remaining_bytes = self.geometry_bytes;
+        while remove_count < self.entries.len()
+            && (self.entries.len() - remove_count > max_entries
+                || remaining_bytes > max_geometry_bytes)
+        {
+            remaining_bytes =
+                remaining_bytes.saturating_sub(self.entries[remove_count].geometry_bytes);
+            remove_count += 1;
+        }
+        if remove_count > 0 {
+            self.entries.drain(..remove_count);
+            self.geometry_bytes = remaining_bytes;
+        }
+        debug_assert!(self.entries.len() <= max_entries);
+        debug_assert!(self.geometry_bytes <= max_geometry_bytes);
     }
 
     fn advance_clock(&mut self) {
@@ -259,31 +278,32 @@ impl PathGeometryCache {
             return Ok(self.uncached_geometry.as_ref().unwrap());
         }
 
-        while self.entries.len() >= self.capacity
-            || self.cached_geometry_bytes() > self.budget_bytes - geometry_bytes
-        {
-            let oldest = self
-                .entries
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(index, _)| index);
-            let Some(oldest) = oldest else {
-                break;
-            };
-            self.entries.swap_remove(oldest);
-        }
+        self.evict_oldest_until(
+            self.capacity.saturating_sub(1),
+            self.budget_bytes - geometry_bytes,
+        );
         self.entries.push(Entry {
             key,
             tolerance_bits,
             last_used: self.clock,
+            geometry_bytes,
             geometry,
         });
+        self.geometry_bytes = self.geometry_bytes.saturating_add(geometry_bytes);
         Ok(&self.entries.last().unwrap().geometry)
     }
 
     pub fn invalidate(&mut self, key: u64) {
-        self.entries.retain(|entry| entry.key != key);
+        let mut removed_bytes = 0usize;
+        self.entries.retain(|entry| {
+            if entry.key == key {
+                removed_bytes = removed_bytes.saturating_add(entry.geometry_bytes);
+                false
+            } else {
+                true
+            }
+        });
+        self.geometry_bytes = self.geometry_bytes.saturating_sub(removed_bytes);
     }
 
     #[must_use]
@@ -429,6 +449,58 @@ mod tests {
         assert!(!cache.entries.iter().any(|entry| entry.key == 2));
         assert_eq!(cache.stats().geometry_bytes, first_bytes);
         assert_eq!(cache.stats().budget_bytes, first_bytes);
+    }
+
+    #[test]
+    fn batched_eviction_keeps_geometry_byte_accounting_consistent() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::with_budget(8, usize::MAX);
+        for key in 1..=6 {
+            cache.get_or_flatten(key, &path, 0.25).unwrap();
+        }
+        let one = cache.cached_geometry_bytes() / 6;
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        cache.get_or_flatten(4, &path, 0.25).unwrap();
+        cache.get_or_flatten(6, &path, 0.25).unwrap();
+
+        // Keep only the three most recently used geometries.
+        cache.set_capacity(3).unwrap();
+        assert_eq!(cache.len(), 3);
+        assert!(cache.entries.iter().any(|entry| entry.key == 2));
+        assert!(cache.entries.iter().any(|entry| entry.key == 4));
+        assert!(cache.entries.iter().any(|entry| entry.key == 6));
+        assert_eq!(cache.cached_geometry_bytes(), one * 3);
+        assert_eq!(
+            cache.cached_geometry_bytes(),
+            cache.entries.iter().map(|entry| entry.geometry_bytes).sum()
+        );
+
+        cache.invalidate(4);
+        assert_eq!(cache.cached_geometry_bytes(), one * 2);
+        cache.clear();
+        assert_eq!(cache.cached_geometry_bytes(), 0);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn insertion_evicts_multiple_oldest_geometries_in_one_trim() {
+        let path = triangle();
+        let mut cache = PathGeometryCache::new(8);
+        for key in 1..=5 {
+            cache.get_or_flatten(key, &path, 0.25).unwrap();
+        }
+        let one = cache.cached_geometry_bytes() / 5;
+        cache.get_or_flatten(2, &path, 0.25).unwrap();
+        cache.get_or_flatten(4, &path, 0.25).unwrap();
+        cache.set_budget_bytes(one * 3);
+
+        // Key 6 fits only after evicting two older entries.
+        cache.get_or_flatten(6, &path, 0.25).unwrap();
+        assert_eq!(cache.len(), 3);
+        assert!(cache.entries.iter().any(|entry| entry.key == 2));
+        assert!(cache.entries.iter().any(|entry| entry.key == 4));
+        assert!(cache.entries.iter().any(|entry| entry.key == 6));
+        assert_eq!(cache.cached_geometry_bytes(), one * 3);
     }
 
     #[test]
@@ -583,6 +655,14 @@ mod tests {
             assert!(stats.capacity >= 1);
             assert!(stats.entries <= stats.capacity);
             assert_eq!(stats.entries, cache.len());
+            assert_eq!(
+                stats.geometry_bytes,
+                cache
+                    .entries
+                    .iter()
+                    .map(|entry| entry.geometry_bytes)
+                    .sum::<usize>()
+            );
             assert_eq!(stats.hits + stats.misses, step + 1);
         }
 

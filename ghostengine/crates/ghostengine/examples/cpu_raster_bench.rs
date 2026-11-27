@@ -12,7 +12,8 @@ use ghostengine::{
     fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, fill_rounded_rect_aa,
     fill_rounded_rect_aa_parallel, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
-    Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, RenderOptions,
+    Layer, MipmapChain, NineSliceMargins, Path, PathGeometryCache, Point, RasterizerScratch,
+    Rect, RenderOptions,
     StrokeScratch, StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch,
     TextureFilter, Transform2D, UiTheme, Vector, WidgetState,
 };
@@ -153,6 +154,13 @@ fn main() {
         )
         .line_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
         .close();
+
+    let mut path_geometry_cache = PathGeometryCache::new(128);
+    path_geometry_cache
+        .get_or_flatten(1, &path, 0.25)
+        .expect("benchmark path should flatten");
+    let mut path_cache_churn = PathGeometryCache::new(64);
+    let mut path_cache_churn_key = 0_u64;
 
     let gradient = Gradient::new(vec![
         GradientStop {
@@ -749,6 +757,21 @@ fn main() {
                 NineSliceMargins::new(16, 16, 16, 16),
                 TextureFilter::Bilinear,
                 Rect::new(0, 0, WIDTH, HEIGHT),
+            );
+        }),
+        measure("Path geometry cache hit", iterations, |_target| {
+            black_box(
+                path_geometry_cache
+                    .get_or_flatten(1, &path, 0.25)
+                    .expect("cached benchmark path should remain valid"),
+            );
+        }),
+        measure("Path geometry cache bounded churn", iterations, |_target| {
+            path_cache_churn_key = path_cache_churn_key.wrapping_add(1);
+            black_box(
+                path_cache_churn
+                    .get_or_flatten(path_cache_churn_key, &path, 0.25)
+                    .expect("churn benchmark path should remain valid"),
             );
         }),
         measure("Texture cache handle lookup", iterations, |_target| {

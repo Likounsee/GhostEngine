@@ -41,14 +41,22 @@ Persistent group-cache eviction is also part of the measured memory-management
 path. Budget reductions and cache growth use one sorted LRU candidate list rather
 than rescanning the complete cache to find each next victim. Candidate storage
 and reclaimable capacity are validated before eviction begins, so a failed
-budget change does not partially empty the cache. This keeps large cache trims
+budget change does not partially empty the cache. Large cache trims therefore
+use O(n log n) ordering rather than repeated O(n) minimum searches.
+
+The path geometry cache keeps an exact running total of retained flattened-
+geometry payload bytes. Cache hits no longer require a full scan to report
+usage, and invalidation/clear operations update the counter directly. When an
+insertion or policy change needs multiple evictions, entries are ordered once
+by recency and the oldest prefix is removed as a batch. This avoids repeated
+minimum searches and full-cache byte recounts. The CPU benchmark includes both
+a steady-state path-cache hit workload and a bounded-cache churn workload.
 
 The texture cache uses the same batched eviction strategy for both budget
 reductions and insertions that need to reclaim several resources. Retained
 textures are excluded from the candidate list, ties are deterministic by
 handle, and failed budget reductions preserve the previous entries, counters
 and configured budget.
-at O(n log n) ordering cost instead of repeated O(n) minimum searches.
 
 The nested-group result is the clearest optimization signal: rebuilding every
 group surface each frame exceeds the isolated 16.67 ms diagnostic target on
