@@ -37,6 +37,13 @@ desktop reference or a cross-machine performance guarantee.
 
 The benchmark also measures a partially invalidated persistent group. This path includes damage-list traversal, off-screen partial regeneration, and copying only dirty rows back into the retained surface; it should be tracked separately from the clean-cache composition path.
 
+Persistent group-cache eviction is also part of the measured memory-management
+path. Budget reductions and cache growth use one sorted LRU candidate list rather
+than rescanning the complete cache to find each next victim. Candidate storage
+and reclaimable capacity are validated before eviction begins, so a failed
+budget change does not partially empty the cache. This keeps large cache trims
+at O(n log n) ordering cost instead of repeated O(n) minimum searches.
+
 The nested-group result is the clearest optimization signal: rebuilding every
 group surface each frame exceeds the isolated 16.67 ms diagnostic target on
 these virtual runners, while retaining stable group IDs and using

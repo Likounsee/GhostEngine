@@ -1997,42 +1997,13 @@ impl LayerGroupCache {
 
     /// Changes the budget, evicting least-recently-used surfaces when possible.
     ///
-    /// The cache remains unchanged if the requested budget cannot be satisfied.
+    /// Eviction candidates are ordered once, so reducing a cache containing many
+    /// entries does not repeatedly scan the entire map for every removed surface.
+    /// The candidate list is fully allocated and checked before any entry is
+    /// removed; allocation or budget failure therefore leaves the cache unchanged.
     pub fn set_budget_bytes(&mut self, budget_bytes: usize) -> Result<(), FramebufferError> {
-        let reclaimable = self
-            .entries
-            .values()
-            .filter(|entry| {
-                entry
-                    .layer
-                    .framebuffer()
-                    .pixels()
-                    .len()
-                    .saturating_mul(std::mem::size_of::<Color>())
-                    > 0
-            })
-            .map(|entry| {
-                entry
-                    .layer
-                    .framebuffer()
-                    .pixels()
-                    .len()
-                    .saturating_mul(std::mem::size_of::<Color>())
-            })
-            .fold(0usize, usize::saturating_add);
-        let required = self.allocated_pixel_bytes().saturating_sub(budget_bytes);
-        if reclaimable < required {
-            return Err(FramebufferError::AllocationFailed);
-        }
-        while self.allocated_pixel_bytes() > budget_bytes {
-            let oldest = self
-                .entries
-                .iter()
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(id, _)| *id);
-            let Some(oldest) = oldest else { break };
-            self.entries.remove(&oldest);
-        }
+        let used = self.allocated_pixel_bytes();
+        self.evict_lru_until(None, budget_bytes, used)?;
         self.budget_bytes = budget_bytes;
         Ok(())
     }
@@ -2058,43 +2029,65 @@ impl LayerGroupCache {
                     .saturating_mul(std::mem::size_of::<Color>())
             })
             .fold(0usize, usize::saturating_add);
-        let required = used_without_protected.saturating_sub(self.budget_bytes - incoming_bytes);
-        let reclaimable = self
-            .entries
-            .iter()
-            .filter(|(id, _)| **id != protected_id)
-            .map(|(_, entry)| {
-                entry
-                    .layer
-                    .framebuffer()
-                    .pixels()
-                    .len()
-                    .saturating_mul(std::mem::size_of::<Color>())
-            })
-            .fold(0usize, usize::saturating_add);
-        if reclaimable < required {
-            return Err(FramebufferError::AllocationFailed);
+        self.evict_lru_until(
+            Some(protected_id),
+            self.budget_bytes - incoming_bytes,
+            used_without_protected,
+        )
+    }
+
+    /// Evicts the oldest eligible entries until the requested byte target fits.
+    ///
+    /// Sorting one candidate list changes repeated O(n) minimum searches into
+    /// one O(n log n) ordering pass when memory pressure removes many groups.
+    fn evict_lru_until(
+        &mut self,
+        protected_id: Option<LayerGroupId>,
+        target_bytes: usize,
+        used_bytes: usize,
+    ) -> Result<(), FramebufferError> {
+        let required_bytes = used_bytes.saturating_sub(target_bytes);
+        if required_bytes == 0 {
+            return Ok(());
         }
-        let mut used = used_without_protected;
-        while used > self.budget_bytes - incoming_bytes {
-            let oldest = self
-                .entries
-                .iter()
-                .filter(|(id, _)| **id != protected_id)
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(id, _)| *id)
-                .ok_or(FramebufferError::AllocationFailed)?;
-            if let Some(entry) = self.entries.remove(&oldest) {
-                used = used.saturating_sub(
-                    entry
-                        .layer
-                        .framebuffer()
-                        .pixels()
-                        .len()
-                        .saturating_mul(std::mem::size_of::<Color>()),
-                );
+
+        let mut candidates = Vec::new();
+        candidates
+            .try_reserve_exact(self.entries.len())
+            .map_err(|_| FramebufferError::AllocationFailed)?;
+        for (&id, entry) in &self.entries {
+            if Some(id) == protected_id {
+                continue;
+            }
+            let bytes = entry
+                .layer
+                .framebuffer()
+                .pixels()
+                .len()
+                .saturating_mul(std::mem::size_of::<Color>());
+            if bytes > 0 {
+                candidates.push((entry.last_used, id, bytes));
             }
         }
+        candidates.sort_unstable_by_key(|(last_used, id, _)| (*last_used, *id));
+
+        let reclaimable = candidates
+            .iter()
+            .map(|(_, _, bytes)| *bytes)
+            .fold(0usize, usize::saturating_add);
+        if reclaimable < required_bytes {
+            return Err(FramebufferError::AllocationFailed);
+        }
+
+        let mut remaining = used_bytes;
+        for (_, id, bytes) in candidates {
+            if remaining <= target_bytes {
+                break;
+            }
+            self.entries.remove(&id);
+            remaining = remaining.saturating_sub(bytes);
+        }
+        debug_assert!(remaining <= target_bytes);
         Ok(())
     }
 
@@ -2324,7 +2317,7 @@ fn compose_layer_groups_cached_internal(
                     }
                     surface.copy_pixels_from(entry.layer.framebuffer().pixels())?;
                 }
-                render_layer_group_partial_into(group, scratch, 0, &dirty)?;
+                render_layer_group_partial_into(group, scratch, 0, dirty)?;
                 let source = scratch.layers[0].framebuffer().pixels();
                 let width = group.width as usize;
                 let destination = entry.layer.framebuffer_mut().pixels_mut();
@@ -2776,6 +2769,41 @@ mod tests {
         assert_eq!(cache.allocated_pixel_bytes(), before);
         assert!(cache.framebuffer(1).is_some());
         assert!(cache.framebuffer(2).is_none());
+    }
+
+    #[test]
+    fn lowering_cached_group_budget_orders_many_evictions_once_and_keeps_recent_groups() {
+        let a = LayerGroup::new(4, 4).unwrap();
+        let b = LayerGroup::new(4, 4).unwrap();
+        let c = LayerGroup::new(4, 4).unwrap();
+        let d = LayerGroup::new(4, 4).unwrap();
+        let mut cache = LayerGroupCache::default();
+        let mut scratch = LayerGroupScratch::default();
+        let mut target = Framebuffer::new(4, 4, Color::BLACK).unwrap();
+
+        compose_layer_groups_cached(
+            &mut target,
+            &[(1, &a), (2, &b), (3, &c), (4, &d)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+        // The last two groups visited become the most recently used entries.
+        compose_layer_groups_cached(
+            &mut target,
+            &[(2, &b), (4, &d), (1, &a), (3, &c)],
+            &mut cache,
+            &mut scratch,
+        )
+        .unwrap();
+
+        cache.set_budget_bytes(2 * 16 * 4).unwrap();
+
+        assert!(cache.framebuffer(1).is_some());
+        assert!(cache.framebuffer(3).is_some());
+        assert!(cache.framebuffer(2).is_none());
+        assert!(cache.framebuffer(4).is_none());
+        assert_eq!(cache.allocated_pixel_bytes(), 2 * 16 * 4);
     }
 
     #[test]
