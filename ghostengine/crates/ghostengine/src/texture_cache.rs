@@ -342,7 +342,7 @@ impl TextureCache {
     /// first removal, preserving the cache when a budget cannot be satisfied.
     /// Sorting once avoids rescanning the hash table for every evicted texture.
     fn evict_lru_until(&mut self, target_used_bytes: usize) -> Result<(), TextureCacheError> {
-        let required_bytes = self.used_bytes.saturating_sub(target_used_bytes);
+        let required_bytes = required_eviction_bytes(self.used_bytes, target_used_bytes, 0);
         if required_bytes == 0 {
             return Ok(());
         }
