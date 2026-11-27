@@ -2921,7 +2921,11 @@ pub fn try_fill_polygon_parallel_auto_with_scratch(
     scratch: &mut RasterizerScratch,
 ) -> Result<(), RasterizerError> {
     let area = target.width() as u64 * target.height() as u64;
-    let thread_count = if vertices.len() < 3 || area < 16_384 { 1 } else { automatic_worker_count() };
+    let thread_count = if vertices.len() < 3 || area < 16_384 {
+        1
+    } else {
+        automatic_worker_count()
+    };
     try_fill_polygon_parallel_with_scratch(target, vertices, color, thread_count, scratch)
 }
 
@@ -10284,13 +10288,8 @@ mod rasterizer_scratch_lifecycle_tests {
             for workers in [1, 2, 4, 8] {
                 let mut expected = Framebuffer::new(48, 44, background).unwrap();
                 let mut actual = expected.clone();
-                try_fill_polygon_aa_with_scratch(
-                    &mut expected,
-                    vertices,
-                    color,
-                    &mut scratch,
-                )
-                .unwrap();
+                try_fill_polygon_aa_with_scratch(&mut expected, vertices, color, &mut scratch)
+                    .unwrap();
                 try_fill_polygon_aa_parallel_with_scratch(
                     &mut actual,
                     vertices,
@@ -10314,13 +10313,8 @@ mod rasterizer_scratch_lifecycle_tests {
         for _ in 0..5 {
             let mut expected = Framebuffer::new(48, 44, cases[1].2).unwrap();
             let mut actual = expected.clone();
-            try_fill_polygon_aa_with_scratch(
-                &mut expected,
-                vertices,
-                cases[1].1,
-                &mut scratch,
-            )
-            .unwrap();
+            try_fill_polygon_aa_with_scratch(&mut expected, vertices, cases[1].1, &mut scratch)
+                .unwrap();
             try_fill_polygon_aa_parallel_with_scratch(
                 &mut actual,
                 vertices,
