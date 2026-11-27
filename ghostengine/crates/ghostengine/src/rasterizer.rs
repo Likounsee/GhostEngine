@@ -2571,6 +2571,8 @@ pub struct RasterizerScratch {
     ellipse_aa_sources: Vec<Color>,
     parallel_edges: Vec<PolygonScanEdge>,
     parallel_intersections: Vec<Vec<f64>>,
+    parallel_aa_edges: Vec<PolygonEdge>,
+    parallel_aa_workers: Vec<(Vec<u8>, Vec<f64>)>,
 }
 impl RasterizerScratch {
     /// Returns the logical heap capacity retained by all scratch buffers.
@@ -2655,6 +2657,26 @@ impl RasterizerScratch {
                     })
                     .fold(0usize, usize::saturating_add),
             )
+            .saturating_add(
+                self.parallel_aa_edges
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<PolygonEdge>()),
+            )
+            .saturating_add(
+                self.parallel_aa_workers
+                    .capacity()
+                    .saturating_mul(core::mem::size_of::<(Vec<u8>, Vec<f64>)>()),
+            )
+            .saturating_add(
+                self.parallel_aa_workers
+                    .iter()
+                    .map(|(coverage, intersections)| {
+                        coverage
+                            .capacity()
+                            .saturating_add(intersections.capacity().saturating_mul(core::mem::size_of::<f64>()))
+                    })
+                    .fold(0usize, usize::saturating_add),
+            )
     }
     /// Clears all scratch buffers while retaining their allocations for reuse.
     pub fn clear(&mut self) {
@@ -2672,6 +2694,11 @@ impl RasterizerScratch {
         self.ellipse_aa_sources.clear();
         self.parallel_edges.clear();
         for intersections in &mut self.parallel_intersections {
+            intersections.clear();
+        }
+        self.parallel_aa_edges.clear();
+        for (coverage, intersections) in &mut self.parallel_aa_workers {
+            coverage.clear();
             intersections.clear();
         }
     }
@@ -2700,6 +2727,13 @@ impl RasterizerScratch {
         // cannot release its elements while they remain logically present.
         self.parallel_intersections.clear();
         self.parallel_intersections.shrink_to_fit();
+        self.parallel_aa_edges.shrink_to_fit();
+        for (coverage, intersections) in &mut self.parallel_aa_workers {
+            coverage.shrink_to_fit();
+            intersections.shrink_to_fit();
+        }
+        self.parallel_aa_workers.clear();
+        self.parallel_aa_workers.shrink_to_fit();
     }
 
     /// Releases all scratch allocations when retained capacity exceeds the budget.
@@ -3182,6 +3216,33 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
     color: Color,
     thread_count: usize,
 ) -> Result<(), RasterizerError> {
+    let mut scratch = RasterizerScratch::default();
+    try_fill_polygon_aa_parallel_with_scratch(target, vertices, color, thread_count, &mut scratch)
+}
+
+/// Fills an antialiased polygon with caller-owned reusable parallel scratch storage.
+pub fn fill_polygon_aa_parallel_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_aa_parallel_with_scratch(target, vertices, color, thread_count, scratch)
+        .expect("failed to allocate parallel antialiased polygon scratch storage");
+}
+
+/// Fallibly fills an antialiased polygon while reusing edge, coverage, and
+/// intersection buffers for every scanline worker. All capacity reservations
+/// complete before the framebuffer is mutably borrowed, so allocation
+/// failures leave its pixels unchanged.
+pub fn try_fill_polygon_aa_parallel_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     if vertices.len() < 3 || color.a == 0 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
@@ -3204,9 +3265,15 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
         return Ok(());
     }
 
-    let mut edges = Vec::new();
+    let RasterizerScratch {
+        parallel_aa_edges: edges,
+        parallel_aa_workers: workers,
+        ..
+    } = scratch;
+
+    edges.clear();
     edges
-        .try_reserve_exact(vertices.len())
+        .try_reserve(vertices.len())
         .map_err(|_| RasterizerError::AllocationFailed)?;
     for index in 0..vertices.len() {
         if let Some(edge) =
@@ -3226,22 +3293,27 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
     let actual_worker_count = row_count.div_ceil(rows_per_worker);
     let span_width = (right - left) as usize;
 
-    let mut worker_scratch = Vec::new();
-    worker_scratch
-        .try_reserve_exact(actual_worker_count)
-        .map_err(|_| RasterizerError::AllocationFailed)?;
-    for _ in 0..actual_worker_count {
-        let mut coverage = Vec::new();
+    if workers.len() < actual_worker_count {
+        workers
+            .try_reserve(actual_worker_count - workers.len())
+            .map_err(|_| RasterizerError::AllocationFailed)?;
+        while workers.len() < actual_worker_count {
+            workers.push((Vec::new(), Vec::new()));
+        }
+    }
+
+    // Clear before reserve because Vec::try_reserve is relative to len.
+    // Every worker is prepared before any destination pixel is touched.
+    for (coverage, intersections) in workers.iter_mut().take(actual_worker_count) {
+        coverage.clear();
+        intersections.clear();
         coverage
-            .try_reserve_exact(span_width)
+            .try_reserve(span_width)
             .map_err(|_| RasterizerError::AllocationFailed)?;
         coverage.resize(span_width, 0);
-
-        let mut intersections = Vec::new();
         intersections
-            .try_reserve_exact(edges.len())
+            .try_reserve(edges.len())
             .map_err(|_| RasterizerError::AllocationFailed)?;
-        worker_scratch.push((coverage, intersections));
     }
 
     let start = top as usize * row_width;
@@ -3249,13 +3321,13 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
     let rows = &mut target.pixels_mut()[start..end];
     let pixels_per_worker = rows_per_worker * row_width;
     std::thread::scope(|scope| {
-        for (chunk_index, (chunk, (mut coverage, mut intersections))) in rows
+        for (chunk_index, (chunk, (coverage, intersections))) in rows
             .chunks_mut(pixels_per_worker)
-            .zip(worker_scratch)
+            .zip(workers.iter_mut().take(actual_worker_count))
             .enumerate()
         {
             let first_y = top as usize + chunk_index * rows_per_worker;
-            let edges = &edges;
+            let edges = &*edges;
             let coverage_colors = &coverage_colors;
             scope.spawn(move || {
                 fill_polygon_aa_parallel_rows(
@@ -3266,8 +3338,8 @@ pub fn try_fill_polygon_aa_parallel_with_threads(
                     right,
                     edges,
                     coverage_colors,
-                    &mut coverage,
-                    &mut intersections,
+                    coverage,
+                    intersections,
                 );
             });
         }
@@ -10066,6 +10138,49 @@ mod rasterizer_scratch_lifecycle_tests {
         scratch.clear();
         let retained = scratch.allocated_bytes();
         assert!(retained > 0);
+        scratch.release();
+        assert_eq!(scratch.allocated_bytes(), 0);
+    }
+
+    #[test]
+    fn parallel_antialiased_polygon_scratch_matches_serial_and_stabilizes_after_warmup() {
+        let vertices = [
+            Point::new(2, 1),
+            Point::new(34, 4),
+            Point::new(27, 31),
+            Point::new(15, 20),
+            Point::new(3, 29),
+        ];
+        let color = Color::rgba(80, 140, 220, 190);
+        let mut serial = Framebuffer::new(40, 36, Color::BLACK).unwrap();
+        let mut parallel = serial.clone();
+        let mut scratch = RasterizerScratch::default();
+
+        try_fill_polygon_aa_with_scratch(&mut serial, &vertices, color, &mut scratch).unwrap();
+        try_fill_polygon_aa_parallel_with_scratch(
+            &mut parallel, &vertices, color, 4, &mut scratch,
+        ).unwrap();
+        assert_eq!(parallel, serial);
+
+        let warmed = scratch.allocated_bytes();
+        assert!(warmed > 0);
+        for _ in 0..8 {
+            serial.clear(Color::BLACK);
+            parallel.clear(Color::BLACK);
+            try_fill_polygon_aa_with_scratch(&mut serial, &vertices, color, &mut scratch).unwrap();
+            try_fill_polygon_aa_parallel_with_scratch(
+                &mut parallel, &vertices, color, 4, &mut scratch,
+            ).unwrap();
+            assert_eq!(parallel, serial);
+            assert_eq!(
+                scratch.allocated_bytes(),
+                warmed,
+                "parallel AA worker buffers must retain their warmed capacity"
+            );
+        }
+
+        scratch.clear();
+        assert_eq!(scratch.allocated_bytes(), warmed);
         scratch.release();
         assert_eq!(scratch.allocated_bytes(), 0);
     }

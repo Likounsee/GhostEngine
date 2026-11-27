@@ -4396,7 +4396,14 @@ mod damage_region_memory_lifecycle_tests {
 
         damage.add(Rect::new(3, 5, 6, 7));
         assert_eq!(damage.area(), 42);
-        assert!(damage.allocated_bytes() > 0);
+        let live_bytes = damage.allocated_bytes();
+        assert!(live_bytes >= core::mem::size_of::<Rect>());
+        // release() must preserve live damage; clearing is the explicit
+        // operation that discards it and permits a complete memory release.
+        damage.release();
+        assert_eq!(damage.rectangles(), &[Rect::new(3, 5, 6, 7)]);
+        assert!(damage.allocated_bytes() >= core::mem::size_of::<Rect>());
+        damage.clear();
         damage.release();
         assert_eq!(damage.allocated_bytes(), 0);
         assert!(damage.is_empty());
