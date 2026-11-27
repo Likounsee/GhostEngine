@@ -3360,7 +3360,7 @@ pub fn try_fill_polygon_aa_with_scratch(
         .try_reserve((right - left) as usize)
         .map_err(|_| RasterizerError::AllocationFailed)?;
 
-    
+
     edges.extend((0..vertices.len()).filter_map(|index| {
         PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
     }));
@@ -9960,8 +9960,7 @@ mod rasterizer_scratch_lifecycle_tests {
 
         for _ in 0..8 {
             target.clear(Color::BLACK);
-            try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch)
-                .unwrap();
+            try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch).unwrap();
             assert_eq!(
                 scratch.allocated_bytes(),
                 warmed_capacity,
