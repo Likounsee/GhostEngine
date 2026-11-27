@@ -231,8 +231,7 @@ impl PathGeometryCache {
     fn rebuild_lookup(&mut self) {
         self.lookup.clear();
         for (index, entry) in self.entries.iter().enumerate() {
-            self.lookup
-                .insert((entry.key, entry.tolerance_bits), index);
+            self.lookup.insert((entry.key, entry.tolerance_bits), index);
         }
     }
 
