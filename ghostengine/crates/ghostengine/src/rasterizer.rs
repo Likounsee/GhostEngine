@@ -3408,7 +3408,11 @@ pub fn try_fill_polygon_aa_parallel_auto_with_scratch(
     scratch: &mut RasterizerScratch,
 ) -> Result<(), RasterizerError> {
     let area = target.width() as u64 * target.height() as u64;
-    let thread_count = if vertices.len() < 3 || area < 16_384 { 1 } else { automatic_worker_count() };
+    let thread_count = if vertices.len() < 3 || area < 16_384 {
+        1
+    } else {
+        automatic_worker_count()
+    };
     try_fill_polygon_aa_parallel_with_scratch(target, vertices, color, thread_count, scratch)
 }
 
