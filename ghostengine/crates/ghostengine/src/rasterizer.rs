@@ -7759,7 +7759,6 @@ mod arc_aa_tests {
 
 #[cfg(test)]
 mod parallel_raster_tests {
-    use super::try_fill_polygon_aa_with_scratch;
     use crate::{Color, Framebuffer, Rect};
 
     #[test]

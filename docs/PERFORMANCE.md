@@ -35,6 +35,8 @@ desktop reference or a cross-machine performance guarantee.
 | Reported CPU | AMD64 Family 25 Model 17 Stepping 1 | AMD EPYC 9V74 | Apple M1 (Virtual) |
 | Logical CPUs | 4 | 4 | 3 |
 
+The benchmark also measures a partially invalidated persistent group. This path includes damage-list traversal, off-screen partial regeneration, and copying only dirty rows back into the retained surface; it should be tracked separately from the clean-cache composition path.
+
 The nested-group result is the clearest optimization signal: rebuilding every
 group surface each frame exceeds the isolated 16.67 ms diagnostic target on
 these virtual runners, while retaining stable group IDs and using

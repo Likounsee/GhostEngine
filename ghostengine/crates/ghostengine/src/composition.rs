@@ -2302,7 +2302,10 @@ fn compose_layer_groups_cached_internal(
         entry.last_used = cache.clock;
 
         if !entry.damage.is_empty() {
-            let dirty = entry.damage.clone();
+            // Borrow the retained damage list directly. Cloning it here copied
+            // three Vec allocations on every partial cache update, even though
+            // the list is only cleared after a successful redraw.
+            let dirty = &entry.damage;
             if !entry.initialized || dirty.covers_entire_target() {
                 render_layer_group_into(group, scratch, 0)?;
                 entry

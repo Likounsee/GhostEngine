@@ -904,6 +904,22 @@ fn main() {
                 .expect("cached group benchmark composition should succeed");
             },
         ),
+        measure(
+            "Nested layer groups (persistent cache, partial dirty)",
+            iterations,
+            |target| {
+                layer_group_cache
+                    .try_mark_dirty(1, Rect::new(0, 0, 160, 90))
+                    .expect("cached group damage update should succeed");
+                ghostengine::compose_layer_groups_cached(
+                    target,
+                    &cached_layer_groups,
+                    &mut layer_group_cache,
+                    &mut cached_layer_group_scratch,
+                )
+                .expect("partially dirty cached group composition should succeed");
+            },
+        ),
         measure("Transformed layer (nearest)", iterations, |target| {
             ghostengine::compose_layers(target, &nearest_layers);
         }),
