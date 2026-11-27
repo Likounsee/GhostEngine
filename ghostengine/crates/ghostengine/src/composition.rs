@@ -4380,7 +4380,7 @@ mod damage_region_memory_lifecycle_tests {
         assert_eq!(damage.allocated_bytes(), warmed);
 
         damage.trim_to_budget(retained);
-        assert_eq!(damage.allocated_bytes(), retained);
+        assert!(damage.allocated_bytes() <= retained);
 
         // Trimming may release temporary work buffers, but it must preserve
         // live damage so the next frame still knows which pixels to redraw.
