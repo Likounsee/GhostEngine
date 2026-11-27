@@ -1015,7 +1015,8 @@ fn compose_identity_layer_rows(
                         let source = Color::rgba(source.r, source.g, source.b, alpha);
                         *destination = source.blend_over(*destination);
                     }
-                }            }
+                }
+            }
         } else {
             for (source, destination) in source_row.iter().zip(destination) {
                 if source.a != 0 {
@@ -2014,7 +2015,8 @@ impl LayerGroupCache {
                 entry
                     .layer
                     .framebuffer()
-                    .pixels()                    .len()
+                    .pixels()
+                    .len()
                     .saturating_mul(std::mem::size_of::<Color>())
             })
             .fold(0usize, usize::saturating_add);
@@ -3013,7 +3015,8 @@ mod tests {
         let mut initial_damage = DamageRegion::new(12, 10);
         initial_damage.add(Rect::new(0, 0, 12, 10));
         compose_layer_groups_in_damage_regions(
-            &mut target,            &[outer.clone()],
+            &mut target,
+            &[outer.clone()],
             &initial_damage,
             &mut scratch,
         )
@@ -4012,6 +4015,7 @@ mod tests {
                 expected.set_pixel((source_x * 2) as u32, 0, blended);
                 expected.set_pixel((source_x * 2 + 1) as u32, 0, blended);
             }
+
             compose_layers(&mut actual, &[layer]);
 
             assert_eq!(actual.pixels(), expected.pixels(), "opacity={opacity}");
