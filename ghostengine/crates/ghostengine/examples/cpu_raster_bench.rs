@@ -13,7 +13,8 @@ use ghostengine::{
     fill_rounded_rect_aa_parallel, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, NineSliceMargins, Path, Point, RasterizerScratch, Rect, RenderOptions,
-    StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch, TextureFilter,
+    StrokeScratch, StrokeStyle, Texture, TextureAtlasBuilder, TextureCache, TextureDrawScratch,
+    TextureFilter,
     Transform2D, UiTheme, Vector, WidgetState,
 };
 
@@ -137,6 +138,7 @@ fn main() {
         Point::new(194 * SCALE, 96 * SCALE),
     ];
     let mut polygon_scratch = RasterizerScratch::default();
+    let mut stroke_scratch = StrokeScratch::default();
 
     let mut path = Path::new();
     path.move_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
@@ -554,6 +556,18 @@ fn main() {
                 0.35 * SCALE_F32,
             )
             .expect("benchmark stroke should be valid");
+        }),
+        measure("Vector path stroke AA (reused scratch)", iterations, |target| {
+            ghostengine::stroke_path_aa_with_scratch(
+                target,
+                &path,
+                Transform2D::IDENTITY,
+                StrokeStyle::new(7.0 * SCALE_F32),
+                Color::rgba(90, 220, 130, 230),
+                0.35 * SCALE_F32,
+                &mut stroke_scratch,
+            )
+            .expect("scratch-backed benchmark stroke should be valid");
         }),
         measure("Vector path stroke AA (parallel)", iterations, |target| {
             stroke_path_aa_parallel_with_threads(
