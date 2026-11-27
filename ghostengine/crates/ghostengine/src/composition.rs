@@ -4369,10 +4369,7 @@ mod damage_region_memory_lifecycle_tests {
         let active_rectangles = damage.rectangles().to_vec();
         damage.trim_to_budget(0);
         assert_eq!(damage.rectangles(), active_rectangles);
-        assert!(
-            damage.allocated_bytes()
-                >= active_rectangles.len() * core::mem::size_of::<Rect>()
-        );
+        assert!(damage.allocated_bytes() >= active_rectangles.len() * core::mem::size_of::<Rect>());
 
         damage.clear();
         damage.release();

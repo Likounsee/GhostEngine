@@ -86,6 +86,8 @@ pub struct StrokeScratch {
     row_joins_x: Vec<PreparedJoin>,
     pixel_segments: Vec<StrokeSegment>,
     pixel_joins: Vec<PreparedJoin>,
+    flattened: FlattenedPath,
+    transformed: FlattenedPath,
 }
 
 impl StrokeScratch {
@@ -120,6 +122,8 @@ impl StrokeScratch {
                     .capacity()
                     .saturating_mul(core::mem::size_of::<PreparedJoin>()),
             )
+            .saturating_add(self.flattened.allocated_bytes())
+            .saturating_add(self.transformed.allocated_bytes())
     }
 
     /// Clears prepared geometry while retaining all backing allocations.
@@ -130,6 +134,8 @@ impl StrokeScratch {
         self.row_joins_x.clear();
         self.pixel_segments.clear();
         self.pixel_joins.clear();
+        self.flattened.clear_for_reuse();
+        self.transformed.clear_for_reuse();
     }
 
     /// Releases every retained stroke work-buffer allocation.
@@ -141,6 +147,8 @@ impl StrokeScratch {
         self.row_joins_x.shrink_to_fit();
         self.pixel_segments.shrink_to_fit();
         self.pixel_joins.shrink_to_fit();
+        self.flattened.release();
+        self.transformed.release();
     }
 
     /// Releases retained storage only when it exceeds the supplied byte budget.
@@ -477,6 +485,8 @@ fn stroke_path_impl_rows(
         row_joins_x,
         pixel_segments,
         pixel_joins,
+        flattened,
+        transformed,
     } = scratch;
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
@@ -489,7 +499,8 @@ fn stroke_path_impl_rows(
     if !transform.is_finite() {
         return Err(StrokeError::InvalidTransform);
     }
-    let flattened = path.flatten(tolerance)?.transformed(transform)?;
+    path.try_flatten_into(tolerance, flattened)?;
+    flattened.try_transformed_into(transform, transformed)?;
     let Some(clip) = clip.intersection(Rect::new(0, 0, target_width, target_height)) else {
         return Ok(());
     };
@@ -526,7 +537,7 @@ fn stroke_path_impl_rows(
         return Err(StrokeError::InvalidWidth);
     }
 
-    for contour in flattened.subpaths {
+    for contour in &transformed.subpaths {
         if contour.points.len() < 2 {
             continue;
         }

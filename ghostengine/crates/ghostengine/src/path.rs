@@ -327,96 +327,71 @@ impl Path {
 
     /// Fallibly flattens this path without panicking on geometry allocation failure.
     pub fn try_flatten(&self, tolerance: f32) -> Result<FlattenedPath, PathError> {
+        let mut result = FlattenedPath::default();
+        self.try_flatten_into(tolerance, &mut result)?;
+        Ok(result)
+    }
+
+    /// Flattens into caller-owned storage, reusing existing contour and point
+    /// allocations. If flattening fails, output contains the completed prefix.
+    pub fn try_flatten_into(
+        &self,
+        tolerance: f32,
+        output: &mut FlattenedPath,
+    ) -> Result<(), PathError> {
         if !tolerance.is_finite() || tolerance <= 0.0 {
             return Err(PathError::InvalidTolerance);
         }
         let tolerance_squared = f64::from(tolerance) * f64::from(tolerance);
-        let mut result = FlattenedPath::default();
-        result
-            .subpaths
-            .try_reserve(self.commands.len().min(16))
-            .map_err(|_| PathError::AllocationFailed)?;
+        let mut active_subpaths = 0usize;
         let mut current: Option<usize> = None;
-        // After Close, the next drawing command starts a new contour at the
-        // closed contour's initial point, matching conventional path semantics.
         let mut closed_start: Option<Vector> = None;
 
-        for command in &self.commands {
-            match *command {
-                Command::MoveTo(point) => {
-                    validate(point)?;
-                    let mut points = Vec::new();
-                    points
-                        .try_reserve_exact(1)
-                        .map_err(|_| PathError::AllocationFailed)?;
-                    points.push(point);
-                    result
-                        .subpaths
-                        .try_reserve(1)
-                        .map_err(|_| PathError::AllocationFailed)?;
-                    result.subpaths.push(FlattenedSubpath {
-                        points,
-                        closed: false,
-                    });
-                    current = Some(result.subpaths.len() - 1);
-                    closed_start = None;
-                }
-                Command::LineTo(point) => {
-                    validate(point)?;
-                    let index =
-                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
-                    push_point(&mut result.subpaths[index].points, point)?;
-                }
-                Command::QuadTo(control, end) => {
-                    validate(control)?;
-                    validate(end)?;
-                    let index =
-                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
-                    let contour = &mut result.subpaths[index];
-                    let start = *contour
-                        .points
-                        .last()
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_quad(
-                        start,
-                        control,
-                        end,
-                        tolerance_squared,
-                        0,
-                        &mut contour.points,
-                    )?;
-                }
-                Command::CubicTo(c1, c2, end) => {
-                    validate(c1)?;
-                    validate(c2)?;
-                    validate(end)?;
-                    let index =
-                        ensure_current_subpath(&mut result, &mut current, &mut closed_start)?;
-                    let contour = &mut result.subpaths[index];
-                    let start = *contour
-                        .points
-                        .last()
-                        .ok_or(PathError::MissingCurrentPoint)?;
-                    flatten_cubic(
-                        start,
-                        c1,
-                        c2,
-                        end,
-                        tolerance_squared,
-                        0,
-                        &mut contour.points,
-                    )?;
-                }
-                Command::Close => {
-                    let index = current.ok_or(PathError::MissingCurrentPoint)?;
-                    let contour = &mut result.subpaths[index];
-                    contour.closed = true;
-                    closed_start = contour.points.first().copied();
-                    current = None;
+        let result = (|| {
+            for command in &self.commands {
+                match *command {
+                    Command::MoveTo(point) => {
+                        validate(point)?;
+                        let index = prepare_subpath(output, &mut active_subpaths, point)?;
+                        current = Some(index);
+                        closed_start = None;
+                    }
+                    Command::LineTo(point) => {
+                        validate(point)?;
+                        let index = ensure_current_subpath(output, &mut current, &mut closed_start, &mut active_subpaths)?;
+                        push_point(&mut output.subpaths[index].points, point)?;
+                    }
+                    Command::QuadTo(control, end) => {
+                        validate(control)?;
+                        validate(end)?;
+                        let index = ensure_current_subpath(output, &mut current, &mut closed_start, &mut active_subpaths)?;
+                        let contour = &mut output.subpaths[index];
+                        let start = *contour.points.last().ok_or(PathError::MissingCurrentPoint)?;
+                        flatten_quad(start, control, end, tolerance_squared, 0, &mut contour.points)?;
+                    }
+                    Command::CubicTo(c1, c2, end) => {
+                        validate(c1)?;
+                        validate(c2)?;
+                        validate(end)?;
+                        let index = ensure_current_subpath(output, &mut current, &mut closed_start, &mut active_subpaths)?;
+                        let contour = &mut output.subpaths[index];
+                        let start = *contour.points.last().ok_or(PathError::MissingCurrentPoint)?;
+                        flatten_cubic(start, c1, c2, end, tolerance_squared, 0, &mut contour.points)?;
+                    }
+                    Command::Close => {
+                        let index = current.ok_or(PathError::MissingCurrentPoint)?;
+                        let contour = &mut output.subpaths[index];
+                        contour.closed = true;
+                        closed_start = contour.points.first().copied();
+                        current = None;
+                    }
                 }
             }
-        }
-        Ok(result)
+            Ok(())
+        })();
+
+        output.subpaths.truncate(active_subpaths);
+        result
     }
 }
 
@@ -455,30 +430,36 @@ fn midpoint(a: Vector, b: Vector) -> Vector {
     )
 }
 
+fn prepare_subpath(
+    output: &mut FlattenedPath,
+    active_subpaths: &mut usize,
+    first_point: Vector,
+) -> Result<usize, PathError> {
+    let index = *active_subpaths;
+    if index == output.subpaths.len() {
+        output.subpaths.try_reserve(1).map_err(|_| PathError::AllocationFailed)?;
+        output.subpaths.push(FlattenedSubpath { points: Vec::new(), closed: false });
+    }
+    let subpath = &mut output.subpaths[index];
+    subpath.points.clear();
+    subpath.points.try_reserve(1).map_err(|_| PathError::AllocationFailed)?;
+    subpath.points.push(first_point);
+    subpath.closed = false;
+    *active_subpaths += 1;
+    Ok(index)
+}
+
 fn ensure_current_subpath(
-    result: &mut FlattenedPath,
+    output: &mut FlattenedPath,
     current: &mut Option<usize>,
     closed_start: &mut Option<Vector>,
+    active_subpaths: &mut usize,
 ) -> Result<usize, PathError> {
     if let Some(index) = *current {
         return Ok(index);
     }
-
     let start = closed_start.take().ok_or(PathError::MissingCurrentPoint)?;
-    let mut points = Vec::new();
-    points
-        .try_reserve_exact(1)
-        .map_err(|_| PathError::AllocationFailed)?;
-    points.push(start);
-    result
-        .subpaths
-        .try_reserve(1)
-        .map_err(|_| PathError::AllocationFailed)?;
-    result.subpaths.push(FlattenedSubpath {
-        points,
-        closed: false,
-    });
-    let index = result.subpaths.len() - 1;
+    let index = prepare_subpath(output, active_subpaths, start)?;
     *current = Some(index);
     Ok(index)
 }
@@ -535,34 +516,84 @@ fn flatten_cubic(
 
 /// Transforms flattened geometry without changing the source path.
 impl FlattenedPath {
+    /// Returns logical bytes retained by contour and point buffers.
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.subpaths.capacity().saturating_mul(core::mem::size_of::<FlattenedSubpath>())
+            .saturating_add(self.subpaths.iter().map(|subpath| {
+                subpath.points.capacity().saturating_mul(core::mem::size_of::<Vector>())
+            }).sum::<usize>())
+    }
+
     /// Transforms flattened geometry while reporting allocation failures.
     pub fn try_transformed(&self, transform: Transform2D) -> Result<Self, PathError> {
+        let mut result = FlattenedPath::default();
+        self.try_transformed_into(transform, &mut result)?;
+        Ok(result)
+    }
+
+    /// Transforms into caller-owned storage, reusing contour and point allocations.
+    /// The input and output must be distinct values.
+    pub fn try_transformed_into(
+        &self,
+        transform: Transform2D,
+        output: &mut FlattenedPath,
+    ) -> Result<(), PathError> {
         if !transform.is_finite() {
             return Err(PathError::InvalidTransform);
         }
-
-        let mut result = FlattenedPath::default();
-        result
-            .subpaths
-            .try_reserve_exact(self.subpaths.len())
-            .map_err(|_| PathError::AllocationFailed)?;
-
-        for subpath in &self.subpaths {
-            let mut points = Vec::new();
-            points
-                .try_reserve_exact(subpath.points.len())
-                .map_err(|_| PathError::AllocationFailed)?;
-            for &point in &subpath.points {
-                let transformed = transform.transform_point(point);
-                validate(transformed)?;
-                points.push(transformed);
+        let mut active_subpaths = 0usize;
+        let result = (|| {
+            for subpath in &self.subpaths {
+                let index = active_subpaths;
+                if index == output.subpaths.len() {
+                    output.subpaths.try_reserve(1).map_err(|_| PathError::AllocationFailed)?;
+                    output.subpaths.push(FlattenedSubpath { points: Vec::new(), closed: false });
+                }
+                let destination = &mut output.subpaths[index];
+                destination.points.clear();
+                destination.points.try_reserve(subpath.points.len())
+                    .map_err(|_| PathError::AllocationFailed)?;
+                for &point in &subpath.points {
+                    let transformed = transform.transform_point(point);
+                    validate(transformed)?;
+                    destination.points.push(transformed);
+                }
+                destination.closed = subpath.closed;
+                active_subpaths += 1;
             }
-            result.subpaths.push(FlattenedSubpath {
-                points,
-                closed: subpath.closed,
-            });
+            Ok(())
+        })();
+        output.subpaths.truncate(active_subpaths);
+        result
+    }
+
+    /// Resets contour contents for reuse while retaining nested allocations.
+    /// The empty contour slots are intended for the caller-owned output APIs.
+    pub fn clear_for_reuse(&mut self) {
+        for subpath in &mut self.subpaths {
+            subpath.points.clear();
+            subpath.closed = false;
         }
-        Ok(result)
+    }
+
+    /// Releases all retained contour and point allocations.
+    pub fn release(&mut self) {
+        for subpath in &mut self.subpaths {
+            subpath.points.clear();
+            subpath.points.shrink_to_fit();
+        }
+        self.subpaths.clear();
+        self.subpaths.shrink_to_fit();
+    }
+
+    /// Releases retained storage only when it exceeds the supplied budget.
+    pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
+        let before = self.allocated_bytes();
+        if before > budget_bytes {
+            self.release();
+        }
+        before.saturating_sub(self.allocated_bytes())
     }
 
     /// Transforms flattened geometry without changing the source path.
@@ -1399,6 +1430,51 @@ mod tests {
         reference_full_scan(&mut reference, &path, Color::rgba(30, 120, 220, 255), clip);
 
         assert_eq!(optimized.pixels(), reference.pixels());
+    }
+
+    #[test]
+    fn flatten_into_reuses_nested_contour_allocations_across_shape_changes() {
+        let mut path = Path::new();
+        for index in 0..24 {
+            let x = index as f32 * 4.0;
+            path.move_to(Vector::new(x, 0.0))
+                .quadratic_to(Vector::new(x + 2.0, 8.0), Vector::new(x + 4.0, 0.0))
+                .close();
+        }
+        let mut output = FlattenedPath::default();
+        path.try_flatten_into(0.1, &mut output).unwrap();
+        let warmed = output.allocated_bytes();
+        assert!(warmed > 0);
+
+        output.clear_for_reuse();
+        let mut smaller = Path::new();
+        smaller.move_to(Vector::new(1.0, 2.0))
+            .cubic_to(Vector::new(2.0, 8.0), Vector::new(8.0, 8.0), Vector::new(9.0, 2.0));
+        smaller.try_flatten_into(0.2, &mut output).unwrap();
+        assert_eq!(output.subpaths.len(), 1);
+        assert!(output.subpaths[0].points.len() > 2);
+        assert!(output.allocated_bytes() <= warmed);
+
+        output.clear_for_reuse();
+        path.try_flatten_into(0.1, &mut output).unwrap();
+        assert_eq!(output.subpaths.len(), 24);
+        assert_eq!(output.allocated_bytes(), warmed);
+    }
+
+    #[test]
+    fn transform_into_reuses_nested_allocations() {
+        let mut path = Path::new();
+        path.move_to(Vector::new(1.0, 2.0)).line_to(Vector::new(3.0, 4.0)).close();
+        let flattened = path.try_flatten(0.1).unwrap();
+        let mut transformed = FlattenedPath::default();
+        flattened.try_transformed_into(Transform2D::translation(5.0, 7.0), &mut transformed).unwrap();
+        let retained = transformed.allocated_bytes();
+        assert_eq!(transformed.subpaths[0].points[0], Vector::new(6.0, 9.0));
+
+        transformed.clear_for_reuse();
+        flattened.try_transformed_into(Transform2D::IDENTITY, &mut transformed).unwrap();
+        assert_eq!(transformed.allocated_bytes(), retained);
+        assert_eq!(transformed.subpaths[0].points[0], Vector::new(1.0, 2.0));
     }
 
     #[test]
