@@ -181,12 +181,7 @@ pub fn draw_mipmapped_texture_clipped(
         for x in clip.x..clip.x + clip.width {
             let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
                 .clamp(0.0, base.width() as f32 - 1.0);
-            let source = sample_trilinear_prepared(
-                mipmaps,
-                source_x,
-                source_y,
-                prepared,
-            );
+            let source = sample_trilinear_prepared(mipmaps, source_x, source_y, prepared);
             if source.a == 0 {
                 continue;
             }
