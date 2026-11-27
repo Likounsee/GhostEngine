@@ -3335,8 +3335,15 @@ pub fn try_fill_polygon_aa_with_scratch(
         ..
     } = scratch;
 
-    // Reserve all scratch storage before modifying the target. A failed
-    // reservation leaves the framebuffer untouched.
+    // Clear logical lengths before reserving. Vec::try_reserve(additional)
+    // is relative to len, not capacity: reserving while the previous frame's
+    // lengths are still present causes needless growth on every reuse.
+    // All reservations still happen before the framebuffer is modified.
+    edges.clear();
+    edge_order.clear();
+    active_edges.clear();
+    intersections.clear();
+    coverage.clear();
     edges
         .try_reserve(vertices.len())
         .map_err(|_| RasterizerError::AllocationFailed)?;
@@ -3353,7 +3360,7 @@ pub fn try_fill_polygon_aa_with_scratch(
         .try_reserve((right - left) as usize)
         .map_err(|_| RasterizerError::AllocationFailed)?;
 
-    edges.clear();
+    
     edges.extend((0..vertices.len()).filter_map(|index| {
         PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
     }));
@@ -9933,6 +9940,34 @@ mod rasterizer_scratch_lifecycle_tests {
         assert!(scratch.allocated_bytes() > 0);
         scratch.release();
         assert_eq!(scratch.allocated_bytes(), 0);
+    }
+
+    #[test]
+    fn antialiased_polygon_scratch_capacity_stabilizes_after_warmup() {
+        let vertices = [
+            Point::new(1, 1),
+            Point::new(30, 2),
+            Point::new(24, 28),
+            Point::new(3, 22),
+        ];
+        let color = Color::rgba(80, 140, 220, 190);
+        let mut scratch = RasterizerScratch::default();
+        let mut target = Framebuffer::new(40, 40, Color::BLACK).unwrap();
+
+        try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch).unwrap();
+        let warmed_capacity = scratch.allocated_bytes();
+        assert!(warmed_capacity > 0);
+
+        for _ in 0..8 {
+            target.clear(Color::BLACK);
+            try_fill_polygon_aa_with_scratch(&mut target, &vertices, color, &mut scratch)
+                .unwrap();
+            assert_eq!(
+                scratch.allocated_bytes(),
+                warmed_capacity,
+                "same-size antialiased fills must reuse warmed scratch capacity"
+            );
+        }
     }
 
     #[test]
