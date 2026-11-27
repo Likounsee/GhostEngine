@@ -1,0 +1,150 @@
+//! Native desktop UI demo using GhostEngine's retained components.
+//!
+//! Run with: cargo run -p ghostengine --example native_ui_demo --features native-window
+
+use ghostengine::{
+    ComponentId, ComponentTree, FontFace, HostEvent, HostRunControl, InputState, Insets,
+    LayoutDirection, LayoutItem, NativeWindowSurface, Rect, StackLayout, UiComponent, UiTheme,
+};
+use std::{error::Error, fs, path::PathBuf};
+
+const WIDTH: u32 = 900;
+const HEIGHT: u32 = 620;
+const TITLE: ComponentId = ComponentId(1);
+const ADDRESS: ComponentId = ComponentId(2);
+const ENABLED: ComponentId = ComponentId(3);
+const ACTION: ComponentId = ComponentId(4);
+const STATUS: ComponentId = ComponentId(5);
+const RECONNECT_CLIPBOARD: ComponentId = ComponentId(7);
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let font_path = std::env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .or_else(find_system_font)
+        .ok_or("No system TTF font found; pass a .ttf path as the first argument")?;
+    let font_data = fs::read(font_path)?;
+    let font = FontFace::from_bytes(&font_data)
+        .map_err(|error| format!("Could not load font: {error}"))?;
+
+    let panel = UiComponent::panel(
+        ComponentId(0),
+        StackLayout::new(LayoutDirection::Vertical)
+            .with_padding(Insets::all(28))
+            .with_gap(14),
+    )
+    .with_layout_item(LayoutItem::flexible())
+    .with_children(vec![
+        UiComponent::label(TITLE, "GhostEngine native UI").with_layout_item(LayoutItem::fixed(42)),
+        UiComponent::label(
+            ComponentId(6),
+            "CPU-rendered components, native input, IME and system clipboard",
+        )
+        .with_layout_item(LayoutItem::fixed(32)),
+        UiComponent::text_input(ADDRESS, "Type text here…", "Hello from GhostEngine")
+            .with_layout_item(LayoutItem::fixed(52)),
+        UiComponent::checkbox(ENABLED, "Enable this option", true)
+            .with_layout_item(LayoutItem::fixed(42)),
+        UiComponent::button(ACTION, "Apply").with_layout_item(LayoutItem::fixed(48)),
+        UiComponent::button(RECONNECT_CLIPBOARD, "Reconnect clipboard")
+            .with_layout_item(LayoutItem::fixed(48)),
+        UiComponent::label(
+            STATUS,
+            "Click the input, type, try Ctrl+A / Ctrl+C / Ctrl+V, or reconnect the clipboard.",
+        )
+        .with_layout_item(LayoutItem::flexible()),
+    ]);
+    let mut tree = ComponentTree::new(vec![panel]);
+    let theme = UiTheme::default();
+    let mut clipboard_capabilities_reported = false;
+
+    NativeWindowSurface::run_with_host_events_control(
+        "GhostEngine — Native component demo",
+        WIDTH,
+        HEIGHT,
+        move |framebuffer, host_events, clipboard| {
+            if !clipboard_capabilities_reported {
+                let capabilities = NativeWindowSurface::capabilities(clipboard, true);
+                if !capabilities.clipboard {
+                    if let Some(status) = tree.find_mut(STATUS) {
+                        status.set_text("System clipboard is unavailable in this desktop session.");
+                    }
+                }
+                clipboard_capabilities_reported = true;
+            }
+            let mut input = InputState::default();
+            for event in host_events {
+                match event {
+                    HostEvent::CloseRequested => return HostRunControl::Exit,
+                    HostEvent::Input(next_input) => input = next_input,
+                    HostEvent::Resized { .. }
+                    | HostEvent::ScaleFactorChanged { .. }
+                    | HostEvent::FocusChanged { .. }
+                    | HostEvent::RedrawRequested => {}
+                }
+            }
+            if input.escape_down {
+                return HostRunControl::Exit;
+            }
+
+            let bounds = Rect::new(0, 0, framebuffer.width(), framebuffer.height());
+            let events =
+                tree.handle_window_input_with_text_font(bounds, &input, Some((&font, 19.0)));
+            if let Some(action) = events.clipboard_action {
+                match clipboard.resolve(&action) {
+                    Ok(Some(text)) => {
+                        let paste = ghostengine::InputState {
+                            paste_pressed: true,
+                            clipboard_text: Some(text),
+                            ..Default::default()
+                        };
+                        tree.handle_window_input(bounds, &paste);
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        if let Some(status) = tree.find_mut(STATUS) {
+                            status.set_text(format!("Clipboard error: {error}"));
+                        }
+                    }
+                }
+            }
+            if events.activated == Some(RECONNECT_CLIPBOARD) {
+                let message = match clipboard.reconnect() {
+                    Ok(()) => "System clipboard reconnected.".to_owned(),
+                    Err(error) => format!("Clipboard reconnect failed: {error}"),
+                };
+                if let Some(status) = tree.find_mut(STATUS) {
+                    status.set_text(message);
+                }
+            }
+            if events.activated == Some(ACTION) {
+                let value = match tree.find(ENABLED).map(UiComponent::kind) {
+                    Some(ghostengine::ComponentKind::Checkbox { checked: true, .. }) => "enabled",
+                    _ => "disabled",
+                };
+                if let Some(status) = tree.find_mut(STATUS) {
+                    status.set_text(format!("Applied: option {value}."));
+                }
+            }
+
+            framebuffer.clear(ghostengine::Color::rgb(239, 242, 248));
+            tree.render(framebuffer, bounds, &font, 19.0, &theme);
+            HostRunControl::Wait
+        },
+    )?;
+    Ok(())
+}
+
+fn find_system_font() -> Option<PathBuf> {
+    [
+        PathBuf::from("C:/Windows/Fonts/segoeui.ttf"),
+        PathBuf::from("C:/Windows/Fonts/arial.ttf"),
+        PathBuf::from("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        PathBuf::from("/System/Library/Fonts/Supplemental/Helvetica.ttf"),
+        PathBuf::from("/System/Library/Fonts/SFNS.ttf"),
+        PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        PathBuf::from("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}

@@ -1,0 +1,4894 @@
+//! Retained-mode component tree for application interfaces.
+//!
+//! The tree owns component identity, hierarchy, layout participation, and
+//! interaction dispatch. Components render directly into GhostEngine's CPU framebuffer.
+
+use std::collections::HashMap;
+
+use crate::rasterizer::fill_rect;
+use crate::{
+    draw_button, draw_checkbox, draw_combo_box, draw_label_clipped, draw_panel, draw_radio_button,
+    draw_slider, draw_switch, draw_tabs, draw_text_input, ComboBoxState, FontFace, Framebuffer,
+    InteractionEvents, LayoutError, LayoutItem, ListOptions, ListState, Point, Rect, StackLayout,
+    TabsState, TextInputOptions, TextInputState, UiInteraction, UiTheme, WidgetState,
+};
+
+/// Stable caller-assigned identity for a component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ComponentId(pub u64);
+
+/// The semantic role and user-owned data of a component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ComponentKind {
+    Panel,
+    Button {
+        label: String,
+    },
+    Checkbox {
+        label: String,
+        checked: bool,
+    },
+    TextInput {
+        placeholder: String,
+        value: String,
+    },
+    Label {
+        text: String,
+    },
+    ComboBox {
+        items: Vec<String>,
+    },
+    Tabs {
+        labels: Vec<String>,
+    },
+    Switch {
+        label: String,
+        enabled: bool,
+    },
+    RadioButton {
+        label: String,
+        group: u64,
+        selected: bool,
+    },
+    Slider {
+        label: String,
+        min: u32,
+        max: u32,
+        value: u32,
+    },
+    ListView {
+        items: Vec<String>,
+        row_height: u32,
+        scroll_offset: u32,
+    },
+}
+
+/// A retained component node. Child order is also layout and keyboard tab order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponent {
+    id: ComponentId,
+    kind: ComponentKind,
+    enabled: bool,
+    visible: bool,
+    layout_item: LayoutItem,
+    child_layout: StackLayout,
+    tooltip: Option<String>,
+    children: Vec<Self>,
+}
+
+impl UiComponent {
+    #[must_use]
+    pub fn panel(id: ComponentId, layout: StackLayout) -> Self {
+        Self::new(id, ComponentKind::Panel).with_child_layout(layout)
+    }
+
+    #[must_use]
+    pub fn button(id: ComponentId, label: impl Into<String>) -> Self {
+        Self::new(
+            id,
+            ComponentKind::Button {
+                label: label.into(),
+            },
+        )
+    }
+
+    #[must_use]
+    pub fn checkbox(id: ComponentId, label: impl Into<String>, checked: bool) -> Self {
+        Self::new(
+            id,
+            ComponentKind::Checkbox {
+                label: label.into(),
+                checked,
+            },
+        )
+    }
+
+    #[must_use]
+    pub fn text_input(
+        id: ComponentId,
+        placeholder: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            id,
+            ComponentKind::TextInput {
+                placeholder: placeholder.into(),
+                value: value.into(),
+            },
+        )
+    }
+
+    #[must_use]
+    pub fn label(id: ComponentId, text: impl Into<String>) -> Self {
+        Self::new(id, ComponentKind::Label { text: text.into() })
+    }
+
+    /// Creates a keyboard- and pointer-operable switch.
+    #[must_use]
+    pub fn switch(id: ComponentId, label: impl Into<String>, enabled: bool) -> Self {
+        Self::new(
+            id,
+            ComponentKind::Switch {
+                label: label.into(),
+                enabled,
+            },
+        )
+    }
+
+    /// Creates a radio button belonging to an exclusive selection group.
+    #[must_use]
+    pub fn radio_button(
+        id: ComponentId,
+        label: impl Into<String>,
+        group: u64,
+        selected: bool,
+    ) -> Self {
+        Self::new(
+            id,
+            ComponentKind::RadioButton {
+                label: label.into(),
+                group,
+                selected,
+            },
+        )
+    }
+
+    /// Creates an integer slider with a clamped initial value.
+    #[must_use]
+    pub fn slider(
+        id: ComponentId,
+        label: impl Into<String>,
+        min: u32,
+        max: u32,
+        value: u32,
+    ) -> Self {
+        let low = min.min(max);
+        let high = max.max(min);
+        Self::new(
+            id,
+            ComponentKind::Slider {
+                label: label.into(),
+                min: low,
+                max: high,
+                value: value.clamp(low, high),
+            },
+        )
+    }
+
+    /// Creates a keyboard- and pointer-operable combo box.
+    #[must_use]
+    pub fn combo_box(id: ComponentId, items: Vec<String>) -> Self {
+        Self::new(id, ComponentKind::ComboBox { items })
+    }
+
+    /// Creates a retained list view with a fixed row height.
+    #[must_use]
+    pub fn list_view(id: ComponentId, items: Vec<String>, row_height: u32) -> Self {
+        Self::new(
+            id,
+            ComponentKind::ListView {
+                items,
+                row_height: row_height.max(1),
+                scroll_offset: 0,
+            },
+        )
+    }
+
+    /// Creates a keyboard- and pointer-operable horizontal tab strip.
+    #[must_use]
+    pub fn tabs(id: ComponentId, labels: Vec<String>) -> Self {
+        Self::new(id, ComponentKind::Tabs { labels })
+    }
+
+    #[must_use]
+    pub fn new(id: ComponentId, kind: ComponentKind) -> Self {
+        Self {
+            id,
+            kind,
+            enabled: true,
+            visible: true,
+            layout_item: LayoutItem::flexible(),
+            child_layout: StackLayout::default(),
+            tooltip: None,
+            children: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> ComponentId {
+        self.id
+    }
+
+    #[must_use]
+    pub fn kind(&self) -> &ComponentKind {
+        &self.kind
+    }
+
+    #[must_use]
+    pub fn children(&self) -> &[Self] {
+        &self.children
+    }
+
+    #[must_use]
+    pub const fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    #[must_use]
+    pub fn with_layout_item(mut self, item: LayoutItem) -> Self {
+        self.layout_item = item;
+        self
+    }
+
+    #[must_use]
+    pub fn with_child_layout(mut self, layout: StackLayout) -> Self {
+        self.child_layout = layout;
+        self
+    }
+
+    /// Adds a tooltip displayed while this component is hovered.
+    #[must_use]
+    pub fn with_tooltip(mut self, text: impl Into<String>) -> Self {
+        self.tooltip = Some(text.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_children(mut self, children: Vec<Self>) -> Self {
+        self.children = children;
+        self
+    }
+
+    #[must_use]
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    pub fn set_checked(&mut self, checked: bool) -> bool {
+        if let ComponentKind::Checkbox { checked: value, .. } = &mut self.kind {
+            *value = checked;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) -> bool {
+        if self.enabled == enabled {
+            return false;
+        }
+        self.enabled = enabled;
+        true
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> bool {
+        if self.visible == visible {
+            return false;
+        }
+        self.visible = visible;
+        true
+    }
+
+    pub fn set_text(&mut self, text: impl Into<String>) -> bool {
+        let text = text.into();
+        match &mut self.kind {
+            ComponentKind::TextInput { value, .. } => *value = text,
+            ComponentKind::Label { text: value } => *value = text,
+            _ => return false,
+        }
+        true
+    }
+
+    fn is_focusable(&self) -> bool {
+        self.enabled
+            && self.visible
+            && matches!(
+                self.kind,
+                ComponentKind::Button { .. }
+                    | ComponentKind::Checkbox { .. }
+                    | ComponentKind::TextInput { .. }
+                    | ComponentKind::ComboBox { .. }
+                    | ComponentKind::Tabs { .. }
+                    | ComponentKind::Switch { .. }
+                    | ComponentKind::RadioButton { .. }
+                    | ComponentKind::Slider { .. }
+                    | ComponentKind::ListView { .. }
+            )
+    }
+}
+
+/// Discrete keys routed by the retained component tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentKey {
+    Tab,
+    Enter,
+    Space,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Escape,
+    WordLeft,
+    WordRight,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Backspace,
+    Delete,
+    DeleteWordBackward,
+    DeleteWordForward,
+}
+
+/// A component's computed geometry and visual interaction state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlacedComponent {
+    pub id: ComponentId,
+    pub bounds: Rect,
+    pub state: WidgetState,
+}
+
+/// Keyboard modifiers required to activate a context-menu command shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ContextMenuShortcut {
+    pub key: char,
+    pub control: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+impl ContextMenuShortcut {
+    #[must_use]
+    pub fn new(key: char) -> Self {
+        Self {
+            key: key.to_ascii_lowercase(),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_control(mut self, enabled: bool) -> Self {
+        self.control = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_alt(mut self, enabled: bool) -> Self {
+        self.alt = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_shift(mut self, enabled: bool) -> Self {
+        self.shift = enabled;
+        self
+    }
+}
+
+/// A selectable command displayed by a retained context menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextMenuItem {
+    pub action: u64,
+    pub label: String,
+    pub enabled: bool,
+    /// Optional configurable keyboard shortcut for this command.
+    pub shortcut: Option<ContextMenuShortcut>,
+    /// Child commands displayed in a submenu instead of activating this item.
+    pub submenu: Vec<ContextMenuItem>,
+}
+
+impl ContextMenuItem {
+    #[must_use]
+    pub fn new(action: u64, label: impl Into<String>) -> Self {
+        Self {
+            action,
+            label: label.into(),
+            enabled: true,
+            shortcut: None,
+            submenu: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// Assigns a keyboard shortcut to this command.
+    #[must_use]
+    pub fn with_shortcut(mut self, shortcut: ContextMenuShortcut) -> Self {
+        self.shortcut = Some(shortcut);
+        self
+    }
+
+    /// Adds commands opened as a submenu when this item is selected.
+    #[must_use]
+    pub fn with_submenu(mut self, items: Vec<ContextMenuItem>) -> Self {
+        self.submenu = items;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ContextMenuState {
+    position: Point,
+    selected: usize,
+    submenu_selected: usize,
+    submenu_open: bool,
+    submenu_path: [usize; 8],
+    submenu_depth: usize,
+    target: Option<ComponentId>,
+}
+
+/// Component-level events emitted by pointer or keyboard interaction.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ComponentEvents {
+    pub activated: Option<ComponentId>,
+    pub focus_changed: Option<ComponentId>,
+    /// Whether the previously focused component lost focus without a replacement.
+    pub focus_cleared: bool,
+    /// Host clipboard operation requested by a keyboard shortcut.
+    pub clipboard_action: Option<ClipboardAction>,
+    /// Application-defined action selected from a context menu.
+    pub context_menu_action: Option<u64>,
+    /// Component on which the context menu was opened, when applicable.
+    pub context_menu_target: Option<ComponentId>,
+}
+
+/// Clipboard operations are delegated to the host application/window system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardAction {
+    Copy(String),
+    Paste,
+}
+
+/// Text delivered by a platform text service, independent of physical keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextInputEvent {
+    Insert(String),
+    CompositionUpdate(String),
+    CompositionCommit(String),
+    CompositionCancel,
+}
+
+/// Errors returned by checked component-tree lifecycle operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentTreeError {
+    DuplicateId(ComponentId),
+    ParentNotFound(ComponentId),
+}
+
+impl std::fmt::Display for ComponentTreeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateId(id) => write!(formatter, "duplicate component ID {}", id.0),
+            Self::ParentNotFound(id) => {
+                write!(formatter, "parent component {} was not found", id.0)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ComponentTreeError {}
+
+fn format_context_menu_item_label(item: &ContextMenuItem) -> String {
+    let mut label = item.label.clone();
+    if !item.submenu.is_empty() {
+        label.push_str("  >");
+    }
+    if let Some(shortcut) = item.shortcut {
+        label.push_str("    ");
+        if shortcut.control {
+            label.push_str("Ctrl+");
+        }
+        if shortcut.alt {
+            label.push_str("Alt+");
+        }
+        if shortcut.shift {
+            label.push_str("Shift+");
+        }
+        label.push(shortcut.key.to_ascii_uppercase());
+    }
+    label
+}
+
+/// Retained component hierarchy with layout and interaction dispatch.
+#[derive(Debug, Clone, Default)]
+pub struct ComponentTree {
+    roots: Vec<UiComponent>,
+    interaction: UiInteraction,
+    focusable_ids: Vec<ComponentId>,
+    focusable_bounds: Vec<Rect>,
+    placed: Vec<PlacedComponent>,
+    text_states: HashMap<ComponentId, TextInputState>,
+    combo_states: HashMap<ComponentId, ComboBoxState>,
+    tabs_states: HashMap<ComponentId, TabsState>,
+    list_states: HashMap<ComponentId, ListState>,
+    context_menu_items: Vec<ContextMenuItem>,
+    active_context_menu_items: Vec<ContextMenuItem>,
+    component_context_menus: HashMap<ComponentId, Vec<ContextMenuItem>>,
+    context_menu_state: Option<ContextMenuState>,
+}
+
+impl ComponentTree {
+    #[must_use]
+    pub fn new(roots: Vec<UiComponent>) -> Self {
+        let mut text_states = HashMap::new();
+        let mut combo_states = HashMap::new();
+        let mut tabs_states = HashMap::new();
+        let mut list_states = HashMap::new();
+        for root in &roots {
+            collect_component_states(
+                root,
+                &mut text_states,
+                &mut combo_states,
+                &mut tabs_states,
+                &mut list_states,
+            );
+        }
+        Self {
+            roots,
+            interaction: UiInteraction::new(),
+            focusable_ids: Vec::new(),
+            focusable_bounds: Vec::new(),
+            placed: Vec::new(),
+            text_states,
+            combo_states,
+            tabs_states,
+            list_states,
+            context_menu_items: Vec::new(),
+            active_context_menu_items: Vec::new(),
+            component_context_menus: HashMap::new(),
+            context_menu_state: None,
+        }
+    }
+
+    /// Builds a tree only when every component ID is unique.
+    pub fn try_new(roots: Vec<UiComponent>) -> Result<Self, ComponentTreeError> {
+        validate_unique_ids(&roots)?;
+        Ok(Self::new(roots))
+    }
+
+    /// Adds a new root component. IDs must be unique across the whole tree.
+    pub fn add_root(&mut self, component: UiComponent) -> Result<(), ComponentTreeError> {
+        validate_subtree_ids(&component)?;
+        for id in component_ids(&component) {
+            if self.find(id).is_some() {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+        collect_component_states(
+            &component,
+            &mut self.text_states,
+            &mut self.combo_states,
+            &mut self.tabs_states,
+            &mut self.list_states,
+        );
+        self.roots.push(component);
+        self.reset_after_structure_change();
+        Ok(())
+    }
+
+    /// Adds a child to an existing parent, preserving the supplied child order.
+    pub fn add_child(
+        &mut self,
+        parent: ComponentId,
+        child: UiComponent,
+    ) -> Result<(), ComponentTreeError> {
+        validate_subtree_ids(&child)?;
+        for id in component_ids(&child) {
+            if self.find(id).is_some() {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+        if self.find(parent).is_none() {
+            return Err(ComponentTreeError::ParentNotFound(parent));
+        }
+        collect_component_states(
+            &child,
+            &mut self.text_states,
+            &mut self.combo_states,
+            &mut self.tabs_states,
+            &mut self.list_states,
+        );
+        self.find_mut(parent)
+            .expect("parent was checked above")
+            .children
+            .push(child);
+        self.reset_after_structure_change();
+        Ok(())
+    }
+
+    /// Changes whether a component can receive pointer or keyboard input.
+    /// Returns false when the ID is missing or the value is unchanged.
+    pub fn set_enabled(&mut self, id: ComponentId, enabled: bool) -> bool {
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_enabled(enabled));
+        if changed {
+            self.reset_after_structure_change();
+        }
+        changed
+    }
+
+    /// Changes component visibility. Hidden subtrees are omitted from layout and input.
+    /// Returns false when the ID is missing or the value is unchanged.
+    pub fn set_visible(&mut self, id: ComponentId, visible: bool) -> bool {
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_visible(visible));
+        if changed {
+            self.reset_after_structure_change();
+        }
+        changed
+    }
+
+    /// Updates a checkbox value by stable ID.
+    pub fn set_checked(&mut self, id: ComponentId, checked: bool) -> bool {
+        self.find_mut(id)
+            .is_some_and(|component| component.set_checked(checked))
+    }
+
+    /// Updates a slider value, clamping it to the configured range.
+    pub fn set_slider_value(&mut self, id: ComponentId, value: u32) -> bool {
+        let Some(ComponentKind::Slider {
+            min,
+            max,
+            value: current,
+            ..
+        }) = self.find_mut(id).map(|component| &mut component.kind)
+        else {
+            return false;
+        };
+        *current = value.clamp(*min, *max);
+        true
+    }
+
+    #[must_use]
+    pub fn slider_value(&self, id: ComponentId) -> Option<u32> {
+        match self.find(id)?.kind() {
+            ComponentKind::Slider { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// Updates a label or text input by stable ID.
+    pub fn set_text(&mut self, id: ComponentId, text: impl Into<String>) -> bool {
+        let text = text.into();
+        let changed = self
+            .find_mut(id)
+            .is_some_and(|component| component.set_text(text.clone()));
+        if changed {
+            if let Some(state) = self.text_states.get_mut(&id) {
+                state.set_text(text);
+            }
+        }
+        changed
+    }
+
+    /// Removes a component and its entire descendant subtree.
+    /// Returns the removed node, or None when the ID does not exist.
+    pub fn remove(&mut self, id: ComponentId) -> Option<UiComponent> {
+        let removed = remove_component(&mut self.roots, id)?;
+        for removed_id in component_ids(&removed) {
+            self.text_states.remove(&removed_id);
+            self.combo_states.remove(&removed_id);
+            self.tabs_states.remove(&removed_id);
+            self.list_states.remove(&removed_id);
+            self.component_context_menus.remove(&removed_id);
+            if self
+                .context_menu_state
+                .is_some_and(|menu| menu.target == Some(removed_id))
+            {
+                self.close_context_menu();
+            }
+        }
+        self.reset_after_structure_change();
+        Some(removed)
+    }
+
+    fn reset_after_structure_change(&mut self) {
+        self.interaction.clear();
+        self.focusable_ids.clear();
+        self.focusable_bounds.clear();
+        self.placed.clear();
+    }
+
+    /// Fallibly reserves per-frame layout storage for additional components.
+    ///
+    /// Call this during application setup when the expected visible component
+    /// count is known. Once the reserved capacity is sufficient, layout can
+    /// reuse these buffers without growing them on subsequent frames.
+    pub fn try_reserve_layout_capacity(
+        &mut self,
+        additional_components: usize,
+    ) -> Result<(), LayoutError> {
+        self.placed
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        self.focusable_ids
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        self.focusable_bounds
+            .try_reserve(additional_components)
+            .map_err(|_| LayoutError::AllocationFailed)?;
+        Ok(())
+    }
+
+    /// Computes visible component geometry after fallibly reserving all frame buffers.
+    ///
+    /// Unlike the infallible layout convenience method, this reports allocation
+    /// failure instead of allowing the per-frame output vectors to grow implicitly.
+    pub fn try_layout(&mut self, bounds: Rect) -> Result<&[PlacedComponent], LayoutError> {
+        fn count_visible(nodes: &[UiComponent]) -> usize {
+            nodes
+                .iter()
+                .filter(|node| node.visible)
+                .map(|node| 1_usize.saturating_add(count_visible(&node.children)))
+                .fold(0_usize, usize::saturating_add)
+        }
+
+        let visible_count = count_visible(&self.roots);
+        self.placed.clear();
+        self.focusable_ids.clear();
+        self.focusable_bounds.clear();
+        self.try_reserve_layout_capacity(visible_count)?;
+        Ok(self.layout(bounds))
+    }
+
+    #[must_use]
+    pub fn roots(&self) -> &[UiComponent] {
+        &self.roots
+    }
+
+    pub fn find(&self, id: ComponentId) -> Option<&UiComponent> {
+        self.roots.iter().find_map(|root| find_component(root, id))
+    }
+
+    pub fn find_mut(&mut self, id: ComponentId) -> Option<&mut UiComponent> {
+        self.roots
+            .iter_mut()
+            .find_map(|root| find_component_mut(root, id))
+    }
+
+    /// Computes the full visible component tree in depth-first paint order.
+    /// Child rectangles are produced by each parent's stack layout.
+    pub fn layout(&mut self, bounds: Rect) -> &[PlacedComponent] {
+        self.placed.clear();
+        self.focusable_ids.clear();
+        self.focusable_bounds.clear();
+
+        // Keep the tree borrowed in place: cloning every visible root (and its
+        // descendants) on every frame made layout allocate and copy far more
+        // memory than the geometry calculation itself requires.
+        let roots = &self.roots;
+        let placed = &mut self.placed;
+        let focusable_ids = &mut self.focusable_ids;
+        let focusable_bounds = &mut self.focusable_bounds;
+        let interaction = self.interaction;
+        let mut visible_roots = roots.iter().filter(|node| node.visible);
+        StackLayout::default().for_each_layout(
+            bounds,
+            visible_roots.clone().map(|node| node.layout_item),
+            |rect| {
+                if let Some(node) = visible_roots.next() {
+                    Self::place_node_into(
+                        node,
+                        rect,
+                        true,
+                        placed,
+                        focusable_ids,
+                        focusable_bounds,
+                        interaction,
+                    );
+                }
+            },
+        );
+        self.placed.as_slice()
+    }
+
+    fn place_node_into(
+        node: &UiComponent,
+        bounds: Rect,
+        ancestors_enabled: bool,
+        placed: &mut Vec<PlacedComponent>,
+        focusable_ids: &mut Vec<ComponentId>,
+        focusable_bounds: &mut Vec<Rect>,
+        interaction: UiInteraction,
+    ) {
+        let effectively_enabled = ancestors_enabled && node.enabled;
+        let state = if node.is_focusable() && ancestors_enabled {
+            let index = focusable_ids.len();
+            focusable_ids.push(node.id);
+            focusable_bounds.push(bounds);
+            interaction.widget_state(index, true)
+        } else if !effectively_enabled {
+            WidgetState::Disabled
+        } else {
+            WidgetState::Normal
+        };
+        placed.push(PlacedComponent {
+            id: node.id,
+            bounds,
+            state,
+        });
+
+        let children = &node.children;
+        let mut visible_children = children.iter().filter(|child| child.visible);
+        node.child_layout.for_each_layout(
+            bounds,
+            visible_children.clone().map(|child| child.layout_item),
+            |child_bounds| {
+                if let Some(child) = visible_children.next() {
+                    Self::place_node_into(
+                        child,
+                        child_bounds,
+                        effectively_enabled,
+                        placed,
+                        focusable_ids,
+                        focusable_bounds,
+                        interaction,
+                    );
+                }
+            },
+        );
+    }
+
+    /// Updates pointer state and emits activation/focus events for visible controls.
+    pub fn update_pointer(
+        &mut self,
+        bounds: Rect,
+        pointer: Option<Point>,
+        pressed: bool,
+        released: bool,
+    ) -> ComponentEvents {
+        self.layout(bounds);
+        if let (Some(point), Some(mut menu)) = (pointer, self.context_menu_state) {
+            let mut hit = false;
+            for depth in (1..=menu.submenu_depth).rev() {
+                let popup = self.nested_submenu_bounds(bounds, menu, depth);
+                if popup.contains(point) {
+                    let row =
+                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28) as usize;
+                    if let Some(item) = Self::context_menu_items_at_depth(
+                        &self.active_context_menu_items,
+                        menu,
+                        depth,
+                    )
+                    .and_then(|items| items.get(row))
+                    {
+                        if item.enabled {
+                            menu.submenu_path[depth - 1] = row;
+                            menu.submenu_depth = depth;
+                            if !item.submenu.is_empty() && depth < menu.submenu_path.len() {
+                                menu.submenu_path[depth] = item
+                                    .submenu
+                                    .iter()
+                                    .position(|child| child.enabled)
+                                    .unwrap_or(0);
+                                menu.submenu_depth = depth + 1;
+                            }
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                        }
+                    }
+                    hit = true;
+                    break;
+                }
+            }
+            if !hit {
+                let root = self.context_menu_bounds(bounds, menu);
+                if root.contains(point) {
+                    let row =
+                        (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28) as usize;
+                    if let Some(item) = self.active_context_menu_items.get(row) {
+                        if item.enabled {
+                            menu.selected = row;
+                            menu.submenu_depth = usize::from(!item.submenu.is_empty());
+                            menu.submenu_open = menu.submenu_depth > 0;
+                            menu.submenu_path = [0; 8];
+                            if menu.submenu_depth > 0 {
+                                menu.submenu_path[0] = item
+                                    .submenu
+                                    .iter()
+                                    .position(|child| child.enabled)
+                                    .unwrap_or(0);
+                            }
+                            menu.submenu_selected = menu.submenu_path[0];
+                        }
+                    }
+                    hit = true;
+                }
+            }
+            if !hit {
+                menu.submenu_depth = 0;
+                menu.submenu_open = false;
+            }
+            self.context_menu_state = Some(menu);
+        }
+        if released {
+            if let (Some(point), Some(menu)) = (pointer, self.context_menu_state) {
+                let mut handled = false;
+                for depth in (1..=menu.submenu_depth).rev() {
+                    let popup = self.nested_submenu_bounds(bounds, menu, depth);
+                    if popup.contains(point) {
+                        let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(popup.y) / 28)
+                            as usize;
+                        if let Some(item) = Self::context_menu_items_at_depth(
+                            &self.active_context_menu_items,
+                            menu,
+                            depth,
+                        )
+                        .and_then(|items| items.get(row))
+                        {
+                            if item.enabled
+                                && !item.submenu.is_empty()
+                                && depth < menu.submenu_path.len()
+                            {
+                                let mut next = menu;
+                                next.submenu_path[depth - 1] = row;
+                                next.submenu_path[depth] = item
+                                    .submenu
+                                    .iter()
+                                    .position(|child| child.enabled)
+                                    .unwrap_or(0);
+                                next.submenu_depth = depth + 1;
+                                next.submenu_open = true;
+                                self.context_menu_state = Some(next);
+                                return ComponentEvents::default();
+                            }
+                            let action =
+                                (item.enabled && item.submenu.is_empty()).then_some(item.action);
+                            self.context_menu_state = None;
+                            return ComponentEvents {
+                                context_menu_action: action,
+                                context_menu_target: menu.target,
+                                ..ComponentEvents::default()
+                            };
+                        }
+                        handled = true;
+                        break;
+                    }
+                }
+                if !handled {
+                    let root = self.context_menu_bounds(bounds, menu);
+                    if root.contains(point) {
+                        let row = (u32::try_from(point.y).unwrap_or(0).saturating_sub(root.y) / 28)
+                            as usize;
+                        if let Some(item) = self.active_context_menu_items.get(row) {
+                            if item.enabled && !item.submenu.is_empty() {
+                                let mut next = menu;
+                                next.selected = row;
+                                next.submenu_path = [0; 8];
+                                next.submenu_path[0] = item
+                                    .submenu
+                                    .iter()
+                                    .position(|child| child.enabled)
+                                    .unwrap_or(0);
+                                next.submenu_depth = 1;
+                                next.submenu_open = true;
+                                next.submenu_selected = next.submenu_path[0];
+                                self.context_menu_state = Some(next);
+                                return ComponentEvents::default();
+                            }
+                            let action = item.enabled.then_some(item.action);
+                            self.context_menu_state = None;
+                            return ComponentEvents {
+                                context_menu_action: action,
+                                context_menu_target: menu.target,
+                                ..ComponentEvents::default()
+                            };
+                        }
+                    }
+                    self.context_menu_state = None;
+                }
+            }
+        }
+        let enabled = vec![true; self.focusable_ids.len()];
+        // Popup rows live outside the combo box's layout rectangle, so route
+        // their pointer releases before normal component hit testing.
+        if released {
+            if let Some(point) = pointer {
+                let placements = self.placed.clone();
+                for placement in placements {
+                    let Some(ComponentKind::ComboBox { items }) = self
+                        .find(placement.id)
+                        .map(|component| component.kind().clone())
+                    else {
+                        continue;
+                    };
+                    let Some(state) = self.combo_states.get_mut(&placement.id) else {
+                        continue;
+                    };
+                    if !state.is_open() {
+                        continue;
+                    }
+                    let popup_top = placement.bounds.y.saturating_add(placement.bounds.height);
+                    let popup_height = (items.len() as u32).saturating_mul(28);
+                    let popup = Rect::new(
+                        placement.bounds.x,
+                        popup_top,
+                        placement.bounds.width,
+                        popup_height,
+                    );
+                    if popup.contains(point) {
+                        let index = ((point.y as u32 - popup_top) / 28) as usize;
+                        state.select(Some(index), items.len());
+                        state.close();
+                        return ComponentEvents::default();
+                    }
+                }
+            }
+        }
+        let captured_before_update = self.interaction.captured();
+        let events =
+            self.interaction
+                .update(pointer, pressed, released, &enabled, &self.focusable_bounds);
+        let translated = self.dispatch_events(events);
+        if released {
+            if let (Some(id), Some(point)) = (translated.activated, pointer) {
+                let list_config = self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => Some((items.len(), *row_height, *scroll_offset)),
+                    _ => None,
+                });
+                if let (Some((item_count, row_height, scroll_offset)), Some(rect)) = (
+                    list_config,
+                    self.placed
+                        .iter()
+                        .find(|placement| placement.id == id)
+                        .map(|p| p.bounds),
+                ) {
+                    self.list_states.entry(id).or_default().select_at(
+                        rect,
+                        point,
+                        scroll_offset,
+                        row_height,
+                        item_count,
+                    );
+                }
+            }
+        }
+
+        // Keep updating a slider for every pointer-move frame while its
+        // pointer capture is held, not only on the final click/release.
+        let captured_slider =
+            captured_before_update.and_then(|index| self.focusable_ids.get(index).copied());
+        let activated_slider = translated.activated;
+        if let (Some(id), Some(point)) = (captured_slider.or(activated_slider), pointer) {
+            if let Some(rect) = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == id)
+                .map(|placement| placement.bounds)
+            {
+                let range = self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::Slider { min, max, .. } => Some((*min, *max)),
+                    _ => None,
+                });
+                if let Some((min, max)) = range {
+                    let travel = rect.width.max(1);
+                    let relative = (point.x.max(0) as u32).saturating_sub(rect.x).min(travel);
+                    let value = if max == min {
+                        min
+                    } else {
+                        min.saturating_add(
+                            ((u64::from(max - min) * u64::from(relative)) / u64::from(travel))
+                                as u32,
+                        )
+                    };
+                    self.set_slider_value(id, value);
+                }
+            }
+        }
+        if released {
+            if let (Some(id), Some(point)) = (translated.activated, pointer) {
+                let kind = self.find(id).map(|component| component.kind().clone());
+                if let Some(ComponentKind::Tabs { labels }) = kind {
+                    if !labels.is_empty() {
+                        if let Some(placement) =
+                            self.placed.iter().find(|placement| placement.id == id)
+                        {
+                            if placement.bounds.contains(point) {
+                                let relative_x = point.x as u32 - placement.bounds.x;
+                                let tab_width = placement.bounds.width.max(1) as u64;
+                                let index = (u64::from(relative_x) * labels.len() as u64
+                                    / tab_width)
+                                    as usize;
+                                self.tabs_states
+                                    .entry(id)
+                                    .or_default()
+                                    .select(index.min(labels.len() - 1), labels.len());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        translated
+    }
+
+    /// Updates normal UI pointer interaction and text-input caret/selection together.
+    ///
+    /// The platform adapter supplies click_count (2 for a double-click). Text
+    /// coordinates are derived from the same inner padding and scroll offset
+    /// used by draw_text_input, so callers can forward raw window coordinates.
+    #[allow(clippy::too_many_arguments)] // Kept explicit to preserve the public pointer-input API.
+    pub fn update_pointer_with_text_input(
+        &mut self,
+        bounds: Rect,
+        pointer: Option<Point>,
+        pressed: bool,
+        released: bool,
+        font: &FontFace,
+        pixel_size: f32,
+        click_count: u8,
+    ) -> ComponentEvents {
+        self.layout(bounds);
+        let captured_text = self
+            .interaction
+            .captured()
+            .and_then(|index| self.focusable_ids.get(index).copied())
+            .filter(|id| {
+                matches!(
+                    self.find(*id).map(UiComponent::kind),
+                    Some(ComponentKind::TextInput { .. })
+                )
+            });
+        let pressed_text = if pressed {
+            pointer.and_then(|point| {
+                self.placed.iter().rev().find_map(|placement| {
+                    (placement.bounds.contains(point)
+                        && matches!(
+                            self.find(placement.id).map(UiComponent::kind),
+                            Some(ComponentKind::TextInput { .. })
+                        ))
+                    .then_some(placement.id)
+                })
+            })
+        } else {
+            None
+        };
+
+        let events = self.update_pointer(bounds, pointer, pressed, released);
+        let target = pressed_text.or(captured_text);
+        if let (Some(id), Some(point)) = (target, pointer) {
+            if let Some(rect) = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == id)
+                .map(|placement| placement.bounds)
+            {
+                if let Some(state) = self.text_states.get(&id) {
+                    let inset = 8_u32.min(rect.width / 2);
+                    let inner_x = rect.x.saturating_add(inset);
+                    let inner_width = rect.width.saturating_sub(inset.saturating_mul(2));
+                    let cursor_width = font
+                        .measure(&state.text()[..state.cursor()], pixel_size)
+                        .width;
+                    let total_width = font.measure(state.text(), pixel_size).width;
+                    let scroll = crate::ui::text_input_scroll_offset(
+                        cursor_width,
+                        total_width,
+                        inner_width as f32,
+                    );
+                    let text_x = point.x as f32 - inner_x as f32 + scroll;
+                    self.handle_text_input_pointer(
+                        id,
+                        font,
+                        pixel_size,
+                        text_x,
+                        captured_text.is_some() && !pressed,
+                        if pressed { click_count.max(1) } else { 1 },
+                    );
+                }
+            }
+        }
+        events
+    }
+
+    /// Installs the fallback menu used when no component-specific menu is configured.
+    pub fn set_context_menu(&mut self, items: Vec<ContextMenuItem>) {
+        self.context_menu_items = items;
+        self.context_menu_state = None;
+    }
+
+    /// Associates a menu with one component. Returns false when the ID is unknown.
+    pub fn set_context_menu_for(&mut self, id: ComponentId, items: Vec<ContextMenuItem>) -> bool {
+        if self.find(id).is_none() {
+            return false;
+        }
+        if items.is_empty() {
+            self.component_context_menus.remove(&id);
+        } else {
+            self.component_context_menus.insert(id, items);
+        }
+        true
+    }
+
+    /// Opens the fallback menu at a pointer location.
+    pub fn open_context_menu_at(&mut self, position: Point) -> bool {
+        self.open_context_menu_items_at(position, self.context_menu_items.clone(), None)
+    }
+
+    /// Opens the menu associated with the topmost component under the pointer.
+    /// Falls back to the global menu when that component has no associated menu.
+    pub fn open_context_menu_for_at(&mut self, bounds: Rect, position: Point) -> bool {
+        self.layout(bounds);
+        let target = self
+            .placed
+            .iter()
+            .rev()
+            .find(|placed| placed.bounds.contains(position))
+            .map(|placed| placed.id);
+        let items = target.and_then(|id| {
+            self.component_context_menus
+                .get(&id)
+                .cloned()
+                .map(|items| (id, items))
+        });
+        if let Some((id, items)) = items {
+            self.open_context_menu_items_at(position, items, Some(id))
+        } else {
+            self.open_context_menu_items_at(position, self.context_menu_items.clone(), target)
+        }
+    }
+
+    fn open_context_menu_items_at(
+        &mut self,
+        position: Point,
+        items: Vec<ContextMenuItem>,
+        target: Option<ComponentId>,
+    ) -> bool {
+        if items.is_empty() {
+            return false;
+        }
+        let selected = items.iter().position(|item| item.enabled).unwrap_or(0);
+        self.active_context_menu_items = items;
+        self.context_menu_state = Some(ContextMenuState {
+            position,
+            selected,
+            submenu_selected: 0,
+            submenu_open: false,
+            submenu_path: [0; 8],
+            submenu_depth: 0,
+            target,
+        });
+        true
+    }
+
+    pub fn close_context_menu(&mut self) {
+        self.context_menu_state = None;
+    }
+
+    #[must_use]
+    pub fn context_menu_is_open(&self) -> bool {
+        self.context_menu_state.is_some()
+    }
+
+    #[cfg_attr(not(feature = "window"), allow(dead_code))]
+    pub(crate) fn activate_context_menu_shortcut(
+        &mut self,
+        key: char,
+        control: bool,
+        alt: bool,
+        shift: bool,
+    ) -> Option<ComponentEvents> {
+        let (items, target) = if let Some(state) = self.context_menu_state {
+            (&self.active_context_menu_items, state.target)
+        } else {
+            (&self.context_menu_items, None)
+        };
+        let matches = |item: &ContextMenuItem| {
+            item.enabled
+                && item.shortcut.is_some_and(|shortcut| {
+                    shortcut.key.eq_ignore_ascii_case(&key)
+                        && shortcut.control == control
+                        && shortcut.alt == alt
+                        && shortcut.shift == shift
+                })
+        };
+        fn find_action(
+            items: &[ContextMenuItem],
+            matches: &impl Fn(&ContextMenuItem) -> bool,
+        ) -> Option<u64> {
+            for item in items {
+                if !item.enabled {
+                    continue;
+                }
+                if item.submenu.is_empty() && matches(item) {
+                    return Some(item.action);
+                }
+                if let Some(action) = find_action(&item.submenu, matches) {
+                    return Some(action);
+                }
+            }
+            None
+        }
+
+        let action = find_action(items, &matches)?;
+        self.context_menu_state = None;
+        Some(ComponentEvents {
+            context_menu_action: Some(action),
+            context_menu_target: target,
+            ..ComponentEvents::default()
+        })
+    }
+
+    fn context_menu_items_at_depth(
+        root_items: &[ContextMenuItem],
+        state: ContextMenuState,
+        depth: usize,
+    ) -> Option<&[ContextMenuItem]> {
+        let mut items = root_items;
+        for level in 0..depth {
+            let selected = if level == 0 {
+                state.selected
+            } else {
+                *state.submenu_path.get(level - 1)?
+            };
+            items = &items.get(selected)?.submenu;
+        }
+        Some(items)
+    }
+
+    fn context_menu_selected_at_depth(&self, state: ContextMenuState, depth: usize) -> usize {
+        if depth == 0 {
+            state.selected
+        } else {
+            state.submenu_path.get(depth - 1).copied().unwrap_or(0)
+        }
+    }
+
+    fn nested_submenu_bounds(&self, bounds: Rect, state: ContextMenuState, depth: usize) -> Rect {
+        if depth == 0 {
+            return self.context_menu_bounds(bounds, state);
+        }
+        let Some(parent_items) =
+            Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth - 1)
+        else {
+            return Rect::default();
+        };
+        let parent_index = self.context_menu_selected_at_depth(state, depth - 1);
+        let Some(parent_item) = parent_items.get(parent_index) else {
+            return Rect::default();
+        };
+        let Some(items) =
+            Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth)
+        else {
+            return Rect::default();
+        };
+        if items.is_empty() || parent_item.submenu.is_empty() {
+            return Rect::default();
+        }
+        let parent_popup = self.nested_submenu_bounds(bounds, state, depth - 1);
+        let height = (items.len() as u32)
+            .saturating_mul(28)
+            .max(1)
+            .min(bounds.height.max(1));
+        let width = 192_u32.min(bounds.width.max(1));
+        let right = parent_popup.x.saturating_add(parent_popup.width);
+        let x = if right.saturating_add(width) <= bounds.x.saturating_add(bounds.width) {
+            right
+        } else {
+            parent_popup.x.saturating_sub(width)
+        };
+        let row_y = parent_popup
+            .y
+            .saturating_add((parent_index as u32).saturating_mul(28));
+        let max_y = bounds
+            .y
+            .saturating_add(bounds.height.saturating_sub(height)) as i64;
+        let y = (row_y as i64).clamp(bounds.y as i64, max_y);
+        Rect::new(x, y as u32, width, height)
+    }
+
+    fn context_menu_bounds(&self, bounds: Rect, state: ContextMenuState) -> Rect {
+        let height = (self.active_context_menu_items.len() as u32)
+            .saturating_mul(28)
+            .max(1)
+            .min(bounds.height.max(1));
+        let width = 192_u32.min(bounds.width.max(1));
+        let max_x = bounds.x.saturating_add(bounds.width.saturating_sub(width)) as i64;
+        let max_y = bounds
+            .y
+            .saturating_add(bounds.height.saturating_sub(height)) as i64;
+        let x = (state.position.x as i64).clamp(bounds.x as i64, max_x);
+        let y = (state.position.y as i64).clamp(bounds.y as i64, max_y);
+        Rect::new(x as u32, y as u32, width, height)
+    }
+
+    fn render_context_menu(
+        &self,
+        target: &mut Framebuffer,
+        bounds: Rect,
+        font: &FontFace,
+        pixel_size: f32,
+        theme: &UiTheme,
+        state: ContextMenuState,
+    ) {
+        let popup = self.context_menu_bounds(bounds, state);
+        draw_panel(target, popup, 4, theme);
+        for (index, item) in self.active_context_menu_items.iter().enumerate() {
+            let offset = (index as u32).saturating_mul(28);
+            let row = Rect::new(
+                popup.x,
+                popup.y.saturating_add(offset),
+                popup.width,
+                28.min(popup.height.saturating_sub(offset)),
+            );
+            if row.height == 0 {
+                continue;
+            }
+            if index == state.selected && item.enabled {
+                fill_rect(target, row, theme.accent_hover);
+            }
+            let baseline = i64::from(row.y)
+                + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78) / 2.0)
+                    as i64;
+            if let (Ok(x), Ok(y)) = (
+                i32::try_from(row.x.saturating_add(10)),
+                i32::try_from(baseline),
+            ) {
+                let label = format_context_menu_item_label(item);
+                draw_label_clipped(
+                    target,
+                    font,
+                    &label,
+                    Point::new(x, y),
+                    pixel_size,
+                    if item.enabled {
+                        theme.text
+                    } else {
+                        theme.muted_text
+                    },
+                    row,
+                );
+            }
+        }
+
+        for depth in 1..=state.submenu_depth {
+            let Some(items) =
+                Self::context_menu_items_at_depth(&self.active_context_menu_items, state, depth)
+            else {
+                continue;
+            };
+            let submenu = self.nested_submenu_bounds(bounds, state, depth);
+            if submenu.width == 0 || submenu.height == 0 {
+                continue;
+            }
+            draw_panel(target, submenu, 4, theme);
+            let selected = self.context_menu_selected_at_depth(state, depth);
+            for (index, child) in items.iter().enumerate() {
+                let offset = (index as u32).saturating_mul(28);
+                let row = Rect::new(
+                    submenu.x,
+                    submenu.y.saturating_add(offset),
+                    submenu.width,
+                    28.min(submenu.height.saturating_sub(offset)),
+                );
+                if row.height == 0 {
+                    continue;
+                }
+                if index == selected && child.enabled {
+                    fill_rect(target, row, theme.accent_hover);
+                }
+                let baseline = i64::from(row.y)
+                    + ((f64::from(row.height) + f64::from(font.line_height(pixel_size)) * 0.78)
+                        / 2.0) as i64;
+                if let (Ok(x), Ok(y)) = (
+                    i32::try_from(row.x.saturating_add(10)),
+                    i32::try_from(baseline),
+                ) {
+                    draw_label_clipped(
+                        target,
+                        font,
+                        &format_context_menu_item_label(child),
+                        Point::new(x, y),
+                        pixel_size,
+                        if child.enabled {
+                            theme.text
+                        } else {
+                            theme.muted_text
+                        },
+                        row,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Moves focus to the first visible enabled control in depth-first tab order.
+    pub fn focus_first(&mut self, bounds: Rect) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self.interaction.focus_first(&enabled);
+        self.translate_events(events)
+    }
+
+    /// Moves focus to the last visible enabled control in depth-first tab order.
+    pub fn focus_last(&mut self, bounds: Rect) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self.interaction.focus_last(&enabled);
+        self.translate_events(events)
+    }
+
+    /// Moves focus through visible enabled controls in depth-first tab order.
+    pub fn focus_next(&mut self, bounds: Rect, reverse: bool) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self.interaction.focus_next(&enabled, reverse);
+        self.translate_events(events)
+    }
+
+    /// Activates the currently focused component (typically Enter or Space).
+    pub fn activate_focused(&mut self, bounds: Rect) -> ComponentEvents {
+        self.layout(bounds);
+        let enabled = vec![true; self.focusable_ids.len()];
+        let events = self
+            .interaction
+            .activate_focused(&enabled, &self.focusable_bounds);
+        self.dispatch_events(events)
+    }
+
+    /// Paints all visible components into the supplied CPU framebuffer.
+    pub fn render(
+        &mut self,
+        target: &mut Framebuffer,
+        bounds: Rect,
+        font: &FontFace,
+        pixel_size: f32,
+        theme: &UiTheme,
+    ) {
+        let text_input_ids: Vec<_> = self.text_states.keys().copied().collect();
+        for id in text_input_ids {
+            self.sync_text_state(id);
+        }
+        self.layout(bounds);
+        let placements = self.placed.clone();
+        let focused = self.interaction.focused();
+        let focusable = self.focusable_ids.clone();
+        for placement in placements {
+            let Some(component) = self.find(placement.id) else {
+                continue;
+            };
+            match component.kind() {
+                ComponentKind::Panel => draw_panel(target, placement.bounds, 6, theme),
+                ComponentKind::Button { label } => draw_button(
+                    target,
+                    font,
+                    placement.bounds,
+                    label,
+                    pixel_size,
+                    placement.state,
+                    theme,
+                ),
+                ComponentKind::Checkbox { label, checked } => {
+                    draw_checkbox(target, placement.bounds, *checked, placement.state, theme);
+                    let x = placement.bounds.x.saturating_add(30);
+                    let baseline = i64::from(placement.bounds.y)
+                        + (i64::from(placement.bounds.height)
+                            + font.line_height(pixel_size).round() as i64)
+                            / 2;
+                    if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(baseline)) {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            label,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
+                    }
+                }
+                ComponentKind::Switch { label, enabled } => {
+                    draw_switch(target, placement.bounds, *enabled, placement.state, theme);
+                    let x = placement
+                        .bounds
+                        .x
+                        .saturating_add(placement.bounds.height.min(24) * 2 + 10);
+                    let baseline = i64::from(placement.bounds.y)
+                        + (i64::from(placement.bounds.height)
+                            + font.line_height(pixel_size).round() as i64)
+                            / 2;
+                    if let (Ok(x), Ok(y)) = (i32::try_from(x), i32::try_from(baseline)) {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            label,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
+                    }
+                }
+                ComponentKind::RadioButton {
+                    label, selected, ..
+                } => {
+                    draw_radio_button(
+                        target,
+                        font,
+                        placement.bounds,
+                        label,
+                        *selected,
+                        pixel_size,
+                        placement.state,
+                        theme,
+                    );
+                }
+                ComponentKind::Slider {
+                    min, max, value, ..
+                } => {
+                    draw_slider(
+                        target,
+                        placement.bounds,
+                        *value,
+                        *min,
+                        *max,
+                        placement.state,
+                        theme,
+                    );
+                }
+                ComponentKind::TextInput { placeholder, .. } => {
+                    let Some(state) = self.text_states.get(&placement.id) else {
+                        continue;
+                    };
+                    let is_focused = focusable
+                        .iter()
+                        .position(|id| *id == placement.id)
+                        .is_some_and(|index| Some(index) == focused);
+                    draw_text_input(
+                        target,
+                        font,
+                        placement.bounds,
+                        state,
+                        TextInputOptions {
+                            placeholder,
+                            pixel_size,
+                            focused: is_focused,
+                            theme,
+                        },
+                    );
+                }
+                ComponentKind::Label { text } => {
+                    let baseline = i64::from(placement.bounds.y)
+                        + (font.line_height(pixel_size) * 0.78).round() as i64;
+                    if let (Ok(x), Ok(y)) =
+                        (i32::try_from(placement.bounds.x), i32::try_from(baseline))
+                    {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            text,
+                            Point::new(x, y),
+                            pixel_size,
+                            theme.text,
+                            placement.bounds,
+                        );
+                    }
+                }
+                ComponentKind::ComboBox { items } => {
+                    let labels: Vec<_> = items.iter().map(String::as_str).collect();
+                    let state = self
+                        .combo_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
+                    draw_combo_box(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        pixel_size,
+                        28,
+                        theme,
+                    );
+                }
+                ComponentKind::ListView {
+                    items,
+                    row_height,
+                    scroll_offset,
+                } => {
+                    let labels: Vec<_> = items.iter().map(String::as_str).collect();
+                    let state = self
+                        .list_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
+                    crate::draw_list(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        ListOptions {
+                            scroll_offset: *scroll_offset,
+                            row_height: *row_height,
+                            pixel_size,
+                            theme,
+                        },
+                    );
+                }
+                ComponentKind::Tabs { labels } => {
+                    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+                    let state = self
+                        .tabs_states
+                        .get(&placement.id)
+                        .copied()
+                        .unwrap_or_default();
+                    draw_tabs(
+                        target,
+                        font,
+                        placement.bounds,
+                        &labels,
+                        state,
+                        pixel_size,
+                        theme,
+                    );
+                }
+            }
+        }
+
+        // Tooltips are painted last so they remain visible above every widget.
+        if let Some(hovered_id) = self
+            .interaction
+            .hovered()
+            .and_then(|index| self.focusable_ids.get(index).copied())
+        {
+            let tooltip = self
+                .find(hovered_id)
+                .and_then(|component| component.tooltip.as_deref().map(str::to_owned));
+            let anchor = self
+                .placed
+                .iter()
+                .find(|placement| placement.id == hovered_id)
+                .map(|placement| placement.bounds);
+            if let (Some(text), Some(anchor)) = (tooltip, anchor) {
+                let metrics = font.measure(&text, pixel_size);
+                let line_height = font.line_height(pixel_size).ceil().max(1.0) as u32;
+                let width = (metrics.width.ceil() as u32)
+                    .saturating_add(16)
+                    .min(target.width());
+                let height = line_height.saturating_add(10).min(target.height());
+                if width > 0 && height > 0 {
+                    let max_x = target.width().saturating_sub(width);
+                    let x = anchor.x.min(max_x);
+                    let below = anchor.y.saturating_add(anchor.height).saturating_add(6);
+                    let y = if below.saturating_add(height) <= target.height() {
+                        below
+                    } else {
+                        anchor.y.saturating_sub(height.saturating_add(6))
+                    }
+                    .min(target.height().saturating_sub(height));
+                    let tooltip_bounds = Rect::new(x, y, width, height);
+                    draw_panel(target, tooltip_bounds, 4, theme);
+                    let baseline = i64::from(y) + (i64::from(height) + i64::from(line_height)) / 2;
+                    if let (Ok(text_x), Ok(text_y)) =
+                        (i32::try_from(x.saturating_add(8)), i32::try_from(baseline))
+                    {
+                        draw_label_clipped(
+                            target,
+                            font,
+                            &text,
+                            Point::new(text_x, text_y),
+                            pixel_size,
+                            theme.text,
+                            tooltip_bounds,
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(menu) = self.context_menu_state {
+            self.render_context_menu(target, bounds, font, pixel_size, theme, menu);
+        }
+    }
+
+    /// Returns the selected row index of a retained list view.
+    #[must_use]
+    pub fn list_view_selected(&self, id: ComponentId) -> Option<usize> {
+        self.list_states.get(&id).and_then(|state| state.selected())
+    }
+
+    /// Returns the current pixel scroll offset of a retained list view.
+    #[must_use]
+    pub fn list_view_scroll_offset(&self, id: ComponentId) -> Option<u32> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { scroll_offset, .. } => Some(*scroll_offset),
+            _ => None,
+        })
+    }
+
+    /// Returns the rows currently stored in a retained list view.
+    #[must_use]
+    pub fn list_view_items(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { items, .. } => Some(items.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Selects a row in a retained list view programmatically.
+    ///
+    /// Passing None clears the selection. An out-of-range row index is
+    /// rejected without changing the current selection.
+    pub fn set_list_view_selected(&mut self, id: ComponentId, selected: Option<usize>) -> bool {
+        let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ListView { items, .. } => Some(items.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        if selected.is_some_and(|index| index >= item_count) {
+            return false;
+        }
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        if selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
+    /// Replaces the rows in a retained list view.
+    ///
+    /// Keeps the selected index when it still exists, otherwise selects the
+    /// new final row. An empty replacement clears the selection. The viewport
+    /// is clamped to the new content and follows the retained selection.
+    pub fn set_list_view_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, current_offset)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items: current_items,
+                        row_height,
+                        scroll_offset,
+                    } => {
+                        *current_items = items;
+                        Some((*row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+
+        let item_count = self
+            .find(id)
+            .and_then(|component| match component.kind() {
+                ComponentKind::ListView { items, .. } => Some(items.len()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let selected = selected
+            .filter(|index| *index < item_count)
+            .or_else(|| item_count.checked_sub(1));
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let content_height = (item_count as u32).saturating_mul(row_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(content_height.saturating_sub(viewport_height));
+        }
+
+        if selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
+    /// Inserts a row at the given index in a retained list view.
+    ///
+    /// Existing selection follows its row when insertion happens before it.
+    /// The index may equal the current row count to append an item.
+    pub fn insert_list_view_item(
+        &mut self,
+        id: ComponentId,
+        index: usize,
+        item: impl Into<String>,
+    ) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, current_offset)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if index <= items.len() => {
+                        items.insert(index, item.into());
+                        Some((*row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+
+        let next_selected = selected.map(|selected| {
+            if index <= selected {
+                selected + 1
+            } else {
+                selected
+            }
+        });
+        let item_count = self.list_view_items(id).map_or(0, <[String]>::len);
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
+    /// Moves a row to a new index in a retained list view.
+    ///
+    /// The destination is interpreted in the list after the source row is
+    /// removed. Selection follows the moved row and all other selected rows
+    /// retain their identity.
+    pub fn move_list_view_item(&mut self, id: ComponentId, from: usize, to: usize) -> bool {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let Some((row_height, current_offset, item_count)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if from < items.len() && to < items.len() => {
+                        if from != to {
+                            let item = items.remove(from);
+                            items.insert(to, item);
+                        }
+                        Some((*row_height, *scroll_offset, items.len()))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+        if from == to {
+            return false;
+        }
+
+        let next_selected = selected.map(|selected| {
+            if selected == from {
+                to
+            } else if from < selected && selected <= to {
+                selected - 1
+            } else if to <= selected && selected < from {
+                selected + 1
+            } else {
+                selected
+            }
+        });
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        true
+    }
+
+    /// Removes and returns the row at the given index.
+    ///
+    /// Selection follows its original row when possible. Removing the selected
+    /// row selects the row now occupying that index, or the preceding final row.
+    pub fn remove_list_view_item(&mut self, id: ComponentId, index: usize) -> Option<String> {
+        let selected = self.list_states.get(&id).and_then(|state| state.selected());
+        let (removed, row_height, current_offset) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } if index < items.len() => {
+                        Some((items.remove(index), *row_height, *scroll_offset))
+                    }
+                    _ => None,
+                })?;
+
+        let item_count = self.list_view_items(id).map_or(0, <[String]>::len);
+        let next_selected = selected.and_then(|selected| {
+            if item_count == 0 {
+                None
+            } else if selected > index {
+                Some(selected - 1)
+            } else if selected == index {
+                Some(index.min(item_count - 1))
+            } else {
+                Some(selected)
+            }
+        });
+        self.list_states
+            .entry(id)
+            .or_default()
+            .select(next_selected, item_count);
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let max_offset = (item_count as u32)
+            .saturating_mul(row_height)
+            .saturating_sub(viewport_height);
+        if let Some(ComponentKind::ListView { scroll_offset, .. }) =
+            self.find_mut(id).map(|component| &mut component.kind)
+        {
+            *scroll_offset = current_offset.min(max_offset);
+        }
+        if next_selected.is_some() {
+            self.ensure_list_selection_visible(id);
+        }
+        Some(removed)
+    }
+
+    /// Updates the pixel scroll offset of a retained list view.
+    pub fn set_list_view_scroll(&mut self, id: ComponentId, offset: u32) -> bool {
+        let viewport_height = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .map_or(0, |placement| placement.bounds.height);
+        let Some((scroll_offset, items_len, row_height)) =
+            self.find_mut(id)
+                .and_then(|component| match &mut component.kind {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => Some((scroll_offset, items.len(), *row_height)),
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+        let content_height = (items_len as u32).saturating_mul(row_height);
+        *scroll_offset = offset.min(content_height.saturating_sub(viewport_height));
+        true
+    }
+
+    /// Changes the fixed row height of a retained list view.
+    ///
+    /// The current scroll position is clamped to the resized content and the
+    /// selected row remains visible whenever the list has a laid-out viewport.
+    /// Returns false for an unknown component, a non-list component, or a
+    /// height that is already in use.
+    pub fn set_list_view_row_height(&mut self, id: ComponentId, row_height: u32) -> bool {
+        let row_height = row_height.max(1);
+        let Some(changed) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
+                ComponentKind::ListView {
+                    row_height: current,
+                    ..
+                } => {
+                    if *current == row_height {
+                        Some(false)
+                    } else {
+                        *current = row_height;
+                        Some(true)
+                    }
+                }
+                _ => None,
+            })
+        else {
+            return false;
+        };
+        if !changed {
+            return false;
+        }
+
+        let offset = self.list_view_scroll_offset(id).unwrap_or(0);
+        self.set_list_view_scroll(id, offset);
+        self.ensure_list_selection_visible(id);
+        true
+    }
+
+    /// Moves the viewport when keyboard navigation selects an off-screen row.
+    fn ensure_list_selection_visible(&mut self, id: ComponentId) {
+        let Some(selected) = self.list_states.get(&id).and_then(|state| state.selected()) else {
+            return;
+        };
+        let Some((row_height, current_offset, viewport_height)) = self
+            .placed
+            .iter()
+            .find(|placement| placement.id == id)
+            .and_then(|placement| {
+                self.find(id).and_then(|component| match component.kind() {
+                    ComponentKind::ListView {
+                        row_height,
+                        scroll_offset,
+                        ..
+                    } => Some((*row_height, *scroll_offset, placement.bounds.height)),
+                    _ => None,
+                })
+            })
+        else {
+            return;
+        };
+
+        let row_top = (selected as u32).saturating_mul(row_height);
+        let row_bottom = row_top.saturating_add(row_height);
+        let viewport_bottom = current_offset.saturating_add(viewport_height);
+        // A row taller than the viewport cannot fit completely. Keep its top
+        // edge anchored instead of alternating between top and bottom offsets.
+        let next_offset = if row_height >= viewport_height {
+            row_top
+        } else if row_top < current_offset {
+            row_top.saturating_sub(viewport_height.saturating_sub(row_height))
+        } else if row_bottom > viewport_bottom {
+            row_bottom.saturating_sub(viewport_height)
+        } else {
+            current_offset
+        };
+        if next_offset != current_offset {
+            self.set_list_view_scroll(id, next_offset);
+        }
+    }
+
+    /// Scrolls the list view beneath the pointer by a pixel delta.
+    /// Positive deltas move the content down toward later rows.
+    pub fn scroll_list_view_at(&mut self, pointer: Point, delta_y: i32) -> bool {
+        if delta_y == 0 {
+            return false;
+        }
+        let Some(placement) = self
+            .placed
+            .iter()
+            .rev()
+            .find(|placement| placement.bounds.contains(pointer))
+            .copied()
+        else {
+            return false;
+        };
+        let Some((current, max_offset)) =
+            self.find(placement.id)
+                .and_then(|component| match component.kind() {
+                    ComponentKind::ListView {
+                        items,
+                        row_height,
+                        scroll_offset,
+                    } => {
+                        let content_height = (items.len() as u32).saturating_mul(*row_height);
+                        Some((
+                            *scroll_offset,
+                            content_height.saturating_sub(placement.bounds.height),
+                        ))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+        let next = if delta_y > 0 {
+            current.saturating_add(delta_y as u32).min(max_offset)
+        } else {
+            current.saturating_sub(delta_y.unsigned_abs())
+        };
+        self.set_list_view_scroll(placement.id, next)
+    }
+
+    /// Returns the selected item index of a combo box.
+    #[must_use]
+    pub fn combo_box_selected(&self, id: ComponentId) -> Option<usize> {
+        self.combo_states
+            .get(&id)
+            .and_then(|state| state.selected())
+    }
+
+    /// Returns the current entries of a combo box.
+    #[must_use]
+    pub fn combo_box_items(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ComboBox { items } => Some(items.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Sets the selected combo box entry, or clears the selection with None.
+    ///
+    /// Invalid indices are rejected without changing the current selection.
+    pub fn set_combo_box_selected(&mut self, id: ComponentId, selected: Option<usize>) -> bool {
+        let Some(item_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::ComboBox { items } => Some(items.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        if selected.is_some_and(|index| index >= item_count) {
+            return false;
+        }
+        self.combo_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        true
+    }
+
+    /// Replaces the entries of a combo box while retaining a valid selection.
+    ///
+    /// If the selected index no longer exists, the final entry becomes selected.
+    /// Replacing with an empty list clears the selection.
+    pub fn set_combo_box_items(&mut self, id: ComponentId, items: Vec<String>) -> bool {
+        let selected = self
+            .combo_states
+            .get(&id)
+            .and_then(|state| state.selected());
+        let Some(item_count) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
+                ComponentKind::ComboBox { items: current } => {
+                    *current = items;
+                    Some(current.len())
+                }
+                _ => None,
+            })
+        else {
+            return false;
+        };
+        let selected = selected
+            .filter(|index| *index < item_count)
+            .or_else(|| item_count.checked_sub(1));
+        self.combo_states
+            .entry(id)
+            .or_default()
+            .select(selected, item_count);
+        true
+    }
+
+    /// Returns the labels currently displayed by a tab strip.
+    #[must_use]
+    pub fn tabs_labels(&self, id: ComponentId) -> Option<&[String]> {
+        self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::Tabs { labels } => Some(labels.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Selects a tab by index. Invalid indices leave the current selection unchanged.
+    pub fn set_tabs_selected(&mut self, id: ComponentId, selected: usize) -> bool {
+        let Some(tab_count) = self.find(id).and_then(|component| match component.kind() {
+            ComponentKind::Tabs { labels } => Some(labels.len()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        self.tabs_states
+            .entry(id)
+            .or_default()
+            .select(selected, tab_count)
+    }
+
+    /// Replaces tab labels and keeps the selected index when it remains valid.
+    ///
+    /// If the old selection no longer exists, the final tab is selected.
+    /// An empty label list clears the selection.
+    pub fn set_tabs_labels(&mut self, id: ComponentId, labels: Vec<String>) -> bool {
+        let selected = self.tabs_states.get(&id).and_then(|state| state.selected());
+        let Some(tab_count) = self
+            .find_mut(id)
+            .and_then(|component| match &mut component.kind {
+                ComponentKind::Tabs { labels: current } => {
+                    *current = labels;
+                    Some(current.len())
+                }
+                _ => None,
+            })
+        else {
+            return false;
+        };
+        let selected = selected
+            .filter(|index| *index < tab_count)
+            .or_else(|| tab_count.checked_sub(1));
+        let state = self.tabs_states.entry(id).or_default();
+        if let Some(index) = selected {
+            state.select(index, tab_count);
+        } else {
+            *state = TabsState::new();
+        }
+        true
+    }
+
+    /// Returns the selected tab index of a tab strip.
+    #[must_use]
+    pub fn tabs_selected(&self, id: ComponentId) -> Option<usize> {
+        self.tabs_states.get(&id).and_then(|state| state.selected())
+    }
+
+    /// Returns the stable ID of the currently focused visible control.
+    #[must_use]
+    pub fn focused_component(&self) -> Option<ComponentId> {
+        self.interaction
+            .focused()
+            .and_then(|index| self.focusable_ids.get(index).copied())
+    }
+
+    /// Returns the focused text input, if keyboard focus belongs to one.
+    #[must_use]
+    pub fn focused_text_input(&self) -> Option<ComponentId> {
+        let id = self.focused_component()?;
+        matches!(
+            self.find(id).map(UiComponent::kind),
+            Some(ComponentKind::TextInput { .. })
+        )
+        .then_some(id)
+    }
+
+    /// Applies committed text or IME composition from a platform text service.
+    pub fn handle_text_input_event(&mut self, id: ComponentId, event: TextInputEvent) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        match event {
+            TextInputEvent::Insert(text) => state.insert_text(&text),
+            TextInputEvent::CompositionUpdate(text) => state.set_composition(Some(text)),
+            TextInputEvent::CompositionCommit(text) => {
+                state.cancel_composition();
+                state.insert_text(&text);
+            }
+            TextInputEvent::CompositionCancel => state.cancel_composition(),
+        }
+        self.commit_text_state(id)
+    }
+
+    /// Copies the active selection without modifying the input.
+    pub fn copy_selected_text(&mut self, id: ComponentId) -> Option<String> {
+        self.sync_text_state(id).then_some(())?;
+        self.text_states
+            .get(&id)?
+            .selected_text()
+            .map(str::to_owned)
+    }
+
+    /// Deletes the active selection and returns its former contents for the host clipboard.
+    pub fn cut_selected_text(&mut self, id: ComponentId) -> Option<String> {
+        let selected = self.copy_selected_text(id)?;
+        self.text_states.get_mut(&id)?.delete_selection();
+        self.commit_text_state(id).then_some(selected)
+    }
+
+    /// Reads the retained editing state for a text input.
+    #[must_use]
+    pub fn text_input_state(&self, id: ComponentId) -> Option<&TextInputState> {
+        self.text_states.get(&id)
+    }
+
+    /// Positions a text input caret from an x coordinate relative to its text origin.
+    ///
+    /// The caller is responsible for subtracting inner padding and adding the
+    /// current horizontal scroll offset to the pointer coordinate.
+    pub fn set_text_input_cursor_from_x(
+        &mut self,
+        id: ComponentId,
+        font: &FontFace,
+        pixel_size: f32,
+        x: f32,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.set_cursor_from_x(font, pixel_size, x, extend_selection);
+        true
+    }
+
+    /// Handles a pointer position inside a text input.
+    ///
+    /// The x coordinate is relative to the unscrolled text origin (after inner
+    /// padding and horizontal-scroll adjustment). Pass extend_selection while
+    /// dragging. A click count of two or more selects the Unicode word.
+    pub fn handle_text_input_pointer(
+        &mut self,
+        id: ComponentId,
+        font: &FontFace,
+        pixel_size: f32,
+        x: f32,
+        extend_selection: bool,
+        click_count: u8,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        if click_count >= 2 {
+            let byte_index = self.text_states.get(&id).map(|state| {
+                crate::ui::text_input_cursor_from_x(font, state.text(), pixel_size, x)
+            });
+            return byte_index.is_some_and(|index| {
+                self.text_states
+                    .get_mut(&id)
+                    .is_some_and(|state| state.select_word_at(index))
+            });
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.set_cursor_from_x(font, pixel_size, x, extend_selection);
+        true
+    }
+
+    /// Selects the Unicode word at a UTF-8 byte position in a text input.
+    ///
+    /// The position is interpreted relative to the input's text, not its
+    /// rendered coordinates. Returns false for non-text components, missing
+    /// components, or positions outside a word.
+    pub fn select_text_word_at(&mut self, id: ComponentId, byte_index: usize) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        self.text_states
+            .get_mut(&id)
+            .is_some_and(|state| state.select_word_at(byte_index))
+    }
+
+    /// Inserts text, replacing any active selection.
+    pub fn insert_text(&mut self, id: ComponentId, text: &str) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.insert_text(text);
+        self.commit_text_state(id)
+    }
+
+    /// Deletes the previous grapheme, or active selection.
+    pub fn backspace_text(&mut self, id: ComponentId) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.backspace();
+        self.commit_text_state(id)
+    }
+
+    /// Deletes the next grapheme, or active selection.
+    pub fn delete_text(&mut self, id: ComponentId) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.delete_forward();
+        self.commit_text_state(id)
+    }
+
+    /// Moves the cursor by one grapheme, optionally extending selection.
+    pub fn move_text_cursor(
+        &mut self,
+        id: ComponentId,
+        right: bool,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if right {
+            state.move_right(extend_selection);
+        } else {
+            state.move_left(extend_selection);
+        }
+        true
+    }
+
+    /// Moves the cursor to the beginning or end of the line.
+    pub fn move_text_cursor_home_end(
+        &mut self,
+        id: ComponentId,
+        end: bool,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if end {
+            state.move_end(extend_selection);
+        } else {
+            state.move_home(extend_selection);
+        }
+        true
+    }
+
+    /// Moves the cursor by one Unicode word, optionally extending selection.
+    pub fn move_text_word_cursor(
+        &mut self,
+        id: ComponentId,
+        right: bool,
+        extend_selection: bool,
+    ) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if right {
+            state.move_word_right(extend_selection);
+        } else {
+            state.move_word_left(extend_selection);
+        }
+        true
+    }
+
+    /// Deletes the word before or after the cursor.
+    pub fn delete_word_text(&mut self, id: ComponentId, forward: bool) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        if forward {
+            state.delete_word_forward();
+        } else {
+            state.delete_word_backward();
+        }
+        self.commit_text_state(id)
+    }
+
+    /// Selects all text in the specified input.
+    pub fn select_all_text(&mut self, id: ComponentId) -> bool {
+        if !self.sync_text_state(id) {
+            return false;
+        }
+        let Some(state) = self.text_states.get_mut(&id) else {
+            return false;
+        };
+        state.select_all();
+        true
+    }
+
+    /// Inserts text into the currently focused text input.
+    pub fn insert_text_focused(&mut self, text: &str) -> bool {
+        self.focused_text_input()
+            .is_some_and(|id| self.insert_text(id, text))
+    }
+
+    /// Routes a discrete key to focus navigation, activation, or text editing.
+    pub fn handle_key(&mut self, bounds: Rect, key: ComponentKey, shift: bool) -> ComponentEvents {
+        if let Some(mut menu) = self.context_menu_state {
+            let depth = menu.submenu_depth;
+            let selected = self.context_menu_selected_at_depth(menu, depth);
+            let current_items =
+                Self::context_menu_items_at_depth(&self.active_context_menu_items, menu, depth)
+                    .unwrap_or(&[]);
+            match key {
+                ComponentKey::Escape => {
+                    self.context_menu_state = None;
+                    return ComponentEvents::default();
+                }
+                ComponentKey::ArrowDown | ComponentKey::ArrowUp => {
+                    let count = current_items.len();
+                    if count > 0 {
+                        let mut next = selected;
+                        for _ in 0..count {
+                            next = if key == ComponentKey::ArrowDown {
+                                (next + 1) % count
+                            } else {
+                                (next + count - 1) % count
+                            };
+                            if current_items[next].enabled {
+                                break;
+                            }
+                        }
+                        if depth == 0 {
+                            menu.selected = next;
+                            menu.submenu_depth = 0;
+                            menu.submenu_open = false;
+                        } else {
+                            menu.submenu_path[depth - 1] = next;
+                            menu.submenu_depth = depth;
+                            menu.submenu_selected = menu.submenu_path[0];
+                            menu.submenu_open = true;
+                        }
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
+                ComponentKey::Home | ComponentKey::End => {
+                    let next = if key == ComponentKey::Home {
+                        current_items.iter().position(|item| item.enabled)
+                    } else {
+                        current_items.iter().rposition(|item| item.enabled)
+                    };
+                    if let Some(next) = next {
+                        if depth == 0 {
+                            menu.selected = next;
+                            menu.submenu_depth = 0;
+                            menu.submenu_open = false;
+                        } else {
+                            menu.submenu_path[depth - 1] = next;
+                            menu.submenu_depth = depth;
+                            menu.submenu_selected = menu.submenu_path[0];
+                            menu.submenu_open = true;
+                        }
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
+                ComponentKey::ArrowRight => {
+                    if let Some(item) = current_items.get(selected) {
+                        if item.enabled
+                            && !item.submenu.is_empty()
+                            && depth < menu.submenu_path.len()
+                        {
+                            menu.submenu_path[depth] = item
+                                .submenu
+                                .iter()
+                                .position(|child| child.enabled)
+                                .unwrap_or(0);
+                            menu.submenu_depth = depth + 1;
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                        }
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
+                ComponentKey::ArrowLeft => {
+                    if depth > 0 {
+                        menu.submenu_depth = depth - 1;
+                        menu.submenu_open = menu.submenu_depth > 0;
+                        menu.submenu_selected = if menu.submenu_depth > 0 {
+                            menu.submenu_path[0]
+                        } else {
+                            0
+                        };
+                    }
+                    self.context_menu_state = Some(menu);
+                    return ComponentEvents::default();
+                }
+                ComponentKey::Enter | ComponentKey::Space => {
+                    if let Some(item) = current_items.get(selected) {
+                        if item.enabled
+                            && !item.submenu.is_empty()
+                            && depth < menu.submenu_path.len()
+                        {
+                            menu.submenu_path[depth] = item
+                                .submenu
+                                .iter()
+                                .position(|child| child.enabled)
+                                .unwrap_or(0);
+                            menu.submenu_depth = depth + 1;
+                            menu.submenu_open = true;
+                            menu.submenu_selected = menu.submenu_path[0];
+                            self.context_menu_state = Some(menu);
+                            return ComponentEvents::default();
+                        }
+                        let action = item.enabled.then_some(item.action);
+                        self.context_menu_state = None;
+                        return ComponentEvents {
+                            context_menu_action: action,
+                            context_menu_target: menu.target,
+                            ..ComponentEvents::default()
+                        };
+                    }
+                    self.context_menu_state = None;
+                    return ComponentEvents::default();
+                }
+                _ => return ComponentEvents::default(),
+            }
+        }
+        if let Some(id) = self.focused_component() {
+            let kind = self.find(id).map(|component| component.kind().clone());
+            match kind {
+                Some(ComponentKind::ComboBox { items }) => {
+                    let state = self.combo_states.entry(id).or_default();
+                    match key {
+                        ComponentKey::Escape => state.close(),
+                        ComponentKey::ArrowDown => {
+                            if state.is_open() {
+                                state.move_highlight(1, items.len());
+                            } else {
+                                state.open(items.len());
+                            }
+                        }
+                        ComponentKey::ArrowUp => {
+                            if state.is_open() {
+                                state.move_highlight(-1, items.len());
+                            } else {
+                                state.open(items.len());
+                                state.move_highlight(-1, items.len());
+                            }
+                        }
+                        _ => {}
+                    }
+                    if matches!(
+                        key,
+                        ComponentKey::Escape | ComponentKey::ArrowDown | ComponentKey::ArrowUp
+                    ) {
+                        return ComponentEvents::default();
+                    }
+                }
+                Some(ComponentKind::ListView {
+                    items, row_height, ..
+                }) if matches!(
+                    key,
+                    ComponentKey::ArrowUp
+                        | ComponentKey::ArrowDown
+                        | ComponentKey::Home
+                        | ComponentKey::End
+                        | ComponentKey::PageUp
+                        | ComponentKey::PageDown
+                ) =>
+                {
+                    let page_rows = self
+                        .placed
+                        .iter()
+                        .find(|placement| placement.id == id)
+                        .map_or(1, |placement| {
+                            (placement.bounds.height / row_height).max(1) as isize
+                        });
+                    let state = self.list_states.entry(id).or_default();
+                    match key {
+                        ComponentKey::ArrowUp => state.move_selection(-1, items.len()),
+                        ComponentKey::ArrowDown => state.move_selection(1, items.len()),
+                        ComponentKey::Home => state.select_first(items.len()),
+                        ComponentKey::End => state.select_last(items.len()),
+                        ComponentKey::PageUp => state.move_selection(-page_rows, items.len()),
+                        ComponentKey::PageDown => {
+                            if state.selected().is_none() {
+                                state.select(Some(page_rows.max(0) as usize), items.len());
+                            } else {
+                                state.move_selection(page_rows, items.len());
+                            }
+                        }
+                        _ => {}
+                    }
+                    self.ensure_list_selection_visible(id);
+                    return ComponentEvents::default();
+                }
+                Some(ComponentKind::Slider {
+                    min, max, value, ..
+                }) if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight => {
+                    let next = if key == ComponentKey::ArrowLeft {
+                        value.saturating_sub(1).max(min)
+                    } else {
+                        value.saturating_add(1).min(max)
+                    };
+                    self.set_slider_value(id, next);
+                    return ComponentEvents::default();
+                }
+                Some(ComponentKind::Tabs { labels })
+                    if key == ComponentKey::ArrowLeft || key == ComponentKey::ArrowRight =>
+                {
+                    self.tabs_states.entry(id).or_default().move_selection(
+                        if key == ComponentKey::ArrowLeft {
+                            -1
+                        } else {
+                            1
+                        },
+                        labels.len(),
+                    );
+                    return ComponentEvents::default();
+                }
+                _ => {}
+            }
+        }
+        match key {
+            ComponentKey::Home if self.focused_text_input().is_none() => self.focus_first(bounds),
+            ComponentKey::End if self.focused_text_input().is_none() => self.focus_last(bounds),
+            ComponentKey::Tab => self.focus_next(bounds, shift),
+            ComponentKey::Enter | ComponentKey::Space => {
+                if self.focused_text_input().is_some() {
+                    return ComponentEvents::default();
+                }
+                let Some(id) = self.focused_component() else {
+                    return ComponentEvents::default();
+                };
+                let combo_item_count = self.find(id).and_then(|component| {
+                    if let ComponentKind::ComboBox { items } = component.kind() {
+                        Some(items.len())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(item_count) = combo_item_count {
+                    let state = self.combo_states.entry(id).or_default();
+                    if state.is_open() {
+                        state.select_highlighted(item_count);
+                    } else {
+                        state.open(item_count);
+                    }
+                    return ComponentEvents::default();
+                }
+                self.activate_focused(bounds)
+            }
+            ComponentKey::ArrowLeft
+            | ComponentKey::ArrowRight
+            | ComponentKey::ArrowUp
+            | ComponentKey::ArrowDown
+            | ComponentKey::Escape
+            | ComponentKey::WordLeft
+            | ComponentKey::WordRight
+            | ComponentKey::Home
+            | ComponentKey::End
+            | ComponentKey::PageUp
+            | ComponentKey::PageDown
+            | ComponentKey::Backspace
+            | ComponentKey::Delete
+            | ComponentKey::DeleteWordBackward
+            | ComponentKey::DeleteWordForward => {
+                let Some(id) = self.focused_text_input() else {
+                    return ComponentEvents::default();
+                };
+                match key {
+                    ComponentKey::ArrowLeft => {
+                        self.move_text_cursor(id, false, shift);
+                    }
+                    ComponentKey::ArrowRight => {
+                        self.move_text_cursor(id, true, shift);
+                    }
+                    ComponentKey::WordLeft => {
+                        self.move_text_word_cursor(id, false, shift);
+                    }
+                    ComponentKey::WordRight => {
+                        self.move_text_word_cursor(id, true, shift);
+                    }
+                    ComponentKey::Home => {
+                        self.move_text_cursor_home_end(id, false, shift);
+                    }
+                    ComponentKey::End => {
+                        self.move_text_cursor_home_end(id, true, shift);
+                    }
+                    ComponentKey::Backspace => {
+                        self.backspace_text(id);
+                    }
+                    ComponentKey::Delete => {
+                        self.delete_text(id);
+                    }
+                    ComponentKey::DeleteWordBackward => {
+                        self.delete_word_text(id, false);
+                    }
+                    ComponentKey::DeleteWordForward => {
+                        self.delete_word_text(id, true);
+                    }
+                    _ => {}
+                }
+                ComponentEvents::default()
+            }
+        }
+    }
+
+    fn sync_text_state(&mut self, id: ComponentId) -> bool {
+        let Some(component) = self.find(id) else {
+            return false;
+        };
+        let ComponentKind::TextInput { value, .. } = component.kind() else {
+            return false;
+        };
+        let value = value.clone();
+        let state = self
+            .text_states
+            .entry(id)
+            .or_insert_with(|| TextInputState::new(value.clone()));
+        if state.text() != value {
+            state.set_text(value);
+        }
+        true
+    }
+
+    fn commit_text_state(&mut self, id: ComponentId) -> bool {
+        let Some(value) = self
+            .text_states
+            .get(&id)
+            .map(|state| state.text().to_owned())
+        else {
+            return false;
+        };
+        let Some(component) = self.find_mut(id) else {
+            return false;
+        };
+        let ComponentKind::TextInput { value: stored, .. } = &mut component.kind else {
+            return false;
+        };
+        *stored = value;
+        true
+    }
+
+    fn dispatch_events(&mut self, events: InteractionEvents) -> ComponentEvents {
+        let translated = self.translate_events(events);
+        if let Some(id) = translated.activated {
+            let kind = self.find(id).map(|component| component.kind().clone());
+            match kind {
+                Some(ComponentKind::Checkbox { .. }) => {
+                    if let Some(ComponentKind::Checkbox { checked, .. }) =
+                        self.find_mut(id).map(|component| &mut component.kind)
+                    {
+                        *checked = !*checked;
+                    }
+                }
+                Some(ComponentKind::ComboBox { items }) => {
+                    self.combo_states.entry(id).or_default().toggle(items.len());
+                }
+                Some(ComponentKind::Switch { .. }) => {
+                    if let Some(ComponentKind::Switch { enabled, .. }) =
+                        self.find_mut(id).map(|component| &mut component.kind)
+                    {
+                        *enabled = !*enabled;
+                    }
+                }
+                Some(ComponentKind::RadioButton { group, .. }) => {
+                    set_radio_group_selection(&mut self.roots, group, id);
+                }
+                _ => {}
+            }
+        }
+        translated
+    }
+
+    /// Returns the last computed component placements.
+    #[must_use]
+    pub fn placed(&self) -> &[PlacedComponent] {
+        &self.placed
+    }
+
+    /// Clears hover, pointer capture, and keyboard focus.
+    pub fn clear_interaction(&mut self) {
+        self.interaction.clear();
+    }
+
+    fn translate_events(&self, events: InteractionEvents) -> ComponentEvents {
+        ComponentEvents {
+            activated: events
+                .clicked
+                .and_then(|index| self.focusable_ids.get(index).copied()),
+            focus_changed: events
+                .focus_changed
+                .and_then(|index| self.focusable_ids.get(index).copied()),
+            focus_cleared: events.focus_cleared,
+            clipboard_action: None,
+            context_menu_action: None,
+            context_menu_target: None,
+        }
+    }
+}
+
+fn set_radio_group_selection(nodes: &mut [UiComponent], group: u64, selected_id: ComponentId) {
+    for node in nodes {
+        if let ComponentKind::RadioButton {
+            group: candidate_group,
+            selected,
+            ..
+        } = &mut node.kind
+        {
+            if *candidate_group == group {
+                *selected = node.id == selected_id;
+            }
+        }
+        set_radio_group_selection(&mut node.children, group, selected_id);
+    }
+}
+
+fn validate_unique_ids(roots: &[UiComponent]) -> Result<(), ComponentTreeError> {
+    let mut seen = std::collections::HashSet::new();
+    for root in roots {
+        for id in component_ids(root) {
+            if !seen.insert(id) {
+                return Err(ComponentTreeError::DuplicateId(id));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_subtree_ids(root: &UiComponent) -> Result<(), ComponentTreeError> {
+    let mut seen = std::collections::HashSet::new();
+    for id in component_ids(root) {
+        if !seen.insert(id) {
+            return Err(ComponentTreeError::DuplicateId(id));
+        }
+    }
+    Ok(())
+}
+
+fn component_ids(root: &UiComponent) -> Vec<ComponentId> {
+    fn visit(node: &UiComponent, ids: &mut Vec<ComponentId>) {
+        ids.push(node.id());
+        for child in node.children() {
+            visit(child, ids);
+        }
+    }
+    let mut ids = Vec::new();
+    visit(root, &mut ids);
+    ids
+}
+
+fn remove_component(nodes: &mut Vec<UiComponent>, id: ComponentId) -> Option<UiComponent> {
+    if let Some(index) = nodes.iter().position(|node| node.id() == id) {
+        return Some(nodes.remove(index));
+    }
+    for node in nodes {
+        if let Some(removed) = remove_component(&mut node.children, id) {
+            return Some(removed);
+        }
+    }
+    None
+}
+
+fn collect_component_states(
+    node: &UiComponent,
+    text_states: &mut HashMap<ComponentId, TextInputState>,
+    combo_states: &mut HashMap<ComponentId, ComboBoxState>,
+    tabs_states: &mut HashMap<ComponentId, TabsState>,
+    list_states: &mut HashMap<ComponentId, ListState>,
+) {
+    match node.kind() {
+        ComponentKind::TextInput { value, .. } => {
+            text_states.insert(node.id(), TextInputState::new(value.clone()));
+        }
+        ComponentKind::ComboBox { .. } => {
+            combo_states.insert(node.id(), ComboBoxState::new());
+        }
+        ComponentKind::Tabs { .. } => {
+            tabs_states.insert(node.id(), TabsState::new());
+        }
+        ComponentKind::ListView { .. } => {
+            list_states.insert(node.id(), ListState::new());
+        }
+        _ => {}
+    }
+    for child in node.children() {
+        collect_component_states(child, text_states, combo_states, tabs_states, list_states);
+    }
+}
+
+fn find_component(node: &UiComponent, id: ComponentId) -> Option<&UiComponent> {
+    if node.id == id {
+        return Some(node);
+    }
+    node.children
+        .iter()
+        .find_map(|child| find_component(child, id))
+}
+
+fn find_component_mut(node: &mut UiComponent, id: ComponentId) -> Option<&mut UiComponent> {
+    if node.id == id {
+        return Some(node);
+    }
+    node.children
+        .iter_mut()
+        .find_map(|child| find_component_mut(child, id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ComponentId, ComponentKey, ComponentKind, ComponentTree, ContextMenuItem,
+        ContextMenuShortcut, FontFace, TextInputEvent, UiComponent,
+    };
+    use crate::{Insets, LayoutDirection, LayoutItem, Point, Rect, StackLayout, WidgetState};
+
+    fn sample_tree() -> ComponentTree {
+        let panel = UiComponent::panel(
+            ComponentId(1),
+            StackLayout::new(LayoutDirection::Vertical)
+                .with_padding(Insets::all(2))
+                .with_gap(2),
+        )
+        .with_layout_item(LayoutItem::flexible())
+        .with_children(vec![
+            UiComponent::label(ComponentId(2), "Settings").with_layout_item(LayoutItem::fixed(12)),
+            UiComponent::button(ComponentId(3), "Apply").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::checkbox(ComponentId(4), "Enable", false)
+                .with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        ComponentTree::new(vec![panel])
+    }
+
+    #[test]
+    fn component_context_menu_targets_the_hit_component() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(10, 10, 100, 80);
+        let mut tree = sample_tree();
+        assert!(!tree
+            .set_context_menu_for(ComponentId(999), vec![ContextMenuItem::new(31, "Missing")],));
+        assert!(
+            tree.set_context_menu_for(ComponentId(3), vec![ContextMenuItem::new(32, "Inspect")],)
+        );
+        assert!(tree.open_context_menu_for_at(bounds, Point::new(20, 30)));
+        let events = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(events.context_menu_action, Some(32));
+        assert_eq!(events.context_menu_target, Some(ComponentId(3)));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_submenu_opens_and_activates_child_action() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 400, 300);
+        let mut tree = sample_tree();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(40, "Open").with_submenu(vec![
+                ContextMenuItem::new(41, "Open in new tab"),
+                ContextMenuItem::new(42, "Open in new window").with_enabled(false),
+                ContextMenuItem::new(43, "Open in private window"),
+            ]),
+            ContextMenuItem::new(44, "Properties"),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(20, 20)));
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::ArrowRight, false)
+                .context_menu_action,
+            None
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::ArrowDown, false)
+                .context_menu_action,
+            None
+        );
+        let event = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(event.context_menu_action, Some(43));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_home_and_end_select_first_and_last_enabled_commands() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 300, 160);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(70, "Disabled first").with_enabled(false),
+            ContextMenuItem::new(71, "Open"),
+            ContextMenuItem::new(72, "Disabled middle").with_enabled(false),
+            ContextMenuItem::new(73, "Delete"),
+            ContextMenuItem::new(74, "Disabled last").with_enabled(false),
+        ]);
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(71)
+        );
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(73)
+        );
+    }
+
+    #[test]
+    fn context_menu_home_and_end_navigate_nested_submenu_items() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![ContextMenuItem::new(80, "File").with_submenu(vec![
+            ContextMenuItem::new(81, "Disabled").with_enabled(false),
+            ContextMenuItem::new(82, "Export").with_submenu(vec![
+                ContextMenuItem::new(83, "Disabled PNG").with_enabled(false),
+                ContextMenuItem::new(84, "PNG"),
+                ContextMenuItem::new(85, "Disabled SVG").with_enabled(false),
+                ContextMenuItem::new(86, "SVG"),
+            ]),
+            ContextMenuItem::new(87, "Close"),
+        ])]);
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(86)
+        );
+
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Enter, false)
+                .context_menu_action,
+            Some(84)
+        );
+    }
+
+    #[test]
+    fn context_menu_keyboard_navigation_supports_three_nested_levels() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![ContextMenuItem::new(50, "File").with_submenu(vec![
+            ContextMenuItem::new(51, "Export").with_submenu(vec![
+                ContextMenuItem::new(52, "PNG"),
+                ContextMenuItem::new(53, "SVG"),
+            ]),
+        ])]);
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        let event = tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(event.context_menu_action, None);
+        let event = tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(event.context_menu_action, Some(53));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_pointer_navigation_opens_and_activates_nested_submenus() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 600, 240);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![ContextMenuItem::new(60, "File").with_submenu(vec![
+            ContextMenuItem::new(61, "Export").with_submenu(vec![
+                ContextMenuItem::new(62, "PNG"),
+                ContextMenuItem::new(63, "SVG"),
+            ]),
+        ])]);
+        assert!(tree.open_context_menu_at(Point::new(10, 10)));
+        tree.update_pointer(bounds, Some(Point::new(20, 20)), false, false);
+        tree.update_pointer(bounds, Some(Point::new(210, 20)), false, false);
+        let event = tree.update_pointer(bounds, Some(Point::new(410, 20)), false, true);
+        assert_eq!(event.context_menu_action, Some(62));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_opens_navigates_and_activates_enabled_commands() {
+        use super::ContextMenuItem;
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(10, "Open"),
+            ContextMenuItem::new(11, "Unavailable").with_enabled(false),
+            ContextMenuItem::new(12, "Delete"),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(20, 20)));
+        assert!(tree.context_menu_is_open());
+        tree.handle_key(Rect::new(0, 0, 200, 120), ComponentKey::ArrowDown, false);
+        let events = tree.handle_key(Rect::new(0, 0, 200, 120), ComponentKey::Enter, false);
+        assert_eq!(events.context_menu_action, Some(12));
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_pointer_selects_command_and_outside_click_dismisses() {
+        use super::ContextMenuItem;
+        let bounds = Rect::new(0, 0, 240, 160);
+        let mut tree = ComponentTree::default();
+        tree.set_context_menu(vec![
+            ContextMenuItem::new(21, "Copy"),
+            ContextMenuItem::new(22, "Paste"),
+        ]);
+        assert!(tree.open_context_menu_at(Point::new(12, 12)));
+        let events = tree.update_pointer(bounds, Some(Point::new(30, 44)), false, true);
+        assert_eq!(events.context_menu_action, Some(22));
+        assert!(!tree.context_menu_is_open());
+
+        tree.open_context_menu_at(Point::new(12, 12));
+        tree.update_pointer(bounds, Some(Point::new(220, 140)), false, true);
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn checked_tree_rejects_duplicate_ids_across_descendants() {
+        let duplicate = UiComponent::panel(ComponentId(90), StackLayout::default())
+            .with_children(vec![UiComponent::label(ComponentId(90), "duplicate")]);
+        assert!(matches!(
+            ComponentTree::try_new(vec![duplicate]),
+            Err(super::ComponentTreeError::DuplicateId(ComponentId(90)))
+        ));
+    }
+
+    #[test]
+    fn component_lifecycle_adds_and_removes_subtrees_and_text_state() {
+        let mut tree = ComponentTree::try_new(vec![UiComponent::panel(
+            ComponentId(91),
+            StackLayout::default(),
+        )])
+        .unwrap();
+        tree.add_child(
+            ComponentId(91),
+            UiComponent::text_input(ComponentId(92), "name", "hello"),
+        )
+        .unwrap();
+        assert!(tree.text_input_state(ComponentId(92)).is_some());
+        assert_eq!(
+            tree.add_root(UiComponent::label(ComponentId(92), "duplicate")),
+            Err(super::ComponentTreeError::DuplicateId(ComponentId(92)))
+        );
+        let removed = tree.remove(ComponentId(91)).unwrap();
+        assert_eq!(removed.id(), ComponentId(91));
+        assert!(tree.find(ComponentId(92)).is_none());
+        assert!(tree.text_input_state(ComponentId(92)).is_none());
+        assert!(tree.remove(ComponentId(91)).is_none());
+    }
+
+    #[test]
+    fn adding_child_to_missing_parent_returns_a_typed_error() {
+        let mut tree = ComponentTree::default();
+        assert_eq!(
+            tree.add_child(ComponentId(404), UiComponent::label(ComponentId(405), "x")),
+            Err(super::ComponentTreeError::ParentNotFound(ComponentId(404)))
+        );
+    }
+
+    #[test]
+    fn tree_layout_computes_nested_geometry_and_paint_order() {
+        let mut tree = sample_tree();
+        let bounds = Rect::new(10, 10, 100, 80);
+        let placed = tree.layout(bounds);
+        assert_eq!(placed.len(), 4);
+        assert_eq!(placed[0].id, ComponentId(1));
+        assert_eq!(placed[1].id, ComponentId(2));
+        assert_eq!(placed[1].bounds, Rect::new(12, 12, 96, 12));
+        assert_eq!(placed[2].bounds, Rect::new(12, 26, 96, 20));
+        assert_eq!(placed[3].bounds, Rect::new(12, 48, 96, 20));
+
+        // Repeated layout must preserve paint order and geometry without
+        // accumulating duplicate placed components or focus targets.
+        let first_layout = placed.to_vec();
+        assert_eq!(tree.layout(bounds), first_layout);
+        assert_eq!(tree.layout(bounds), first_layout);
+    }
+
+    #[test]
+    fn pointer_clicks_are_dispatched_to_component_identity() {
+        let mut tree = sample_tree();
+        let bounds = Rect::new(10, 10, 100, 80);
+        tree.update_pointer(bounds, Some(Point::new(20, 30)), true, false);
+        let events = tree.update_pointer(bounds, Some(Point::new(20, 30)), false, true);
+        assert_eq!(events.activated, Some(ComponentId(3)));
+        assert_eq!(events.focus_changed, None);
+    }
+
+    #[test]
+    fn home_and_end_focus_first_and_last_visible_enabled_components() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let root = UiComponent::panel(ComponentId(10), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
+                UiComponent::button(ComponentId(11), "First")
+                    .with_layout_item(LayoutItem::fixed(10)),
+                UiComponent::button(ComponentId(12), "Disabled")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_enabled(false),
+                UiComponent::button(ComponentId(13), "Hidden")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_visible(false),
+                UiComponent::button(ComponentId(14), "Last")
+                    .with_layout_item(LayoutItem::fixed(10)),
+            ]);
+        let mut tree = ComponentTree::new(vec![root]);
+
+        assert_eq!(
+            tree.focus_first(bounds).focus_changed,
+            Some(ComponentId(11))
+        );
+        assert_eq!(tree.focus_last(bounds).focus_changed, Some(ComponentId(14)));
+        assert_eq!(
+            tree.focus_first(bounds).focus_changed,
+            Some(ComponentId(11))
+        );
+    }
+
+    #[test]
+    fn home_and_end_keys_navigate_component_focus() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let mut tree = sample_tree();
+
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Home, false)
+                .focus_changed,
+            Some(ComponentId(3))
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::End, false)
+                .focus_changed,
+            Some(ComponentId(4))
+        );
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Home, false)
+                .focus_changed,
+            Some(ComponentId(3))
+        );
+    }
+
+    #[test]
+    fn home_and_end_cover_every_enabled_and_visible_focus_pattern() {
+        for count in 1..=7 {
+            let combinations = 3usize.pow(count);
+            for pattern in 0..combinations {
+                let mut encoded = pattern;
+                let mut expected = Vec::new();
+                let roots = (0..count)
+                    .map(|index| {
+                        let state = encoded % 3;
+                        encoded /= 3;
+                        let id = ComponentId(1_000 + index as u64);
+                        let enabled = state == 2;
+                        let visible = state != 0;
+                        if enabled {
+                            expected.push(id);
+                        }
+                        UiComponent::button(id, format!("Control {index}"))
+                            .with_layout_item(LayoutItem::fixed(8))
+                            .with_enabled(enabled)
+                            .with_visible(visible)
+                    })
+                    .collect();
+                let bounds = Rect::new(0, 0, 100, count * 8);
+                let mut tree = ComponentTree::new(roots);
+
+                tree.focus_first(bounds);
+                assert_eq!(
+                    tree.focused_component(),
+                    expected.first().copied(),
+                    "first focus mismatch: count={count}, pattern={pattern}"
+                );
+                let events = tree.focus_last(bounds);
+                assert_eq!(
+                    tree.focused_component(),
+                    expected.last().copied(),
+                    "last focus mismatch: count={count}, pattern={pattern}"
+                );
+                assert!(!events.focus_cleared);
+            }
+        }
+    }
+
+    #[test]
+    fn home_and_end_keep_text_input_caret_navigation_local() {
+        let id = ComponentId(150);
+        let bounds = Rect::new(0, 0, 100, 40);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Name", "hello").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(151), "Continue")
+                .with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        for _ in 0..5 {
+            assert!(tree.move_text_cursor(id, true, false));
+        }
+
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 0);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "hello".len());
+        assert_eq!(tree.focused_component(), Some(id));
+    }
+
+    #[test]
+    fn component_events_report_focus_cleared_when_focused_control_becomes_disabled() {
+        let id = ComponentId(152);
+        let bounds = Rect::new(0, 0, 100, 20);
+        let mut tree = ComponentTree::new(vec![UiComponent::button(id, "Only")]);
+        assert_eq!(tree.focus_first(bounds).focus_changed, Some(id));
+
+        assert!(tree.find_mut(id).unwrap().set_enabled(false));
+        let events = tree.update_pointer(bounds, None, false, false);
+
+        assert!(events.focus_cleared);
+        assert_eq!(events.focus_changed, None);
+        assert_eq!(tree.focused_component(), None);
+    }
+
+    #[test]
+    fn home_and_end_on_empty_component_tree_leave_focus_empty() {
+        let bounds = Rect::new(0, 0, 100, 80);
+        let mut tree = ComponentTree::default();
+
+        let home = tree.handle_key(bounds, ComponentKey::Home, false);
+        let end = tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(home.focus_changed, None);
+        assert!(!home.focus_cleared);
+        assert_eq!(end.focus_changed, None);
+        assert!(!end.focus_cleared);
+        assert_eq!(tree.focused_component(), None);
+    }
+
+    #[test]
+    fn keyboard_tab_and_activation_dispatch_to_component_identity() {
+        let mut tree = sample_tree();
+        let bounds = Rect::new(10, 10, 100, 80);
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(3))
+        );
+        assert_eq!(
+            tree.activate_focused(bounds).activated,
+            Some(ComponentId(3))
+        );
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(4))
+        );
+    }
+
+    #[test]
+    fn disabled_and_hidden_components_are_excluded_from_layout_and_tab_order() {
+        let root = UiComponent::panel(ComponentId(10), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
+                UiComponent::button(ComponentId(11), "Disabled")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_enabled(false),
+                UiComponent::button(ComponentId(12), "Hidden")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_visible(false),
+                UiComponent::button(ComponentId(13), "Visible")
+                    .with_layout_item(LayoutItem::fixed(10)),
+            ]);
+        let mut tree = ComponentTree::new(vec![root]);
+        let placed = tree.layout(Rect::new(0, 0, 40, 40));
+        assert_eq!(placed.len(), 3);
+        assert_eq!(placed[1].state, WidgetState::Disabled);
+        assert_eq!(placed[2].id, ComponentId(13));
+        assert_eq!(
+            tree.focus_next(Rect::new(0, 0, 40, 40), false)
+                .focus_changed,
+            Some(ComponentId(13))
+        );
+    }
+
+    #[test]
+    fn component_values_can_be_updated_by_stable_id() {
+        let mut tree = sample_tree();
+        assert!(tree.find_mut(ComponentId(4)).unwrap().set_checked(true));
+        assert!(tree
+            .find_mut(ComponentId(2))
+            .unwrap()
+            .set_text("Preferences"));
+        assert!(matches!(
+            tree.find(ComponentId(4)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: true, .. }
+        ));
+        assert!(matches!(
+            tree.find(ComponentId(2)).unwrap().kind(),
+            ComponentKind::Label { text } if text == "Preferences"
+        ));
+    }
+
+    #[test]
+    fn runtime_enabled_and_visible_changes_reconcile_layout_and_focus() {
+        let bounds = Rect::new(0, 0, 100, 60);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::button(ComponentId(101), "First").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(102), "Second").with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(101))
+        );
+        assert!(tree.set_enabled(ComponentId(101), false));
+        assert_eq!(tree.focused_component(), None);
+        assert_eq!(
+            tree.focus_next(bounds, false).focus_changed,
+            Some(ComponentId(102))
+        );
+        assert!(tree.set_visible(ComponentId(102), false));
+        let remaining = tree.layout(bounds);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, ComponentId(101));
+        assert_eq!(remaining[0].state, WidgetState::Disabled);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, None);
+        assert!(!tree.set_visible(ComponentId(102), false));
+        assert!(!tree.set_enabled(ComponentId(999), true));
+    }
+
+    #[test]
+    fn tree_value_setters_update_checkbox_label_and_text_input_state() {
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::checkbox(ComponentId(103), "Enabled", false),
+            UiComponent::label(ComponentId(104), "Old"),
+            UiComponent::text_input(ComponentId(105), "Name", "before"),
+        ]);
+        assert!(tree.set_checked(ComponentId(103), true));
+        assert!(tree.set_text(ComponentId(104), "New"));
+        assert!(tree.set_text(ComponentId(105), "after"));
+        assert_eq!(
+            tree.text_input_state(ComponentId(105)).unwrap().text(),
+            "after"
+        );
+        assert!(matches!(
+            tree.find(ComponentId(103)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: true, .. }
+        ));
+        assert!(matches!(
+            tree.find(ComponentId(104)).unwrap().kind(),
+            ComponentKind::Label { text } if text == "New"
+        ));
+        assert!(matches!(
+            tree.find(ComponentId(105)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "after"
+        ));
+        assert!(!tree.set_checked(ComponentId(104), true));
+        assert!(!tree.set_text(ComponentId(999), "missing"));
+    }
+
+    #[test]
+    fn checkbox_toggles_on_pointer_and_keyboard_activation() {
+        let bounds = Rect::new(10, 10, 100, 80);
+        let mut tree = sample_tree();
+        tree.update_pointer(bounds, Some(Point::new(20, 50)), true, false);
+        let events = tree.update_pointer(bounds, Some(Point::new(20, 50)), false, true);
+        assert_eq!(events.activated, Some(ComponentId(4)));
+        assert!(matches!(
+            tree.find(ComponentId(4)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: true, .. }
+        ));
+        tree.focus_next(bounds, false);
+        tree.focus_next(bounds, false);
+        tree.activate_focused(bounds);
+        assert!(matches!(
+            tree.find(ComponentId(4)).unwrap().kind(),
+            ComponentKind::Checkbox { checked: false, .. }
+        ));
+    }
+
+    #[test]
+    fn text_input_editing_preserves_unicode_and_rejects_other_components() {
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            ComponentId(30),
+            "Type here",
+            "café",
+        )]);
+        assert!(tree.insert_text(ComponentId(30), "🙂"));
+        assert!(matches!(
+            tree.find(ComponentId(30)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "café🙂"
+        ));
+        assert!(tree.backspace_text(ComponentId(30)));
+        assert!(matches!(
+            tree.find(ComponentId(30)).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "café"
+        ));
+        assert!(!tree.insert_text(ComponentId(999), "x"));
+    }
+
+    #[test]
+    fn retained_text_input_positions_caret_from_pointer_coordinates() {
+        let id = ComponentId(141);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "Search", "Aé🙂Z")]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let x = font.measure("Aé", 16.0).width + 0.01;
+
+        assert!(tree.set_text_input_cursor_from_x(id, &font, 16.0, x, false));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "Aé".len());
+        assert!(!tree.set_text_input_cursor_from_x(ComponentId(999), &font, 16.0, x, false));
+    }
+
+    #[test]
+    fn component_pointer_events_place_caret_drag_select_and_double_click() {
+        let id = ComponentId(143);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café monde",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let bounds = Rect::new(0, 0, 260, 40);
+        let y = 20;
+        let word_x = 8 + font.measure("Bonjour c", 16.0).width.round() as i32;
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(word_x, y)),
+            true,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "Bonjour c".len()
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(8, y)),
+            false,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, "Bonjour c".len()))
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(8, y)),
+            false,
+            true,
+            &font,
+            16.0,
+            1,
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(word_x, y)),
+            true,
+            false,
+            &font,
+            16.0,
+            2,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selected_text(),
+            Some("café")
+        );
+    }
+
+    #[test]
+    fn retained_text_input_pointer_supports_caret_drag_and_word_selection() {
+        let id = ComponentId(142);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café monde",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let word_x = font.measure("Bonjour c", 16.0).width + 0.1;
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 1));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "Bonjour c".len()
+        );
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, 0.0, true, 1));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, "Bonjour c".len()))
+        );
+
+        assert!(tree.handle_text_input_pointer(id, &font, 16.0, word_x, false, 2));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selected_text(),
+            Some("café")
+        );
+        assert!(!tree.handle_text_input_pointer(ComponentId(999), &font, 16.0, 0.0, false, 1));
+    }
+
+    #[test]
+    fn component_text_selection_continues_when_pointer_leaves_input_bounds() {
+        let id = ComponentId(144);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Sélection prolongée",
+        )]);
+        let bytes = include_bytes!("../tests/fixtures/NotoSansArabic[wdth,wght].ttf");
+        let font = FontFace::from_bytes(bytes).unwrap();
+        let bounds = Rect::new(0, 0, 180, 40);
+        let anchor = crate::ui::text_input_cursor_from_x(&font, "Sélection prolongée", 16.0, 12.0);
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(20, 20)),
+            true,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(400, 20)),
+            false,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((anchor, "Sélection prolongée".len()))
+        );
+
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(-40, 20)),
+            false,
+            false,
+            &font,
+            16.0,
+            1,
+        );
+        assert_eq!(
+            tree.text_input_state(id).unwrap().selection(),
+            Some((0, anchor))
+        );
+        tree.update_pointer_with_text_input(
+            bounds,
+            Some(Point::new(-40, 20)),
+            false,
+            true,
+            &font,
+            16.0,
+            1,
+        );
+    }
+
+    #[test]
+    fn retained_text_input_selects_unicode_words_by_byte_position() {
+        let id = ComponentId(140);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(
+            id,
+            "Search",
+            "Bonjour café 世界!",
+        )]);
+
+        assert!(tree.select_text_word_at(id, 9));
+        assert_eq!(
+            tree.text_input_state(id)
+                .and_then(|state| state.selected_text()),
+            Some("café")
+        );
+
+        assert!(tree.select_text_word_at(id, 14));
+        assert_eq!(
+            tree.text_input_state(id)
+                .and_then(|state| state.selected_text()),
+            Some("世")
+        );
+
+        assert!(!tree.select_text_word_at(id, 13));
+        assert_eq!(
+            tree.text_input_state(id)
+                .and_then(|state| state.selected_text()),
+            Some("世")
+        );
+        assert!(!tree.select_text_word_at(ComponentId(999), 0));
+    }
+
+    #[test]
+    fn cursor_and_selection_persist_between_text_edit_operations() {
+        let id = ComponentId(31);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "abcd")]);
+        assert!(tree.move_text_cursor(id, false, false));
+        assert!(tree.move_text_cursor(id, false, false));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 2);
+        assert!(tree.insert_text(id, "X"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "abXcd"
+        ));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 3);
+        assert!(tree.backspace_text(id));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "abcd"
+        ));
+        assert!(tree.select_all_text(id));
+        assert!(tree.insert_text(id, "é🙂"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "é🙂"
+        ));
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), "é🙂".len());
+    }
+
+    #[test]
+    fn keyboard_events_route_to_focused_text_input() {
+        let bounds = Rect::new(0, 0, 100, 40);
+        let id = ComponentId(32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::text_input(id, "Name", "AB").with_layout_item(LayoutItem::fixed(20)),
+            UiComponent::button(ComponentId(33), "OK").with_layout_item(LayoutItem::fixed(20)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        assert_eq!(tree.focused_text_input(), Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert!(tree.insert_text_focused("🙂"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "A🙂B"
+        ));
+        tree.handle_key(bounds, ComponentKey::Backspace, false);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "AB"
+        ));
+        assert_eq!(
+            tree.handle_key(bounds, ComponentKey::Tab, false)
+                .focus_changed,
+            Some(ComponentId(33))
+        );
+        assert_eq!(tree.focused_text_input(), None);
+    }
+
+    #[test]
+    fn external_text_updates_resynchronize_the_retained_cursor() {
+        let id = ComponentId(34);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "abc")]);
+        tree.move_text_cursor(id, false, false);
+        assert_eq!(tree.text_input_state(id).unwrap().cursor(), 2);
+        assert!(tree.find_mut(id).unwrap().set_text("updated"));
+        assert!(tree.insert_text(id, "!"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "updated!"
+        ));
+        assert_eq!(
+            tree.text_input_state(id).unwrap().cursor(),
+            "updated!".len()
+        );
+    }
+
+    #[test]
+    fn platform_text_events_keep_ime_preedit_separate_until_commit() {
+        let id = ComponentId(81);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "hello")]);
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionUpdate("に".into())));
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), Some("に"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "hello"
+        ));
+        assert!(
+            tree.handle_text_input_event(id, TextInputEvent::CompositionCommit("日本語".into()))
+        );
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), None);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value == "hello日本語"
+        ));
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionUpdate("x".into())));
+        assert!(tree.handle_text_input_event(id, TextInputEvent::CompositionCancel));
+        assert_eq!(tree.text_input_state(id).unwrap().composition(), None);
+    }
+
+    #[test]
+    fn clipboard_selection_can_be_copied_and_cut() {
+        let id = ComponentId(82);
+        let mut tree = ComponentTree::new(vec![UiComponent::text_input(id, "", "hello")]);
+        assert!(tree.select_all_text(id));
+        assert_eq!(tree.copy_selected_text(id).as_deref(), Some("hello"));
+        assert_eq!(tree.cut_selected_text(id).as_deref(), Some("hello"));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::TextInput { value, .. } if value.is_empty()
+        ));
+        assert_eq!(tree.copy_selected_text(id), None);
+    }
+
+    #[test]
+    fn retained_combo_box_supports_focus_keyboard_open_highlight_and_selection() {
+        let id = ComponentId(120);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["First".into(), "Second".into(), "Third".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert!(tree.combo_states[&id].is_open());
+        assert_eq!(tree.combo_states[&id].highlighted(), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.combo_states[&id].highlighted(), Some(1));
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_combo_box_escape_closes_without_changing_selection() {
+        let id = ComponentId(121);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["A".into(), "B".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+        tree.focus_next(bounds, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::Escape, false);
+        assert_eq!(tree.combo_box_selected(id), None);
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_tabs_support_focus_and_bounded_keyboard_navigation() {
+        let id = ComponentId(122);
+        let bounds = Rect::new(0, 0, 180, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["General".into(), "Display".into(), "Input".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.tabs_selected(id), Some(1));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        tree.handle_key(bounds, ComponentKey::ArrowLeft, false);
+        assert_eq!(tree.tabs_selected(id), Some(0));
+    }
+
+    #[test]
+    fn retained_combo_box_selects_popup_rows_with_pointer() {
+        let id = ComponentId(123);
+        let bounds = Rect::new(0, 0, 160, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["First".into(), "Second".into(), "Third".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+        tree.focus_next(bounds, false);
+        tree.handle_key(bounds, ComponentKey::Enter, false);
+
+        let second_row = Point::new(20, 36 + 28 + 8);
+        tree.update_pointer(bounds, Some(second_row), true, false);
+        tree.update_pointer(bounds, Some(second_row), false, true);
+
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+        assert!(!tree.combo_states[&id].is_open());
+    }
+
+    #[test]
+    fn retained_tabs_select_the_clicked_tab_with_pointer() {
+        let id = ComponentId(124);
+        let bounds = Rect::new(0, 0, 180, 36);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["General".into(), "Display".into(), "Input".into()],
+        )
+        .with_layout_item(LayoutItem::fixed(36))]);
+
+        let third_tab = Point::new(150, 18);
+        tree.update_pointer(bounds, Some(third_tab), true, false);
+        let events = tree.update_pointer(bounds, Some(third_tab), false, true);
+
+        assert_eq!(events.activated, Some(id));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+    }
+
+    #[test]
+    fn retained_switch_toggles_with_pointer_and_keyboard() {
+        let id = ComponentId(130);
+        let bounds = Rect::new(0, 0, 120, 32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::switch(id, "Wi-Fi", false).with_layout_item(LayoutItem::fixed(32))
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.activate_focused(bounds);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::Switch { enabled: true, .. }
+        ));
+        tree.update_pointer(bounds, Some(Point::new(10, 16)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 16)), false, true);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::Switch { enabled: false, .. }
+        ));
+    }
+
+    #[test]
+    fn retained_radio_buttons_are_exclusive_within_their_group() {
+        let first = ComponentId(131);
+        let second = ComponentId(132);
+        let bounds = Rect::new(0, 0, 120, 64);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::radio_button(first, "One", 7, true)
+                .with_layout_item(LayoutItem::fixed(32)),
+            UiComponent::radio_button(second, "Two", 7, false)
+                .with_layout_item(LayoutItem::fixed(32)),
+        ]);
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(first));
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(second));
+        tree.activate_focused(bounds);
+        assert!(matches!(
+            tree.find(first).unwrap().kind(),
+            ComponentKind::RadioButton {
+                selected: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            tree.find(second).unwrap().kind(),
+            ComponentKind::RadioButton { selected: true, .. }
+        ));
+    }
+
+    #[test]
+    fn retained_slider_clamps_values_and_supports_keyboard_and_pointer() {
+        let id = ComponentId(133);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![
+            UiComponent::slider(id, "Volume", 0, 10, 4).with_layout_item(LayoutItem::fixed(32))
+        ]);
+        assert_eq!(tree.slider_value(id), Some(4));
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowRight, false);
+        assert_eq!(tree.slider_value(id), Some(5));
+        assert!(tree.set_slider_value(id, 99));
+        assert_eq!(tree.slider_value(id), Some(10));
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), false, true);
+        assert_eq!(tree.slider_value(id), Some(0));
+    }
+
+    #[test]
+    fn retained_slider_tracks_pointer_motion_while_dragging() {
+        let id = ComponentId(134);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree =
+            ComponentTree::new(vec![UiComponent::slider(id, "Volume", 0, 100, 0)
+                .with_layout_item(LayoutItem::fixed(32))]);
+
+        tree.update_pointer(bounds, Some(Point::new(0, 16)), true, false);
+        assert_eq!(tree.slider_value(id), Some(0));
+
+        tree.update_pointer(bounds, Some(Point::new(50, 16)), false, false);
+        assert_eq!(tree.slider_value(id), Some(50));
+
+        tree.update_pointer(bounds, Some(Point::new(90, 16)), false, false);
+        assert_eq!(tree.slider_value(id), Some(90));
+
+        tree.update_pointer(bounds, Some(Point::new(90, 16)), false, true);
+        assert_eq!(tree.slider_value(id), Some(90));
+    }
+
+    #[test]
+    fn retained_list_view_supports_pointer_selection_keyboard_and_scroll() {
+        let id = ComponentId(135);
+        let bounds = Rect::new(0, 0, 100, 64);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec![
+                "One".into(),
+                "Two".into(),
+                "Three".into(),
+                "Four".into(),
+                "Five".into(),
+            ],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(64))]);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.update_pointer(bounds, Some(Point::new(10, 40)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 40)), false, true);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+
+        tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+
+        assert!(tree.set_list_view_scroll(id, 16));
+        tree.update_pointer(bounds, Some(Point::new(10, 8)), true, false);
+        tree.update_pointer(bounds, Some(Point::new(10, 8)), false, true);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+    }
+
+    #[test]
+    fn retained_list_view_scrolls_under_pointer_and_clamps_to_content() {
+        let id = ComponentId(136);
+        let bounds = Rect::new(0, 0, 100, 48);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..10).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(48))]);
+        tree.layout(bounds);
+
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), 32));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 32,
+                ..
+            }
+        ));
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), -16));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+        assert!(tree.scroll_list_view_at(Point::new(10, 20), i32::MAX));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 112,
+                ..
+            }
+        ));
+        assert!(!tree.scroll_list_view_at(Point::new(150, 20), 16));
+    }
+
+    #[test]
+    fn retained_list_view_supports_programmatic_selection() {
+        let id = ComponentId(136);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert!(tree.set_list_view_selected(id, Some(4)));
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+
+        assert!(!tree.set_list_view_selected(id, Some(5)));
+        assert_eq!(tree.list_view_selected(id), Some(4));
+
+        assert!(tree.set_list_view_selected(id, None));
+        assert_eq!(tree.list_view_selected(id), None);
+        assert!(!tree.set_list_view_selected(ComponentId(999), Some(0)));
+    }
+
+    #[test]
+    fn retained_list_view_keeps_keyboard_selection_visible() {
+        let id = ComponentId(137);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_home_and_end_select_visible_boundaries() {
+        let id = ComponentId(139);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..5).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        tree.handle_key(bounds, ComponentKey::End, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::Home, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_moves_rows_and_preserves_selected_item() {
+        let id = ComponentId(145);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+        assert!(tree.set_list_view_selected(id, Some(1)));
+
+        assert!(tree.move_list_view_item(id, 1, 3));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["A", "C", "D", "B"]);
+        assert_eq!(tree.list_view_selected(id), Some(3));
+
+        assert!(tree.move_list_view_item(id, 0, 2));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["C", "D", "A", "B"]);
+        assert_eq!(tree.list_view_selected(id), Some(3));
+
+        assert!(!tree.move_list_view_item(id, 2, 2));
+        assert!(!tree.move_list_view_item(id, 99, 0));
+        assert!(!tree.move_list_view_item(id, 0, 99));
+    }
+
+    #[test]
+    fn retained_list_view_inserts_and_removes_rows_without_losing_selection() {
+        let id = ComponentId(144);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+        assert!(tree.set_list_view_selected(id, Some(1)));
+
+        assert!(tree.insert_list_view_item(id, 0, "Start"));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["Start", "A", "B", "C"]);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(!tree.insert_list_view_item(id, 99, "Invalid"));
+
+        assert_eq!(tree.remove_list_view_item(id, 2).as_deref(), Some("B"));
+        assert_eq!(tree.list_view_items(id).unwrap(), ["Start", "A", "C"]);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert_eq!(tree.remove_list_view_item(id, 99), None);
+        assert_eq!(tree.remove_list_view_item(id, 2).as_deref(), Some("C"));
+        assert_eq!(tree.list_view_selected(id), Some(1));
+        assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("Start"));
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert_eq!(tree.remove_list_view_item(id, 0).as_deref(), Some("A"));
+        assert_eq!(tree.list_view_selected(id), None);
+    }
+
+    #[test]
+    fn retained_tabs_labels_and_selection_can_be_updated() {
+        let id = ComponentId(147);
+        let mut tree = ComponentTree::new(vec![UiComponent::tabs(
+            id,
+            vec!["Home".into(), "Settings".into(), "About".into()],
+        )]);
+        assert_eq!(
+            tree.tabs_labels(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["Home", "Settings", "About"]
+        );
+        assert!(tree.set_tabs_selected(id, 2));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+        assert!(!tree.set_tabs_selected(id, 3));
+        assert!(!tree.set_tabs_selected(id, 99));
+        assert_eq!(tree.tabs_selected(id), Some(2));
+
+        assert!(tree.set_tabs_labels(id, vec!["First".into(), "Second".into()]));
+        assert_eq!(tree.tabs_selected(id), Some(1));
+        assert!(tree.set_tabs_selected(id, 0));
+        assert!(tree.set_tabs_labels(id, vec!["Only".into()]));
+        assert_eq!(tree.tabs_selected(id), Some(0));
+        assert!(tree.set_tabs_labels(id, Vec::new()));
+        assert!(tree.tabs_labels(id).unwrap().is_empty());
+        assert_eq!(tree.tabs_selected(id), None);
+        assert!(!tree.set_tabs_labels(ComponentId(999), vec!["Missing".into()]));
+    }
+
+    #[test]
+    fn retained_combo_box_items_and_selection_can_be_updated() {
+        let id = ComponentId(146);
+        let mut tree = ComponentTree::new(vec![UiComponent::combo_box(
+            id,
+            vec!["One".into(), "Two".into(), "Three".into()],
+        )]);
+        assert_eq!(
+            tree.combo_box_items(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["One", "Two", "Three"]
+        );
+        // Combo boxes start without a committed selection; opening the popup
+        // highlights the first item without selecting it.
+        assert_eq!(tree.combo_box_selected(id), None);
+
+        assert!(tree.set_combo_box_selected(id, Some(2)));
+        assert_eq!(tree.combo_box_selected(id), Some(2));
+        assert!(!tree.set_combo_box_selected(id, Some(3)));
+        assert!(!tree.set_combo_box_selected(id, Some(99)));
+        assert!(tree.set_combo_box_selected(id, None));
+        assert_eq!(tree.combo_box_selected(id), None);
+
+        assert!(tree.set_combo_box_selected(id, Some(1)));
+        assert!(tree.set_combo_box_items(id, vec!["A".into(), "B".into()]));
+        assert_eq!(
+            tree.combo_box_items(id)
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["A", "B"]
+        );
+        assert_eq!(tree.combo_box_selected(id), Some(1));
+
+        assert!(tree.set_combo_box_items(id, vec!["Only".into()]));
+        assert_eq!(tree.combo_box_selected(id), Some(0));
+        assert!(tree.set_combo_box_items(id, Vec::new()));
+        assert!(tree.combo_box_items(id).unwrap().is_empty());
+        assert_eq!(tree.combo_box_selected(id), None);
+        assert!(!tree.set_combo_box_items(ComponentId(999), vec!["X".into()]));
+    }
+
+    #[test]
+    fn retained_list_view_row_height_resizes_and_clamps_scroll() {
+        let id = ComponentId(143);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..8).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(48))]);
+        tree.layout(Rect::new(0, 0, 100, 48));
+        assert!(tree.set_list_view_scroll(id, 64));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(64));
+
+        assert!(tree.set_list_view_row_height(id, 8));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(16));
+        assert!(!tree.set_list_view_row_height(id, 8));
+        assert!(!tree.set_list_view_row_height(ComponentId(999), 12));
+        assert!(tree.set_list_view_row_height(id, 0));
+        assert_eq!(
+            tree.find(id).map(|component| component.kind()),
+            Some(&ComponentKind::ListView {
+                items: (0..8).map(|index| format!("Row {index}")).collect(),
+                row_height: 1,
+                scroll_offset: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn retained_list_view_exposes_rows_and_scroll_offset() {
+        let id = ComponentId(142);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(Rect::new(0, 0, 100, 32));
+
+        assert_eq!(
+            tree.list_view_items(id),
+            Some(["A", "B", "C", "D"].map(str::to_owned).as_slice())
+        );
+        assert_eq!(tree.list_view_scroll_offset(id), Some(0));
+        assert_eq!(tree.list_view_items(ComponentId(999)), None);
+        assert_eq!(tree.list_view_scroll_offset(ComponentId(999)), None);
+
+        assert!(tree.set_list_view_scroll(id, 16));
+        assert_eq!(tree.list_view_scroll_offset(id), Some(16));
+    }
+
+    #[test]
+    fn retained_list_view_replaces_rows_and_clamps_selection_and_scroll() {
+        let id = ComponentId(141);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..8).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+        tree.set_list_view_selected(id, Some(6));
+        assert_eq!(tree.list_view_selected(id), Some(6));
+
+        assert!(tree.set_list_view_items(id, (0..3).map(|index| format!("New {index}")).collect(),));
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 16, items, .. }
+                if items == &vec!["New 0", "New 1", "New 2"]
+        ));
+
+        assert!(tree.set_list_view_items(id, Vec::new()));
+        assert_eq!(tree.list_view_selected(id), None);
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView { scroll_offset: 0, items, .. } if items.is_empty()
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_page_keys_move_by_visible_rows() {
+        let id = ComponentId(140);
+        let bounds = Rect::new(0, 0, 100, 32);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..10).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(32))]);
+        tree.layout(bounds);
+        tree.focus_next(bounds, false);
+
+        tree.handle_key(bounds, ComponentKey::PageDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::PageDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(4));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 48,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::PageUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(2));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn retained_list_view_selection_stays_visible_across_viewport_and_row_sizes() {
+        let item_count = 64_usize;
+        for viewport_height in 1..=32_u32 {
+            for row_height in 1..=16_u32 {
+                let id = ComponentId(20_000);
+                let bounds = Rect::new(0, 0, 128, viewport_height);
+                let items = (0..item_count)
+                    .map(|index| format!("Row {index}"))
+                    .collect();
+                let mut tree =
+                    ComponentTree::new(vec![UiComponent::list_view(id, items, row_height)
+                        .with_layout_item(LayoutItem::fixed(viewport_height))]);
+                tree.layout(bounds);
+                tree.focus_next(bounds, false);
+
+                let assert_selection_visible = |tree: &ComponentTree| {
+                    let selected = tree.list_view_selected(id).unwrap() as u32;
+                    let offset = tree.list_view_scroll_offset(id).unwrap();
+                    let row_top = selected * row_height;
+                    if row_height >= viewport_height {
+                        assert_eq!(offset, row_top);
+                    } else {
+                        assert!(row_top >= offset);
+                        assert!(
+                            row_top.saturating_add(row_height)
+                                <= offset.saturating_add(viewport_height)
+                        );
+                    }
+                };
+
+                for _ in 0..item_count {
+                    tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..item_count {
+                    tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..16 {
+                    tree.handle_key(bounds, ComponentKey::PageDown, false);
+                    assert_selection_visible(&tree);
+                }
+                for _ in 0..16 {
+                    tree.handle_key(bounds, ComponentKey::PageUp, false);
+                    assert_selection_visible(&tree);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn retained_list_view_keeps_tall_selected_rows_stably_top_aligned() {
+        let id = ComponentId(138);
+        let bounds = Rect::new(0, 0, 100, 8);
+        let mut tree = ComponentTree::new(vec![UiComponent::list_view(
+            id,
+            (0..3).map(|index| format!("Row {index}")).collect(),
+            16,
+        )
+        .with_layout_item(LayoutItem::fixed(8))]);
+        tree.layout(bounds);
+
+        assert_eq!(tree.focus_next(bounds, false).focus_changed, Some(id));
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowDown, false);
+        assert_eq!(tree.list_view_selected(id), Some(1));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 16,
+                ..
+            }
+        ));
+
+        tree.handle_key(bounds, ComponentKey::ArrowUp, false);
+        assert_eq!(tree.list_view_selected(id), Some(0));
+        assert!(matches!(
+            tree.find(id).unwrap().kind(),
+            ComponentKind::ListView {
+                scroll_offset: 0,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn context_menu_shortcuts_match_modifiers_and_activate_submenu_commands() {
+        let child = ContextMenuItem::new(902, "Save as").with_shortcut(
+            ContextMenuShortcut::new('s')
+                .with_control(true)
+                .with_shift(true),
+        );
+        let parent = ContextMenuItem::new(901, "File").with_submenu(vec![child]);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![parent]);
+
+        assert!(tree
+            .activate_context_menu_shortcut('s', true, false, false)
+            .is_none());
+        let events = tree
+            .activate_context_menu_shortcut('S', true, false, true)
+            .unwrap();
+        assert_eq!(events.context_menu_action, Some(902));
+        assert_eq!(events.context_menu_target, None);
+        assert!(!tree.context_menu_is_open());
+    }
+
+    #[test]
+    fn context_menu_shortcuts_find_commands_at_arbitrary_submenu_depth() {
+        let nested = ContextMenuItem::new(905, "Export").with_submenu(vec![ContextMenuItem::new(
+            906,
+            "As archive",
+        )
+        .with_submenu(vec![ContextMenuItem::new(907, "Compressed")
+            .with_shortcut(ContextMenuShortcut::new('e').with_control(true))])]);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![nested]);
+
+        let events = tree
+            .activate_context_menu_shortcut('e', true, false, false)
+            .unwrap();
+        assert_eq!(events.context_menu_action, Some(907));
+    }
+
+    #[test]
+    fn context_menu_item_label_includes_shortcut_and_submenu_indicator() {
+        let item = ContextMenuItem::new(908, "Save")
+            .with_shortcut(
+                ContextMenuShortcut::new('s')
+                    .with_control(true)
+                    .with_shift(true),
+            )
+            .with_submenu(vec![ContextMenuItem::new(909, "More")]);
+        assert_eq!(
+            super::format_context_menu_item_label(&item),
+            "Save  >    Ctrl+Shift+S"
+        );
+    }
+
+    #[test]
+    fn disabled_context_menu_shortcuts_do_not_activate() {
+        let item = ContextMenuItem::new(903, "Unavailable")
+            .with_shortcut(ContextMenuShortcut::new('u').with_control(true))
+            .with_enabled(false);
+        let mut tree = ComponentTree::new(Vec::new());
+        tree.set_context_menu(vec![item]);
+        assert!(tree
+            .activate_context_menu_shortcut('u', true, false, false)
+            .is_none());
+    }
+
+    #[test]
+    fn layout_capacity_can_be_reserved_before_the_first_frame() {
+        let mut tree = ComponentTree::new(vec![UiComponent::button(ComponentId(910), "Ready")]);
+        tree.try_reserve_layout_capacity(32).unwrap();
+
+        assert!(tree.placed.capacity() >= 32);
+        assert!(tree.focusable_ids.capacity() >= 32);
+        assert!(tree.focusable_bounds.capacity() >= 32);
+
+        let capacity = tree.placed.capacity();
+        tree.layout(Rect::new(0, 0, 100, 40));
+        assert_eq!(tree.placed.capacity(), capacity);
+    }
+
+    #[test]
+    fn try_layout_reserves_visible_tree_and_reuses_frame_buffers() {
+        let child = UiComponent::button(ComponentId(912), "Child");
+        let root =
+            UiComponent::panel(ComponentId(911), StackLayout::default()).with_children(vec![child]);
+        let mut tree = ComponentTree::new(vec![
+            root,
+            UiComponent::button(ComponentId(913), "Hidden").with_visible(false),
+        ]);
+
+        let placed = tree.try_layout(Rect::new(0, 0, 200, 100)).unwrap();
+        assert_eq!(placed.len(), 2);
+        let capacity = tree.placed.capacity();
+
+        let placed = tree.try_layout(Rect::new(0, 0, 200, 100)).unwrap();
+        assert_eq!(placed.len(), 2);
+        assert_eq!(tree.placed.capacity(), capacity);
+    }
+
+    #[test]
+    fn hidden_children_do_not_consume_layout_space() {
+        let root = UiComponent::panel(ComponentId(20), StackLayout::new(LayoutDirection::Vertical))
+            .with_children(vec![
+                UiComponent::button(ComponentId(21), "Hidden")
+                    .with_layout_item(LayoutItem::fixed(10))
+                    .with_visible(false),
+                UiComponent::button(ComponentId(22), "Visible")
+                    .with_layout_item(LayoutItem::fixed(10)),
+            ]);
+        let mut tree = ComponentTree::new(vec![root]);
+        let placed = tree.layout(Rect::new(0, 0, 50, 30));
+        assert_eq!(placed.len(), 2);
+        assert_eq!(placed[1].id, ComponentId(22));
+        assert_eq!(placed[1].bounds.y, 0);
+    }
+}

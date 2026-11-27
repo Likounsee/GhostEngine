@@ -1,0 +1,353 @@
+//! 2D affine transformations using column vectors and row-major storage.
+//!
+//! A point is transformed as x' = m11*x + m12*y + tx,
+//! y' = m21*x + m22*y + ty. Composition follows matrix multiplication:
+//! `a.then(b)` applies `a` first, then `b`.
+
+use crate::Vector;
+
+/// A 2D affine transformation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Transform2D {
+    pub m11: f32,
+    pub m12: f32,
+    pub m21: f32,
+    pub m22: f32,
+    pub tx: f32,
+    pub ty: f32,
+}
+
+impl Default for Transform2D {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
+impl Transform2D {
+    pub const IDENTITY: Self = Self {
+        m11: 1.0,
+        m12: 0.0,
+        m21: 0.0,
+        m22: 1.0,
+        tx: 0.0,
+        ty: 0.0,
+    };
+
+    #[must_use]
+    pub const fn new(m11: f32, m12: f32, m21: f32, m22: f32, tx: f32, ty: f32) -> Self {
+        Self {
+            m11,
+            m12,
+            m21,
+            m22,
+            tx,
+            ty,
+        }
+    }
+
+    #[must_use]
+    pub const fn translation(x: f32, y: f32) -> Self {
+        Self::new(1.0, 0.0, 0.0, 1.0, x, y)
+    }
+
+    #[must_use]
+    pub const fn scale(x: f32, y: f32) -> Self {
+        Self::new(x, 0.0, 0.0, y, 0.0, 0.0)
+    }
+
+    #[must_use]
+    pub fn rotation(radians: f32) -> Self {
+        let (sin, cos) = radians.sin_cos();
+        Self::new(cos, -sin, sin, cos, 0.0, 0.0)
+    }
+
+    #[must_use]
+    pub fn around(origin: Vector, transform: Self) -> Self {
+        Self::translation(-origin.x, -origin.y)
+            .then(transform)
+            .then(Self::translation(origin.x, origin.y))
+    }
+
+    #[must_use]
+    pub fn transform_point(self, point: Vector) -> Vector {
+        Vector::new(
+            self.m11 * point.x + self.m12 * point.y + self.tx,
+            self.m21 * point.x + self.m22 * point.y + self.ty,
+        )
+    }
+
+    #[must_use]
+    pub fn transform_vector(self, vector: Vector) -> Vector {
+        Vector::new(
+            self.m11 * vector.x + self.m12 * vector.y,
+            self.m21 * vector.x + self.m22 * vector.y,
+        )
+    }
+
+    /// Returns the composition that applies self, then next.
+    #[must_use]
+    pub fn then(self, next: Self) -> Self {
+        Self::new(
+            next.m11 * self.m11 + next.m12 * self.m21,
+            next.m11 * self.m12 + next.m12 * self.m22,
+            next.m21 * self.m11 + next.m22 * self.m21,
+            next.m21 * self.m12 + next.m22 * self.m22,
+            next.m11 * self.tx + next.m12 * self.ty + next.tx,
+            next.m21 * self.tx + next.m22 * self.ty + next.ty,
+        )
+    }
+
+    #[must_use]
+    pub fn determinant(self) -> f32 {
+        self.m11 * self.m22 - self.m12 * self.m21
+    }
+
+    /// Returns None for singular or non-finite matrices.
+    #[must_use]
+    pub fn inverse(self) -> Option<Self> {
+        if !self.is_finite() {
+            return None;
+        }
+
+        // Normalize the linear part before computing its determinant. The
+        // direct determinant can overflow for large, valid scales or
+        // underflow to zero for small, invertible scales.
+        let scale = self
+            .m11
+            .abs()
+            .max(self.m12.abs())
+            .max(self.m21.abs())
+            .max(self.m22.abs());
+        if scale == 0.0 {
+            return None;
+        }
+
+        let m11 = self.m11 / scale;
+        let m12 = self.m12 / scale;
+        let m21 = self.m21 / scale;
+        let m22 = self.m22 / scale;
+        let normalized_det = m11 * m22 - m12 * m21;
+        if !normalized_det.is_finite() || normalized_det == 0.0 {
+            return None;
+        }
+
+        let inverse_scale = 1.0 / scale;
+        let inverse_factor = inverse_scale / normalized_det;
+        let a = m22 * inverse_factor;
+        let b = -m12 * inverse_factor;
+        let c = -m21 * inverse_factor;
+        let d = m11 * inverse_factor;
+        let inverse = Self::new(
+            a,
+            b,
+            c,
+            d,
+            -(a * self.tx + b * self.ty),
+            -(c * self.tx + d * self.ty),
+        );
+        inverse.is_finite().then_some(inverse)
+    }
+
+    #[must_use]
+    pub fn is_finite(self) -> bool {
+        [self.m11, self.m12, self.m21, self.m22, self.tx, self.ty]
+            .iter()
+            .all(|v| v.is_finite())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Transform2D;
+    use crate::Vector;
+
+    fn close(a: f32, b: f32) {
+        assert!((a - b).abs() < 0.0001, "{a} != {b}");
+    }
+
+    #[test]
+    fn identity_preserves_points_and_vectors() {
+        let p = Vector::new(3.0, -4.0);
+        assert_eq!(Transform2D::IDENTITY.transform_point(p), p);
+        assert_eq!(Transform2D::IDENTITY.transform_vector(p), p);
+    }
+
+    #[test]
+    fn translation_does_not_affect_vectors() {
+        let t = Transform2D::translation(5.0, -2.0);
+        assert_eq!(
+            t.transform_point(Vector::new(1.0, 2.0)),
+            Vector::new(6.0, 0.0)
+        );
+        assert_eq!(
+            t.transform_vector(Vector::new(1.0, 2.0)),
+            Vector::new(1.0, 2.0)
+        );
+    }
+
+    #[test]
+    fn rotation_and_non_uniform_scale_work() {
+        let p = Transform2D::rotation(core::f32::consts::FRAC_PI_2)
+            .transform_point(Vector::new(2.0, 0.0));
+        close(p.x, 0.0);
+        close(p.y, 2.0);
+        assert_eq!(
+            Transform2D::scale(2.0, 3.0).transform_point(Vector::new(2.0, 2.0)),
+            Vector::new(4.0, 6.0)
+        );
+    }
+
+    #[test]
+    fn composition_applies_in_documented_order() {
+        let t = Transform2D::translation(2.0, 0.0).then(Transform2D::scale(3.0, 3.0));
+        assert_eq!(
+            t.transform_point(Vector::new(1.0, 0.0)),
+            Vector::new(9.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn inverse_round_trips_points() {
+        let t = Transform2D::translation(7.0, -3.0)
+            .then(Transform2D::rotation(0.7))
+            .then(Transform2D::scale(2.0, 0.5));
+        let p = Vector::new(12.0, -8.0);
+        let restored = t.inverse().unwrap().transform_point(t.transform_point(p));
+        close(restored.x, p.x);
+        close(restored.y, p.y);
+    }
+
+    #[test]
+    fn singular_and_non_finite_transforms_have_no_inverse() {
+        assert!(Transform2D::scale(0.0, 1.0).inverse().is_none());
+        assert!(Transform2D::new(f32::NAN, 0.0, 0.0, 1.0, 0.0, 0.0)
+            .inverse()
+            .is_none());
+    }
+
+    #[test]
+    fn inverse_accepts_small_but_well_conditioned_scales() {
+        let transform = Transform2D::scale(0.0001, 0.0001);
+        let inverse = transform.inverse().expect("non-zero scale is invertible");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
+    }
+
+    #[test]
+    fn inverse_handles_large_well_conditioned_scales_without_determinant_overflow() {
+        let transform = Transform2D::scale(1.0e20, 1.0e20);
+        let inverse = transform.inverse().expect("inverse is representable");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
+    }
+
+    #[test]
+    fn inverse_handles_tiny_well_conditioned_scales_without_determinant_underflow() {
+        let transform = Transform2D::scale(1.0e-30, 1.0e-30);
+        let inverse = transform.inverse().expect("inverse is representable");
+        let restored = inverse.transform_point(transform.transform_point(Vector::new(3.0, -4.0)));
+        close(restored.x, 3.0);
+        close(restored.y, -4.0);
+    }
+
+    #[test]
+    fn inverse_rejects_finite_inputs_that_overflow_the_result() {
+        let transform = Transform2D::new(0.5, 0.0, 0.0, 0.5, f32::MAX, f32::MAX);
+        assert!(transform.is_finite());
+        assert!(transform.inverse().is_none());
+    }
+
+    #[test]
+    fn around_keeps_the_origin_fixed() {
+        let origin = Vector::new(4.0, 6.0);
+        let t = Transform2D::around(origin, Transform2D::scale(2.0, 2.0));
+        let result = t.transform_point(origin);
+        close(result.x, origin.x);
+        close(result.y, origin.y);
+    }
+
+    fn next_random(seed: &mut u64) -> f32 {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        ((*seed >> 40) as f32 / (1_u32 << 24) as f32) * 2.0 - 1.0
+    }
+
+    #[test]
+    fn randomized_composition_matches_sequential_point_transforms() {
+        let mut seed = 0x6a09_e667_f3bc_c909_u64;
+        for _ in 0..2_000 {
+            let first = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let second = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                    0.25 + next_random(&mut seed).abs() * 4.0,
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let point = Vector::new(
+                next_random(&mut seed) * 100.0,
+                next_random(&mut seed) * 100.0,
+            );
+
+            let sequential = second.transform_point(first.transform_point(point));
+            let composed = first.then(second).transform_point(point);
+            assert!(
+                (sequential.x - composed.x).abs() < 0.002
+                    && (sequential.y - composed.y).abs() < 0.002,
+                "sequential={sequential:?}, composed={composed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn randomized_inverses_round_trip_points_across_rotations_and_reflections() {
+        let mut seed = 0xbb67_ae85_84ca_a73b_u64;
+        for _ in 0..2_000 {
+            let transform = Transform2D::rotation(next_random(&mut seed) * 3.0)
+                .then(Transform2D::scale(
+                    (0.1 + next_random(&mut seed).abs() * 5.0)
+                        * if next_random(&mut seed) < 0.0 {
+                            -1.0
+                        } else {
+                            1.0
+                        },
+                    (0.1 + next_random(&mut seed).abs() * 5.0)
+                        * if next_random(&mut seed) < 0.0 {
+                            -1.0
+                        } else {
+                            1.0
+                        },
+                ))
+                .then(Transform2D::translation(
+                    next_random(&mut seed) * 100.0,
+                    next_random(&mut seed) * 100.0,
+                ));
+            let point = Vector::new(
+                next_random(&mut seed) * 100.0,
+                next_random(&mut seed) * 100.0,
+            );
+            let restored = transform
+                .inverse()
+                .expect("generated transform must be invertible")
+                .transform_point(transform.transform_point(point));
+
+            assert!(
+                (restored.x - point.x).abs() < 0.002 && (restored.y - point.y).abs() < 0.002,
+                "original={point:?}, restored={restored:?}, transform={transform:?}"
+            );
+        }
+    }
+}

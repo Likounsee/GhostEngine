@@ -1,0 +1,31 @@
+[package]
+default-run = "amethyst-launcher-test"
+name = "amethyst-preview"
+version = "0.1.0"
+edition = "2021"
+description = "Headless GhostEngine rendering of the Amethyst Launcher page mockups (store, library, product, settings)."
+license = "UNLICENSED"
+
+[lib]
+name = "amethyst_preview"
+path = "src/lib.rs"
+
+[[bin]]
+name = "amethyst-launcher-test"
+path = "src/window_main.rs"
+required-features = ["window"]
+
+[[bin]]
+name = "gen-covers"
+path = "src/bin/gen_covers.rs"
+
+[features]
+default = ["window"]
+# Interactive window (winit + softbuffer) built on GhostEngine's native-window feature.
+window = ["ghostengine/native-window"]
+
+[dependencies]
+ghostengine = { path = "../ghostengine/crates/ghostengine", features = ["image-decoding"] }
+png = "0.17"
+
+[workspace]
