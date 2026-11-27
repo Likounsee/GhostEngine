@@ -4402,4 +4402,3 @@ mod damage_region_memory_lifecycle_tests {
         assert!(damage.is_empty());
     }
 }
-
