@@ -2693,8 +2693,12 @@ impl RasterizerScratch {
         self.ellipse_aa_sources.shrink_to_fit();
         self.parallel_edges.shrink_to_fit();
         for intersections in &mut self.parallel_intersections {
+            intersections.clear();
             intersections.shrink_to_fit();
         }
+        // Drop the worker-vector headers too; shrinking the outer Vec alone
+        // cannot release its elements while they remain logically present.
+        self.parallel_intersections.clear();
         self.parallel_intersections.shrink_to_fit();
     }
 
@@ -2776,10 +2780,12 @@ pub fn try_fill_polygon_parallel_with_scratch(
         ..
     } = scratch;
 
+    // Clear before reserve: Vec::try_reserve takes additional capacity
+    // relative to len, so reserving before clearing would grow on every reuse.
+    edges.clear();
     edges
         .try_reserve(vertices.len())
         .map_err(|_| RasterizerError::AllocationFailed)?;
-    edges.clear();
     for index in 0..vertices.len() {
         let a = vertices[index];
         let b = vertices[(index + 1) % vertices.len()];
@@ -2808,10 +2814,10 @@ pub fn try_fill_polygon_parallel_with_scratch(
         }
     }
     for intersections in worker_intersections.iter_mut().take(worker_count) {
+        intersections.clear();
         intersections
             .try_reserve(edges.len())
             .map_err(|_| RasterizerError::AllocationFailed)?;
-        intersections.clear();
     }
 
     let row_width = target.width() as usize;
@@ -2893,6 +2899,12 @@ pub fn try_fill_polygon_with_scratch(
         ..
     } = scratch;
 
+    // Clear before reserve: Vec::try_reserve reserves additional capacity
+    // relative to len. Clearing first prevents needless growth on each frame.
+    edges.clear();
+    active_edges.clear();
+    intersections.clear();
+
     // Reserve every buffer before touching the framebuffer. If any reservation
     // fails, the operation returns without drawing a partial polygon.
     edges
@@ -2906,7 +2918,6 @@ pub fn try_fill_polygon_with_scratch(
         .map_err(|_| RasterizerError::AllocationFailed)?;
 
     // Refill existing buffers without discarding their allocations.
-    edges.clear();
     for index in 0..vertices.len() {
         let a = vertices[index];
         let b = vertices[(index + 1) % vertices.len()];

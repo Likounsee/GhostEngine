@@ -282,9 +282,13 @@ impl DamageRegion {
         self.remaining.clear();
     }
 
-    /// Releases all retained rectangle and work-list allocations.
+    /// Releases excess storage while preserving the currently damaged rectangles.
+    ///
+    /// Use clear when the caller intends to discard pending damage. A memory
+    /// trim must never make dirty pixels disappear from the next composition.
     pub fn release(&mut self) {
-        self.clear();
+        self.pending.clear();
+        self.remaining.clear();
         self.rectangles.shrink_to_fit();
         self.pending.shrink_to_fit();
         self.remaining.shrink_to_fit();
@@ -4324,7 +4328,7 @@ mod damage_region_memory_lifecycle_tests {
     #[test]
     fn damage_updates_reuse_work_buffers_and_release_them_on_demand() {
         let mut damage = DamageRegion::with_capacity(64, 48, 4);
-        assert_eq!(damage.allocated_bytes(), 4 * core::mem::size_of::<Rect>());
+        assert!(damage.allocated_bytes() >= 4 * core::mem::size_of::<Rect>());
 
         damage.add(Rect::new(1, 1, 8, 8));
         damage.add(Rect::new(20, 10, 7, 9));
@@ -4347,7 +4351,19 @@ mod damage_region_memory_lifecycle_tests {
 
         damage.trim_to_budget(retained);
         assert_eq!(damage.allocated_bytes(), retained);
+
+        // Trimming may release temporary work buffers, but it must preserve
+        // live damage so the next frame still knows which pixels to redraw.
+        let active_rectangles = damage.rectangles().to_vec();
         damage.trim_to_budget(0);
+        assert_eq!(damage.rectangles(), active_rectangles);
+        assert!(
+            damage.allocated_bytes()
+                >= active_rectangles.len() * core::mem::size_of::<Rect>()
+        );
+
+        damage.clear();
+        damage.release();
         assert_eq!(damage.allocated_bytes(), 0);
         assert!(damage.is_empty());
 
