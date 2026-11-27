@@ -3360,7 +3360,6 @@ pub fn try_fill_polygon_aa_with_scratch(
         .try_reserve((right - left) as usize)
         .map_err(|_| RasterizerError::AllocationFailed)?;
 
-
     edges.extend((0..vertices.len()).filter_map(|index| {
         PolygonEdge::new(vertices[index], vertices[(index + 1) % vertices.len()])
     }));
