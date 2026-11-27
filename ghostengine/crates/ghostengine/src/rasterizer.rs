@@ -2898,13 +2898,43 @@ pub fn try_fill_polygon_parallel_with_scratch(
 }
 /// Automatically selects a worker count for polygon filling.
 pub fn fill_polygon_parallel(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    fill_polygon_parallel_auto_with_scratch(target, vertices, color, &mut scratch);
+}
+
+/// Automatically selects a worker count and reuses caller-owned polygon scratch storage.
+pub fn fill_polygon_parallel_auto_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_parallel_auto_with_scratch(target, vertices, color, scratch)
+        .expect("failed to allocate automatic parallel polygon scratch storage");
+}
+
+/// Fallibly fills a polygon using automatic worker selection and reusable scratch storage.
+pub fn try_fill_polygon_parallel_auto_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     let area = target.width() as u64 * target.height() as u64;
-    let thread_count = if vertices.len() < 3 || area < 16_384 {
-        1
-    } else {
-        automatic_worker_count()
-    };
-    fill_polygon_parallel_with_threads(target, vertices, color, thread_count);
+    let thread_count = if vertices.len() < 3 || area < 16_384 { 1 } else { automatic_worker_count() };
+    try_fill_polygon_parallel_with_scratch(target, vertices, color, thread_count, scratch)
+}
+
+/// Fills a polygon using caller-owned reusable parallel scratch storage.
+pub fn fill_polygon_parallel_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    thread_count: usize,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_parallel_with_scratch(target, vertices, color, thread_count, scratch)
+        .expect("failed to allocate parallel polygon scratch storage");
 }
 
 /// Fills a polygon using caller-owned reusable scratch storage.
@@ -3351,13 +3381,31 @@ pub fn try_fill_polygon_aa_parallel_with_scratch(
 
 /// Automatically selects a worker count for antialiased polygon filling.
 pub fn fill_polygon_aa_parallel(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    let mut scratch = RasterizerScratch::default();
+    fill_polygon_aa_parallel_auto_with_scratch(target, vertices, color, &mut scratch);
+}
+
+/// Automatically selects a worker count and reuses caller-owned antialiased polygon scratch.
+pub fn fill_polygon_aa_parallel_auto_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) {
+    try_fill_polygon_aa_parallel_auto_with_scratch(target, vertices, color, scratch)
+        .expect("failed to allocate automatic parallel antialiased polygon scratch storage");
+}
+
+/// Fallibly fills an antialiased polygon with automatic worker selection and reusable scratch.
+pub fn try_fill_polygon_aa_parallel_auto_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     let area = target.width() as u64 * target.height() as u64;
-    let thread_count = if vertices.len() < 3 || area < 16_384 {
-        1
-    } else {
-        automatic_worker_count()
-    };
-    fill_polygon_aa_parallel_with_threads(target, vertices, color, thread_count);
+    let thread_count = if vertices.len() < 3 || area < 16_384 { 1 } else { automatic_worker_count() };
+    try_fill_polygon_aa_parallel_with_scratch(target, vertices, color, thread_count, scratch)
 }
 
 /// Fills a polygon with 4x4 supersampled edge coverage and source-over blending.

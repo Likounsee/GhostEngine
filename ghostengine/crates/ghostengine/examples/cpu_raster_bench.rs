@@ -506,6 +506,14 @@ fn main() {
                 &mut polygon_scratch,
             );
         }),
+        measure("Polygon fill AA (parallel, automatic scratch)", iterations, |target| {
+            ghostengine::fill_polygon_aa_parallel_auto_with_scratch(
+                target,
+                &polygon,
+                Color::rgba(40, 170, 245, 210),
+                &mut polygon_scratch,
+            );
+        }),
         measure("Ellipse fill AA", iterations, |target| {
             ghostengine::rasterizer::fill_ellipse_aa(
                 target,
