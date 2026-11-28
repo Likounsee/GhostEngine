@@ -6,8 +6,8 @@
 
 use crate::path::{
     fill_flattened_path_even_odd_aa_clipped, fill_flattened_path_even_odd_clipped,
-    fill_flattened_path_non_zero_aa_clipped, fill_flattened_path_non_zero_clipped,
-    FlattenedPath, Path, PathError,
+    fill_flattened_path_non_zero_aa_clipped, fill_flattened_path_non_zero_clipped, FlattenedPath,
+    Path, PathError,
 };
 use crate::rasterizer::{
     draw_line, draw_line_aa_clipped, fill_rects_clipped,
