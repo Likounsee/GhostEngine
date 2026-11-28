@@ -90,6 +90,17 @@ jobs:
         working-directory: ghostengine
         run: cargo test --workspace --all-targets --all-features
 
+      - name: Run first CPU image example
+        working-directory: ghostengine
+        shell: bash
+        run: |
+          cargo run -p ghostengine --release --example first_image -- target/ghostengine-first-image.ppm
+          test -s target/ghostengine-first-image.ppm
+
+      - name: Run headless host example
+        working-directory: ghostengine
+        run: cargo run -p ghostengine --release --example headless_host_demo
+
       - name: Run headless vector path showcase
         working-directory: ghostengine
         run: cargo run -p ghostengine --release --example vector_path_showcase -- target/ghostengine-vector-showcase.ppm
