@@ -836,10 +836,8 @@ mod tests {
         let destination = crate::Rect::new(0, 0, 384, 288);
         let clip = crate::Rect::new(4, 3, 376, 280);
         let mut actual = crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
-        let mut serial =
-            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
-        let mut limited =
-            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut serial = crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut limited = crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
         let mut expected = actual.clone();
 
         draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
