@@ -103,6 +103,31 @@ the virtual M1 runner was below it. This is a known workload to keep profiling;
 it is not evidence of performance on a developer desktop or a complete
 application frame.
 
+## Mixed-scene CI profile — 2026-11-28
+
+The scripted Amethys test fixture now records a repeatable application-like
+scene profile as part of the cross-platform CI run
+[46161589387](https://github.com/Likounsee/GhostEngine/actions/runs/46161589387),
+source revision `96deb146b2331fc37e66bf0bde1e2403ba1474ad`. Each runner loaded
+12 bundled cover images with zero decode failures, then measured 10 full page
+renders and 200 unpaced scene-draw passes at a 1600x900 output resolution.
+The page renderer builds a 1600x3200 retained content surface containing text,
+image cards, sidebar and page content; each scene-draw pass copies the visible
+viewport and processes interaction/scroll/search UI. The benchmark excludes
+native window presentation, vsync and display/compositor cost, so its derived
+FPS is an unpaced CPU draw-pass rate, not a presented frame-rate claim.
+
+| Runner | CPU | Threads | Page render avg (min–max) | Scene draw avg | Unpaced draw rate |
+|---|---|---:|---:|---:|---:|
+| Windows x86_64 | AMD64 Family 25 Model 17 Stepping 1 | 4 | 120.695 ms (119.427–125.460) | 0.168 ms | 5956.1 passes/s |
+| Linux x86_64 | Intel Xeon Platinum 8573C | 4 | 125.526 ms (124.390–127.785) | 0.411 ms | 2433.2 passes/s |
+| macOS arm64 | Apple M1 (Virtual) | 3 | 123.543 ms (86.057–161.853) | 0.215 ms | 4652.2 passes/s |
+
+All three platforms passed the 848-test all-feature suite and generated all
+18 scripted PNG frames. These are virtual CI diagnostics, not physical
+desktop performance baselines. Repeat the same workload on reference desktop
+hardware before making platform performance claims.
+
 ## GPU backend (future work)
 
 A future GPU backend should target substantially lower rendering latency and higher throughput where supported by the hardware. Its targets must be defined separately after selecting an API and measuring real devices. Do not compare CPU and GPU numbers without accounting for upload, synchronization, readback, presentation and workload differences.

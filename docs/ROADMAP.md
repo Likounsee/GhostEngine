@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green CI matrix for candidate commit `36d6e957ea7cf000b99dc9e595032dbb0064a224` on Windows, Linux and macOS (CI run `46160376507`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy, crate packaging, the Amethys integration fixture and its 18-frame headless session. This verifies the automated matrix only; real desktop validation remains outstanding. The current candidate also persists the regenerated integration lockfile and emits mixed-scene benchmark results; its own CI matrix is the active validation gate.
+- [x] Obtain a fully green CI matrix for candidate commit `96deb146b2331fc37e66bf0bde1e2403ba1474ad` on Windows, Linux and macOS (CI run `46161589387`): Rust 1.87 passed 6/6 steps; each OS passed 24/24 steps, including format, Clippy, API docs, package contents, all feature configurations, 848 tests, headless examples, the persisted `--locked` Amethys integration, 12 image decodes and all 18 scripted PNG frames. This verifies the automated matrix only; real desktop validation remains outstanding.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -126,7 +126,8 @@ This checklist tracks implementation separately from release validation. A check
 #### P1 — performance and long-running stability
 
 - [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The latest CI-hosted three-platform benchmark passed on run `46160071685` for commit `9c56c1a2d7ed3ec2206b478875e7c867f7c4fc0f`; its 4K fractional trilinear results are recorded in [PERFORMANCE.md](PERFORMANCE.md), but virtual runner results are not substitutes for reference desktop measurements.
-- [ ] Profile representative mixed scenes on reference desktop hardware, not only isolated raster primitives. A scripted Amethys test fixture now emits a repeatable 1600x900 profile (10 page renders and 200 full-scene draw passes) in the cross-platform CI logs; it is a virtual-runner diagnostic, not a physical reference baseline.
+- [x] Add and execute a repeatable mixed-scene profile (10 page renders and 200 full-scene draw passes at 1600x900) on Windows, Linux and macOS CI; results and limitations are recorded in [PERFORMANCE.md](PERFORMANCE.md).
+- [ ] Repeat the mixed-scene profile on reference desktop hardware; virtual-runner results are not physical reference baselines.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [x] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` passes the Windows/Linux/macOS CI matrix).
 - [x] Stress-test repeated headless resize, zero-sized minimize/restore, frame presentation and host shutdown (`repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent`, 1,000 cycles). Native desktop lifecycle stress remains part of the per-OS manual validation gate.
@@ -134,16 +135,18 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P2 — release packaging and API readiness
 
-- [ ] Review all public API docs and examples for accurate feature requirements and error behavior.
+- [x] Review the public API docs, feature requirements and documented error behavior; the exact candidate builds the public docs with warnings denied.
 - [x] Document migration guidance for the common host/presentation API and transitional adapters (`APPLICATION_INTEGRATION.md` and `FEATURES.md`).
-- [ ] Confirm license notices for bundled font fixtures and all optional dependencies.
+- [x] Confirm bundled font/image fixture licenses and include the font notices in the crate package.
+- [ ] Audit licenses and transitive notices for all optional dependencies using an approved dependency-license tool.
 - [x] Add a release gate covering CI, desktop validation, reliability, benchmarks, licensing and packaging (`RELEASE_CHECKLIST.md`).
 - [x] Add a repeatable per-OS desktop validation record (`PLATFORM_VALIDATION.md`).
 - [ ] Prepare a versioned 2D V1 release only after P0 is complete and no critical defects remain.
 
 ### Current validation notes
 
-- The release gate and per-OS desktop validation record are now documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
+- The release gate and per-OS desktop validation record are documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
+- Final automated candidate: `96deb146b2331fc37e66bf0bde1e2403ba1474ad`, CI run `46161589387` — Windows/Linux/macOS and Rust 1.87 all green.
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
 - Historical robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`). Later commits require their own green matrix.
