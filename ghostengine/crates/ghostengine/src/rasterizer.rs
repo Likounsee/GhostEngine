@@ -1797,20 +1797,49 @@ pub fn draw_rect(target: &mut Framebuffer, rect: Rect, color: Color) {
 }
 
 /// Draws an anti-aliased rectangle outline with 4x4 supersampled coverage.
+///
+/// This compatibility wrapper panics only if temporary rasterizer storage cannot
+/// be allocated. Use `try_draw_rect_aa` when allocation failure must be handled.
 pub fn draw_rect_aa(target: &mut Framebuffer, rect: Rect, color: Color) {
+    try_draw_rect_aa(target, rect, color)
+        .expect("failed to allocate antialiased rectangle outline scratch storage");
+}
+
+/// Fallibly draws an antialiased rectangle outline using temporary scratch storage.
+pub fn try_draw_rect_aa(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+) -> Result<(), RasterizerError> {
     let mut scratch = RasterizerScratch::default();
-    draw_rect_aa_with_scratch(target, rect, color, &mut scratch);
+    try_draw_rect_aa_with_scratch(target, rect, color, &mut scratch)
 }
 
 /// Draws an antialiased rectangle outline using reusable polygon buffers.
+///
+/// This compatibility wrapper panics only if scratch storage cannot be allocated.
+/// Use `try_draw_rect_aa_with_scratch` to handle allocation failure explicitly.
 pub fn draw_rect_aa_with_scratch(
     target: &mut Framebuffer,
     rect: Rect,
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
+    try_draw_rect_aa_with_scratch(target, rect, color, scratch)
+        .expect("failed to allocate antialiased rectangle outline scratch storage");
+}
+
+/// Fallibly draws an antialiased rectangle outline using reusable polygon buffers.
+///
+/// Scratch storage is reserved before the target framebuffer is modified.
+pub fn try_draw_rect_aa_with_scratch(
+    target: &mut Framebuffer,
+    rect: Rect,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     if rect.width == 0 || rect.height == 0 {
-        return;
+        return Ok(());
     }
     let point = |x: i64, y: i64| {
         Point::new(
@@ -1822,7 +1851,7 @@ pub fn draw_rect_aa_with_scratch(
     let top = i64::from(rect.y);
     let right = left + i64::from(rect.width) - 1;
     let bottom = top + i64::from(rect.height) - 1;
-    draw_polygon_aa_with_scratch(
+    try_draw_polygon_aa_with_scratch(
         target,
         &[
             point(left, top),
@@ -1832,9 +1861,8 @@ pub fn draw_rect_aa_with_scratch(
         ],
         color,
         scratch,
-    );
+    )
 }
-
 /// Draws an anti-aliased rounded-rectangle outline using signed-distance coverage.
 pub fn draw_rounded_rect_aa(target: &mut Framebuffer, rect: Rect, radius: u32, color: Color) {
     if rect.width == 0 || rect.height == 0 || color.a == 0 {
@@ -3693,12 +3721,30 @@ pub fn fill_polygon_aa_with_scratch(
 }
 
 /// Draws an anti-aliased triangle outline with 4x4 coverage sampling.
+///
+/// This compatibility wrapper panics only if temporary rasterizer storage cannot
+/// be allocated. Use `try_draw_triangle_aa` when allocation failure must be handled.
 pub fn draw_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
+    try_draw_triangle_aa(target, a, b, c, color)
+        .expect("failed to allocate antialiased triangle outline scratch storage");
+}
+
+/// Fallibly draws an antialiased triangle outline using temporary scratch storage.
+pub fn try_draw_triangle_aa(
+    target: &mut Framebuffer,
+    a: Point,
+    b: Point,
+    c: Point,
+    color: Color,
+) -> Result<(), RasterizerError> {
     let mut scratch = RasterizerScratch::default();
-    draw_triangle_aa_with_scratch(target, a, b, c, color, &mut scratch);
+    try_draw_triangle_aa_with_scratch(target, a, b, c, color, &mut scratch)
 }
 
 /// Draws an antialiased triangle outline using reusable rasterizer storage.
+///
+/// This compatibility wrapper panics only if scratch storage cannot be allocated.
+/// Use `try_draw_triangle_aa_with_scratch` to handle allocation failure explicitly.
 pub fn draw_triangle_aa_with_scratch(
     target: &mut Framebuffer,
     a: Point,
@@ -3707,9 +3753,21 @@ pub fn draw_triangle_aa_with_scratch(
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
-    draw_polygon_aa_with_scratch(target, &[a, b, c], color, scratch);
+    try_draw_triangle_aa_with_scratch(target, a, b, c, color, scratch)
+        .expect("failed to allocate antialiased triangle outline scratch storage");
 }
 
+/// Fallibly draws an antialiased triangle outline using reusable rasterizer storage.
+pub fn try_draw_triangle_aa_with_scratch(
+    target: &mut Framebuffer,
+    a: Point,
+    b: Point,
+    c: Point,
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
+    try_draw_polygon_aa_with_scratch(target, &[a, b, c], color, scratch)
+}
 /// Fills a triangle with 4x4 coverage sampling and source-over alpha blending.
 pub fn fill_triangle_aa(target: &mut Framebuffer, a: Point, b: Point, c: Point, color: Color) {
     let mut scratch = RasterizerScratch::default();
