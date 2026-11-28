@@ -128,6 +128,43 @@ All three platforms passed the 848-test all-feature suite and generated all
 desktop performance baselines. Repeat the same workload on reference desktop
 hardware before making platform performance claims.
 
+## Latest CI baseline — 2026-11-28 (1920x1080 mixed workloads)
+
+A release benchmark completed on Windows, Linux and macOS in workflow run
+[46180697363](https://github.com/Likounsee/GhostEngine/actions/runs/46180697363),
+source revision `0718bf7655737e277b8ab6f8dc84d85928d03ddb`. It used
+`rustc 1.100.1`, Release mode, the default `simd` and
+`parallel-rendering` features, a 1920x1080 output (scene scaled 4x from
+480x270), 100 measured iterations per workload and 5 warm-up iterations.
+These are GitHub-hosted virtual runners, not physical reference desktops.
+
+Selected diagnostic workloads (milliseconds per operation):
+
+| Workload | Windows x86_64 | Linux x86_64 | macOS arm64 |
+|---|---:|---:|---:|
+| 4K → 1440x810 trilinear (automatic) | 36.738 | 33.546 | 14.806 |
+| Nested layer groups (reused scratch) | 20.385 | 13.680 | 10.361 |
+| Nested layer groups (persistent cache) | 6.988 | 4.266 | 2.816 |
+| Transformed layer (bilinear) | 12.631 | 13.685 | 3.895 |
+| Rounded rectangle AA (serial) | 16.125 | 13.793 | 9.594 |
+| UI button AA + text (automatic) | 8.085 | 5.773 | 4.016 |
+| Mixed app scene (image + vector + UI) | 22.111 | 16.341 | 16.262 |
+
+| Runner metadata | Windows x86_64 | Linux x86_64 | macOS arm64 |
+|---|---|---|---|
+| CPU reported by runner | AMD64 Family 25 Model 17 Stepping 1 | AMD EPYC 9V74 80-Core | Apple M1 (Virtual) |
+| Rust | 1.100.1 | 1.100.1 | 1.100.1 |
+
+The isolated 16.67 ms diagnostic threshold is exceeded by the 4K fractional
+trilinear workload on Windows and Linux, by uncached nested groups on Windows,
+and by the mixed application-like scene on Windows. The persistent nested
+group cache remains below the threshold on all three runners. The mixed-scene
+draw-pass rates were 45.23/s (Windows), 61.20/s (Linux) and 61.49/s (macOS).
+This is an unpaced CPU draw-pass benchmark without native window presentation,
+vsync or compositor cost; it is not a presented FPS claim. Profile and repeat
+these workloads on reference physical desktops before making release
+performance claims.
+
 ## GPU backend (future work)
 
 A future GPU backend should target substantially lower rendering latency and higher throughput where supported by the hardware. Its targets must be defined separately after selecting an API and measuring real devices. Do not compare CPU and GPU numbers without accounting for upload, synchronization, readback, presentation and workload differences.
