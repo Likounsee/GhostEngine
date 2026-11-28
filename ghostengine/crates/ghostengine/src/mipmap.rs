@@ -218,6 +218,7 @@ pub fn draw_mipmapped_texture_clipped(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn draw_opaque_trilinear_clipped(
     target: &mut crate::Framebuffer,
