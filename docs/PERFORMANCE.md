@@ -109,3 +109,15 @@ carry the narrower bounds into the scanline compositor. Full-frame and
 parallel composition retain the original preparation path. Pixel blending and
 sampling are unchanged; the existing transformed-damage parity test covers
 the clipped output.
+
+
+## Reusable display-list stroke workspace
+
+The persistent `DisplayListRenderer` now retains the CPU stroke rasterizer's
+geometry buffers as well as texture-sampling buffers. Repeated `StrokePath`
+and `StrokeRect` commands reuse flattened contours, transformed points,
+segments, joins and per-row work arrays across frames. Both antialiased and
+non-antialiased commands share the same renderer-owned workspace; the
+standalone `DisplayList::replay` API remains self-contained and allocates a
+temporary workspace for one replay. The renderer's memory accounting,
+`release`, and `trim_to_budget` include both workspace families.

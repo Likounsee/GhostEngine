@@ -15,7 +15,10 @@ use crate::rasterizer::{
     fill_transformed_rect_radial_gradient_clipped, Gradient,
 };
 use crate::shaping::{ShapedText, ShapingError};
-use crate::stroke::{stroke_path_aa_clipped, stroke_path_clipped, StrokeError, StrokeStyle};
+use crate::stroke::{
+    stroke_path_aa_clipped, stroke_path_aa_clipped_with_scratch, stroke_path_clipped,
+    stroke_path_clipped_with_scratch, StrokeError, StrokeScratch, StrokeStyle,
+};
 use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
     prepare_bidi_shaped_text_box, prepare_shaped_text_box, FontFace, FontFamily, TextLayoutOptions,
@@ -217,6 +220,7 @@ pub struct RenderStats {
 #[derive(Debug, Default)]
 pub struct DisplayListRenderer {
     texture_scratch: TextureDrawScratch,
+    stroke_scratch: StrokeScratch,
 }
 
 impl DisplayListRenderer {
@@ -229,22 +233,33 @@ impl DisplayListRenderer {
     /// Returns logical bytes held by reusable texture-sampling buffers.
     #[must_use]
     pub fn allocated_bytes(&self) -> usize {
-        self.texture_scratch.allocated_bytes()
+        self.texture_scratch
+            .allocated_bytes()
+            .saturating_add(self.stroke_scratch.allocated_bytes())
     }
 
     /// Drops retained texture-sampling allocations.
     pub fn release(&mut self) {
         self.texture_scratch.release();
+        self.stroke_scratch.release();
     }
 
     /// Releases retained sampling allocations when they exceed a budget.
     pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
-        self.texture_scratch.trim_to_budget(budget_bytes)
+        let before = self.allocated_bytes();
+        if before > budget_bytes {
+            self.release();
+        }
+        before.saturating_sub(self.allocated_bytes())
     }
 
     /// Replays a display list into a framebuffer, retaining temporary storage.
     pub fn replay(&mut self, list: &DisplayList, target: &mut Framebuffer) -> RenderStats {
-        list.replay_with_scratch(target, &mut self.texture_scratch)
+        list.replay_with_workspaces(
+            target,
+            &mut self.texture_scratch,
+            &mut self.stroke_scratch,
+        )
     }
 }
 
@@ -1598,8 +1613,9 @@ impl DisplayList {
     /// rendering many frames should prefer `replay_with_scratch` to retain its
     /// allocations between frames.
     pub fn replay(&self, target: &mut Framebuffer) -> RenderStats {
-        let mut scratch = TextureDrawScratch::default();
-        self.replay_with_scratch(target, &mut scratch)
+        let mut texture_scratch = TextureDrawScratch::default();
+        let mut stroke_scratch = StrokeScratch::default();
+        self.replay_with_workspaces(target, &mut texture_scratch, &mut stroke_scratch)
     }
 
     /// Replays commands while reusing caller-owned texture sampling storage.
@@ -1612,6 +1628,17 @@ impl DisplayList {
         &self,
         target: &mut Framebuffer,
         scratch: &mut TextureDrawScratch,
+    ) -> RenderStats {
+        let mut stroke_scratch = StrokeScratch::default();
+        self.replay_with_workspaces(target, scratch, &mut stroke_scratch)
+    }
+
+    /// Replays commands while reusing texture and vector-stroke workspaces.
+    fn replay_with_workspaces(
+        &self,
+        target: &mut Framebuffer,
+        scratch: &mut TextureDrawScratch,
+        stroke_scratch: &mut StrokeScratch,
     ) -> RenderStats {
         let mut stats = RenderStats {
             commands_submitted: self.commands.len(),
@@ -1650,7 +1677,7 @@ impl DisplayList {
                     transform,
                     color,
                     clip,
-                } => stroke_path_clipped(
+                } => stroke_path_clipped_with_scratch(
                     target,
                     path,
                     *transform,
@@ -1658,6 +1685,7 @@ impl DisplayList {
                     *color,
                     0.25,
                     *clip,
+                    stroke_scratch,
                 )
                 .is_ok(),
                 Command::Line {
@@ -1714,12 +1742,12 @@ impl DisplayList {
                     clip,
                 } => {
                     let result = if *antialias {
-                        stroke_path_aa_clipped(
-                            target, path, *transform, *style, *color, *tolerance, *clip,
+                        stroke_path_aa_clipped_with_scratch(
+                            target, path, *transform, *style, *color, *tolerance, *clip, stroke_scratch,
                         )
                     } else {
-                        stroke_path_clipped(
-                            target, path, *transform, *style, *color, *tolerance, *clip,
+                        stroke_path_clipped_with_scratch(
+                            target, path, *transform, *style, *color, *tolerance, *clip, stroke_scratch,
                         )
                     };
                     result.is_ok()
@@ -3369,6 +3397,49 @@ mod tests {
         assert_eq!(list.transform_stack_capacity(), 0);
         list.clear_color(Color::GREEN);
         assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn renderer_reuses_stroke_workspace_across_display_list_frames() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(2.0, 2.0)).unwrap();
+        path.line_to(crate::Vector::new(22.0, 7.0)).unwrap();
+        path.line_to(crate::Vector::new(13.0, 23.0)).unwrap();
+        path.close().unwrap();
+
+        let mut list = DisplayList::new();
+        list.stroke_path(
+            path.clone(),
+            Transform2D::IDENTITY,
+            crate::StrokeStyle::new(2.5),
+            Color::WHITE,
+            0.2,
+        )
+        .unwrap();
+        list.stroke_path_aa(
+            path,
+            Transform2D::IDENTITY,
+            crate::StrokeStyle::new(1.5),
+            Color::rgba(255, 80, 20, 190),
+            0.2,
+        )
+        .unwrap();
+
+        let mut renderer = DisplayListRenderer::new();
+        let mut first = Framebuffer::new(32, 32, Color::BLACK).unwrap();
+        let first_stats = renderer.replay(&list, &mut first);
+        let retained_bytes = renderer.allocated_bytes();
+        assert!(retained_bytes > 0);
+
+        let mut second = Framebuffer::new(32, 32, Color::BLACK).unwrap();
+        let second_stats = renderer.replay(&list, &mut second);
+        assert_eq!(first_stats, second_stats);
+        assert_eq!(first.pixels(), second.pixels());
+        assert_eq!(renderer.allocated_bytes(), retained_bytes);
+
+        let released = renderer.trim_to_budget(0);
+        assert_eq!(released, retained_bytes);
+        assert_eq!(renderer.allocated_bytes(), 0);
     }
 
     #[test]
