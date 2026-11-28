@@ -722,6 +722,15 @@ pub fn fill_transformed_path_even_odd_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
+    fill_flattened_path_even_odd_clipped(target, &flattened, color, clip)
+}
+
+pub(crate) fn fill_flattened_path_even_odd_clipped(
+    target: &mut Framebuffer,
+    flattened: &FlattenedPath,
+    color: Color,
+    clip: Rect,
+) -> Result<(), PathError> {
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
@@ -730,7 +739,7 @@ pub fn fill_transformed_path_even_odd_clipped(
     }
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let contours = try_collect_contours(&flattened)?;
+    let contours = try_collect_contours(flattened)?;
     if contours.is_empty() {
         return Ok(());
     }
@@ -852,6 +861,15 @@ pub fn fill_transformed_path_non_zero_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
+    fill_flattened_path_non_zero_clipped(target, &flattened, color, clip)
+}
+
+pub(crate) fn fill_flattened_path_non_zero_clipped(
+    target: &mut Framebuffer,
+    flattened: &FlattenedPath,
+    color: Color,
+    clip: Rect,
+) -> Result<(), PathError> {
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
@@ -861,7 +879,7 @@ pub fn fill_transformed_path_non_zero_clipped(
 
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let contours = try_collect_contours(&flattened)?;
+    let contours = try_collect_contours(flattened)?;
     let mut edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
@@ -997,8 +1015,17 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     tolerance: f32,
     clip: Rect,
 ) -> Result<(), PathError> {
-    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
     let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
+    fill_flattened_path_non_zero_aa_clipped(target, &flattened, color, clip)
+}
+
+pub(crate) fn fill_flattened_path_non_zero_aa_clipped(
+    target: &mut Framebuffer,
+    flattened: &FlattenedPath,
+    color: Color,
+    clip: Rect,
+) -> Result<(), PathError> {
+    const OFFSETS: [f32; 4] = [0.125, 0.375, 0.625, 0.875];
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
@@ -1007,7 +1034,7 @@ pub fn fill_transformed_path_non_zero_aa_clipped(
     };
     let clip_right = clip.x.saturating_add(clip.width);
     let clip_bottom = clip.y.saturating_add(clip.height);
-    let contours = try_collect_contours(&flattened)?;
+    let contours = try_collect_contours(flattened)?;
     let mut edges = try_collect_fill_edges(&contours)?;
     if edges.is_empty() {
         return Ok(());
@@ -1151,13 +1178,22 @@ pub fn fill_transformed_path_even_odd_aa_clipped(
     clip: Rect,
 ) -> Result<(), PathError> {
     let flattened = path.flatten(tolerance)?.try_transformed(transform)?;
+    fill_flattened_path_even_odd_aa_clipped(target, &flattened, color, clip)
+}
+
+pub(crate) fn fill_flattened_path_even_odd_aa_clipped(
+    target: &mut Framebuffer,
+    flattened: &FlattenedPath,
+    color: Color,
+    clip: Rect,
+) -> Result<(), PathError> {
     if color.a == 0 || target.width() == 0 || target.height() == 0 {
         return Ok(());
     }
     let Some(clip) = clip.intersection(Rect::new(0, 0, target.width(), target.height())) else {
         return Ok(());
     };
-    let contours = try_collect_contours(&flattened)?;
+    let contours = try_collect_contours(flattened)?;
     if contours.is_empty() {
         return Ok(());
     }

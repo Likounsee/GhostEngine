@@ -129,3 +129,16 @@ vector stroke, then measures replay with the renderer-owned persistent stroke
 workspace. Compare this with the direct stroke and explicit `StrokeScratch`
 benchmarks to separate command dispatch overhead from the benefit of retaining
 geometry buffers across frames.
+
+
+## Prepared geometry in display lists
+
+Filled path commands now flatten and transform their geometry once while the
+display list is recorded. The command stores the prepared `FlattenedPath`
+instead of retaining the source path, transform and flattening tolerance for
+repeated work during every replay. All four fill modes (even-odd, non-zero,
+and their antialiased variants) consume the same prepared geometry through
+internal rasterization entry points. The standalone public path APIs still
+perform flattening and transformation as before. This moves deterministic
+geometry preparation out of the frame replay hot path and avoids repeating
+curve subdivision and point transformation for static display lists.

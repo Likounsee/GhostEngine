@@ -5,9 +5,9 @@
 //! clip-stack changes cannot affect commands that were already recorded.
 
 use crate::path::{
-    fill_transformed_path_even_odd_aa_clipped, fill_transformed_path_even_odd_clipped,
-    fill_transformed_path_non_zero_aa_clipped, fill_transformed_path_non_zero_clipped, Path,
-    PathError,
+    fill_flattened_path_even_odd_aa_clipped, fill_flattened_path_even_odd_clipped,
+    fill_flattened_path_non_zero_aa_clipped, fill_flattened_path_non_zero_clipped,
+    FlattenedPath, Path, PathError,
 };
 use crate::rasterizer::{
     draw_line, draw_line_aa_clipped, fill_rects_clipped,
@@ -76,10 +76,8 @@ enum Command {
         clip: Rect,
     },
     FillPath {
-        path: Path,
-        transform: Transform2D,
+        geometry: FlattenedPath,
         color: Color,
-        tolerance: f32,
         fill_rule: PathFillRule,
         clip: Rect,
     },
@@ -823,16 +821,14 @@ impl DisplayList {
         fill_rule: PathFillRule,
     ) -> Result<(), PathError> {
         let transform = transform.then(self.active_transform());
-        path.flatten(tolerance)?.transformed(transform)?;
+        let geometry = path.flatten(tolerance)?.try_transformed(transform)?;
         if let Some(clip) = self.active_clip() {
             self.commands
                 .try_reserve(1)
                 .map_err(|_| PathError::AllocationFailed)?;
             self.commands.push(Command::FillPath {
-                path,
-                transform,
+                geometry,
                 color,
-                tolerance,
                 fill_rule,
                 clip,
             });
@@ -1700,29 +1696,23 @@ impl DisplayList {
                     }
                 }
                 Command::FillPath {
-                    path,
-                    transform,
+                    geometry,
                     color,
-                    tolerance,
                     fill_rule,
                     clip,
                 } => {
                     let result = match fill_rule {
-                        PathFillRule::EvenOdd => fill_transformed_path_even_odd_clipped(
-                            target, path, *transform, *color, *tolerance, *clip,
-                        ),
-                        PathFillRule::NonZero => fill_transformed_path_non_zero_clipped(
-                            target, path, *transform, *color, *tolerance, *clip,
-                        ),
+                        PathFillRule::EvenOdd => {
+                            fill_flattened_path_even_odd_clipped(target, geometry, *color, *clip)
+                        }
+                        PathFillRule::NonZero => {
+                            fill_flattened_path_non_zero_clipped(target, geometry, *color, *clip)
+                        }
                         PathFillRule::EvenOddAntialiased => {
-                            fill_transformed_path_even_odd_aa_clipped(
-                                target, path, *transform, *color, *tolerance, *clip,
-                            )
+                            fill_flattened_path_even_odd_aa_clipped(target, geometry, *color, *clip)
                         }
                         PathFillRule::NonZeroAntialiased => {
-                            fill_transformed_path_non_zero_aa_clipped(
-                                target, path, *transform, *color, *tolerance, *clip,
-                            )
+                            fill_flattened_path_non_zero_aa_clipped(target, geometry, *color, *clip)
                         }
                     };
                     result.is_ok()
@@ -3434,7 +3424,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut renderer = DisplayListRenderer::new();
+        let mut renderer = super::DisplayListRenderer::new();
         let mut first = Framebuffer::new(32, 32, Color::BLACK).unwrap();
         let first_stats = renderer.replay(&list, &mut first);
         let retained_bytes = renderer.allocated_bytes();
