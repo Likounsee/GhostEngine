@@ -2540,6 +2540,106 @@ mod tests {
     }
 
     #[test]
+    fn prepared_display_list_fills_match_path_apis_for_all_fill_modes() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.0, 1.0))
+            .line_to(crate::Vector::new(12.0, 1.0))
+            .cubic_to(
+                crate::Vector::new(15.0, 3.0),
+                crate::Vector::new(14.0, 10.0),
+                crate::Vector::new(9.0, 12.0),
+            )
+            .line_to(crate::Vector::new(1.0, 10.0))
+            .close()
+            .move_to(crate::Vector::new(4.0, 4.0))
+            .line_to(crate::Vector::new(8.0, 4.0))
+            .line_to(crate::Vector::new(8.0, 8.0))
+            .line_to(crate::Vector::new(4.0, 8.0))
+            .close();
+
+        let transform = crate::Transform2D::rotation(0.11)
+            .then(crate::Transform2D::translation(3.0, 2.0));
+        let clip = Rect::new(2, 2, 13, 12);
+        let color = Color::rgba(220, 90, 40, 173);
+        let tolerance = 0.18;
+
+        for mode in 0..4 {
+            let mut list = DisplayList::new();
+            list.push_clip(clip);
+            list.push_transform(transform);
+            match mode {
+                0 => list.fill_path(path.clone(), crate::Transform2D::IDENTITY, color, tolerance),
+                1 => list.fill_path_non_zero(
+                    path.clone(),
+                    crate::Transform2D::IDENTITY,
+                    color,
+                    tolerance,
+                ),
+                2 => list.fill_path_aa(
+                    path.clone(),
+                    crate::Transform2D::IDENTITY,
+                    color,
+                    tolerance,
+                ),
+                _ => list.fill_path_non_zero_aa(
+                    path.clone(),
+                    crate::Transform2D::IDENTITY,
+                    color,
+                    tolerance,
+                ),
+            }
+            .unwrap();
+
+            let mut actual = Framebuffer::new(20, 18, Color::BLACK).unwrap();
+            let mut expected = Framebuffer::new(20, 18, Color::BLACK).unwrap();
+            match mode {
+                0 => crate::fill_transformed_path_even_odd_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    color,
+                    tolerance,
+                    clip,
+                ),
+                1 => crate::fill_transformed_path_non_zero_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    color,
+                    tolerance,
+                    clip,
+                ),
+                2 => crate::fill_transformed_path_even_odd_aa_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    color,
+                    tolerance,
+                    clip,
+                ),
+                _ => crate::fill_transformed_path_non_zero_aa_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    color,
+                    tolerance,
+                    clip,
+                ),
+            }
+            .unwrap();
+
+            let first_stats = list.replay(&mut actual);
+            assert_eq!(first_stats.commands_executed, 1);
+            assert_eq!(actual.pixels(), expected.pixels(), "fill mode {mode}");
+
+            let mut second = Framebuffer::new(20, 18, Color::BLACK).unwrap();
+            let second_stats = list.replay(&mut second);
+            assert_eq!(second_stats, first_stats);
+            assert_eq!(second.pixels(), expected.pixels(), "second replay mode {mode}");
+        }
+    }
+
+    #[test]
     fn display_list_supports_non_zero_path_fill_rule() {
         let mut path = crate::Path::new();
         path.move_to(crate::Vector::new(1.0, 1.0))

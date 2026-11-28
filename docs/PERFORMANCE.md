@@ -142,3 +142,10 @@ internal rasterization entry points. The standalone public path APIs still
 perform flattening and transformation as before. This moves deterministic
 geometry preparation out of the frame replay hot path and avoids repeating
 curve subdivision and point transformation for static display lists.
+
+
+The benchmark suite also measures repeated replay of a curved, transformed,
+antialiased display-list fill. The source path is flattened and transformed
+when recorded, outside the measured frame loop; the timed replay therefore
+measures the prepared-geometry path rather than charging curve subdivision
+and affine point transformation on every frame.

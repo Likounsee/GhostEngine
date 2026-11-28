@@ -174,6 +174,15 @@ fn main() {
             0.35 * SCALE_F32,
         )
         .expect("display-list antialiased stroke should be valid");
+    let mut fill_display_list = DisplayList::new();
+    fill_display_list
+        .fill_path_aa(
+            path.clone(),
+            Transform2D::rotation(0.08).then(Transform2D::translation(320.0, 120.0)),
+            Color::rgba(245, 130, 45, 210),
+            0.35 * SCALE_F32,
+        )
+        .expect("display-list fill should be valid");
     let mut display_list_renderer = DisplayListRenderer::new();
 
     let mut path_geometry_cache = PathGeometryCache::new(128);
@@ -632,6 +641,13 @@ fn main() {
                     &mut stroke_scratch,
                 )
                 .expect("scratch-backed benchmark stroke should be valid");
+            },
+        ),
+        measure(
+            "Display-list vector fill (prepared geometry)",
+            iterations,
+            |target| {
+                display_list_renderer.replay(&fill_display_list, target);
             },
         ),
         measure(
