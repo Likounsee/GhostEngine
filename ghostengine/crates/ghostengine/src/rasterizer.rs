@@ -2439,27 +2439,56 @@ pub fn draw_polygon(target: &mut Framebuffer, vertices: &[Point], color: Color) 
 ///
 /// Segment coverage is accumulated as a union, so shared vertices are blended
 /// only once and translucent outlines do not become darker at their corners.
+/// This compatibility wrapper panics only if temporary rasterizer storage cannot
+/// be allocated. Use `try_draw_polygon_aa` when allocation failure must be handled.
 pub fn draw_polygon_aa(target: &mut Framebuffer, vertices: &[Point], color: Color) {
+    try_draw_polygon_aa(target, vertices, color)
+        .expect("failed to allocate antialiased polygon outline scratch storage");
+}
+
+/// Fallibly draws an antialiased polygon outline using temporary scratch storage.
+pub fn try_draw_polygon_aa(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+) -> Result<(), RasterizerError> {
     let mut scratch = RasterizerScratch::default();
-    draw_polygon_aa_with_scratch(target, vertices, color, &mut scratch);
+    try_draw_polygon_aa_with_scratch(target, vertices, color, &mut scratch)
 }
 
 /// Draws an antialiased polygon outline while reusing caller-owned buffers.
+///
+/// This compatibility wrapper panics only if scratch storage cannot be allocated.
+/// Use `try_draw_polygon_aa_with_scratch` to handle allocation failure explicitly.
 pub fn draw_polygon_aa_with_scratch(
     target: &mut Framebuffer,
     vertices: &[Point],
     color: Color,
     scratch: &mut RasterizerScratch,
 ) {
+    try_draw_polygon_aa_with_scratch(target, vertices, color, scratch)
+        .expect("failed to allocate antialiased polygon outline scratch storage");
+}
+
+/// Fallibly draws an antialiased polygon outline while reusing caller-owned buffers.
+///
+/// All required scratch capacity is reserved before the target framebuffer is
+/// modified. On allocation failure, the target remains unchanged.
+pub fn try_draw_polygon_aa_with_scratch(
+    target: &mut Framebuffer,
+    vertices: &[Point],
+    color: Color,
+    scratch: &mut RasterizerScratch,
+) -> Result<(), RasterizerError> {
     if vertices.len() < 2 || color.a == 0 || target.width() == 0 || target.height() == 0 {
-        return;
+        return Ok(());
     }
     if vertices.len() == 2 {
         draw_line_aa(target, vertices[0], vertices[1], color);
-        return;
+        return Ok(());
     }
     if vertices.iter().all(|point| *point == vertices[0]) {
-        return;
+        return Ok(());
     }
 
     let min_x = vertices.iter().map(|point| point.x).min().unwrap();
@@ -2471,11 +2500,20 @@ pub fn draw_polygon_aa_with_scratch(
     let right = (i64::from(max_x) + 2).clamp(0, i64::from(target.width())) as u32;
     let bottom = (i64::from(max_y) + 2).clamp(0, i64::from(target.height())) as u32;
     if left >= right || top >= bottom {
-        return;
+        return Ok(());
     }
 
     let segments = &mut scratch.aa_outline_segments;
     segments.clear();
+    segments
+        .try_reserve(vertices.len())
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+    let coverage = &mut scratch.aa_coverage;
+    coverage.clear();
+    coverage
+        .try_reserve((right - left) as usize)
+        .map_err(|_| RasterizerError::AllocationFailed)?;
+
     segments.extend((0..vertices.len()).map(|index| {
         let a = vertices[index];
         let b = vertices[(index + 1) % vertices.len()];
@@ -2496,7 +2534,6 @@ pub fn draw_polygon_aa_with_scratch(
 
     const OFFSETS: [f64; 4] = [0.125, 0.375, 0.625, 0.875];
 
-    let coverage = &mut scratch.aa_coverage;
     coverage.resize((right - left) as usize, 0);
     for y in top..bottom {
         coverage.fill(0);
@@ -2545,8 +2582,8 @@ pub fn draw_polygon_aa_with_scratch(
             }
         }
     }
+    Ok(())
 }
-
 type PolygonScanEdge = (f64, f64, f64, f64, f64, f64);
 
 /// Reusable temporary storage for CPU rasterization operations.
@@ -5648,6 +5685,7 @@ mod tests {
     use super::{
         blend_pixel, draw_circle, draw_ellipse, draw_ellipse_aa, draw_line, draw_line_aa,
         draw_pixel, draw_polygon, draw_polygon_aa, draw_rect, fill_circle, fill_circle_aa,
+        try_draw_polygon_aa_with_scratch, RasterizerScratch,
         fill_ellipse, fill_ellipse_aa, fill_polygon, fill_polygon_aa, fill_rect, fill_rounded_rect,
         fill_triangle,
     };
@@ -5668,6 +5706,28 @@ mod tests {
             );
         }
         target
+    }
+
+    #[test]
+    fn fallible_antialiased_polygon_outline_matches_compatibility_api() {
+        let vertices = [
+            Point::new(8, 7),
+            Point::new(52, 13),
+            Point::new(39, 48),
+            Point::new(16, 41),
+        ];
+        let color = Color::rgba(220, 80, 35, 173);
+        let mut expected = target(64, 56);
+        draw_polygon_aa(&mut expected, &vertices, color);
+
+        let mut actual = target(64, 56);
+        let mut scratch = RasterizerScratch::default();
+        try_draw_polygon_aa_with_scratch(&mut actual, &vertices, color, &mut scratch).unwrap();
+        assert_eq!(actual.pixels(), expected.pixels());
+
+        let before = actual.clone();
+        try_draw_polygon_aa_with_scratch(&mut actual, &[], color, &mut scratch).unwrap();
+        assert_eq!(actual.pixels(), before.pixels());
     }
 
     #[test]
