@@ -2603,23 +2603,11 @@ mod tests {
             list.push_clip(clip);
             list.push_transform(transform);
             if antialias {
-                list.stroke_path_aa(
-                    path.clone(),
-                    Transform2D::IDENTITY,
-                    style,
-                    color,
-                    0.16,
-                )
-                .unwrap();
+                list.stroke_path_aa(path.clone(), Transform2D::IDENTITY, style, color, 0.16)
+                    .unwrap();
             } else {
-                list.stroke_path(
-                    path.clone(),
-                    Transform2D::IDENTITY,
-                    style,
-                    color,
-                    0.16,
-                )
-                .unwrap();
+                list.stroke_path(path.clone(), Transform2D::IDENTITY, style, color, 0.16)
+                    .unwrap();
             }
 
             let mut actual = Framebuffer::new(22, 18, Color::BLACK).unwrap();

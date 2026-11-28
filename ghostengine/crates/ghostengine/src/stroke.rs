@@ -591,6 +591,7 @@ fn stroke_prepared_path_impl_rows(
         row_joins_x,
         pixel_segments,
         pixel_joins,
+        ..
     } = scratch;
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
