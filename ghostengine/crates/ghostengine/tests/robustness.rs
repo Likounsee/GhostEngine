@@ -1,11 +1,11 @@
 use ghostengine::{
     compose_layers, compose_layers_auto, fill_polygon_aa, fill_polygon_aa_parallel_with_threads,
-    fill_polygon_parallel_with_threads, AlphaMode, BlendMode, CachedLayer, Color, ColorSpace,
+    fill_polygon_parallel_with_threads, try_draw_polygon_aa, try_draw_polygon_aa_with_scratch,
+    try_draw_rect_aa, try_draw_rect_aa_with_scratch, try_draw_triangle_aa,
+    try_draw_triangle_aa_with_scratch, AlphaMode, BlendMode, CachedLayer, Color, ColorSpace,
     DamageRegion, DisplayList, FontFace, Framebuffer, Layer, Path, PathGeometryCache, PixelFormat,
-    Point, Rect, SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError,
-    TextureFilter, Transform2D, Vector, RasterizerScratch, try_draw_polygon_aa,
-    try_draw_polygon_aa_with_scratch, try_draw_rect_aa, try_draw_rect_aa_with_scratch,
-    try_draw_triangle_aa, try_draw_triangle_aa_with_scratch,
+    Point, RasterizerScratch, Rect, SurfaceDescriptor, SurfaceError, Texture, TextureCache,
+    TextureCacheError, TextureFilter, Transform2D, Vector,
 };
 
 #[test]
