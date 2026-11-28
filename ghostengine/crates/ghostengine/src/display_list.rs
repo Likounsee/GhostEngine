@@ -246,11 +246,10 @@ impl DisplayListRenderer {
 
     /// Releases retained sampling allocations when they exceed a budget.
     pub fn trim_to_budget(&mut self, budget_bytes: usize) -> usize {
-        let before = self.allocated_bytes();
-        if before > budget_bytes {
-            self.release();
-        }
-        before.saturating_sub(self.allocated_bytes())
+        let texture_released = self.texture_scratch.trim_to_budget(budget_bytes);
+        let remaining_budget = budget_bytes.saturating_sub(self.texture_scratch.allocated_bytes());
+        let stroke_released = self.stroke_scratch.trim_to_budget(remaining_budget);
+        texture_released.saturating_add(stroke_released)
     }
 
     /// Replays a display list into a framebuffer, retaining temporary storage.
