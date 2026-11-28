@@ -77,6 +77,32 @@ reciprocal mip scales and direct row-major texel indexing after coordinate
 clamping, avoiding repeated scale divisions and checked pixel lookups in the
 inner sampling loop. Keep setup and frame costs separate when evaluating the workload.
 
+## Additional CI baseline — 2026-11-28 (4K fractional trilinear)
+
+A second release benchmark was completed on Windows, Linux and macOS
+(workflow run [46160071685](https://github.com/Likounsee/GhostEngine/actions/runs/46160071685),
+source revision `9c56c1a2d7ed3ec2206b478875e7c867f7c4fc0f`). It used Rust
+`rustc 1.100.1`, Release mode, SIMD and parallel rendering enabled, and 20
+measured frames for the 4K source workload. The virtual runners exposed 4
+logical CPUs on Windows/Linux and 3 on macOS; these remain CI diagnostics, not
+physical desktop reference measurements.
+
+The 4K-to-1440x810 fractional-LOD trilinear workload measured:
+
+| Runner | CPU reported by runner | Serial (ms/frame) | 2 workers (ms/frame) | Automatic (ms/frame) |
+|---|---|---:|---:|---:|
+| Windows x86_64 | AMD64 Family 25 Model 1 Stepping 1 | 83.71 | 44.43 | 33.24 |
+| Linux x86_64 | AMD EPYC 9V45 96-Core | 63.04 | 40.46 | 31.34 |
+| macOS arm64 | Apple M1 (Virtual) | 45.88 | 19.26 | 13.42 |
+
+Mipmap construction for the 3840x2160 source was measured separately at
+74.68 ms (Windows), 52.69 ms (Linux), and 38.79 ms (macOS), excluded from the
+steady-state draw timings. Automatic rendering stayed above the isolated
+16.67 ms diagnostic target on the Windows and Linux virtual runners, while
+the virtual M1 runner was below it. This is a known workload to keep profiling;
+it is not evidence of performance on a developer desktop or a complete
+application frame.
+
 ## GPU backend (future work)
 
 A future GPU backend should target substantially lower rendering latency and higher throughput where supported by the hardware. Its targets must be defined separately after selecting an API and measuring real devices. Do not compare CPU and GPU numbers without accounting for upload, synchronization, readback, presentation and workload differences.

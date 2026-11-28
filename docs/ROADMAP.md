@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green CI matrix for the current candidate commit `3412c1f8919c3e5ff544474fb7abc9d953187971` on Windows, Linux and macOS (CI run `46154732799`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy and crate packaging. This verifies the automated matrix only; real desktop validation remains outstanding.
+- [x] Obtain a fully green CI matrix for candidate commit `36d6e957ea7cf000b99dc9e595032dbb0064a224` on Windows, Linux and macOS (CI run `46160376507`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy, crate packaging, the Amethys integration fixture and its 18-frame headless session. This verifies the automated matrix only; real desktop validation remains outstanding. The following commit persists the regenerated integration lockfile and mixed-scene benchmark output, and requires its own CI run.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -125,8 +125,8 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P1 — performance and long-running stability
 
-- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `46154732864` for commit `3412c1f8919c3e5ff544474fb7abc9d953187971`; its virtual runner results are not substitutes for reference desktop measurements.
-- [ ] Profile representative mixed scenes, not only isolated raster primitives.
+- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The latest CI-hosted three-platform benchmark passed on run `46160071685` for commit `9c56c1a2d7ed3ec2206b478875e7c867f7c4fc0f`; its 4K fractional trilinear results are recorded in [PERFORMANCE.md](PERFORMANCE.md), but virtual runner results are not substitutes for reference desktop measurements.
+- [ ] Profile representative mixed scenes on reference desktop hardware, not only isolated raster primitives. A scripted Amethys test fixture now emits a repeatable 1600x900 profile (10 page renders and 200 full-scene draw passes) in the cross-platform CI logs; it is a virtual-runner diagnostic, not a physical reference baseline.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [x] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` passes the Windows/Linux/macOS CI matrix).
 - [x] Stress-test repeated headless resize, zero-sized minimize/restore, frame presentation and host shutdown (`repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent`, 1,000 cycles). Native desktop lifecycle stress remains part of the per-OS manual validation gate.

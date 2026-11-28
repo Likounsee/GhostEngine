@@ -7,7 +7,7 @@
 use crate::covers::CoverStore;
 use crate::gfx::{self, Action, Fonts, Hit, Page, Painter, State, BG, W};
 use crate::pages::{self, Active, PageFn, MW, MX, SIDE_W};
-use std::{collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, process::Command, time::Instant};
 use ghostengine::{
     draw_rounded_rect_aa, fill_rounded_rect_aa, ClipboardAction, Color, ComponentId, ComponentTree,
     Framebuffer, InputState, Insets, LayoutDirection, LayoutItem, Rect, ScrollViewport, StackLayout,
@@ -68,6 +68,40 @@ fn search_tree(placeholder: &str) -> ComponentTree {
     .with_layout_item(LayoutItem::flexible())
     .with_children(vec![field]);
     ComponentTree::new(vec![panel])
+}
+
+fn benchmark_cpu_name() -> String {
+    if let Ok(value) = std::env::var("PROCESSOR_IDENTIFIER") {
+        if !value.trim().is_empty() {
+            return value;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
+        if let Some(model) = cpuinfo.lines().find_map(|line| {
+            line.strip_prefix("model name")
+                .and_then(|value| value.split_once(':'))
+                .map(|(_, value)| value.trim().to_owned())
+        }) {
+            return model;
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Ok(output) = Command::new("sysctl")
+        .args(["-n", "machdep.cpu.brand_string"])
+        .output()
+    {
+        if output.status.success() {
+            let model = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if !model.is_empty() {
+                return model;
+            }
+        }
+    }
+
+    "Not reported by operating system".to_owned()
 }
 
 fn dark_theme() -> UiTheme {
@@ -298,10 +332,27 @@ impl App {
             self.draw_scene(fb, &idle, false);
         }
         let frame_avg = t.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+        let page_avg = times.iter().sum::<f64>() / n as f64;
+        let page_min = times.iter().cloned().fold(f64::MAX, f64::min);
+        let page_max = times.iter().cloned().fold(0.0, f64::max);
+        let threads = std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1);
+        println!(
+            "Mixed-scene profile: OS={} ARCH={} CPU={} logical_threads={}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            benchmark_cpu_name(),
+            threads
+        );
+        println!(
+            "Page render: n={n} avg={page_avg:.3} ms min={page_min:.3} ms max={page_max:.3} ms | full scene draw: n={frames} avg={frame_avg:.3} ms ({:.1} FPS)",
+            if frame_avg > 0.0 { 1000.0 / frame_avg } else { 0.0 }
+        );
         self.bench = Some(Bench {
-            page_avg: times.iter().sum::<f64>() / n as f64,
-            page_min: times.iter().cloned().fold(f64::MAX, f64::min),
-            page_max: times.iter().cloned().fold(0.0, f64::max),
+            page_avg,
+            page_min,
+            page_max,
             page_n: n,
             frame_avg,
             frame_n: frames,
