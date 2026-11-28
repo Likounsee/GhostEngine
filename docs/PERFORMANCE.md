@@ -152,11 +152,12 @@ and affine point transformation on every frame.
 
 
 Display lists expose `prepared_path_geometry_bytes()` to report the retained
-flattened point storage held by recorded fill commands separately from the
-command/state-vector allocation reported by `allocated_bytes()`. Clearing a
-list drops its prepared geometry while retaining the reusable command-buffer
-capacity, so applications can account for the memory tradeoff of recording
-static vector scenes.
+flattened geometry storage owned by fill, path-stroke, and rectangle-outline
+commands separately from the command/state-vector allocation reported by
+`allocated_bytes()`. The count includes each geometry buffer's allocated
+capacity. Clearing a list drops its prepared geometry while retaining the
+reusable command-buffer capacity, so applications can account for the memory
+tradeoff of recording static vector scenes.
 
 
 ## Prepared vector strokes in display lists

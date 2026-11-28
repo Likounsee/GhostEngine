@@ -378,7 +378,7 @@ impl DisplayList {
             )
     }
 
-    /// Returns bytes retained by flattened path geometry owned by fill and stroke commands.
+    /// Returns bytes retained by fill, path-stroke, and rectangle-outline geometry.
     ///
     /// The count uses each geometry buffer's allocated capacity, not only its
     /// initialized elements. It is reported separately from `allocated_bytes`,

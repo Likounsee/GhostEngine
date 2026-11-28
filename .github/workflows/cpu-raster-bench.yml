@@ -6,9 +6,21 @@ on:
     branches:
       - GhostEngine
     paths:
+      - ".github/workflows/cpu-raster-bench.yml"
       - "ghostengine/crates/ghostengine/src/rasterizer.rs"
+      - "ghostengine/crates/ghostengine/src/stroke.rs"
+      - "ghostengine/crates/ghostengine/src/path.rs"
+      - "ghostengine/crates/ghostengine/src/path_cache.rs"
+      - "ghostengine/crates/ghostengine/src/display_list.rs"
+      - "ghostengine/crates/ghostengine/src/text.rs"
+      - "ghostengine/crates/ghostengine/src/shaping.rs"
+      - "ghostengine/crates/ghostengine/src/ui.rs"
       - "ghostengine/crates/ghostengine/src/texture.rs"
+      - "ghostengine/crates/ghostengine/src/texture_atlas.rs"
+      - "ghostengine/crates/ghostengine/src/texture_cache.rs"
+      - "ghostengine/crates/ghostengine/src/mipmap.rs"
       - "ghostengine/crates/ghostengine/src/composition.rs"
+      - "ghostengine/crates/ghostengine/src/cached_layer.rs"
       - "ghostengine/crates/ghostengine/src/framebuffer.rs"
       - "ghostengine/crates/ghostengine/src/simd.rs"
       - "ghostengine/crates/ghostengine/examples/cpu_raster_bench.rs"
