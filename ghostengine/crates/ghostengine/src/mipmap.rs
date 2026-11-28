@@ -173,7 +173,29 @@ pub fn draw_mipmapped_texture_clipped(
     let scale_y = base.height() as f32 / destination.height as f32;
     let lod = scale_x.max(scale_y).log2().max(0.0);
     let prepared = PreparedTrilinear::new(mipmaps.levels.len(), lod);
+    let lower = &mipmaps.levels[prepared.lower];
+    let upper = &mipmaps.levels[prepared.upper];
+
+    // Opaque mip levels are common for game and UI assets. Prepare scanline
+    // sampling once per row and write directly, avoiding generic alpha handling
+    // and repeated texture-bound checks for every output pixel.
+    if lower.is_fully_opaque() && upper.is_fully_opaque() {
+        draw_opaque_trilinear_clipped(
+            target,
+            base,
+            lower,
+            upper,
+            destination,
+            clip,
+            scale_x,
+            scale_y,
+            prepared,
+        );
+        return;
+    }
+
     let target_width = target.width() as usize;
+    let target_pixels = target.pixels_mut();
 
     for y in clip.y..clip.y + clip.height {
         let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
@@ -186,14 +208,167 @@ pub fn draw_mipmapped_texture_clipped(
                 continue;
             }
             let index = y as usize * target_width + x as usize;
-            let destination = &mut target.pixels_mut()[index];
-            *destination = if source.a == 255 {
+            let destination_pixel = &mut target_pixels[index];
+            *destination_pixel = if source.a == 255 {
                 source
             } else {
-                source.blend_over(*destination)
+                source.blend_over(*destination_pixel)
             };
         }
     }
+}
+
+#[inline]
+fn draw_opaque_trilinear_clipped(
+    target: &mut crate::Framebuffer,
+    base: &Texture,
+    lower: &Texture,
+    upper: &Texture,
+    destination: crate::Rect,
+    clip: crate::Rect,
+    scale_x: f32,
+    scale_y: f32,
+    prepared: PreparedTrilinear,
+) {
+    let target_width = target.width() as usize;
+    let target_pixels = target.pixels_mut();
+    let lower_width = lower.width() as usize;
+    let lower_height = lower.height() as usize;
+    let upper_width = upper.width() as usize;
+    let upper_height = upper.height() as usize;
+    let lower_pixels = lower.pixels();
+    let upper_pixels = upper.pixels();
+    let interpolate_levels = prepared.lower != prepared.upper && prepared.fraction > 0.0;
+    let clip_left = clip.x as usize;
+    let clip_width = clip.width as usize;
+
+    if interpolate_levels {
+        for y in clip.y..clip.y + clip.height {
+            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+                .clamp(0.0, base.height() as f32 - 1.0);
+            let lower_y = ((source_y + 0.5) * prepared.lower_inverse_scale - 0.5)
+                .clamp(0.0, lower_height as f32 - 1.0);
+            let lower_y0 = lower_y.floor() as usize;
+            let lower_y1 = (lower_y0 + 1).min(lower_height - 1);
+            let lower_ty = lower_y - lower_y0 as f32;
+            let lower_top =
+                &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
+            let lower_bottom =
+                &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
+
+            let upper_y = ((source_y + 0.5) * prepared.upper_inverse_scale - 0.5)
+                .clamp(0.0, upper_height as f32 - 1.0);
+            let upper_y0 = upper_y.floor() as usize;
+            let upper_y1 = (upper_y0 + 1).min(upper_height - 1);
+            let upper_ty = upper_y - upper_y0 as f32;
+            let upper_top =
+                &upper_pixels[upper_y0 * upper_width..(upper_y0 + 1) * upper_width];
+            let upper_bottom =
+                &upper_pixels[upper_y1 * upper_width..(upper_y1 + 1) * upper_width];
+
+            let row_start = y as usize * target_width + clip_left;
+            let target_row = &mut target_pixels[row_start..row_start + clip_width];
+            for (column, x) in (clip.x..clip.x + clip.width).enumerate() {
+                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                    .clamp(0.0, base.width() as f32 - 1.0);
+
+                let lower_x = ((source_x + 0.5) * prepared.lower_inverse_scale - 0.5)
+                    .clamp(0.0, lower_width as f32 - 1.0);
+                let lower_x0 = lower_x.floor() as usize;
+                let lower_x1 = (lower_x0 + 1).min(lower_width - 1);
+                let lower_tx = lower_x - lower_x0 as f32;
+                let lower_sample = sample_bilinear_opaque_rows(
+                    lower_top,
+                    lower_bottom,
+                    lower_x0,
+                    lower_x1,
+                    lower_tx,
+                    lower_ty,
+                );
+
+                let upper_x = ((source_x + 0.5) * prepared.upper_inverse_scale - 0.5)
+                    .clamp(0.0, upper_width as f32 - 1.0);
+                let upper_x0 = upper_x.floor() as usize;
+                let upper_x1 = (upper_x0 + 1).min(upper_width - 1);
+                let upper_tx = upper_x - upper_x0 as f32;
+                let upper_sample = sample_bilinear_opaque_rows(
+                    upper_top,
+                    upper_bottom,
+                    upper_x0,
+                    upper_x1,
+                    upper_tx,
+                    upper_ty,
+                );
+
+                target_row[column] =
+                    interpolate_premultiplied(lower_sample, upper_sample, prepared.fraction);
+            }
+        }
+    } else {
+        for y in clip.y..clip.y + clip.height {
+            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+                .clamp(0.0, base.height() as f32 - 1.0);
+            let lower_y = ((source_y + 0.5) * prepared.lower_inverse_scale - 0.5)
+                .clamp(0.0, lower_height as f32 - 1.0);
+            let lower_y0 = lower_y.floor() as usize;
+            let lower_y1 = (lower_y0 + 1).min(lower_height - 1);
+            let lower_ty = lower_y - lower_y0 as f32;
+            let lower_top =
+                &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
+            let lower_bottom =
+                &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
+
+            let row_start = y as usize * target_width + clip_left;
+            let target_row = &mut target_pixels[row_start..row_start + clip_width];
+            for (column, x) in (clip.x..clip.x + clip.width).enumerate() {
+                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                    .clamp(0.0, base.width() as f32 - 1.0);
+                let lower_x = ((source_x + 0.5) * prepared.lower_inverse_scale - 0.5)
+                    .clamp(0.0, lower_width as f32 - 1.0);
+                let lower_x0 = lower_x.floor() as usize;
+                let lower_x1 = (lower_x0 + 1).min(lower_width - 1);
+                let lower_tx = lower_x - lower_x0 as f32;
+                target_row[column] = sample_bilinear_opaque_rows(
+                    lower_top,
+                    lower_bottom,
+                    lower_x0,
+                    lower_x1,
+                    lower_tx,
+                    lower_ty,
+                );
+            }
+        }
+    }
+}
+
+#[inline]
+fn sample_bilinear_opaque_rows(
+    top_row: &[Color],
+    bottom_row: &[Color],
+    x0: usize,
+    x1: usize,
+    tx: f32,
+    ty: f32,
+) -> Color {
+    let top_left = top_row[x0];
+    let top_right = top_row[x1];
+    let bottom_left = bottom_row[x0];
+    let bottom_right = bottom_row[x1];
+    let inverse_x = 1.0 - tx;
+    let inverse_y = 1.0 - ty;
+    let interpolate = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
+        let top = f32::from(top_left) * inverse_x + f32::from(top_right) * tx;
+        let bottom = f32::from(bottom_left) * inverse_x + f32::from(bottom_right) * tx;
+        (top * inverse_y + bottom * ty)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+
+    Color::rgb(
+        interpolate(top_left.r, top_right.r, bottom_left.r, bottom_right.r),
+        interpolate(top_left.g, top_right.g, bottom_left.g, bottom_right.g),
+        interpolate(top_left.b, top_right.b, bottom_left.b, bottom_right.b),
+    )
 }
 
 #[inline]
@@ -538,6 +713,50 @@ mod tests {
                         source.blend_over(destination_pixel)
                     },
                 );
+            }
+        }
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
+    fn opaque_fractional_lod_draw_matches_per_pixel_reference_with_clip() {
+        let base = Texture::new(
+            17,
+            11,
+            (0..187)
+                .map(|index| {
+                    Color::rgb(
+                        (index * 17 % 256) as u8,
+                        (index * 29 % 256) as u8,
+                        (index * 41 % 256) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        assert!(chain.levels().iter().all(Texture::is_fully_opaque));
+
+        let destination = crate::Rect::new(1, 2, 6, 4);
+        let clip = crate::Rect::new(2, 2, 4, 3);
+        let mut actual =
+            crate::Framebuffer::new(10, 8, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut expected = actual.clone();
+
+        draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
+
+        let scale_x = base.width() as f32 / destination.width as f32;
+        let scale_y = base.height() as f32 / destination.height as f32;
+        let lod = scale_x.max(scale_y).log2().max(0.0);
+        assert!(lod.fract() > 0.0);
+        for y in clip.y..clip.y + clip.height {
+            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+                .clamp(0.0, base.height() as f32 - 1.0);
+            for x in clip.x..clip.x + clip.width {
+                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                    .clamp(0.0, base.width() as f32 - 1.0);
+                expected.set_pixel(x, y, chain.sample_trilinear(source_x, source_y, lod));
             }
         }
 
