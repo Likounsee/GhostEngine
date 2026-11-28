@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green CI matrix for candidate commit `96deb146b2331fc37e66bf0bde1e2403ba1474ad` on Windows, Linux and macOS (CI run `46161589387`): Rust 1.87 passed 6/6 steps; each OS passed 24/24 steps, including format, Clippy, API docs, package contents, all feature configurations, 848 tests, headless examples, the persisted `--locked` Amethys integration, 12 image decodes and all 18 scripted PNG frames. This verifies the automated matrix only; real desktop validation remains outstanding.
+- [x] Obtain a fully green CI matrix for code candidate `64cae9212bd5872e174137b24db0d277e57bef00` on Windows, Linux and macOS (run `46181055239`): Rust 1.87 passed; each OS passed formatting, Clippy, public API docs, package/license-file checks, package build, scalar, SIMD, parallel, native-input, native-window and all-feature test configurations; 849 all-feature tests passed per OS; all headless examples, Amethys integration and all 18 scripted PNG frames passed. This verifies the automated matrix only; real desktop validation remains outstanding.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -125,13 +125,13 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P1 — performance and long-running stability
 
-- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The latest CI-hosted three-platform benchmark passed on run `46160071685` for commit `9c56c1a2d7ed3ec2206b478875e7c867f7c4fc0f`; its 4K fractional trilinear results are recorded in [PERFORMANCE.md](PERFORMANCE.md), but virtual runner results are not substitutes for reference desktop measurements.
+- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The latest CI-hosted benchmark is run `46180697363` for commit `0718bf7655737e277b8ab6f8dc84d85928d03ddb`; selected 1920x1080 mixed-workload and 4K fractional-trilinear results are recorded in [PERFORMANCE.md](PERFORMANCE.md), but virtual runner results are not substitutes for reference desktop measurements.
 - [x] Add and execute a repeatable mixed-scene profile (10 page renders and 200 full-scene draw passes at 1600x900) on Windows, Linux and macOS CI; results and limitations are recorded in [PERFORMANCE.md](PERFORMANCE.md).
 - [ ] Repeat the mixed-scene profile on reference desktop hardware; virtual-runner results are not physical reference baselines.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [x] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` passes the Windows/Linux/macOS CI matrix).
 - [x] Stress-test repeated headless resize, zero-sized minimize/restore, frame presentation and host shutdown (`repeated_headless_resize_minimize_present_and_shutdown_cycles_remain_consistent`, 1,000 cycles). Native desktop lifecycle stress remains part of the per-OS manual validation gate.
-- [ ] Complete a broader audit of infallible convenience APIs and internal rasterization scratch allocations; the core framebuffer, borrowed-texture, surface-export, image-decoding, texture-cache and display-list capacity paths now have explicit checked/fallible coverage.
+- [x] Complete a source-wide audit of infallible convenience APIs and internal rasterization scratch allocations; add fallible antialiased polygon, rectangle and triangle outline APIs with pre-reservation and equivalence tests. Legacy compatibility wrappers remain available.
 
 #### P2 — release packaging and API readiness
 
@@ -146,7 +146,7 @@ This checklist tracks implementation separately from release validation. A check
 ### Current validation notes
 
 - The release gate and per-OS desktop validation record are documented in `RELEASE_CHECKLIST.md` and `PLATFORM_VALIDATION.md`; they do not count as completed physical desktop tests.
-- Final automated candidate: `96deb146b2331fc37e66bf0bde1e2403ba1474ad`, CI run `46161589387` — Windows/Linux/macOS and Rust 1.87 all green.
+- Final automated code candidate: `64cae9212bd5872e174137b24db0d277e57bef00`, CI run `46181055239` — Windows/Linux/macOS and Rust 1.87 all green; 849 all-feature tests pass per OS.
 
 - The common headless host and surface-export paths have unit coverage; the public end-to-end headless presentation/export and minimize/restore paths also have integration tests in `ghostengine/crates/ghostengine/tests/host_pipeline.rs`.
 - Historical robustness commit `ad7f1dfac71bedf259dc45a8a7cf5eb3c9c7e8c7` passed the complete Windows, Linux and macOS CI matrix, including scalar, SIMD, parallel, native-input, native-window and all-feature configurations (run `45249472213`). Later commits require their own green matrix.
