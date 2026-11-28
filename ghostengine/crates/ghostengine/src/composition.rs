@@ -2267,12 +2267,6 @@ fn compose_layer_groups_cached_internal(
             damage
                 .try_add(Rect::new(0, 0, group.width, group.height))
                 .map_err(|_| FramebufferError::AllocationFailed)?;
-            // Reserve the hash-table slot before evicting any existing group.
-            // A later insertion must not panic or leave the cache partially evicted.
-            cache
-                .entries
-                .try_reserve(1)
-                .map_err(|_| FramebufferError::AllocationFailed)?;
             cache.ensure_budget_for(id, incoming_bytes)?;
             cache.clock = cache.clock.saturating_add(1);
             cache.entries.insert(
