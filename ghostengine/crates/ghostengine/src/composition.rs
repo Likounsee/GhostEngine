@@ -2423,7 +2423,7 @@ pub fn compose_layer_groups_in_damage_regions(
             group.x,
             group.y,
             group.transform,
-        ) {
+        )? {
             if local_damage.is_empty() {
                 continue;
             }
@@ -2450,12 +2450,16 @@ fn transformed_damage(
     offset_x: i32,
     offset_y: i32,
     transform: Transform2D,
-) -> Option<DamageRegion> {
+) -> Result<Option<DamageRegion>, FramebufferError> {
     if transform == Transform2D::IDENTITY {
-        return Some(translated_damage(source, width, height, offset_x, offset_y));
+        return Ok(Some(translated_damage(
+            source, width, height, offset_x, offset_y,
+        )?));
     }
 
-    let inverse = transform.inverse()?;
+    let Some(inverse) = transform.inverse() else {
+        return Ok(None);
+    };
     let mut local = DamageRegion::new(width, height);
 
     for rectangle in source.rectangles() {
@@ -2476,7 +2480,7 @@ fn transformed_damage(
             .iter()
             .any(|point| !point.x.is_finite() || !point.y.is_finite())
         {
-            return None;
+            return Ok(None);
         }
 
         let min_x = corners
@@ -2502,16 +2506,18 @@ fn transformed_damage(
         let local_bottom = (max_y.ceil() + 1.0).clamp(0.0, height as f32) as u32;
 
         if local_left < local_right && local_top < local_bottom {
-            local.add(Rect::new(
-                local_left,
-                local_top,
-                local_right - local_left,
-                local_bottom - local_top,
-            ));
+            local
+                .try_add(Rect::new(
+                    local_left,
+                    local_top,
+                    local_right - local_left,
+                    local_bottom - local_top,
+                ))
+                .map_err(|_| FramebufferError::AllocationFailed)?;
         }
     }
 
-    Some(local)
+    Ok(Some(local))
 }
 
 fn translated_damage(
@@ -2520,7 +2526,7 @@ fn translated_damage(
     height: u32,
     offset_x: i32,
     offset_y: i32,
-) -> DamageRegion {
+) -> Result<DamageRegion, FramebufferError> {
     let mut translated = DamageRegion::new(width, height);
     for rectangle in source.rectangles() {
         let left = i64::from(rectangle.x) - i64::from(offset_x);
@@ -2532,15 +2538,17 @@ fn translated_damage(
         let clipped_right = right.max(0).min(i64::from(width));
         let clipped_bottom = bottom.max(0).min(i64::from(height));
         if clipped_left < clipped_right && clipped_top < clipped_bottom {
-            translated.add(Rect::new(
-                clipped_left as u32,
-                clipped_top as u32,
-                (clipped_right - clipped_left) as u32,
-                (clipped_bottom - clipped_top) as u32,
-            ));
+            translated
+                .try_add(Rect::new(
+                    clipped_left as u32,
+                    clipped_top as u32,
+                    (clipped_right - clipped_left) as u32,
+                    (clipped_bottom - clipped_top) as u32,
+                ))
+                .map_err(|_| FramebufferError::AllocationFailed)?;
         }
     }
-    translated
+    Ok(translated)
 }
 
 fn render_layer_group_partial_into(
@@ -2557,7 +2565,9 @@ fn render_layer_group_partial_into(
     let mut effective_damage;
     let damage = if needs_full_initialization {
         effective_damage = DamageRegion::new(group.width, group.height);
-        effective_damage.add(Rect::new(0, 0, group.width, group.height));
+        effective_damage
+            .try_add(Rect::new(0, 0, group.width, group.height))
+            .map_err(|_| FramebufferError::AllocationFailed)?;
         &effective_damage
     } else {
         damage
@@ -2595,7 +2605,7 @@ fn render_layer_group_partial_into(
                     nested.x,
                     nested.y,
                     nested.transform,
-                ) {
+                )? {
                     if nested_damage.is_empty() {
                         continue;
                     }
