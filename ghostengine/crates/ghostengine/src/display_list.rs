@@ -378,10 +378,11 @@ impl DisplayList {
             )
     }
 
-    /// Returns logical bytes held by flattened path geometry owned by fill commands.
+    /// Returns bytes retained by flattened path geometry owned by fill and stroke commands.
     ///
-    /// This is reported separately from `allocated_bytes`, which accounts only
-    /// for the display list's command and state-stack backing vectors.
+    /// The count uses each geometry buffer's allocated capacity, not only its
+    /// initialized elements. It is reported separately from `allocated_bytes`,
+    /// which accounts only for the display list's command and state-stack buffers.
     #[must_use]
     pub fn prepared_path_geometry_bytes(&self) -> usize {
         self.commands.iter().fold(0_usize, |total, command| {
@@ -2569,14 +2570,18 @@ mod tests {
         .unwrap();
         let geometry_bytes = list.prepared_path_geometry_bytes();
         assert!(geometry_bytes > 0);
-        assert!(list.allocated_bytes() > 0);
+        let list_allocated_bytes = list.allocated_bytes();
+        assert!(list_allocated_bytes > 0);
 
         let cloned = list.clone();
-        assert_eq!(cloned.prepared_path_geometry_bytes(), geometry_bytes);
+        assert_eq!(cloned, list);
+        assert!(cloned.prepared_path_geometry_bytes() > 0);
+        assert!(cloned.allocated_bytes() > 0);
 
         list.clear();
         assert_eq!(list.prepared_path_geometry_bytes(), 0);
-        assert_eq!(list.allocated_bytes(), cloned.allocated_bytes());
+        assert_eq!(list.allocated_bytes(), list_allocated_bytes);
+        assert!(cloned.prepared_path_geometry_bytes() > 0);
     }
 
     #[test]
