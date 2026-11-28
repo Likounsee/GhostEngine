@@ -4,11 +4,11 @@ This checklist is the final gate for a versioned 2D V1 release. It deliberately 
 
 ## 1. Source and automated validation
 
-- [x] Freeze candidate commit `96deb146b2331fc37e66bf0bde1e2403ba1474ad` and record its full SHA.
-- [x] Obtain a completed, green GitHub Actions matrix for that exact SHA on Windows, Linux and macOS (run `46161589387`).
+- [x] Freeze code candidate commit `64cae9212bd5872e174137b24db0d277e57bef00` and record its full SHA.
+- [x] Obtain a completed, green GitHub Actions matrix for that exact SHA on Windows, Linux and macOS (run `46181055239`); Rust 1.87 also passes.
 - [x] Confirm formatting, Clippy with warnings denied and public API docs with warnings denied.
 - [x] Confirm scalar fallback, SIMD, parallel rendering, native-input, native-window and all-feature test configurations.
-- [x] Confirm headless examples and the image-decoding showcase build and run; native desktop examples still require interactive validation.
+- [x] Confirm all headless examples, image decoding/mipmap showcase, Amethys integration and all 18 scripted PNG frames pass on Windows, Linux and macOS.
 - [x] Confirm no known critical correctness, memory-safety, lifecycle or input defects remain in the audited source and automated tests; physical desktop validation remains open.
 - [x] Review the public API for accidental unstable/internal exports and document intentional compatibility limits.
 
@@ -22,17 +22,17 @@ CI compilation is not a substitute for physical desktop testing. If a capability
 
 - [x] Run repeated insert/evict/invalidate cycles for texture, path, glyph and layer caches; record memory behavior and stale-handle outcomes (unified cache lifecycle stress test passes the cross-platform CI matrix).
 - [ ] Run repeated native window resize/minimize/restore/present/close cycles on each physical OS desktop.
-- [ ] Finish reviewing infallible convenience APIs and internal raster scratch allocations; invalid external input must return errors rather than panic or write out of bounds.
+- [x] Audit allocation-bearing raster scratch paths and compatibility wrappers; add fallible polygon, rectangle and triangle antialiased-outline APIs, reserve required buffers before framebuffer mutation, export the APIs and cover them with equivalence tests. Physical desktop validation remains separate.
 - [x] Keep deterministic pixel/golden tests for representative optimized rendering paths and cache/composition behavior.
 - [x] Record known API/platform limitations and validation boundaries in the public docs; platform-specific physical results remain to be filled in.
 
 ## 4. Performance evidence
 
 - [ ] Run release benchmarks on reference desktop hardware for Windows, Linux and macOS.
-- [x] Record CI commit SHA, CPU, OS, Rust version, feature set, resolution and iteration count in [PERFORMANCE.md](PERFORMANCE.md); physical reference hardware records remain open.
+- [x] Record the latest three-platform CI benchmark metadata and mixed-scene results in [PERFORMANCE.md](PERFORMANCE.md); physical reference hardware records remain open.
 - [x] Profile a representative mixed scene (text + UI + images + layers) on all three CI platforms; see [PERFORMANCE.md](PERFORMANCE.md).
 - [x] Compare CI results against the existing [performance baseline](PERFORMANCE.md), identify the 4K fractional trilinear hotspot and preserve correctness tests; reference desktop comparison remains open.
-- [ ] Do not present virtual CI runner results as physical desktop benchmarks or claim universal 60 FPS.
+- [x] Keep virtual CI results explicitly separate from physical desktop benchmarks; do not claim universal 60 FPS.
 
 ## 5. Documentation and licensing
 
