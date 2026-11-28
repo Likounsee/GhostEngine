@@ -125,7 +125,7 @@ jobs:
         run: rustfmt --edition 2021 --check "Amethys-Launcher test/tests/launcher_integration.rs"
 
       - name: Test Amethys Launcher integration
-        run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features --locked --locked
+        run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features --locked
 
       - name: Render scripted Amethys Launcher session (headless)
         run: cargo run --manifest-path "Amethys-Launcher test/Cargo.toml" --release -- --snapshot "target/amethyst-launcher-snapshots"
