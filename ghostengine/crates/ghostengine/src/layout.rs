@@ -109,6 +109,9 @@ impl StackLayout {
 
     /// Computes child rectangles in input order.
     ///
+    /// This convenience wrapper may panic if output storage cannot be allocated.
+    /// Use [`Self::try_layout_into`] when allocation failure must be returned.
+    ///
     /// Fixed children keep their requested main-axis size (clipped to available
     /// space); flexible children share remaining space. Division remainder is
     /// assigned one pixel at a time to earlier flexible children.

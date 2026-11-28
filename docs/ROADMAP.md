@@ -37,7 +37,7 @@ Finish one complete, reliable and reusable 2D engine. There is **no separate 2D 
 - Unit, integration, golden-image, property and fuzz tests.
 - Cross-platform CI, examples, API documentation and migration guidance.
 - Repeatable release benchmarks with before/after comparisons; preserve pixel correctness. Initial Windows/Linux/macOS CI baselines are recorded in [PERFORMANCE.md](PERFORMANCE.md); representative hot spots remain under optimization.
-- Keep the public API usable by Archia Browser, ArchiaOS, PeaceEmu and other consumers. Integrating a consumer application (including Metis Launcher) is a separate follow-up after the engine milestone, not a GhostEngine 2D V1 implementation task.
+- Keep the public API usable by Archia Browser, ArchiaOS, PeaceEmu and other consumers. Integrating a consumer application (including Amethys Launcher) is a separate follow-up after the engine milestone, not a GhostEngine 2D V1 implementation task.
 
 ### 2D V1 exit criteria
 2D V1 is complete when the documented 2D feature set is implemented, supported CPU paths pass correctness/bounds/memory-safety tests, headless rendering works without a display server or GPU, the common host API and native adapters pass the Windows/Linux/macOS CI matrix (with platform limitations explicit), examples exercise text/images/vector/UI/input/presentation, performance baselines are recorded, and no known critical correctness or safety defects remain. Manual desktop smoke tests are release-validation evidence, but consumer-launcher integration is deliberately outside this engine milestone.
@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [ ] Obtain a fully green run for the release-candidate commit across Windows, Linux and macOS, including all feature combinations, the public host-pipeline integration tests and the image pipeline example. A historical green matrix was recorded on `d5ecf3eef79693b23d1449d210b0b4f93366b207` (CI run `45262411272`); it does not validate later commits.
+- [x] Obtain a fully green CI matrix for the current candidate commit `3412c1f8919c3e5ff544474fb7abc9d953187971` on Windows, Linux and macOS (CI run `46154732799`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy and crate packaging. This verifies the automated matrix only; real desktop validation remains outstanding.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
@@ -125,7 +125,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P1 — performance and long-running stability
 
-- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `45261600749`; its virtual runner results are not substitutes for reference desktop measurements.
+- [ ] Run release benchmarks on reference desktop Windows, Linux and macOS machines and store comparable results with hardware/toolchain/feature metadata. The CI-hosted three-platform benchmark workflow passed on run `46154732864` for commit `3412c1f8919c3e5ff544474fb7abc9d953187971`; its virtual runner results are not substitutes for reference desktop measurements.
 - [ ] Profile representative mixed scenes, not only isolated raster primitives.
 - [ ] Optimize only measured bottlenecks; preserve pixel-equivalence/correctness tests for each optimized path.
 - [x] Complete and pass a unified long-run cache stress pass covering texture, path, glyph and layer caches over repeated insert/evict/invalidate/resize cycles; verify bounded occupancy, texture accounting and stale-handle behavior (`unified_cache_lifecycle_stays_bounded_under_repeated_churn` passes the Windows/Linux/macOS CI matrix).

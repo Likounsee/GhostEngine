@@ -1,6 +1,6 @@
 # GhostEngine 2D V1 — release checklist
 
-This checklist is the final gate for a versioned 2D V1 release. It deliberately excludes GPU acceleration, 3D and consumer-application migration (including Metis Launcher).
+This checklist is the final gate for a versioned 2D V1 release. It deliberately excludes GPU acceleration, 3D and consumer-application migration (including Amethys Launcher).
 
 ## 1. Source and automated validation
 
@@ -56,4 +56,4 @@ For a dependency-license audit, run from `ghostengine/` with a current Rust tool
 
 ## Current boundary
 
-Metis Launcher integration, GPU acceleration and 3D are not release blockers for GhostEngine 2D V1. A test-only application fixture is not evidence of a production consumer integration.
+Amethys Launcher integration, GPU acceleration and 3D are not release blockers for GhostEngine 2D V1. A test-only application fixture is not evidence of a production consumer integration.

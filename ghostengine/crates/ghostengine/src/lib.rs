@@ -168,6 +168,7 @@ pub use texture::{
     draw_texture_region_clipped_with_scratch, draw_texture_transformed_clipped,
     draw_texture_transformed_clipped_parallel_with_threads,
     try_draw_texture_clipped_parallel_with_threads, try_draw_texture_clipped_with_scratch,
+    try_draw_texture_region_clipped_with_scratch,
     try_draw_texture_transformed_clipped,
     try_draw_texture_transformed_clipped_parallel_with_threads, NineSliceMargins, Texture,
     TextureDrawError, TextureDrawScratch, TextureError, TextureFilter,
