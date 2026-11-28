@@ -571,6 +571,7 @@ fn stroke_path_impl_rows(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stroke_prepared_path_impl_rows(
     target: &mut [Color],
     target_width: u32,
