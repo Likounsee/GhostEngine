@@ -29,7 +29,7 @@ unicode-segmentation = "1.12"
 wide = { version = "=0.7.33", optional = true }
 minifb = { version = "0.27", optional = true }
 winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"], optional = true }
-arboard = { version = "3", optional = true }
+arboard = { version = "3", default-features = false, optional = true }
 softbuffer = { version = "0.4.8", optional = true }
 image = { version = "=0.25.9", default-features = false, features = ["bmp", "jpeg", "png", "pnm"], optional = true }
 
