@@ -3,8 +3,27 @@ use ghostengine::{
     fill_polygon_parallel_with_threads, AlphaMode, BlendMode, CachedLayer, Color, ColorSpace,
     DamageRegion, DisplayList, FontFace, Framebuffer, Layer, Path, PathGeometryCache, PixelFormat,
     Point, Rect, SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError,
-    TextureFilter, Transform2D, Vector,
+    TextureFilter, Transform2D, Vector, RasterizerScratch, try_draw_polygon_aa,
+    try_draw_polygon_aa_with_scratch,
 };
+
+#[test]
+fn fallible_polygon_outline_apis_are_exported_from_crate_root() {
+    let vertices = [
+        Point::new(4, 3),
+        Point::new(27, 8),
+        Point::new(19, 25),
+        Point::new(7, 21),
+    ];
+    let color = Color::rgba(180, 90, 30, 160);
+    let mut automatic = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    try_draw_polygon_aa(&mut automatic, &vertices, color).unwrap();
+
+    let mut reused = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    let mut scratch = RasterizerScratch::default();
+    try_draw_polygon_aa_with_scratch(&mut reused, &vertices, color, &mut scratch).unwrap();
+    assert_eq!(automatic.pixels(), reused.pixels());
+}
 
 /// Small deterministic generator: reproducible property-style coverage without
 /// introducing a runtime dependency or nondeterministic CI failures.
