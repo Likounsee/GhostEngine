@@ -126,7 +126,7 @@ pub fn draw_mipmapped_texture_clipped(
 
 /// Draws a mipmapped texture using caller-selected CPU rendering options.
 ///
-/// Large opaque draws can use multiple workers. Pass RenderOptions::serial()
+/// Large opaque draws can use multiple workers. Pass `RenderOptions::serial()`
 /// to force serial execution or configure a worker limit and pixel threshold.
 pub fn draw_mipmapped_texture_clipped_with_options(
     target: &mut crate::Framebuffer,
@@ -254,10 +254,7 @@ struct OpaqueTrilinearDraw<'a> {
     options: crate::RenderOptions,
 }
 
-fn draw_opaque_trilinear_clipped(
-    target: &mut crate::Framebuffer,
-    draw: OpaqueTrilinearDraw<'_>,
-) {
+fn draw_opaque_trilinear_clipped(target: &mut crate::Framebuffer, draw: OpaqueTrilinearDraw<'_>) {
     let target_width = target.width() as usize;
     let clip = draw.clip;
     let clip_start = clip.y as usize * target_width;
@@ -330,8 +327,7 @@ fn draw_opaque_trilinear_rows(
             let row_start = row_index * target_width + clip_left;
             let target_row = &mut target_rows[row_start..row_start + clip_width];
             for (column, x) in (draw.clip.x..draw.clip.x + draw.clip.width).enumerate() {
-                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x
-                    - 0.5)
+                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x - 0.5)
                     .clamp(0.0, draw.base.width() as f32 - 1.0);
                 let lower_x = ((source_x + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                     .clamp(0.0, lower_width as f32 - 1.0);
@@ -361,11 +357,8 @@ fn draw_opaque_trilinear_rows(
                     upper_ty,
                 );
 
-                target_row[column] = interpolate_premultiplied(
-                    lower_sample,
-                    upper_sample,
-                    draw.prepared.fraction,
-                );
+                target_row[column] =
+                    interpolate_premultiplied(lower_sample, upper_sample, draw.prepared.fraction);
             }
         }
     } else {
@@ -384,8 +377,7 @@ fn draw_opaque_trilinear_rows(
             let row_start = row_index * target_width + clip_left;
             let target_row = &mut target_rows[row_start..row_start + clip_width];
             for (column, x) in (draw.clip.x..draw.clip.x + draw.clip.width).enumerate() {
-                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x
-                    - 0.5)
+                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x - 0.5)
                     .clamp(0.0, draw.base.width() as f32 - 1.0);
                 let lower_x = ((source_x + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                     .clamp(0.0, lower_width as f32 - 1.0);
@@ -843,8 +835,7 @@ mod tests {
         let chain = MipmapChain::new(&base).unwrap();
         let destination = crate::Rect::new(0, 0, 384, 288);
         let clip = crate::Rect::new(4, 3, 376, 280);
-        let mut actual =
-            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut actual = crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
         let mut serial =
             crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
         let mut limited =
@@ -870,7 +861,6 @@ mod tests {
         );
 
         let scale_x = base.width() as f32 / destination.width as f32;
-        
         let scale_y = base.height() as f32 / destination.height as f32;
         let lod = scale_x.max(scale_y).log2().max(0.0);
         assert!(lod.fract() > 0.0);
