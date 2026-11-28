@@ -10,6 +10,7 @@ use ghostengine::{
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
     fill_path_even_odd_aa, fill_path_non_zero, fill_polygon_aa, fill_rounded_rect_aa,
+    DisplayList, DisplayListRenderer,
     fill_rounded_rect_aa_parallel, stroke_path, stroke_path_aa,
     stroke_path_aa_parallel_with_threads, Color, FontFace, Framebuffer, Gradient, GradientStop,
     Layer, MipmapChain, NineSliceMargins, Path, PathGeometryCache, Point, RasterizerScratch, Rect,
@@ -153,6 +154,27 @@ fn main() {
         )
         .line_to(Vector::new(80.0 * SCALE_F32, 140.0 * SCALE_F32))
         .close();
+
+    let mut stroke_display_list = DisplayList::new();
+    stroke_display_list
+        .stroke_path(
+            path.clone(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(7.0 * SCALE_F32),
+            Color::rgba(90, 220, 130, 230),
+            0.35 * SCALE_F32,
+        )
+        .expect("display-list stroke should be valid");
+    stroke_display_list
+        .stroke_path_aa(
+            path.clone(),
+            Transform2D::IDENTITY,
+            StrokeStyle::new(3.0 * SCALE_F32),
+            Color::rgba(245, 130, 45, 210),
+            0.35 * SCALE_F32,
+        )
+        .expect("display-list antialiased stroke should be valid");
+    let mut display_list_renderer = DisplayListRenderer::new();
 
     let mut path_geometry_cache = PathGeometryCache::new(128);
     path_geometry_cache
@@ -610,6 +632,13 @@ fn main() {
                     &mut stroke_scratch,
                 )
                 .expect("scratch-backed benchmark stroke should be valid");
+            },
+        ),
+        measure(
+            "Display-list strokes (persistent renderer)",
+            iterations,
+            |target| {
+                display_list_renderer.replay(&stroke_display_list, target);
             },
         ),
         measure("Vector path stroke AA (parallel)", iterations, |target| {

@@ -121,3 +121,11 @@ non-antialiased commands share the same renderer-owned workspace; the
 standalone `DisplayList::replay` API remains self-contained and allocates a
 temporary workspace for one replay. The renderer's memory accounting,
 `release`, and `trim_to_budget` include both workspace families.
+
+
+The CPU benchmark now includes a repeated-frame display-list stroke workload
+using `DisplayListRenderer`. It records one regular and one antialiased
+vector stroke, then measures replay with the renderer-owned persistent stroke
+workspace. Compare this with the direct stroke and explicit `StrokeScratch`
+benchmarks to separate command dispatch overhead from the benefit of retaining
+geometry buffers across frames.
