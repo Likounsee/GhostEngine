@@ -124,8 +124,14 @@ jobs:
       - name: Format Amethys Launcher integration tests
         run: rustfmt --edition 2021 --check "Amethys-Launcher test/tests/launcher_integration.rs"
 
+      - name: Resolve Amethys integration lockfile against GhostEngine image decoder
+        shell: bash
+        run: |
+          cargo update --manifest-path "Amethys-Launcher test/Cargo.toml" -p image --precise 0.25.9
+          cat "Amethys-Launcher test/Cargo.lock"
+
       - name: Test Amethys Launcher integration
-        run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features
+        run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features --locked
 
       - name: Render scripted Amethys Launcher session (headless)
         run: cargo run --manifest-path "Amethys-Launcher test/Cargo.toml" --release -- --snapshot "target/amethyst-launcher-snapshots"
