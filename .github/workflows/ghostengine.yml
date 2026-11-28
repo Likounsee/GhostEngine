@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           files="$(cargo package -p ghostengine --list)"
-          printf '%s\\n' "$files"
+          printf '%s\n' "$files"
           for required in README.md LICENSE-MIT LICENSE-APACHE tests/fixtures/README.md tests/fixtures/OFL-NotoSansArabic.txt tests/fixtures/OFL-NotoSansHebrew.txt; do
             if ! grep -Fxq "$required" <<< "$files"; then
               echo "Missing required file from ghostengine package: $required"

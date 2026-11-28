@@ -143,9 +143,7 @@ pub fn decode_texture_with_options(
 
     let mut reader = reader;
     reader.limits(limits);
-    let rgba = decode_with_panic_guard(|| {
-        reader.decode().map(|decoded| decoded.into_rgba8())
-    })?;
+    let rgba = decode_with_panic_guard(|| reader.decode().map(|decoded| decoded.into_rgba8()))?;
     let (width, height) = rgba.dimensions();
     let pixel_count = (width as usize)
         .checked_mul(height as usize)
@@ -195,11 +193,9 @@ mod tests {
 
     #[test]
     fn codec_panics_are_returned_as_typed_decode_errors() {
-        let result = super::decode_with_panic_guard(
-            || -> Result<(), ::image::ImageError> {
-                std::panic::resume_unwind(Box::new("simulated codec panic"))
-            },
-        );
+        let result = super::decode_with_panic_guard(|| -> Result<(), ::image::ImageError> {
+            std::panic::resume_unwind(Box::new("simulated codec panic"))
+        });
 
         assert!(matches!(result, Err(ImageDecodeError::DecoderPanicked)));
     }
