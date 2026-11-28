@@ -304,9 +304,12 @@ impl PathGeometryCache {
             return Ok(self.uncached_geometry.as_ref().unwrap());
         }
 
-        // Reserve the index slot before evicting anything. If the hash table
-        // cannot grow, return this result uncached and preserve existing entries.
-        if self.lookup.try_reserve(1).is_err() {
+        // A full cache will evict at least one entry before inserting this
+        // geometry, so its existing hash-table capacity is already sufficient.
+        // Reserving here would grow the table unnecessarily at the exact moment
+        // the cache is meant to stay bounded. For a non-full cache, reserve
+        // before any mutation so allocation failure preserves every entry.
+        if self.entries.len() < self.capacity && self.lookup.try_reserve(1).is_err() {
             self.uncached_geometry = Some(geometry);
             return Ok(self.uncached_geometry.as_ref().unwrap());
         }
@@ -453,10 +456,12 @@ mod tests {
         cache.get_or_flatten(1, &path, 0.25).unwrap();
         cache.get_or_flatten(3, &path, 0.25).unwrap();
         let three_entry_bytes = cache.allocated_bytes();
+        let three_entry_lookup_capacity = cache.lookup.capacity();
         assert!(three_entry_bytes > two_entry_bytes);
 
         cache.get_or_flatten(4, &path, 0.25).unwrap();
         assert_eq!(cache.len(), 3);
+        assert_eq!(cache.lookup.capacity(), three_entry_lookup_capacity);
         assert!(cache.allocated_bytes() <= three_entry_bytes);
 
         cache.invalidate(1);

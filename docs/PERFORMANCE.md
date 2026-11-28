@@ -44,6 +44,8 @@ and reclaimable capacity are validated before eviction begins, so a failed
 budget change does not partially empty the cache. Large cache trims therefore
 use O(n log n) ordering rather than repeated O(n) minimum searches.
 
+When the cache is already at its entry limit, inserting a new key first reuses the table capacity released by the LRU victim. It does not reserve an additional hash-table slot before eviction, which previously caused avoidable table growth on full-cache replacement and made retained-memory accounting rise despite a fixed entry limit. Non-full insertions still reserve before mutation so allocation failure leaves existing entries intact.
+
 The path geometry cache keeps an exact running total of retained flattened-
 geometry payload bytes. Cache hits no longer require a full scan to report
 usage, and invalidation/clear operations update the counter directly. When an
