@@ -105,16 +105,35 @@ impl MipmapChain {
     }
 }
 
-/// Draws a mipmapped texture into a destination rectangle.
+/// Draws a mipmapped texture into a destination rectangle using default render options.
 ///
 /// The level of detail is selected from the downscale ratio. Sampling and
-/// compositing are clipped to the destination framebuffer. Large opaque draws
-/// are split across available CPU threads when the clipped area is substantial.
+/// compositing are clipped to the destination framebuffer.
 pub fn draw_mipmapped_texture_clipped(
     target: &mut crate::Framebuffer,
     mipmaps: &MipmapChain,
     destination: crate::Rect,
     clip: crate::Rect,
+) {
+    draw_mipmapped_texture_clipped_with_options(
+        target,
+        mipmaps,
+        destination,
+        clip,
+        crate::RenderOptions::default(),
+    );
+}
+
+/// Draws a mipmapped texture using caller-selected CPU rendering options.
+///
+/// Large opaque draws can use multiple workers. Pass RenderOptions::serial()
+/// to force serial execution or configure a worker limit and pixel threshold.
+pub fn draw_mipmapped_texture_clipped_with_options(
+    target: &mut crate::Framebuffer,
+    mipmaps: &MipmapChain,
+    destination: crate::Rect,
+    clip: crate::Rect,
+    options: crate::RenderOptions,
 ) {
     if destination.width == 0 || destination.height == 0 {
         return;
@@ -192,6 +211,7 @@ pub fn draw_mipmapped_texture_clipped(
                 scale_x,
                 scale_y,
                 prepared,
+                options,
             },
         );
         return;
@@ -231,6 +251,7 @@ struct OpaqueTrilinearDraw<'a> {
     scale_x: f32,
     scale_y: f32,
     prepared: PreparedTrilinear,
+    options: crate::RenderOptions,
 }
 
 fn draw_opaque_trilinear_clipped(
@@ -243,13 +264,12 @@ fn draw_opaque_trilinear_clipped(
     let clip_end = (clip.y as usize + clip.height as usize) * target_width;
     let visible_pixels = &mut target.pixels_mut()[clip_start..clip_end];
 
-    let clipped_pixel_count = (clip.width as usize).saturating_mul(clip.height as usize);
-    let available_threads = std::thread::available_parallelism().map_or(1, |count| count.get());
-    let worker_count = if clipped_pixel_count >= 65_536 {
-        available_threads.min(clip.height as usize).max(1)
-    } else {
-        1
-    };
+    let clipped_pixel_count = u64::from(clip.width).saturating_mul(u64::from(clip.height));
+    let worker_count = draw
+        .options
+        .worker_count(clipped_pixel_count)
+        .min(clip.height as usize)
+        .max(1);
 
     if worker_count == 1 {
         draw_opaque_trilinear_rows(visible_pixels, target_width, clip.y as usize, draw);
@@ -825,11 +845,32 @@ mod tests {
         let clip = crate::Rect::new(4, 3, 376, 280);
         let mut actual =
             crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut serial =
+            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut limited =
+            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
         let mut expected = actual.clone();
 
         draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
+        draw_mipmapped_texture_clipped_with_options(
+            &mut serial,
+            &chain,
+            destination,
+            clip,
+            crate::RenderOptions::serial(),
+        );
+        draw_mipmapped_texture_clipped_with_options(
+            &mut limited,
+            &chain,
+            destination,
+            clip,
+            crate::RenderOptions::new()
+                .with_max_threads(2)
+                .with_parallel_threshold(0),
+        );
 
         let scale_x = base.width() as f32 / destination.width as f32;
+        
         let scale_y = base.height() as f32 / destination.height as f32;
         let lod = scale_x.max(scale_y).log2().max(0.0);
         assert!(lod.fract() > 0.0);
@@ -845,6 +886,8 @@ mod tests {
         }
 
         assert_eq!(actual.pixels(), expected.pixels());
+        assert_eq!(serial.pixels(), expected.pixels());
+        assert_eq!(limited.pixels(), expected.pixels());
     }
 
     #[test]
