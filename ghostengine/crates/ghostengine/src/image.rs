@@ -2,7 +2,7 @@
 
 use std::{error::Error, fmt, io::Cursor};
 
-use ::image::{io::Limits, ImageFormat};
+use ::image::{ImageFormat, ImageReader, Limits};
 
 use crate::{Color, Texture, TextureCache, TextureCacheError, TextureError, TextureHandle};
 
@@ -125,7 +125,7 @@ pub fn decode_texture_with_options(
     encoded: &[u8],
     options: ImageDecodeOptions,
 ) -> Result<Texture, ImageDecodeError> {
-    let reader = ::image::io::Reader::new(Cursor::new(encoded))
+    let reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
         .map_err(ImageDecodeError::Reader)?;
     let format = reader.format().ok_or(ImageDecodeError::UnknownFormat)?;
