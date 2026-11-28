@@ -4,7 +4,8 @@ use ghostengine::{
     DamageRegion, DisplayList, FontFace, Framebuffer, Layer, Path, PathGeometryCache, PixelFormat,
     Point, Rect, SurfaceDescriptor, SurfaceError, Texture, TextureCache, TextureCacheError,
     TextureFilter, Transform2D, Vector, RasterizerScratch, try_draw_polygon_aa,
-    try_draw_polygon_aa_with_scratch,
+    try_draw_polygon_aa_with_scratch, try_draw_rect_aa, try_draw_rect_aa_with_scratch,
+    try_draw_triangle_aa, try_draw_triangle_aa_with_scratch,
 };
 
 #[test]
@@ -23,6 +24,34 @@ fn fallible_polygon_outline_apis_are_exported_from_crate_root() {
     let mut scratch = RasterizerScratch::default();
     try_draw_polygon_aa_with_scratch(&mut reused, &vertices, color, &mut scratch).unwrap();
     assert_eq!(automatic.pixels(), reused.pixels());
+
+    let rect = Rect::new(5, 6, 19, 13);
+    let mut automatic_rect = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    try_draw_rect_aa(&mut automatic_rect, rect, color).unwrap();
+    let mut reused_rect = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    try_draw_rect_aa_with_scratch(&mut reused_rect, rect, color, &mut scratch).unwrap();
+    assert_eq!(automatic_rect.pixels(), reused_rect.pixels());
+
+    let mut automatic_triangle = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    try_draw_triangle_aa(
+        &mut automatic_triangle,
+        vertices[0],
+        vertices[1],
+        vertices[2],
+        color,
+    )
+    .unwrap();
+    let mut reused_triangle = Framebuffer::new(32, 30, Color::BLACK).unwrap();
+    try_draw_triangle_aa_with_scratch(
+        &mut reused_triangle,
+        vertices[0],
+        vertices[1],
+        vertices[2],
+        color,
+        &mut scratch,
+    )
+    .unwrap();
+    assert_eq!(automatic_triangle.pixels(), reused_triangle.pixels());
 }
 
 /// Small deterministic generator: reproducible property-style coverage without
