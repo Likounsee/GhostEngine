@@ -108,7 +108,8 @@ impl MipmapChain {
 /// Draws a mipmapped texture into a destination rectangle.
 ///
 /// The level of detail is selected from the downscale ratio. Sampling and
-/// compositing are clipped to the destination framebuffer.
+/// compositing are clipped to the destination framebuffer. Large opaque draws
+/// are split across available CPU threads when the clipped area is substantial.
 pub fn draw_mipmapped_texture_clipped(
     target: &mut crate::Framebuffer,
     mipmaps: &MipmapChain,
@@ -182,14 +183,16 @@ pub fn draw_mipmapped_texture_clipped(
     if lower.is_fully_opaque() && upper.is_fully_opaque() {
         draw_opaque_trilinear_clipped(
             target,
-            base,
-            lower,
-            upper,
-            destination,
-            clip,
-            scale_x,
-            scale_y,
-            prepared,
+            OpaqueTrilinearDraw {
+                base,
+                lower,
+                upper,
+                destination,
+                clip,
+                scale_x,
+                scale_y,
+                prepared,
+            },
         );
         return;
     }
@@ -218,36 +221,77 @@ pub fn draw_mipmapped_texture_clipped(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn draw_opaque_trilinear_clipped(
-    target: &mut crate::Framebuffer,
-    base: &Texture,
-    lower: &Texture,
-    upper: &Texture,
+#[derive(Clone, Copy)]
+struct OpaqueTrilinearDraw<'a> {
+    base: &'a Texture,
+    lower: &'a Texture,
+    upper: &'a Texture,
     destination: crate::Rect,
     clip: crate::Rect,
     scale_x: f32,
     scale_y: f32,
     prepared: PreparedTrilinear,
+}
+
+fn draw_opaque_trilinear_clipped(
+    target: &mut crate::Framebuffer,
+    draw: OpaqueTrilinearDraw<'_>,
 ) {
     let target_width = target.width() as usize;
-    let target_pixels = target.pixels_mut();
-    let lower_width = lower.width() as usize;
-    let lower_height = lower.height() as usize;
-    let upper_width = upper.width() as usize;
-    let upper_height = upper.height() as usize;
-    let lower_pixels = lower.pixels();
-    let upper_pixels = upper.pixels();
-    let interpolate_levels = prepared.lower != prepared.upper && prepared.fraction > 0.0;
-    let clip_left = clip.x as usize;
-    let clip_width = clip.width as usize;
+    let clip = draw.clip;
+    let clip_start = clip.y as usize * target_width;
+    let clip_end = (clip.y as usize + clip.height as usize) * target_width;
+    let visible_pixels = &mut target.pixels_mut()[clip_start..clip_end];
+
+    let clipped_pixel_count = (clip.width as usize).saturating_mul(clip.height as usize);
+    let available_threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+    let worker_count = if clipped_pixel_count >= 65_536 {
+        available_threads.min(clip.height as usize).max(1)
+    } else {
+        1
+    };
+
+    if worker_count == 1 {
+        draw_opaque_trilinear_rows(visible_pixels, target_width, clip.y as usize, draw);
+        return;
+    }
+
+    let rows_per_worker = (clip.height as usize).div_ceil(worker_count);
+    let pixels_per_worker = rows_per_worker * target_width;
+    std::thread::scope(|scope| {
+        for (worker_index, rows) in visible_pixels.chunks_mut(pixels_per_worker).enumerate() {
+            let first_y = clip.y as usize + worker_index * rows_per_worker;
+            scope.spawn(move || {
+                draw_opaque_trilinear_rows(rows, target_width, first_y, draw);
+            });
+        }
+    });
+}
+
+fn draw_opaque_trilinear_rows(
+    target_rows: &mut [Color],
+    target_width: usize,
+    first_y: usize,
+    draw: OpaqueTrilinearDraw<'_>,
+) {
+    let lower_width = draw.lower.width() as usize;
+    let lower_height = draw.lower.height() as usize;
+    let upper_width = draw.upper.width() as usize;
+    let upper_height = draw.upper.height() as usize;
+    let lower_pixels = draw.lower.pixels();
+    let upper_pixels = draw.upper.pixels();
+    let clip_left = draw.clip.x as usize;
+    let clip_width = draw.clip.width as usize;
+    let interpolate_levels =
+        draw.prepared.lower != draw.prepared.upper && draw.prepared.fraction > 0.0;
+    let row_count = target_rows.len() / target_width;
 
     if interpolate_levels {
-        for y in clip.y..clip.y + clip.height {
-            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
-                .clamp(0.0, base.height() as f32 - 1.0);
-            let lower_y = ((source_y + 0.5) * prepared.lower_inverse_scale - 0.5)
+        for row_index in 0..row_count {
+            let y = first_y + row_index;
+            let source_y = ((y as f32 + 0.5 - draw.destination.y as f32) * draw.scale_y - 0.5)
+                .clamp(0.0, draw.base.height() as f32 - 1.0);
+            let lower_y = ((source_y + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                 .clamp(0.0, lower_height as f32 - 1.0);
             let lower_y0 = lower_y.floor() as usize;
             let lower_y1 = (lower_y0 + 1).min(lower_height - 1);
@@ -255,7 +299,7 @@ fn draw_opaque_trilinear_clipped(
             let lower_top = &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
             let lower_bottom = &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
 
-            let upper_y = ((source_y + 0.5) * prepared.upper_inverse_scale - 0.5)
+            let upper_y = ((source_y + 0.5) * draw.prepared.upper_inverse_scale - 0.5)
                 .clamp(0.0, upper_height as f32 - 1.0);
             let upper_y0 = upper_y.floor() as usize;
             let upper_y1 = (upper_y0 + 1).min(upper_height - 1);
@@ -263,13 +307,13 @@ fn draw_opaque_trilinear_clipped(
             let upper_top = &upper_pixels[upper_y0 * upper_width..(upper_y0 + 1) * upper_width];
             let upper_bottom = &upper_pixels[upper_y1 * upper_width..(upper_y1 + 1) * upper_width];
 
-            let row_start = y as usize * target_width + clip_left;
-            let target_row = &mut target_pixels[row_start..row_start + clip_width];
-            for (column, x) in (clip.x..clip.x + clip.width).enumerate() {
-                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
-                    .clamp(0.0, base.width() as f32 - 1.0);
-
-                let lower_x = ((source_x + 0.5) * prepared.lower_inverse_scale - 0.5)
+            let row_start = row_index * target_width + clip_left;
+            let target_row = &mut target_rows[row_start..row_start + clip_width];
+            for (column, x) in (draw.clip.x..draw.clip.x + draw.clip.width).enumerate() {
+                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x
+                    - 0.5)
+                    .clamp(0.0, draw.base.width() as f32 - 1.0);
+                let lower_x = ((source_x + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                     .clamp(0.0, lower_width as f32 - 1.0);
                 let lower_x0 = lower_x.floor() as usize;
                 let lower_x1 = (lower_x0 + 1).min(lower_width - 1);
@@ -283,7 +327,7 @@ fn draw_opaque_trilinear_clipped(
                     lower_ty,
                 );
 
-                let upper_x = ((source_x + 0.5) * prepared.upper_inverse_scale - 0.5)
+                let upper_x = ((source_x + 0.5) * draw.prepared.upper_inverse_scale - 0.5)
                     .clamp(0.0, upper_width as f32 - 1.0);
                 let upper_x0 = upper_x.floor() as usize;
                 let upper_x1 = (upper_x0 + 1).min(upper_width - 1);
@@ -297,30 +341,33 @@ fn draw_opaque_trilinear_clipped(
                     upper_ty,
                 );
 
-                target_row[column] =
-                    interpolate_premultiplied(lower_sample, upper_sample, prepared.fraction);
+                target_row[column] = interpolate_premultiplied(
+                    lower_sample,
+                    upper_sample,
+                    draw.prepared.fraction,
+                );
             }
         }
     } else {
-        for y in clip.y..clip.y + clip.height {
-            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
-                .clamp(0.0, base.height() as f32 - 1.0);
-            let lower_y = ((source_y + 0.5) * prepared.lower_inverse_scale - 0.5)
+        for row_index in 0..row_count {
+            let y = first_y + row_index;
+            let source_y = ((y as f32 + 0.5 - draw.destination.y as f32) * draw.scale_y - 0.5)
+                .clamp(0.0, draw.base.height() as f32 - 1.0);
+            let lower_y = ((source_y + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                 .clamp(0.0, lower_height as f32 - 1.0);
             let lower_y0 = lower_y.floor() as usize;
             let lower_y1 = (lower_y0 + 1).min(lower_height - 1);
             let lower_ty = lower_y - lower_y0 as f32;
-            let lower_top =
-                &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
-            let lower_bottom =
-                &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
+            let lower_top = &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
+            let lower_bottom = &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
 
-            let row_start = y as usize * target_width + clip_left;
-            let target_row = &mut target_pixels[row_start..row_start + clip_width];
-            for (column, x) in (clip.x..clip.x + clip.width).enumerate() {
-                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
-                    .clamp(0.0, base.width() as f32 - 1.0);
-                let lower_x = ((source_x + 0.5) * prepared.lower_inverse_scale - 0.5)
+            let row_start = row_index * target_width + clip_left;
+            let target_row = &mut target_rows[row_start..row_start + clip_width];
+            for (column, x) in (draw.clip.x..draw.clip.x + draw.clip.width).enumerate() {
+                let source_x = ((x as f32 + 0.5 - draw.destination.x as f32) * draw.scale_x
+                    - 0.5)
+                    .clamp(0.0, draw.base.width() as f32 - 1.0);
+                let lower_x = ((source_x + 0.5) * draw.prepared.lower_inverse_scale - 0.5)
                     .clamp(0.0, lower_width as f32 - 1.0);
                 let lower_x0 = lower_x.floor() as usize;
                 let lower_x1 = (lower_x0 + 1).min(lower_width - 1);
@@ -744,6 +791,49 @@ mod tests {
         let scale_y = base.height() as f32 / destination.height as f32;
         let lod = scale_x.max(scale_y).log2().max(0.0);
         assert!(lod.fract() > 0.0);
+        for y in clip.y..clip.y + clip.height {
+            let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
+                .clamp(0.0, base.height() as f32 - 1.0);
+            for x in clip.x..clip.x + clip.width {
+                let source_x = ((x as f32 + 0.5 - destination.x as f32) * scale_x - 0.5)
+                    .clamp(0.0, base.width() as f32 - 1.0);
+                expected.set_pixel(x, y, chain.sample_trilinear(source_x, source_y, lod));
+            }
+        }
+
+        assert_eq!(actual.pixels(), expected.pixels());
+    }
+
+    #[test]
+    fn large_opaque_fractional_lod_draw_matches_reference_with_parallel_rows() {
+        let base = Texture::new(
+            1024,
+            768,
+            (0..1024 * 768)
+                .map(|index| {
+                    Color::rgb(
+                        (index * 3 % 256) as u8,
+                        (index * 7 % 256) as u8,
+                        (index * 13 % 256) as u8,
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let chain = MipmapChain::new(&base).unwrap();
+        let destination = crate::Rect::new(0, 0, 384, 288);
+        let clip = crate::Rect::new(4, 3, 376, 280);
+        let mut actual =
+            crate::Framebuffer::new(390, 292, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut expected = actual.clone();
+
+        draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
+
+        let scale_x = base.width() as f32 / destination.width as f32;
+        let scale_y = base.height() as f32 / destination.height as f32;
+        let lod = scale_x.max(scale_y).log2().max(0.0);
+        assert!(lod.fract() > 0.0);
+        assert!(clip.width as usize * clip.height as usize >= 65_536);
         for y in clip.y..clip.y + clip.height {
             let source_y = ((y as f32 + 0.5 - destination.y as f32) * scale_y - 0.5)
                 .clamp(0.0, base.height() as f32 - 1.0);
