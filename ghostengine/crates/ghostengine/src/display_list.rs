@@ -16,8 +16,8 @@ use crate::rasterizer::{
 };
 use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{
-    stroke_path_aa_clipped, stroke_path_aa_clipped_with_scratch, stroke_path_clipped,
-    stroke_path_clipped_with_scratch, StrokeError, StrokeScratch, StrokeStyle,
+    stroke_path_aa_clipped_with_scratch, stroke_path_clipped_with_scratch, StrokeError,
+    StrokeScratch, StrokeStyle,
 };
 use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
@@ -3402,10 +3402,10 @@ mod tests {
     #[test]
     fn renderer_reuses_stroke_workspace_across_display_list_frames() {
         let mut path = crate::Path::new();
-        path.move_to(crate::Vector::new(2.0, 2.0)).unwrap();
-        path.line_to(crate::Vector::new(22.0, 7.0)).unwrap();
-        path.line_to(crate::Vector::new(13.0, 23.0)).unwrap();
-        path.close().unwrap();
+        path.move_to(crate::Vector::new(2.0, 2.0));
+        path.line_to(crate::Vector::new(22.0, 7.0));
+        path.line_to(crate::Vector::new(13.0, 23.0));
+        path.close();
 
         let mut list = DisplayList::new();
         list.stroke_path(
