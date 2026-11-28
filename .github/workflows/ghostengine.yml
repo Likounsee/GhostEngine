@@ -124,6 +124,16 @@ jobs:
       - name: Format Amethys Launcher integration tests
         run: rustfmt --edition 2021 --check "Amethys-Launcher test/tests/launcher_integration.rs"
 
+      - name: Align Amethys integration lockfile with GhostEngine image version
+        run: cargo update --manifest-path "Amethys-Launcher test/Cargo.toml" -p image --precise 0.25.9
+
+      - name: Upload regenerated Amethys integration lockfile
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amethys-integration-lockfile
+          path: Amethys-Launcher test/Cargo.lock
+
       - name: Test Amethys Launcher integration
         run: cargo test --manifest-path "Amethys-Launcher test/Cargo.toml" --all-targets --all-features
 
