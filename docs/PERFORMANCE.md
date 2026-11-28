@@ -157,3 +157,19 @@ command/state-vector allocation reported by `allocated_bytes()`. Clearing a
 list drops its prepared geometry while retaining the reusable command-buffer
 capacity, so applications can account for the memory tradeoff of recording
 static vector scenes.
+
+
+## Prepared vector strokes in display lists
+
+Display-list stroke commands now flatten curves and apply the captured affine
+transform once during recording. Both regular and antialiased stroke replay
+consume the retained framebuffer-space `FlattenedPath` directly; replay no
+longer repeats curve subdivision or point transformation. Rectangle outlines
+use the same prepared-geometry route. The public path-stroke APIs remain
+available and preserve their scratch-backed preparation behavior.
+
+`prepared_path_geometry_bytes()` now includes fill, stroke-path, and
+rectangle-outline geometry, so the retained-memory figure covers all prepared
+vector commands rather than fills alone. The repeated-frame CPU benchmark
+already exercises regular and antialiased display-list strokes through the
+persistent renderer workspace.

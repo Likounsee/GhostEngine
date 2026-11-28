@@ -16,8 +16,8 @@ use crate::rasterizer::{
 };
 use crate::shaping::{ShapedText, ShapingError};
 use crate::stroke::{
-    stroke_path_aa_clipped_with_scratch, stroke_path_clipped_with_scratch, StrokeError,
-    StrokeScratch, StrokeStyle,
+    stroke_prepared_path_aa_clipped_with_scratch, stroke_prepared_path_clipped_with_scratch,
+    StrokeError, StrokeScratch, StrokeStyle,
 };
 use crate::text::{
     draw_text_box_transformed_clipped, draw_text_shaped_transformed_clipped,
@@ -63,8 +63,7 @@ enum Command {
         clip: Rect,
     },
     StrokeRect {
-        path: Path,
-        transform: Transform2D,
+        geometry: FlattenedPath,
         color: Color,
         clip: Rect,
     },
@@ -82,11 +81,9 @@ enum Command {
         clip: Rect,
     },
     StrokePath {
-        path: Path,
-        transform: Transform2D,
+        geometry: FlattenedPath,
         style: StrokeStyle,
         color: Color,
-        tolerance: f32,
         antialias: bool,
         clip: Rect,
     },
@@ -389,7 +386,9 @@ impl DisplayList {
     pub fn prepared_path_geometry_bytes(&self) -> usize {
         self.commands.iter().fold(0_usize, |total, command| {
             let geometry_bytes = match command {
-                Command::FillPath { geometry, .. } => geometry.allocated_bytes(),
+                Command::FillPath { geometry, .. }
+                | Command::StrokePath { geometry, .. }
+                | Command::StrokeRect { geometry, .. } => geometry.allocated_bytes(),
                 _ => 0,
             };
             total.saturating_add(geometry_bytes)
@@ -613,9 +612,11 @@ impl DisplayList {
         self.commands
             .try_reserve(1)
             .map_err(|_| StrokeError::AllocationFailed)?;
+        let geometry = stroke_rectangle_path(rect)
+            .flatten(0.25)?
+            .transformed(self.active_transform())?;
         self.commands.push(Command::StrokeRect {
-            path: stroke_rectangle_path(rect),
-            transform: self.active_transform(),
+            geometry,
             color,
             clip,
         });
@@ -1100,17 +1101,15 @@ impl DisplayList {
         if !transform.is_finite() {
             return Err(StrokeError::InvalidTransform);
         }
-        path.flatten(tolerance)?.transformed(transform)?;
+        let geometry = path.flatten(tolerance)?.transformed(transform)?;
         if let Some(clip) = self.active_clip() {
             self.commands
                 .try_reserve(1)
                 .map_err(|_| StrokeError::AllocationFailed)?;
             self.commands.push(Command::StrokePath {
-                path,
-                transform,
+                geometry,
                 style,
                 color,
-                tolerance,
                 antialias,
                 clip,
             });
@@ -1679,17 +1678,14 @@ impl DisplayList {
                     !rectangles.is_empty()
                 }
                 Command::StrokeRect {
-                    path,
-                    transform,
+                    geometry,
                     color,
                     clip,
-                } => stroke_path_clipped_with_scratch(
+                } => stroke_prepared_path_clipped_with_scratch(
                     target,
-                    path,
-                    *transform,
+                    geometry,
                     StrokeStyle::new(1.0),
                     *color,
-                    0.25,
                     *clip,
                     stroke_scratch,
                 )
@@ -1733,33 +1729,27 @@ impl DisplayList {
                     result.is_ok()
                 }
                 Command::StrokePath {
-                    path,
-                    transform,
+                    geometry,
                     style,
                     color,
-                    tolerance,
                     antialias,
                     clip,
                 } => {
                     let result = if *antialias {
-                        stroke_path_aa_clipped_with_scratch(
+                        stroke_prepared_path_aa_clipped_with_scratch(
                             target,
-                            path,
-                            *transform,
+                            geometry,
                             *style,
                             *color,
-                            *tolerance,
                             *clip,
                             stroke_scratch,
                         )
                     } else {
-                        stroke_path_clipped_with_scratch(
+                        stroke_prepared_path_clipped_with_scratch(
                             target,
-                            path,
-                            *transform,
+                            geometry,
                             *style,
                             *color,
-                            *tolerance,
                             *clip,
                             stroke_scratch,
                         )
@@ -2599,8 +2589,8 @@ mod tests {
             .line_to(crate::Vector::new(4.0, 8.0))
             .close();
 
-        let transform = crate::Transform2D::rotation(0.11)
-            .then(crate::Transform2D::translation(3.0, 2.0));
+        let transform =
+            crate::Transform2D::rotation(0.11).then(crate::Transform2D::translation(3.0, 2.0));
         let clip = Rect::new(2, 2, 13, 12);
         let color = Color::rgba(220, 90, 40, 173);
         let tolerance = 0.18;
@@ -2617,12 +2607,9 @@ mod tests {
                     color,
                     tolerance,
                 ),
-                2 => list.fill_path_aa(
-                    path.clone(),
-                    crate::Transform2D::IDENTITY,
-                    color,
-                    tolerance,
-                ),
+                2 => {
+                    list.fill_path_aa(path.clone(), crate::Transform2D::IDENTITY, color, tolerance)
+                }
                 _ => list.fill_path_non_zero_aa(
                     path.clone(),
                     crate::Transform2D::IDENTITY,
@@ -2677,7 +2664,11 @@ mod tests {
             let mut second = Framebuffer::new(20, 18, Color::BLACK).unwrap();
             let second_stats = list.replay(&mut second);
             assert_eq!(second_stats, first_stats);
-            assert_eq!(second.pixels(), expected.pixels(), "second replay mode {mode}");
+            assert_eq!(
+                second.pixels(),
+                expected.pixels(),
+                "second replay mode {mode}"
+            );
         }
     }
 

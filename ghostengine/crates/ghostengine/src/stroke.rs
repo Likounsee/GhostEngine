@@ -346,6 +346,74 @@ pub fn stroke_path_aa_clipped_with_scratch(
     )
 }
 
+/// Strokes already flattened and transformed geometry without rebuilding its path.
+/// The supplied geometry must be in framebuffer coordinates; stroke width remains in pixels.
+pub fn stroke_prepared_path_clipped_with_scratch(
+    target: &mut Framebuffer,
+    geometry: &FlattenedPath,
+    style: StrokeStyle,
+    color: Color,
+    clip: Rect,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
+    stroke_prepared_path_impl(
+        target,
+        geometry,
+        style,
+        color,
+        StrokeOptions {
+            clip,
+            antialias: false,
+        },
+        scratch,
+    )
+}
+
+/// Antialiased stroke of already flattened and transformed framebuffer-space geometry.
+pub fn stroke_prepared_path_aa_clipped_with_scratch(
+    target: &mut Framebuffer,
+    geometry: &FlattenedPath,
+    style: StrokeStyle,
+    color: Color,
+    clip: Rect,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
+    stroke_prepared_path_impl(
+        target,
+        geometry,
+        style,
+        color,
+        StrokeOptions {
+            clip,
+            antialias: true,
+        },
+        scratch,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stroke_prepared_path_impl(
+    target: &mut Framebuffer,
+    geometry: &FlattenedPath,
+    style: StrokeStyle,
+    color: Color,
+    options: StrokeOptions,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
+    stroke_prepared_path_impl_rows(
+        target.pixels_mut(),
+        target.width(),
+        target.height(),
+        0,
+        target.height(),
+        geometry,
+        style,
+        color,
+        options,
+        scratch,
+    )
+}
+
 /// Strokes an antialiased path in parallel using disjoint mutable row bands.
 ///
 /// Each worker runs the same scanline rasterizer over its own slice of framebuffer
@@ -477,6 +545,42 @@ fn stroke_path_impl_rows(
     options: StrokeOptions,
     scratch: &mut StrokeScratch,
 ) -> Result<(), StrokeError> {
+    if !transform.is_finite() {
+        return Err(StrokeError::InvalidTransform);
+    }
+    path.try_flatten_into(tolerance, &mut scratch.flattened)?;
+    scratch
+        .flattened
+        .try_transformed_into(transform, &mut scratch.transformed)?;
+    let geometry = std::mem::take(&mut scratch.transformed);
+    let result = stroke_prepared_path_impl_rows(
+        target,
+        target_width,
+        target_height,
+        row_origin,
+        row_end,
+        &geometry,
+        style,
+        color,
+        options,
+        scratch,
+    );
+    scratch.transformed = geometry;
+    result
+}
+
+fn stroke_prepared_path_impl_rows(
+    target: &mut [Color],
+    target_width: u32,
+    target_height: u32,
+    row_origin: u32,
+    row_end: u32,
+    geometry: &FlattenedPath,
+    style: StrokeStyle,
+    color: Color,
+    options: StrokeOptions,
+    scratch: &mut StrokeScratch,
+) -> Result<(), StrokeError> {
     let StrokeOptions { clip, antialias } = options;
     let StrokeScratch {
         segments,
@@ -485,8 +589,6 @@ fn stroke_path_impl_rows(
         row_joins_x,
         pixel_segments,
         pixel_joins,
-        flattened,
-        transformed,
     } = scratch;
     if !style.width.is_finite() || style.width <= 0.0 {
         return Err(StrokeError::InvalidWidth);
@@ -496,11 +598,6 @@ fn stroke_path_impl_rows(
     {
         return Err(StrokeError::InvalidWidth);
     }
-    if !transform.is_finite() {
-        return Err(StrokeError::InvalidTransform);
-    }
-    path.try_flatten_into(tolerance, flattened)?;
-    flattened.try_transformed_into(transform, transformed)?;
     let Some(clip) = clip.intersection(Rect::new(0, 0, target_width, target_height)) else {
         return Ok(());
     };
@@ -537,7 +634,7 @@ fn stroke_path_impl_rows(
         return Err(StrokeError::InvalidWidth);
     }
 
-    for contour in &transformed.subpaths {
+    for contour in &geometry.subpaths {
         if contour.points.len() < 2 {
             continue;
         }
