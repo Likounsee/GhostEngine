@@ -7,7 +7,10 @@
 use crate::covers::CoverStore;
 use crate::gfx::{self, Action, Fonts, Hit, Page, Painter, State, BG, W};
 use crate::pages::{self, Active, PageFn, MW, MX, SIDE_W};
-use std::{collections::VecDeque, process::Command, time::Instant};
+use std::{collections::VecDeque, time::Instant};
+
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use ghostengine::{
     draw_rounded_rect_aa, fill_rounded_rect_aa, ClipboardAction, Color, ComponentId, ComponentTree,
     Framebuffer, InputState, Insets, LayoutDirection, LayoutItem, Rect, ScrollViewport, StackLayout,

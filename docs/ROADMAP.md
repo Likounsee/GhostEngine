@@ -105,7 +105,7 @@ This checklist tracks implementation separately from release validation. A check
 
 #### P0 — required before calling V1 stable
 
-- [x] Obtain a fully green CI matrix for candidate commit `36d6e957ea7cf000b99dc9e595032dbb0064a224` on Windows, Linux and macOS (CI run `46160376507`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy, crate packaging, the Amethys integration fixture and its 18-frame headless session. This verifies the automated matrix only; real desktop validation remains outstanding. The following commit persists the regenerated integration lockfile and mixed-scene benchmark output, and requires its own CI run.
+- [x] Obtain a fully green CI matrix for candidate commit `36d6e957ea7cf000b99dc9e595032dbb0064a224` on Windows, Linux and macOS (CI run `46160376507`), including Rust 1.87, feature-specific configurations, public host-pipeline tests, image pipeline showcase, public API docs, Clippy, crate packaging, the Amethys integration fixture and its 18-frame headless session. This verifies the automated matrix only; real desktop validation remains outstanding. The current candidate also persists the regenerated integration lockfile and emits mixed-scene benchmark results; its own CI matrix is the active validation gate.
 - [ ] Run the native-window examples interactively on Windows, Linux and macOS; record OS version, backend, DPI/scale, resize, minimize/restore, focus, keyboard, pointer, text/IME and clipboard outcomes.
 - [ ] Fix every reproducible correctness, lifecycle, rendering or input defect found by those runs.
 - [ ] Add deterministic golden/pixel-reference tests for representative rendering paths:
