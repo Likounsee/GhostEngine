@@ -252,20 +252,16 @@ fn draw_opaque_trilinear_clipped(
             let lower_y0 = lower_y.floor() as usize;
             let lower_y1 = (lower_y0 + 1).min(lower_height - 1);
             let lower_ty = lower_y - lower_y0 as f32;
-            let lower_top =
-                &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
-            let lower_bottom =
-                &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
+            let lower_top = &lower_pixels[lower_y0 * lower_width..(lower_y0 + 1) * lower_width];
+            let lower_bottom = &lower_pixels[lower_y1 * lower_width..(lower_y1 + 1) * lower_width];
 
             let upper_y = ((source_y + 0.5) * prepared.upper_inverse_scale - 0.5)
                 .clamp(0.0, upper_height as f32 - 1.0);
             let upper_y0 = upper_y.floor() as usize;
             let upper_y1 = (upper_y0 + 1).min(upper_height - 1);
             let upper_ty = upper_y - upper_y0 as f32;
-            let upper_top =
-                &upper_pixels[upper_y0 * upper_width..(upper_y0 + 1) * upper_width];
-            let upper_bottom =
-                &upper_pixels[upper_y1 * upper_width..(upper_y1 + 1) * upper_width];
+            let upper_top = &upper_pixels[upper_y0 * upper_width..(upper_y0 + 1) * upper_width];
+            let upper_bottom = &upper_pixels[upper_y1 * upper_width..(upper_y1 + 1) * upper_width];
 
             let row_start = y as usize * target_width + clip_left;
             let target_row = &mut target_pixels[row_start..row_start + clip_width];
@@ -360,9 +356,7 @@ fn sample_bilinear_opaque_rows(
     let interpolate = |top_left: u8, top_right: u8, bottom_left: u8, bottom_right: u8| {
         let top = f32::from(top_left) * inverse_x + f32::from(top_right) * tx;
         let bottom = f32::from(bottom_left) * inverse_x + f32::from(bottom_right) * tx;
-        (top * inverse_y + bottom * ty)
-            .round()
-            .clamp(0.0, 255.0) as u8
+        (top * inverse_y + bottom * ty).round().clamp(0.0, 255.0) as u8
     };
 
     Color::rgb(
@@ -741,8 +735,7 @@ mod tests {
 
         let destination = crate::Rect::new(1, 2, 6, 4);
         let clip = crate::Rect::new(2, 2, 4, 3);
-        let mut actual =
-            crate::Framebuffer::new(10, 8, Color::rgba(11, 23, 37, 120)).unwrap();
+        let mut actual = crate::Framebuffer::new(10, 8, Color::rgba(11, 23, 37, 120)).unwrap();
         let mut expected = actual.clone();
 
         draw_mipmapped_texture_clipped(&mut actual, &chain, destination, clip);
