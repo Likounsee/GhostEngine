@@ -381,6 +381,21 @@ impl DisplayList {
             )
     }
 
+    /// Returns logical bytes held by flattened path geometry owned by fill commands.
+    ///
+    /// This is reported separately from `allocated_bytes`, which accounts only
+    /// for the display list's command and state-stack backing vectors.
+    #[must_use]
+    pub fn prepared_path_geometry_bytes(&self) -> usize {
+        self.commands.iter().fold(0_usize, |total, command| {
+            let geometry_bytes = match command {
+                Command::FillPath { geometry, .. } => geometry.allocated_bytes(),
+                _ => 0,
+            };
+            total.saturating_add(geometry_bytes)
+        })
+    }
+
     /// Removes all commands and clip state while retaining allocated capacity.
     pub fn clear(&mut self) {
         self.commands.clear();
@@ -2537,6 +2552,33 @@ mod tests {
         assert_eq!(target.get_pixel(3, 3), Some(Color::BLACK));
         assert_eq!(target.get_pixel(6, 3), Some(Color::BLACK));
         assert_eq!(stats.commands_executed, 1);
+    }
+
+    #[test]
+    fn prepared_path_geometry_memory_is_reported_and_cleared() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.0, 1.0))
+            .cubic_to(
+                crate::Vector::new(2.0, 9.0),
+                crate::Vector::new(8.0, 9.0),
+                crate::Vector::new(9.0, 1.0),
+            )
+            .line_to(crate::Vector::new(1.0, 1.0))
+            .close();
+
+        let mut list = DisplayList::new();
+        list.fill_path(path, Transform2D::IDENTITY, Color::WHITE, 0.1)
+            .unwrap();
+        let geometry_bytes = list.prepared_path_geometry_bytes();
+        assert!(geometry_bytes > 0);
+        assert!(list.allocated_bytes() > 0);
+
+        let cloned = list.clone();
+        assert_eq!(cloned.prepared_path_geometry_bytes(), geometry_bytes);
+
+        list.clear();
+        assert_eq!(list.prepared_path_geometry_bytes(), 0);
+        assert_eq!(list.allocated_bytes(), cloned.allocated_bytes());
     }
 
     #[test]

@@ -149,3 +149,11 @@ antialiased display-list fill. The source path is flattened and transformed
 when recorded, outside the measured frame loop; the timed replay therefore
 measures the prepared-geometry path rather than charging curve subdivision
 and affine point transformation on every frame.
+
+
+Display lists expose `prepared_path_geometry_bytes()` to report the retained
+flattened point storage held by recorded fill commands separately from the
+command/state-vector allocation reported by `allocated_bytes()`. Clearing a
+list drops its prepared geometry while retaining the reusable command-buffer
+capacity, so applications can account for the memory tradeoff of recording
+static vector scenes.
