@@ -400,12 +400,14 @@ fn stroke_prepared_path_impl(
     options: StrokeOptions,
     scratch: &mut StrokeScratch,
 ) -> Result<(), StrokeError> {
+    let width = target.width();
+    let height = target.height();
     stroke_prepared_path_impl_rows(
         target.pixels_mut(),
-        target.width(),
-        target.height(),
+        width,
+        height,
         0,
-        target.height(),
+        height,
         geometry,
         style,
         color,

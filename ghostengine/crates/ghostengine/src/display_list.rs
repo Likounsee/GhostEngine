@@ -2557,8 +2557,16 @@ mod tests {
             .close();
 
         let mut list = DisplayList::new();
-        list.fill_path(path, Transform2D::IDENTITY, Color::WHITE, 0.1)
+        list.fill_path(path.clone(), Transform2D::IDENTITY, Color::WHITE, 0.1)
             .unwrap();
+        list.stroke_path(
+            path,
+            Transform2D::translation(1.0, 0.0),
+            StrokeStyle::new(1.5),
+            Color::RED,
+            0.1,
+        )
+        .unwrap();
         let geometry_bytes = list.prepared_path_geometry_bytes();
         assert!(geometry_bytes > 0);
         assert!(list.allocated_bytes() > 0);
@@ -2569,6 +2577,80 @@ mod tests {
         list.clear();
         assert_eq!(list.prepared_path_geometry_bytes(), 0);
         assert_eq!(list.allocated_bytes(), cloned.allocated_bytes());
+    }
+
+    #[test]
+    fn prepared_display_list_strokes_match_path_apis_for_regular_and_aa_modes() {
+        let mut path = crate::Path::new();
+        path.move_to(crate::Vector::new(1.25, 4.0))
+            .cubic_to(
+                crate::Vector::new(3.0, -1.0),
+                crate::Vector::new(9.0, 11.0),
+                crate::Vector::new(13.5, 5.0),
+            )
+            .line_to(crate::Vector::new(16.0, 9.0));
+        let transform =
+            crate::Transform2D::rotation(0.09).then(crate::Transform2D::translation(3.0, 2.0));
+        let clip = Rect::new(2, 1, 15, 13);
+        let style = StrokeStyle::new(2.4)
+            .with_cap(crate::StrokeCap::Round)
+            .with_join(crate::StrokeJoin::Miter)
+            .with_miter_limit(3.5);
+        let color = Color::rgba(70, 190, 245, 177);
+
+        for antialias in [false, true] {
+            let mut list = DisplayList::new();
+            list.push_clip(clip);
+            list.push_transform(transform);
+            if antialias {
+                list.stroke_path_aa(
+                    path.clone(),
+                    Transform2D::IDENTITY,
+                    style,
+                    color,
+                    0.16,
+                )
+                .unwrap();
+            } else {
+                list.stroke_path(
+                    path.clone(),
+                    Transform2D::IDENTITY,
+                    style,
+                    color,
+                    0.16,
+                )
+                .unwrap();
+            }
+
+            let mut actual = Framebuffer::new(22, 18, Color::BLACK).unwrap();
+            let mut expected = Framebuffer::new(22, 18, Color::BLACK).unwrap();
+            let result = if antialias {
+                crate::stroke_path_aa_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    style,
+                    color,
+                    0.16,
+                    clip,
+                )
+            } else {
+                crate::stroke_path_clipped(
+                    &mut expected,
+                    &path,
+                    transform,
+                    style,
+                    color,
+                    0.16,
+                    clip,
+                )
+            };
+            result.unwrap();
+
+            let stats = list.replay(&mut actual);
+            assert_eq!(stats.commands_executed, 1);
+            assert_eq!(actual.pixels(), expected.pixels(), "antialias={antialias}");
+        }
     }
 
     #[test]
