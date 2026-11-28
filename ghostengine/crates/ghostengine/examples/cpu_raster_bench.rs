@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use ghostengine::{
     blend_rect, blend_rect_with_options, compose_layers_auto, compose_layers_parallel_with_threads,
     draw_atlas_region_clipped, draw_atlas_region_clipped_with_scratch,
-    draw_mipmapped_texture_clipped, draw_text, draw_texture_clipped_auto,
+    draw_mipmapped_texture_clipped, draw_mipmapped_texture_clipped_with_options, draw_text,
+    draw_texture_clipped_auto,
     draw_texture_clipped_parallel_with_threads, draw_texture_clipped_with_options,
     draw_texture_clipped_with_scratch, draw_texture_nine_slice_clipped,
     draw_texture_transformed_clipped_parallel_with_threads, fill_path_even_odd,
@@ -870,7 +871,35 @@ fn main() {
             );
         }),
         measure(
-            "Mipmap 4K -> 1440x810 trilinear",
+            "Mipmap 4K -> 1440x810 trilinear (serial)",
+            full_hd_iterations,
+            |target| {
+                draw_mipmapped_texture_clipped_with_options(
+                    target,
+                    &full_hd_mipmaps,
+                    Rect::new(0, 0, WIDTH * 3 / 4, HEIGHT * 3 / 4),
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                    RenderOptions::serial(),
+                );
+            },
+        ),
+        measure(
+            "Mipmap 4K -> 1440x810 trilinear (2 workers)",
+            full_hd_iterations,
+            |target| {
+                draw_mipmapped_texture_clipped_with_options(
+                    target,
+                    &full_hd_mipmaps,
+                    Rect::new(0, 0, WIDTH * 3 / 4, HEIGHT * 3 / 4),
+                    Rect::new(0, 0, WIDTH, HEIGHT),
+                    RenderOptions::new()
+                        .with_max_threads(2)
+                        .with_parallel_threshold(0),
+                );
+            },
+        ),
+        measure(
+            "Mipmap 4K -> 1440x810 trilinear (automatic)",
             full_hd_iterations,
             |target| {
                 draw_mipmapped_texture_clipped(
