@@ -62,7 +62,20 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps
 
-      - name: Validate distributable crate contents and build the packaged crate
+      - name: Verify distributable crate includes documentation and license notices
+        working-directory: ghostengine
+        shell: bash
+        run: |
+          files="$(cargo package -p ghostengine --list)"
+          printf '%s\\n' "$files"
+          for required in README.md LICENSE-MIT LICENSE-APACHE tests/fixtures/README.md tests/fixtures/OFL-NotoSansArabic.txt tests/fixtures/OFL-NotoSansHebrew.txt; do
+            if ! grep -Fxq "$required" <<< "$files"; then
+              echo "Missing required file from ghostengine package: $required"
+              exit 1
+            fi
+          done
+
+      - name: Build the packaged crate
         working-directory: ghostengine
         run: cargo package -p ghostengine --locked
 

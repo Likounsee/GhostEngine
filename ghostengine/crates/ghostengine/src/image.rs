@@ -40,6 +40,10 @@ pub enum ImageDecodeError {
     /// The reader could not inspect or decode the encoded bytes.
     Reader(std::io::Error),
     Decode(::image::ImageError),
+    /// The image codec panicked while decoding the supplied bytes.
+    ///
+    /// This can be recovered only when the process uses unwinding panics.
+    DecoderPanicked,
     /// The decoded pixel buffer could not be allocated.
     AllocationFailed,
     Texture(TextureError),
@@ -55,6 +59,9 @@ impl fmt::Display for ImageDecodeError {
             }
             Self::Reader(error) => write!(formatter, "could not read image header: {error}"),
             Self::Decode(error) => write!(formatter, "could not decode image: {error}"),
+            Self::DecoderPanicked => {
+                formatter.write_str("image decoder panicked while processing encoded input")
+            }
             Self::AllocationFailed => {
                 formatter.write_str("could not allocate decoded image pixel storage")
             }
@@ -71,6 +78,7 @@ impl Error for ImageDecodeError {
             Self::Decode(error) => Some(error),
             Self::UnknownFormat
             | Self::UnsupportedFormat(_)
+            | Self::DecoderPanicked
             | Self::AllocationFailed
             | Self::Texture(_)
             | Self::Cache(_) => None,
@@ -111,6 +119,8 @@ pub fn decode_texture_with_options_into_cache(
 /// Decodes image bytes with limits supplied by the calling application.
 ///
 /// Set any limit to `None` to leave that dimension or allocation unbounded.
+/// Codec panics are converted to `ImageDecodeError::DecoderPanicked` when the
+/// process uses unwinding panics; `panic=abort` builds cannot recover from panics.
 pub fn decode_texture_with_options(
     encoded: &[u8],
     options: ImageDecodeOptions,
@@ -133,10 +143,9 @@ pub fn decode_texture_with_options(
 
     let mut reader = reader;
     reader.limits(limits);
-    let rgba = reader
-        .decode()
-        .map_err(ImageDecodeError::Decode)?
-        .into_rgba8();
+    let rgba = decode_with_panic_guard(|| {
+        reader.decode().map(|decoded| decoded.into_rgba8())
+    })?;
     let (width, height) = rgba.dimensions();
     let pixel_count = (width as usize)
         .checked_mul(height as usize)
@@ -153,6 +162,14 @@ pub fn decode_texture_with_options(
     );
 
     Texture::new(width, height, pixels).map_err(ImageDecodeError::Texture)
+}
+
+fn decode_with_panic_guard<T>(
+    decode: impl FnOnce() -> Result<T, ::image::ImageError>,
+) -> Result<T, ImageDecodeError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(decode))
+        .map_err(|_| ImageDecodeError::DecoderPanicked)?
+        .map_err(ImageDecodeError::Decode)
 }
 
 #[cfg(test)]
@@ -174,6 +191,17 @@ mod tests {
             )
             .unwrap();
         encoded
+    }
+
+    #[test]
+    fn codec_panics_are_returned_as_typed_decode_errors() {
+        let result = super::decode_with_panic_guard(
+            || -> Result<(), ::image::ImageError> {
+                std::panic::resume_unwind(Box::new("simulated codec panic"))
+            },
+        );
+
+        assert!(matches!(result, Err(ImageDecodeError::DecoderPanicked)));
     }
 
     #[test]
