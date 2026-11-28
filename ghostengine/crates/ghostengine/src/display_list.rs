@@ -255,11 +255,7 @@ impl DisplayListRenderer {
 
     /// Replays a display list into a framebuffer, retaining temporary storage.
     pub fn replay(&mut self, list: &DisplayList, target: &mut Framebuffer) -> RenderStats {
-        list.replay_with_workspaces(
-            target,
-            &mut self.texture_scratch,
-            &mut self.stroke_scratch,
-        )
+        list.replay_with_workspaces(target, &mut self.texture_scratch, &mut self.stroke_scratch)
     }
 }
 
@@ -1743,11 +1739,25 @@ impl DisplayList {
                 } => {
                     let result = if *antialias {
                         stroke_path_aa_clipped_with_scratch(
-                            target, path, *transform, *style, *color, *tolerance, *clip, stroke_scratch,
+                            target,
+                            path,
+                            *transform,
+                            *style,
+                            *color,
+                            *tolerance,
+                            *clip,
+                            stroke_scratch,
                         )
                     } else {
                         stroke_path_clipped_with_scratch(
-                            target, path, *transform, *style, *color, *tolerance, *clip, stroke_scratch,
+                            target,
+                            path,
+                            *transform,
+                            *style,
+                            *color,
+                            *tolerance,
+                            *clip,
+                            stroke_scratch,
                         )
                     };
                     result.is_ok()
